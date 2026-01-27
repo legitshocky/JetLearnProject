@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+      background-color: #f8f9fa; 
+      margin: 0; 
+      padding: 40px 20px;
+      color: #1e293b;
+    }
+    .container { 
+      max-width: 600px; 
+      margin: 0 auto; 
+      background-color: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .accent-bar {
+      height: 5px;
+      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+    }
+    .header { 
+      padding: 40px 40px 32px 40px;
+    }
+    .brand {
+      font-size: 13px;
+      font-weight: 700;
+      color: #3b82f6;
+      letter-spacing: 1px;
+      margin-bottom: 24px;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 8px 0;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-size: 15px;
+      color: #64748b;
+      margin: 0;
+    }
+    .content { 
+      padding: 0 40px 40px 40px;
+    }
+    .message {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #475569;
+      margin-bottom: 32px;
+    }
+    .section { 
+      margin: 32px 0;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 24px;
+      border: 1px solid #e2e8f0;
+    }
+    .detail-row {
+      display: flex;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .detail-row:first-child {
+      padding-top: 0;
+    }
+    .detail-row:last-child {
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .detail-label {
+      width: 130px;
+      font-size: 14px;
+      color: #64748b;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .detail-value {
+      flex: 1;
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .schedule-item {
+      padding: 18px 22px;
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-left: 4px solid #3b82f6;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .schedule-item:last-child {
+      margin-bottom: 0;
+    }
+    .list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .list li {
+      padding: 14px 0;
+      padding-left: 28px;
+      font-size: 14px;
+      color: #475569;
+      position: relative;
+      line-height: 1.6;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .list li:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      border-radius: 50%;
+      top: 20px;
+    }
+    .notes {
+      margin-top: 20px;
+      padding: 22px;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-radius: 10px;
+      border: 2px solid #bae6fd;
+    }
+    .notes-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #0369a1;
+      margin-bottom: 12px;
+    }
+    .notes-content {
+      font-size: 14px;
+      color: #0c4a6e;
+      line-height: 1.7;
+    }
+    .appreciation {
+      margin-top: 32px;
+      padding: 28px;
+      background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+      border-radius: 12px;
+      text-align: center;
+      font-size: 15px;
+      color: #065f46;
+      line-height: 1.7;
+      border: 2px solid #86efac;
+    }
+    .appreciation strong {
+      color: #064e3b;
+      font-weight: 700;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    .footer { 
+      padding: 32px 40px;
+      text-align: center;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+    }
+    .footer-brand {
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+    .footer-text {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+    .footer-note {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="accent-bar"></div>
+    
+    <div class="header">
+      <div class="brand">JETLEARN - MIGHRATION SYSTEM</div>
+      <h1 class="title">Learner Migration Update – <?= data.learner ?</h1>
+      <p class="subtitle">Transition notification</p>
+    </div>
+
+    <div class="content">
+      <div class="message">
+        Hi <strong><?= data.oldTeacher ?></strong>,<br><br>
+        We want to inform you that <strong><?= data.learner ?></strong> (JLID: <?= data.jlid || 'N/A' ?>) has been migrated to <strong><?= data.newTeacher ?></strong>, effective from <?= formatDateDDMMYYYY(data.startDate) ?>.
+      </div>
+
+      <div class="section">
+        <div class="section-label">Migration Details</div>
+        <div class="card">
+          <div class="detail-row">
+            <div class="detail-label">Learner Name</div>
+            <div class="detail-value"><?= data.learner ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Learner ID</div>
+            <div class="detail-value"><?= data.jlid || '—' ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Course</div>
+            <div class="detail-value"><?= data.course ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">New Teacher</div>
+            <div class="detail-value"><?= data.newTeacher ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Effective Date</div>
+            <div class="detail-value"><?= formatDateDDMMYYYY(data.startDate) ?></div>
+          </div>
+        </div>
+      </div>
+
+      <? if (data.classSessions && data.classSessions.length > 0) { ?>
+      <div class="section">
+        <div class="section-label">Previous Class Schedule</div>
+        <? for (let i = 0; i < data.classSessions.length; i++) { 
+             let timeDisplay = data.classSessions[i].time;
+        ?>
+          <div class="schedule-item">
+            <!-- Explicitly adding (CET) as requested -->
+            <?= data.classSessions[i].day ?> at <?= timeDisplay ?> (CET)
+          </div>
+        <? } ?>
+      </div>
+      <? } ?>
+
+
+      <div class="section">
+        <div class="section-label">Action Items</div>
+        <ul class="list">
+          <li>Complete and update any pending CPR details for <?= data.learner ?> in Athena AI</li>
+          <li>Share key transition notes and insights with the CLS Manager (<?= data.clsManager || 'N/A' ?>)</li>
+          <li>Document any important learner preferences or learning patterns that would help the transition</li>
+        </ul>
+      </div>
+
+      <? if (comments) { ?>
+        <div class="notes">
+          <div class="notes-label">Additional Comments</div>
+          <div class="notes-content"><?= comments.replace(/\n/g, '<br>') ?></div>
+        </div>
+      <? } ?>
+
+      <div class="appreciation">
+        <strong>Thank You</strong>
+        We truly appreciate your dedication and the positive impact you've had on <?= data.learner ?>'s learning journey. Your efforts have been invaluable.
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="footer-brand">JetLearn</div>
+      <div class="footer-text">Empowering educators, inspiring learners</div>
+      <div class="footer-note">
+        This is an automated notification. For questions, contact your CLS Manager.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

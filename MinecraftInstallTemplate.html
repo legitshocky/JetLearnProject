@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+    .container { max-width: 650px; margin: auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .header { background: #4CAF50; padding: 25px; text-align: center; color: white; border-radius: 12px 12px 0 0; }
+    .header .title { font-size: 24px; font-weight: bold; margin: 0; }
+    .header .subtitle { font-size: 16px; margin: 5px 0 0 0; opacity: 0.9; }
+    .content { padding: 30px 40px; line-height: 1.6; }
+    .greeting { margin-bottom: 20px; }
+    .section { background: #e8f5e9; border: 1px solid #c8e6c9; border-left: 4px solid #4CAF50; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .section h3 { margin: 0 0 15px 0; color: #2E7D32; font-size: 18px; }
+    ol, ul { padding-left: 25px; margin: 0; }
+    li { margin-bottom: 10px; }
+    strong { color: #2d2d2d; }
+    a { color: #1976D2; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .call-to-action { text-align: center; margin-top: 30px; }
+    .btn { display: inline-block; padding: 12px 25px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
+    .btn:hover { background-color: #388E3C; }
+    .footer { background: #333; padding: 25px; text-align: center; font-size: 13px; color: white; border-top: 1px solid #e9ecef; }
+    .footer p { margin: 5px 0; }
+    .comments-section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; font-style: italic; color: #555; }
+
+    /* Dark mode styles */
+    @media (prefers-color-scheme: dark) {
+      body { background-color: #1a1a1a; color: #e5e5e5; }
+      .container { background: #2d2d2d; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+      .header { background: #388E3C; }
+      .content { background: #2d2d2d; color: #e5e5e5; }
+      .section { background: #2a3a2a; border: 1px solid #4CAF50; border-left-color: #4CAF50; }
+      .section h3 { color: #81C784; }
+      strong { color: #f0f0f0; }
+      a { color: #64B5F6; }
+      .btn { background-color: #388E3C; }
+      .btn:hover { background-color: #2E7D32; }
+      .footer { background: #1a1a1a; border-top-color: #444; color: #e5e5e5; }
+      .comments-section { color: #aaa; border-top-color: #444; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title">Minecraft Installation Guide</div>
+      <div class="subtitle">JetLearn Course Preparation</div>
+    </div>
+    <div class="content">
+      <div class="greeting">
+        <p>Dear Parent of <strong><?= data.learnerName || 'Learner' ?></strong>,</p>
+      </div>
+      
+      <p>Welcome to JetLearn! To ensure a smooth start to <strong><?= data.learnerName || 'your child\'s' ?></strong>'s <strong><?= data.course || 'Minecraft' ?></strong> course (JLID: <?= data.jlid || 'N/A' ?>), please follow these steps to install and set up Minecraft on their computer.</p>
+      
+      <div class="section">
+        <h3>Installation Steps:</h3>
+        <ol>
+          <li><strong>Purchase Minecraft Java Edition:</strong> Ensure you have purchased and downloaded the Java Edition of Minecraft. This is crucial for our curriculum. You can get it from the official Minecraft website: <a href="https://www.minecraft.net/en-us/get-minecraft/buy" target="_blank">minecraft.net/buy</a></li>
+          <li><strong>Install Java:</strong> Our courses require a specific version of Java. Please download and install Java 8 (JRE 8) from <a href="https://www.java.com/en/download/" target="_blank">java.com/download</a>.</li>
+          <li><strong>Install Minecraft Launcher:</strong> Download and install the Minecraft Launcher from the official website if you haven't already.</li>
+          <li><strong>Log in to the Launcher:</strong> Open the Minecraft Launcher and log in with your Mojang or Microsoft account.</li>
+          <li><strong>Select "Java Edition":</strong> Ensure you have "Minecraft: Java Edition" selected in the launcher.</li>
+          <li><strong>Create a new "Installation":</strong>
+            <ul>
+              <li>Go to the "Installations" tab.</li>
+              <li>Click "New Installation".</li>
+              <li>Name it "JetLearn".</li>
+              <li>For "VERSION", select "release 1.16.5" (or the version specified by your teacher).</li>
+              <li>Click "Create".</li>
+            </ul>
+          </li>
+          <li><strong>Download and Install Forge (Optional, but Recommended for Mods):</strong>
+            <ul>
+              <li>Go to the Forge website: <a href="https://files.minecraftforge.net/net/minecraftforge/forge/" target="_blank">files.minecraftforge.net</a></li>
+              <li>Select the same Minecraft version (e.g., 1.16.5).</li>
+              <li>Download the "Installer" version.</li>
+              <li>Run the downloaded Forge installer and select "Install client".</li>
+              <li>Once installed, open the Minecraft Launcher, and you should see a "Forge" profile available in the dropdown next to the "Play" button. Select it.</li>
+            </ul>
+          </li>
+          <li><strong>Test Your Installation:</strong> Launch the game using the "JetLearn" or "Forge" profile to ensure it loads correctly.</li>
+        </ol>
+      </div>
+
+      <div class="section">
+        <h3>Minimum System Requirements:</h3>
+        <ul>
+            <li><strong>Operating System:</strong> Windows 10/11, macOS, Linux</li>
+            <li><strong>Processor:</strong> Intel Core i3-3210 3.2 GHz / AMD A8-7600 APU 3.1 GHz or equivalent</li>
+            <li><strong>RAM:</strong> 4GB RAM</li>
+            <li><strong>Graphics:</strong> Integrated: Intel HD Graphics 4000 / AMD Radeon R5 series. Dedicated: Nvidia GeForce 400 Series / AMD Radeon HD 7000 Series or equivalent</li>
+            <li><strong>Storage:</strong> 1GB for game core, maps, and other files</li>
+            <li><strong>Internet Connection:</strong> Stable broadband connection (at least 20 Mbps recommended)</li>
+        </ul>
+      </div>
+      
+      <p>If you encounter any issues during installation, please do not hesitate to contact our support team at <a href="mailto:support@jet-learn.com">support@jet-learn.com</a>. We are here to help!</p>
+      
+      <p>We look forward to <strong><?= data.learnerName || 'your child' ?></strong> starting their exciting coding journey with Minecraft!</p>
+      
+      <p>Warm regards,<br><strong>The JetLearn Team</strong></p>
+
+      <? if (comments) { ?>
+        <div class="comments-section">
+          <p><strong>Additional Comments:</strong><br><?= comments.replace(/\n/g, '<br>') ?></p>
+        </div>
+      <? } ?>
+    </div>
+    <div class="footer">
+      <p><strong>JetLearn Team</strong></p>
+      <p>This is an automated message.</p>
+    </div>
+  </div>
+</body>
+</html>

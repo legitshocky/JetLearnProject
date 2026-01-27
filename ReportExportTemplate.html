@@ -1,0 +1,71 @@
+html
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 10px; }
+    h1, h2, h3, h4 { color: #4a3c8a; }
+    h1 { font-size: 18px; }
+    h2 { font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px; margin-top: 20px;}
+    h3 { font-size: 14px; }
+    h4 { font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 5px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .ai-summary { background-color: #f8f9ff; border-left: 3px solid #6b5bae; padding: 10px; margin-top: 10px;}
+    .kpi-grid { display: -webkit-box; display: flex; -webkit-box-orient: horizontal; -webkit-box-direction: normal; flex-direction: row; gap: 10px; margin-top: 10px;}
+    .kpi-card { -webkit-box-flex: 1; flex: 1; border: 1px solid #ddd; padding: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Migration Intelligence Report</h1>
+  <p><strong>Period:</strong> <?= period ?></p>
+
+  <h2>Executive Overview</h2>
+  <? if (aiInsights && aiInsights.executive) { ?>
+    <div class="ai-summary">
+      <h4>AI Executive Summary</h4>
+      <p><?= aiInsights.executive ?></p>
+    </div>
+  <? } ?>
+
+  <h2>Impact Analysis</h2>
+  <h4>Teachers to Watch</h4>
+  <table>
+    <thead><tr><th>Teacher Name</th><th>Migrations From</th><th>Migrations To</th><th>Net Flow</th></tr></thead>
+    <tbody>
+      <? if (reportData.teacherImpact && reportData.teacherImpact.length > 0) { ?>
+        <? reportData.teacherImpact.forEach(teacher => { ?>
+          <tr>
+            <td><?= teacher.name ?></td>
+            <td><?= teacher.from ?></td>
+            <td><?= teacher.to ?></td>
+            <td><?= teacher.netFlow ?></td>
+          </tr>
+        <? }); ?>
+      <? } else { ?>
+        <tr><td colspan="4">No teacher impact data for this period.</td></tr>
+      <? } ?>
+    </tbody>
+  </table>
+
+  <h4 style="margin-top: 15px;">Courses Under Pressure</h4>
+  <table>
+    <thead><tr><th>Course Name</th><th>Migration Count</th><th>Top Reason</th></tr></thead>
+    <tbody>
+       <? if (reportData.courseImpact && reportData.courseImpact.length > 0) { ?>
+        <? reportData.courseImpact.forEach(course => { ?>
+          <tr>
+            <td><?= course.name ?></td>
+            <td><?= course.count ?></td>
+            <td><?= course.topReason ?></td>
+          </tr>
+        <? }); ?>
+      <? } else { ?>
+        <tr><td colspan="3">No course impact data for this period.</td></tr>
+      <? } ?>
+    </tbody>
+  </table>
+  
+</body>
+</html>

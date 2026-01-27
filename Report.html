@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Migration Report - <?= reportData.month ?> <?= reportData.year ?></title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #4a3c8a;
+            --primary-light: #6b5bae;
+            --secondary: #f8f9ff;
+            --dark: #1a202c;
+            --light: #f7fafc;
+            --gray: #e2e8f0;
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --success: #38a169;
+            --danger: #e53e3e;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --border-radius: 12px;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--light);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+        .header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .header-title h1 {
+            font-family: 'Poppins', sans-serif;
+            color: var(--dark);
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        .header-title p {
+            margin: 0;
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+        .report-generator {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .report-generator select, .report-generator button {
+            padding: 0.6rem 1rem;
+            border: 1px solid var(--gray);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background-color: white;
+        }
+        .report-generator button {
+            background-color: var(--primary);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .report-generator button:hover { background-color: var(--primary-light); }
+        .report-generator button:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        .grid-col {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        h2.section-title {
+            font-family: 'Poppins', sans-serif;
+            color: var(--dark);
+            margin: 0 0 1.5rem 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        h2.section-title i { color: var(--primary); }
+
+        .hero-metric-card {
+            text-align: center;
+            padding: 2rem;
+        }
+        .hero-metric-card .label {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        .hero-metric-card .value {
+            font-size: 4.5rem;
+            font-weight: 700;
+            color: var(--dark);
+            line-height: 1;
+        }
+        .hero-metric-card .trend {
+            font-size: 1rem;
+            font-weight: 500;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            display: inline-block;
+        }
+        .trend.positive { color: var(--success); background-color: #c6f6d5; }
+        .trend.negative { color: var(--danger); background-color: #fed7d7; }
+        .trend.neutral { color: var(--text-secondary); background-color: #e2e8f0; }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        .kpi-card {
+            background-color: var(--secondary);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            text-align: left;
+        }
+        .kpi-card .label {
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .kpi-card .value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--dark);
+        }
+        .kpi-card .trend-sub {
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
+
+        .ai-summary { background-color: var(--secondary); }
+        .ai-summary ul { list-style: none; padding: 0; margin: 0; }
+        .ai-summary li {
+            position: relative;
+            padding-left: 2rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+        .ai-summary li::before {
+            content: '\f0eb'; /* lightbulb icon */
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            color: var(--primary);
+            position: absolute;
+            left: 0;
+            top: 4px;
+            font-size: 1rem;
+        }
+
+        @media (max-width: 992px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            .header { flex-direction: column; align-items: stretch; }
+            .kpi-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <i class="fas fa-rocket icon"></i>
+                <div>
+                    <h1>Executive Migration Report</h1>
+                    <p>Monthly Performance Summary for <?= reportData.month ?> <?= reportData.year ?></p>
+                </div>
+            </div>
+            <div class="report-generator">
+                <select id="monthSelect"></select>
+                <select id="yearSelect"></select>
+                <button id="generateReportBtn"><i class="fas fa-sync-alt"></i> Generate</button>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <div class="grid-col">
+                <div class="card hero-metric-card">
+                    <div class="label">Total Migrations This Month</div>
+                    <div class="value" id="totalMigrationsValue">0</div>
+                    <div class="trend" id="totalMigrationsTrend">vs. Last Month</div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title"><i class="fas fa-users"></i>Intervention Breakdown</h2>
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="label"><i class="fas fa-user-shield"></i>CLS Team</div>
+                            <div class="value" id="clsInvolvementValue">0%</div>
+                            <div class="trend-sub" id="clsTrend">0 Migrations</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="label"><i class="fas fa-user-tie"></i>TP Team</div>
+                            <div class="value" id="tpInvolvementValue">0%</div>
+                            <div class="trend-sub" id="tpTrend">0 Migrations</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="label"><i class="fas fa-cogs"></i>Ops Team</div>
+                            <div class="value" id="opsInvolvementValue">0%</div>
+                            <div class="trend-sub" id="opsTrend">0 Migrations</div>
+                        </div>
+                    </div>
+                </div>
+                
+                 <div class="card ai-summary">
+                    <h2 class="section-title"><i class="fas fa-brain"></i>AI Analyst Summary</h2>
+                    <ul id="aiInsightsList"></ul>
+                </div>
+            </div>
+            
+            <div class="grid-col">
+                <div class="card">
+                    <h2 class="section-title"><i class="fas fa-chart-bar"></i>Top Migration Drivers</h2>
+                    <canvas id="reasonsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+    <script>
+        const reportData = <?= JSON.stringify(reportData) ?>;
+
+        const monthSelect = document.getElementById('monthSelect');
+        const yearSelect = document.getElementById('yearSelect');
+        const generateReportBtn = document.getElementById('generateReportBtn');
+
+        function populateSelectors() {
+            const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            const currentYear = new Date().getFullYear();
+            months.forEach((month, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = month;
+                monthSelect.appendChild(option);
+            });
+            for (let i = 0; i < 5; i++) {
+                const year = currentYear - i;
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = year;
+                yearSelect.appendChild(option);
+            }
+            const monthIndex = months.findIndex(m => m.startsWith(reportData.month));
+            if (monthIndex !== -1) monthSelect.value = monthIndex;
+            yearSelect.value = reportData.year;
+        }
+
+        generateReportBtn.addEventListener('click', () => {
+            const year = yearSelect.value;
+            const month = String(parseInt(monthSelect.value) + 1).padStart(2, '0');
+            generateReportBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            generateReportBtn.disabled = true;
+            const baseUrl = window.location.href.split('?')[0];
+            window.location.href = `${baseUrl}?page=report&month=${year}-${month}`;
+        });
+        
+        function renderMetrics() {
+            const current = reportData;
+            const previous = reportData.previousMonth || { total: 0, CLS_Involvement: 0, TP_Involvement: 0, Ops_Involvement: 0 };
+
+            // Total Migrations Hero Metric
+            const totalMigrationsValue = document.getElementById('totalMigrationsValue');
+            const totalMigrationsTrend = document.getElementById('totalMigrationsTrend');
+            totalMigrationsValue.textContent = current.total;
+            const totalDiff = current.total - previous.total;
+            if (previous.total > 0) {
+                const percentChange = ((totalDiff / previous.total) * 100).toFixed(0);
+                totalMigrationsTrend.textContent = `${percentChange >= 0 ? '+' : ''}${percentChange}% vs. Last Month`;
+                totalMigrationsTrend.className = `trend ${percentChange >= 0 ? 'negative' : 'positive'}`; // More migrations is negative
+            } else {
+                totalMigrationsTrend.textContent = 'No data for comparison';
+                totalMigrationsTrend.className = 'trend neutral';
+            }
+
+            // KPI Cards
+            const kpis = [
+                { id: 'cls', current: current.CLS_Involvement, prev: previous.CLS_Involvement },
+                { id: 'tp', current: current.TP_Involvement, prev: previous.TP_Involvement },
+                { id: 'ops', current: current.Ops_Involvement, prev: previous.Ops_Involvement }
+            ];
+            kpis.forEach(kpi => {
+                const percentage = (current.total > 0) ? ((kpi.current / current.total) * 100).toFixed(1) : '0.0';
+                document.getElementById(`${kpi.id}InvolvementValue`).textContent = `${percentage}%`;
+                const diff = kpi.current - kpi.prev;
+                const trendEl = document.getElementById(`${kpi.id}Trend`);
+                trendEl.textContent = `${diff >= 0 ? '+' : ''}${diff} Migrations`;
+                trendEl.style.color = diff > 0 ? 'var(--danger)' : diff < 0 ? 'var(--success)' : 'var(--text-secondary)';
+            });
+        }
+        
+        function renderAIInsights() {
+            const insightsList = document.getElementById('aiInsightsList');
+            try {
+                const insights = JSON.parse(reportData.aiInsights || '[]');
+                if (Array.isArray(insights) && insights.length > 0 && insights[0].includes("unavailable") === false) {
+                    insightsList.innerHTML = insights.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+                } else {
+                    insightsList.innerHTML = '<li>No AI insights available for this period.</li>';
+                }
+            } catch (e) {
+                insightsList.innerHTML = '<li>AI insights could not be displayed due to a data error.</li>';
+            }
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('reasonsChart').getContext('2d');
+            const reasons = reportData.reasons || {};
+            const labels = Object.keys(reasons);
+            const data = Object.values(reasons);
+            new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{
+                    label: 'Number of Migrations', data,
+                    backgroundColor: 'rgba(74, 60, 138, 0.8)',
+                    borderColor: 'rgba(74, 60, 138, 1)',
+                    borderRadius: 5, borderWidth: 1
+                }] },
+                options: {
+                    indexAxis: 'y', responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, grid: { display: false, drawBorder: false } }, y: { grid: { display: false, drawBorder: false } } }
+                }
+            });
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            populateSelectors();
+            renderMetrics();
+            renderAIInsights();
+            renderChart();
+        });
+    </script>
+</body>
+</html>

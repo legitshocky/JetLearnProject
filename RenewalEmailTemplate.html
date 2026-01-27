@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+      background-color: #f3f4f6; 
+      margin: 0; 
+      padding: 0; 
+      color: #1f2937;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .email-container {
+      width: 100%;
+      background-color: #f3f4f6;
+      padding: 40px 20px;
+    }
+    .email-wrapper { 
+      max-width: 600px; 
+      margin: 0 auto; 
+      background-color: #ffffff; 
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .header { 
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      padding: 48px 40px;
+      text-align: center;
+    }
+    .logo img { 
+      height: 70px;
+      width: auto;
+      display: inline-block;
+    }
+    .content { 
+      padding: 48px 40px;
+    }
+    .greeting {
+      font-size: 16px;
+      color: #6b7280;
+      margin: 0 0 32px 0;
+    }
+    .title { 
+      font-size: 32px; 
+      font-weight: 700; 
+      color: #111827;
+      margin: 0 0 16px 0;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: #4b5563;
+      margin: 0 0 40px 0;
+      line-height: 1.6;
+    }
+    .payment-card {
+      background: linear-gradient(to bottom, #f9fafb 0%, #ffffff 100%);
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    .amount-row {
+      text-align: left;
+      margin-bottom: 28px;
+      padding-bottom: 28px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    .amount-label {
+      display: block;
+      font-size: 12px;
+      color: #6b7280;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .amount-value {
+      display: block;
+      font-size: 36px;
+      font-weight: 700;
+      color: #111827;
+      letter-spacing: -0.02em;
+    }
+    .details-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      font-size: 15px;
+    }
+    .details-row:not(:last-child) {
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .details-label {
+      color: #6b7280;
+      font-weight: 500;
+      flex: 0 0 auto;
+    }
+    .details-value {
+      color: #111827;
+      font-weight: 600;
+      text-align: right;
+      flex: 1 1 auto;
+      padding-left: 20px;
+    }
+    .invoice-note {
+      font-size: 14px;
+      color: #92400e;
+      margin: 24px 0 0 0;
+      padding: 16px 20px;
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+      margin: 48px 0;
+    }
+    .referral-section {
+      margin: 40px 0;
+    }
+    .section-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      margin: 0 0 12px 0;
+      letter-spacing: -0.02em;
+    }
+    .section-subtitle {
+      font-size: 16px;
+      color: #6b7280;
+      margin: 0 0 24px 0;
+    }
+    .referral-card {
+      background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
+      border: 2px solid #bae6fd;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 20px;
+    }
+    .referral-image {
+      margin-bottom: 24px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .referral-image img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .referral-steps {
+      margin: 24px 0 28px 0;
+    }
+    .referral-step {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 18px;
+      font-size: 15px;
+      color: #374151;
+      line-height: 1.5;
+    }
+    .referral-step:last-child {
+      margin-bottom: 0;
+    }
+    .step-number {
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      color: #ffffff;
+      min-width: 28px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      flex-shrink: 0;
+      margin-right: 14px;
+      margin-top: 0;
+      box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
+    }
+    .step-text {
+      flex: 1;
+      line-height: 1.6;
+      padding-top: 3px;
+    }
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+      color: #ffffff;
+      padding: 14px 32px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      margin-top: 8px;
+      box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .cta-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px -1px rgba(14, 165, 233, 0.5);
+    }
+    .footer { 
+      background: #f9fafb;
+      padding: 48px 40px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+    }
+    .footer-logo {
+      margin-bottom: 24px;
+    }
+    .footer-logo img {
+      height: 32px;
+      opacity: 0.7;
+      margin: 0 auto;
+    }
+    .footer-content {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.8;
+      margin-bottom: 24px;
+    }
+    .footer-content p {
+      margin: 0 0 8px 0;
+    }
+    .footer-content strong {
+      color: #374151;
+      font-weight: 600;
+    }
+    .footer-content a {
+      color: #0ea5e9;
+      text-decoration: none;
+    }
+    .footer-content a:hover {
+      text-decoration: underline;
+    }
+
+    .footer-bottom {
+      margin-top: 24px;
+      padding-top: 24px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .footer-bottom p {
+      margin: 0 0 8px 0;
+    }
+    .footer-bottom a {
+      color: #6b7280;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .footer-bottom a:hover {
+      color: #111827;
+    }
+    
+    @media only screen and (max-width: 600px) {
+      .email-container {
+        padding: 20px 10px;
+      }
+      .content {
+        padding: 32px 24px;
+      }
+      .header {
+        padding: 36px 24px;
+      }
+      .footer {
+        padding: 36px 24px;
+      }
+      .title {
+        font-size: 26px;
+      }
+      .amount-value {
+        font-size: 28px;
+      }
+      .payment-card {
+        padding: 24px;
+      }
+      .referral-card {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-wrapper">
+      <div class="header">
+        <div class="logo">
+          <img src="https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/Logo.png" alt="JetLearn">
+        </div>
+      </div>
+      
+      <div class="content">
+        <p class="greeting">Dear <?= data.parentName || 'Parent' ?>,</p>
+
+        <h1 class="title">Subscription Renewed</h1>
+        <p class="subtitle">Great news! <?= data.learnerName ?>'s JetLearn subscription has been successfully renewed, allowing them to continue building strong academic foundations, confidence, and problem-solving skills through guided, one-on-one learning.</p>
+
+        <div class="payment-card">
+          <div class="amount-row">
+            <span class="amount-label">Amount Paid</span>
+            <span class="amount-value"><?= data.currency ?> <?= Number(data.netPrice).toFixed(2) ?></span>
+          </div>
+
+          <div class="details-row">
+            <span class="details-label">Plan</span>
+            <span class="details-value"><?= data.planName ?></span>
+          </div>
+          <div class="details-row">
+            <span class="details-label">Payment Date</span>
+            <span class="details-value"><?= new Date(data.paymentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) ?></span>
+          </div>
+          <div class="details-row">
+            <span class="details-label">Payment Method</span>
+            <span class="details-value"><?= data.paymentType ?></span>
+          </div>
+          <? if(data.paymentType === 'Installment') { ?>
+          <div class="details-row">
+            <span class="details-label">Installments</span>
+            <span class="details-value"><?= data.installments ?>× <?= data.frequency ?></span>
+          </div>
+          <? } ?>
+        </div>
+
+        <div class="invoice-note">
+          <span style="font-size: 18px;">📄</span>
+          <span>A detailed invoice PDF has been attached to this email for your records.</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Referral Section -->
+        <div class="referral-section">
+          <h2 class="section-title">Refer & Earn Benefits</h2>
+          <p class="section-subtitle">Share JetLearn with friends and family to earn exciting rewards when they enroll.</p>
+          
+          <div class="referral-card">
+            <div class="referral-image">
+              <img src="https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/referral%20benefit.jpg" alt="Refer to JetLearn">
+            </div>
+
+            <div class="referral-steps">
+              <div class="referral-step">
+                <div class="step-number">1</div>
+                <div class="step-text">Refer a friend or loved one to JetLearn</div>
+              </div>
+              <div class="referral-step">
+                <div class="step-number">2</div>
+                <div class="step-text">They enroll and start their learning journey</div>
+              </div>
+              <div class="referral-step">
+                <div class="step-number">3</div>
+                <div class="step-text">You earn referral benefits as a thank you</div>
+              </div>
+            </div>
+
+            <a href="mailto:support@jet-learn.com?subject=Referral Program Inquiry" class="cta-button">Learn More About Referrals</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-logo">
+          <img src="https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/Logo.png" alt="JetLearn">
+        </div>
+        
+        <div class="footer-content">
+          <p><strong>JetLearn B.V.</strong></p>
+          <p>Amsterdam, Netherlands</p>
+          <p><a href="mailto:hello@jet-learn.com">hello@jet-learn.com</a></p>
+        </div>
+
+
+
+        <div class="footer-bottom">
+          <p>© 2025 JetLearn B.V. All rights reserved.</p>
+          <p>
+            <a href="https://www.jetlearn.com/privacy">Privacy Policy</a> · 
+            <a href="https://www.jetlearn.com/terms">Terms of Service</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

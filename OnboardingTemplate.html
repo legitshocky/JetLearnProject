@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+      background-color: #f8f9fa; 
+      margin: 0; 
+      padding: 40px 20px;
+      color: #1e293b;
+    }
+    .container { 
+      max-width: 600px; 
+      margin: 0 auto; 
+      background-color: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+    .accent-bar {
+      height: 5px;
+      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
+    }
+    .header { 
+      padding: 40px 40px 32px 40px;
+    }
+    .brand {
+      font-size: 13px;
+      font-weight: 700;
+      color: #3b82f6;
+      letter-spacing: 1px;
+      margin-bottom: 24px;
+    }
+    .title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 8px 0;
+      letter-spacing: -0.5px;
+    }
+    .subtitle {
+      font-size: 15px;
+      color: #64748b;
+      margin: 0;
+    }
+    .content { 
+      padding: 0 40px 40px 40px;
+    }
+    .message {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #475569;
+      margin-bottom: 32px;
+    }
+    .message p {
+      margin: 0 0 16px 0;
+    }
+    .message p:last-child {
+      margin-bottom: 0;
+    }
+    .section { 
+      margin: 32px 0;
+    }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+    }
+    .highlight-box {
+      background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+      border-left: 4px solid #3b82f6;
+      padding: 24px;
+      border-radius: 10px;
+      margin-bottom: 32px;
+    }
+    .highlight-box h3 {
+      margin: 0 0 12px 0;
+      color: #1e40af;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .highlight-box p {
+      margin: 0;
+      font-size: 14px;
+      color: #1e40af;
+      line-height: 1.6;
+    }
+    .card {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 24px;
+      border: 1px solid #e2e8f0;
+    }
+    .detail-row {
+      display: flex;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .detail-row:first-child {
+      padding-top: 0;
+    }
+    .detail-row:last-child {
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .detail-label {
+      width: 130px;
+      font-size: 14px;
+      color: #64748b;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .detail-value {
+      flex: 1;
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .schedule-box {
+      margin-top: 12px;
+    }
+    .schedule-item {
+      padding: 18px 22px;
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-left: 4px solid #3b82f6;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .schedule-item:last-child {
+      margin-bottom: 0;
+    }
+    .info-box {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-left: 4px solid #0ea5e9;
+      padding: 20px 24px;
+      border-radius: 10px;
+      margin: 32px 0;
+    }
+    .info-box-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #075985;
+      margin-bottom: 8px;
+    }
+    .info-box-content {
+      font-size: 14px;
+      color: #0c4a6e;
+      line-height: 1.7;
+      margin: 0;
+    }
+    .support-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .support-card {
+      background: #ffffff;
+      padding: 16px;
+      border-radius: 8px;
+      border: 2px solid #e2e8f0;
+    }
+    .support-role {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .support-name {
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .steps-box {
+      background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+      border-left: 4px solid #22c55e;
+      padding: 24px;
+      border-radius: 10px;
+      margin: 32px 0;
+    }
+    .steps-box h3 {
+      margin: 0 0 12px 0;
+      color: #15803d;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .steps-box p {
+      margin: 0 0 16px 0;
+      font-size: 14px;
+      color: #166534;
+      line-height: 1.6;
+    }
+    .steps-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .steps-list li {
+      padding: 12px 0;
+      padding-left: 28px;
+      font-size: 14px;
+      color: #166534;
+      position: relative;
+      line-height: 1.6;
+      border-bottom: 1px solid rgba(34, 197, 94, 0.2);
+    }
+    .steps-list li:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .steps-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      top: 18px;
+    }
+    .notes {
+      margin-top: 32px;
+      padding: 22px;
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+      border-radius: 10px;
+      border: 2px solid #fcd34d;
+    }
+    .notes-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #92400e;
+      margin-bottom: 12px;
+    }
+    .notes-content {
+      font-size: 14px;
+      color: #78350f;
+      line-height: 1.7;
+    }
+    .closing {
+      margin-top: 32px;
+      padding: 28px;
+      background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
+      border-radius: 12px;
+      text-align: center;
+      font-size: 15px;
+      color: #9f1239;
+      line-height: 1.7;
+      border: 2px solid #f9a8d4;
+    }
+    .closing strong {
+      display: block;
+      margin-top: 12px;
+      font-weight: 700;
+      color: #881337;
+    }
+    .footer { 
+      padding: 32px 40px;
+      text-align: center;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+    }
+    .footer-brand {
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+    }
+    .footer-text {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+    .footer-note {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="accent-bar"></div>
+    
+    <div class="header">
+      <div class="brand">JETLEARN</div>
+      <h1 class="title">New Learner Onboarding</h1>
+      <p class="subtitle">Welcome a new learner to JetLearn</p>
+    </div>
+
+    <div class="content">
+      <div class="message">
+        <p>Dear <strong><?= data.teacherName ?></strong>,</p>
+        
+        <p>We're excited to introduce you to <strong><?= data.learnerName ?></strong>,A new learner joining JetLearn. Your expertise will make a meaningful difference in their learning journey.</p>
+        
+        <p>Here's everything you need to create the best possible learning environment from day one.</p>
+      </div>
+
+      <div class="highlight-box">
+        <h3>About <?= data.learnerName ?></h3>
+        <p><?= data.learnerName ?> is <?= data.age || 'a young' ?> <?= data.age ? 'year old' : '' ?> learner who will be starting the <strong><?= data.course ?></strong> course with you. Their first session is scheduled for <strong><?= new Date(data.startDate).toLocaleDateString('en-GB') ?></strong>.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Learner Profile</div>
+        <div class="card">
+          <div class="detail-row">
+            <div class="detail-label">Learner ID</div>
+            <div class="detail-value"><?= data.jlid || '—' ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Full Name</div>
+            <div class="detail-value"><?= data.learnerName ?></div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Age</div>
+            <div class="detail-value"><?= data.age || 'N/A' ?> years</div>
+          </div>
+          <div class="detail-row">
+            <div class="detail-label">Course</div>
+            <div class="detail-value"><?= data.course ?></div>
+          </div>
+          <? if (data.specialNeeds && data.specialNeeds !== 'None') { ?>
+          <div class="detail-row">
+            <div class="detail-label">Special Notes</div>
+            <div class="detail-value"><?= data.specialNeeds ?></div>
+          </div>
+          <? } ?>
+          <div class="detail-row">
+            <div class="detail-label">JetGuide</div>
+            <div class="detail-value"><?= data.jetGuide || '—' ?></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+<div class="section-label">Class Schedule</div>
+      <div class="schedule-box">
+        <? for (let i = 0; i < data.classSessions.length; i++) { ?>
+          <div class="schedule-item">
+            <?= data.classSessions[i].day ?> at <?= data.classSessions[i].time ?> (which is <strong><?= data.classSessions[i].timeCET ?></strong>)
+          </div>
+        <? } ?>
+      </div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-box-title">A Note on First Impressions</div>
+        <p class="info-box-content">The first class sets the tone for the entire learning journey. Take a moment to understand <?= data.learnerName ?>'s interests and learning style. Building rapport early helps create a comfortable space where curiosity can flourish.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-label">Your Support Team</div>
+        <p style="margin: 0 0 16px 0; font-size: 14px; color: #475569;">You're not alone in this journey. Here's your dedicated support team:</p>
+        
+        <div class="support-grid">
+          <div class="support-card">
+            <div class="support-role">CLS Manager</div>
+            <div class="support-name"><?= data.clsManager || 'To be assigned' ?></div>
+          </div>
+          <div class="support-card">
+            <div class="support-role">TP Manager</div>
+            <div class="support-name"><?= data.tpManager || 'To be assigned' ?></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="steps-box">
+        <h3>Preparing for Success</h3>
+        <p>Here are some steps to ensure a smooth start:</p>
+        <ul class="steps-list">
+          <li>Review the course curriculum and learning objectives in Athena AI</li>
+          <li>Prepare engaging activities for the first session</li>
+          <li>Note any special considerations mentioned above</li>
+          <li>Reach out to your support team with any questions</li>
+        </ul>
+      </div>
+
+      <? if (data.comments) { ?>
+        <div class="notes">
+          <div class="notes-label">Additional Context</div>
+          <div class="notes-content"><?= data.comments.replace(/\n/g, '<br>') ?></div>
+        </div>
+      <? } ?>
+
+      <div class="closing">
+        We're confident that <?= data.learnerName ?> will thrive under your guidance. Thank you for bringing your passion and expertise to this new teaching relationship.
+        <strong>Here's to an inspiring learning journey ahead!</strong>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="footer-brand">JetLearn</div>
+      <div class="footer-text">Empowering educators, inspiring learners</div>
+      <div class="footer-note">
+        Questions or need support? Contact your CLS or TP Manager anytime.
+      </div>
+    </div>
+  </div>
+</body>
+</html>
