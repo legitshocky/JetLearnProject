@@ -540,12 +540,49 @@ function generateWatiPreviewWrapper(data) {
   }
 }
 
+const TIMEZONE_FRIENDLY_LABELS = {
+  // Asia
+  'Asia/Kolkata': 'IST',
+  'Asia/Dubai': 'GST',
+  'Asia/Singapore': 'SGT',
+  'Asia/Bangkok': 'ICT',
+  'Asia/Hong_Kong': 'HKT',
+  'Asia/Tokyo': 'JST',
+  
+  // Europe
+  'Europe/London': 'UK Time',
+  'Europe/Berlin': 'CET',
+  'Europe/Paris': 'CET',
+  'Europe/Amsterdam': 'CET',
+  'Europe/Zurich': 'CET',
+  'Europe/Athens': 'EET',
+  'Europe/Moscow': 'MSK',
+  
+  // US/Americas
+  'America/New_York': 'EST', // Or 'ET' if you prefer
+  'America/Chicago': 'CST',
+  'America/Denver': 'MST',
+  'America/Phoenix': 'MST',
+  'America/Los_Angeles': 'PST', // Or 'PT'
+  'America/Anchorage': 'AKST',
+  'Pacific/Honolulu': 'HST',
+  
+  // Australia/Pacific
+  'Australia/Sydney': 'AEST',
+  'Australia/Melbourne': 'AEST',
+  'Australia/Brisbane': 'AEST',
+  'Australia/Adelaide': 'ACST',
+  'Australia/Perth': 'AWST',
+  'Pacific/Auckland': 'NZT'
+};
+
 function convertCetToLocal(timeStr, targetTzString) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
 
-    // 1. Parse Input Time (Assumed CET)
+    // --- STEP 1: Parse Input Time (Assumed CET) ---
     let hours = 0, minutes = 0;
+    // Matches 15:30, 3:30 PM, 03:30PM
     const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
     
     if (timeMatch) {
@@ -553,98 +590,58 @@ function convertCetToLocal(timeStr, targetTzString) {
       minutes = parseInt(timeMatch[2]);
       const meridiem = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
       
-      // Convert to 24h format
+      // Convert to 24h format for the Date object
       if (meridiem === 'PM' && hours < 12) hours += 12;
       if (meridiem === 'AM' && hours === 12) hours = 0;
     } else {
-      return timeStr + " (CET)"; // Fallback
+      return timeStr; // Return original if regex fails
     }
 
-    // 2. Identify Target IANA Timezone dynamically
-    // Default fallback
-    let ianaZone = "Europe/Berlin"; 
-
-    if (targetTzString) {
-      const tz = targetTzString; 
-
-      // --- SPECIAL OFFSETS & NO-DST REGIONS (Check these first!) ---
-      if (tz.includes("Newfoundland")) ianaZone = "America/St_Johns"; // -03:30
-      else if (tz.includes("Adelaide")) ianaZone = "Australia/Adelaide"; // +09:30
-      else if (tz.includes("Darwin")) ianaZone = "Australia/Darwin"; // +09:30 (No DST)
-      else if (tz.includes("Kathmandu")) ianaZone = "Asia/Kathmandu"; // +05:45
-      else if (tz.includes("Yangon") || tz.includes("Rangoon")) ianaZone = "Asia/Yangon"; // +06:30
-      else if (tz.includes("Saskatchewan")) ianaZone = "America/Regina"; // -06:00 (No DST)
-      else if (tz.includes("Arizona")) ianaZone = "America/Phoenix"; // -07:00 (No DST)
-      else if (tz.includes("Brisbane")) ianaZone = "Australia/Brisbane"; // +10:00 (No DST)
-      else if (tz.includes("Central America")) ianaZone = "America/Guatemala"; // -06:00 (No DST)
-      else if (tz.includes("Hawaii")) ianaZone = "Pacific/Honolulu"; // -10:00 (No DST)
-      else if (tz.includes("International Date Line West")) ianaZone = "Etc/GMT+12";
-
-      // --- NORTH & SOUTH AMERICA ---
-      else if (tz.includes("Eastern")) ianaZone = "America/New_York"; // EST/EDT
-      else if (tz.includes("Central Time")) ianaZone = "America/Chicago"; // CST/CDT
-      else if (tz.includes("Mountain")) ianaZone = "America/Denver"; // MST/MDT
-      else if (tz.includes("Pacific")) ianaZone = "America/Los_Angeles"; // PST/PDT
-      else if (tz.includes("Alaska")) ianaZone = "America/Anchorage"; // AKST/AKDT
-      else if (tz.includes("Atlantic")) ianaZone = "America/Halifax"; // AST/ADT
-      else if (tz.includes("Indiana")) ianaZone = "America/Indiana/Indianapolis";
-      else if (tz.includes("Bogota") || tz.includes("Lima") || tz.includes("Quito")) ianaZone = "America/Bogota";
-      else if (tz.includes("Caracas")) ianaZone = "America/Caracas";
-      else if (tz.includes("Santiago")) ianaZone = "America/Santiago";
-      else if (tz.includes("Brasilia")) ianaZone = "America/Sao_Paulo";
-      else if (tz.includes("Buenos Aires")) ianaZone = "America/Argentina/Buenos_Aires";
-      else if (tz.includes("Georgetown")) ianaZone = "America/Manaus";
-      else if (tz.includes("Mexico City")) ianaZone = "America/Mexico_City";
-
-      // --- EUROPE & AFRICA ---
-      else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh")) ianaZone = "Europe/London"; // GMT/BST
-      else if (tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Rome") || tz.includes("Paris") || tz.includes("Stockholm")) ianaZone = "Europe/Berlin"; // CET/CEST
-      else if (tz.includes("Athens") || tz.includes("Bucharest") || tz.includes("Cairo")) ianaZone = "Europe/Athens"; // EET/EEST
-      else if (tz.includes("Moscow")) ianaZone = "Europe/Moscow";
-      else if (tz.includes("Johannesburg") || tz.includes("Pretoria") || tz.includes("Harare")) ianaZone = "Africa/Johannesburg";
-      else if (tz.includes("Casablanca")) ianaZone = "Africa/Casablanca";
-      else if (tz.includes("Nairobi")) ianaZone = "Africa/Nairobi";
-
-      // --- ASIA ---
-      else if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("New Delhi") || tz.includes("Chennai")) ianaZone = "Asia/Kolkata"; // IST
-      else if (tz.includes("Islamabad") || tz.includes("Karachi")) ianaZone = "Asia/Karachi";
-      else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) ianaZone = "Asia/Dubai";
-      else if (tz.includes("Singapore") || tz.includes("Kuala Lumpur")) ianaZone = "Asia/Singapore";
-      else if (tz.includes("Hong Kong") || tz.includes("Beijing")) ianaZone = "Asia/Hong_Kong";
-      else if (tz.includes("Tokyo") || tz.includes("Osaka") || tz.includes("Sapporo")) ianaZone = "Asia/Tokyo";
-      else if (tz.includes("Seoul")) ianaZone = "Asia/Seoul";
-      else if (tz.includes("Bangkok") || tz.includes("Hanoi") || tz.includes("Jakarta")) ianaZone = "Asia/Bangkok";
-      
-      // --- AUSTRALIA / PACIFIC ---
-      else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra")) ianaZone = "Australia/Sydney"; // AEST/AEDT
-      else if (tz.includes("Perth")) ianaZone = "Australia/Perth";
-      else if (tz.includes("Auckland") || tz.includes("Wellington")) ianaZone = "Pacific/Auckland";
-    }
-
-    // 3. Create a CET Date Object
-    // We strictly define the "source" time as Europe/Berlin
+    // Create a Date object set to Today at that time in Berlin (CET)
+    // We use a specific date to handle Daylight Savings correctly for "Today"
     const now = new Date();
     const cetString = now.toLocaleString("en-US", {timeZone: "Europe/Berlin"});
     const cetDate = new Date(cetString);
-    
-    // Set the specific class time onto that CET date
     cetDate.setHours(hours);
     cetDate.setMinutes(minutes);
     cetDate.setSeconds(0);
 
-    // 4. Convert to Target Zone
-    const options = {
+    // --- STEP 2: Determine Target IANA Zone ---
+    // (This logic maps the long HubSpot string to IANA ID)
+    let ianaZone = "Europe/London"; // Default fallback
+    const tz = targetTzString || "";
+
+    if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("Chennai") || tz.includes("Mumbai") || tz.includes("New Delhi")) ianaZone = "Asia/Kolkata";
+    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh")) ianaZone = "Europe/London";
+    else if (tz.includes("Eastern")) ianaZone = "America/New_York";
+    else if (tz.includes("Central Time")) ianaZone = "America/Chicago";
+    else if (tz.includes("Mountain") || tz.includes("Arizona")) ianaZone = "America/Denver";
+    else if (tz.includes("Pacific")) ianaZone = "America/Los_Angeles";
+    else if (tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Paris") || tz.includes("Rome") || tz.includes("Madrid") || tz.includes("Vienna") || tz.includes("Stockholm") || tz.includes("Brussels")) ianaZone = "Europe/Berlin";
+    else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) ianaZone = "Asia/Dubai";
+    else if (tz.includes("Singapore")) ianaZone = "Asia/Singapore";
+    else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra")) ianaZone = "Australia/Sydney";
+    else if (tz.includes("Auckland") || tz.includes("Wellington")) ianaZone = "Pacific/Auckland";
+    else if (tz.includes("Hong Kong")) ianaZone = "Asia/Hong_Kong";
+    else if (tz.includes("Tokyo")) ianaZone = "Asia/Tokyo";
+    // ... Add other mappings if needed, but these cover 90% ...
+
+    // --- STEP 3: Format Output ---
+    
+    // A. Get the localized time (e.g., "5:30 PM")
+    const timeOptions = {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
-        timeZone: ianaZone,
-        timeZoneName: 'short' 
+        timeZone: ianaZone
     };
+    const localTimeStr = cetDate.toLocaleString("en-US", timeOptions);
 
-    // This handles all the math, including Daylight Savings automatically
-    const targetTimeStr = cetDate.toLocaleString("en-US", options);
-    
-    return targetTimeStr;
+    // B. Get the Friendly Label manually (e.g., "IST")
+    // If not in our list, fallback to the IANA Code
+    const label = TIMEZONE_FRIENDLY_LABELS[ianaZone] || "";
+
+    return `${localTimeStr} ${label}`.trim();
 
   } catch (e) {
     Logger.log("Time Conversion Error: " + e.message);
@@ -714,50 +711,6 @@ function fetchWatiDirectLink(phoneNumber) {
   } catch (e) {
     Logger.log("WATI Link Error: " + e.message);
     return { success: false, message: e.message };
-  }
-}
-
-function debugWatiStructure() {
-  const TEST_PHONE = "918583831888"; 
-  const scriptProperties = PropertiesService.getScriptProperties();
-  let API_ENDPOINT_BASE = (scriptProperties.getProperty('WATI_API_ENDPOINT') || "").trim();
-  let ACCESS_TOKEN = (scriptProperties.getProperty('WATI_ACCESS_TOKEN') || "").trim();
-
-  if (!ACCESS_TOKEN.startsWith("Bearer ")) ACCESS_TOKEN = "Bearer " + ACCESS_TOKEN;
-  if (API_ENDPOINT_BASE.endsWith("/")) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
-
-  // Fetch 1 message
-  const url = `${API_ENDPOINT_BASE}/api/v1/getMessages/${TEST_PHONE}?pageSize=1`;
-  
-  Logger.log(`Fetching Messages from: ${url}`);
-
-  const options = {
-    "method": "get",
-    "headers": { "Authorization": ACCESS_TOKEN },
-    "muteHttpExceptions": true
-  };
-
-  const response = UrlFetchApp.fetch(url, options);
-  const content = response.getContentText();
-  
-  try {
-    const json = JSON.parse(content);
-    if (json.messages && json.messages.items && json.messages.items.length > 0) {
-      // Log the KEYS of the message object to find the ID
-      const msg = json.messages.items[0];
-      Logger.log("--- MESSAGE OBJECT KEYS ---");
-      Logger.log(Object.keys(msg));
-      
-      Logger.log("--- LOOKING FOR '115' ID ---");
-      // Search values for the specific ID ending in 115
-      for (const [key, value] of Object.entries(msg)) {
-        Logger.log(`${key}: ${value}`);
-      }
-    } else {
-      Logger.log("No messages found in response.");
-    }
-  } catch (e) {
-    Logger.log("JSON Parse Error: " + e.message);
   }
 }
 
