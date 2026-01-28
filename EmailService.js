@@ -55,16 +55,11 @@ function sendTrackedEmail(payload) {
 }
 
 function sendOnboardingEmail(data, attachments = []) {
-  // --- NEW: VALIDATION CHECK ---
-  const requiredFields = ['learnerName', 'teacherName', 'jlid', 'course'];
-  const validationError = validateRequiredFields(data, requiredFields);
-
-  if (validationError) {
-    Logger.log(`Onboarding Email Aborted: ${validationError}`);
-    return { success: false, message: validationError };
-  }
-  // -----------------------------
-
+     const validation = validateInput(data, ['jlid', 'learnerName', 'teacherName', 'course', 'clsManager']);
+    if (!validation.isValid) {
+      throw new Error(validation.message);
+    }
+    
   try {
     const teacherData = getTeacherData();
     

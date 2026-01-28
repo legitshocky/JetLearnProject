@@ -1,5 +1,5 @@
-function getDashboardStatistics() {
-  Logger.log('getDashboardStatistics called');
+function calculateDashboardStats() {
+  Logger.log('calculateDashboardStats called');
 
   const stats = {
     migrations: { total: 0, successful: 0, failed: 0, today: 0, thisWeek: 0, thisMonth: 0, successRate: 0 },
