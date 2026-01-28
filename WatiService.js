@@ -270,12 +270,39 @@ function getWatiPreviewDetails(migrationData) {
   }
 }
 
-function getTemplatesForReason(reason) {
-  // Normalize input
-  const normalizedReason = String(reason).trim();
-  // Return specific mapping or default
-  return WATI_REASON_MAPPING[normalizedReason] || WATI_REASON_MAPPING["Default"];
+function normalizeReason(str) {
+  if (!str) return "";
+  return String(str).toLowerCase().replace(/[^a-z0-9]/g, "");
 }
+
+
+function getTemplatesForReason(reason) {
+  // LOAD CONFIG FROM SHEET
+  const dynamicMapping = getWatiConfigFromSheet(); 
+  const defaultTemplates = dynamicMapping["Default"] || [];
+  
+  if (!reason) return defaultTemplates;
+
+  // 1. Try Exact Match
+  if (dynamicMapping[reason]) {
+    return dynamicMapping[reason];
+  }
+
+  // 2. Try Normalized Match (Fuzzy)
+  const targetNormalized = normalizeReason(reason);
+  const configKeys = Object.keys(dynamicMapping);
+  
+  for (let i = 0; i < configKeys.length; i++) {
+    const key = configKeys[i];
+    if (normalizeReason(key) === targetNormalized) {
+      return dynamicMapping[key];
+    }
+  }
+
+  // 3. Fallback
+  return defaultTemplates;
+}
+
 
 // =============================================
 // ONBOARDING WHATSAPP CONFIGURATION
@@ -805,3 +832,50 @@ const WATI_REASON_MAPPING = {
     { id: "migration_link_change_infromation", label: "Link Change Only" }
   ]
 };
+
+function getWatiConfigFromSheet() {
+  const cacheKey = 'WATI_CONFIG_MAP';
+  
+  // 1. Try global cache first (fastest)
+  if (typeof _sheetDataCache !== 'undefined' && _sheetDataCache[cacheKey]) {
+    return _sheetDataCache[cacheKey];
+  }
+
+  try {
+    const SETTINGS_SHEET_NAME = 'Settings_Wati'; 
+    // Uses your existing helper to get data
+    const sheetData = _getCachedSheetData(SETTINGS_SHEET_NAME);
+
+    // If sheet is missing or empty, fallback to hardcoded default
+    if (!sheetData || sheetData.length < 2) {
+      Logger.log("Settings_Wati sheet not found or empty. Using default fallback.");
+      return WATI_REASON_MAPPING; 
+    }
+
+    const mapping = {};
+
+    // 2. Loop through rows (skip header)
+    for (let i = 1; i < sheetData.length; i++) {
+      const row = sheetData[i];
+      const reason = String(row[0]).trim();     // Col A
+      const templateId = String(row[1]).trim(); // Col B
+      const label = String(row[2]).trim();      // Col C
+
+      if (reason && templateId) {
+        if (!mapping[reason]) mapping[reason] = [];
+        mapping[reason].push({ id: templateId, label: label || templateId });
+      }
+    }
+
+    // 3. Cache the result
+    if(typeof _sheetDataCache !== 'undefined') {
+        _sheetDataCache[cacheKey] = mapping;
+    }
+    
+    return mapping;
+
+  } catch (e) {
+    Logger.log("Error loading WATI config: " + e.message);
+    return WATI_REASON_MAPPING; // Emergency fallback
+  }
+}

@@ -1,5 +1,18 @@
+function safeParseHubspotNumber(value, defaultValue = 0) {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'number') return value;
+  
+  // Remove everything that isn't a digit, a decimal point, or a minus sign
+  const cleaned = String(value).replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+
 function fetchHubspotByJlid(jlid) {
   Logger.log('fetchHubspotByJlid called for JLID: ' + jlid);
+  
   if (!jlid) {
     return { success: false, message: 'JLID is required for HubSpot lookup.' };
   }
@@ -56,33 +69,31 @@ function fetchHubspotByJlid(jlid) {
           return { success: false, message: 'HubSpot data found but properties are empty.' };
       }
       
-      // ================== FIX START: AUTOMATIC DISCOUNT CALCULATION ==================
-      const tenure = parseInt(contactProperties.subscription_tenure || '0');
-      const dealAmount = parseFloat(contactProperties.amount || '0');
-      const currencyCode = contactProperties.deal_currency_code || 'EUR'; // Get the deal currency (e.g., CHF)
+      // ================== DISCOUNT CALCULATION LOGIC ==================
+      // Uses the new safe parser to prevent crashes if tenure is "12 months" string
+      const tenure = safeParseHubspotNumber(contactProperties.subscription_tenure);
+      const dealAmount = safeParseHubspotNumber(contactProperties.amount);
+      const currencyCode = contactProperties.deal_currency_code || 'EUR'; 
       let calculatedDiscount = 0;
 
       if (tenure > 0 && dealAmount > 0) {
           // 1. Calculate Standard Price in EUR (Base is €149/mo)
           const standardPriceEur = tenure * 149; 
           
-          // 2. Get conversion rate (e.g., 1 EUR = ~0.93 CHF)
-          // Uses your existing helper function to get the rate for the specific currency
+          // 2. Get conversion rate using the helper from InvoiceService.js
           const conversionRate = getConversionRate(currencyCode); 
           
           // 3. Convert Standard Price to the Deal's Currency
           const standardPriceLocal = standardPriceEur * conversionRate;
 
-          // 4. Calculate Discount (Standard Local Price - Actual Deal Amount)
-          // Example: (1666.06) - 829 = 837.06
+          // 4. Calculate Discount
           if (standardPriceLocal > dealAmount) {
               calculatedDiscount = standardPriceLocal - dealAmount;
           }
       }
+      // =================================================================
 
-      // =================== FIX END: AUTOMATIC DISCOUNT CALCULATION ===================
-
-
+      // Helper: Parse Class Timings string
       const parseClassTimings = (timingsString) => {
           if (!timingsString) return [];
           if (timingsString.includes(' at ')) {
@@ -102,6 +113,7 @@ function fetchHubspotByJlid(jlid) {
           }).filter(Boolean);
       };
 
+      // Helper: Parse Payment Plan string
       const parsePaymentPlan = (hubspotPlan) => {
         if (!hubspotPlan) return { paymentPlanType: 'Upfront', installmentFrequency: '', customPlanDetails: '' };
         hubspotPlan = hubspotPlan.toLowerCase();
@@ -117,6 +129,7 @@ function fetchHubspotByJlid(jlid) {
         }
       };
       
+      // Helper: Parse Session Frequency
       let sessionsPerWeekString = '';
       const rawFrequency = contactProperties.frequency_of_classes;
       if (rawFrequency && typeof rawFrequency === 'string') {
@@ -145,7 +158,11 @@ function fetchHubspotByJlid(jlid) {
         parentEmail: contactProperties.parent_email || '',
         parentContact: contactProperties.phone_number_deal_ || contactProperties.phone || '',
         course: getCourseLabel(contactProperties.current_course) || '',
-        subscriptionTenureMonths: parseInt(contactProperties.subscription_tenure || '0') || 0,
+        
+        // Use safe parser for numbers
+        subscriptionTenureMonths: safeParseHubspotNumber(contactProperties.subscription_tenure),
+        dealAmount: safeParseHubspotNumber(contactProperties.amount),
+        
         age: contactProperties.age || '', 
         currentTeacher: getTeacherLabel(contactProperties.current_teacher) || '',
         newTeacher: '', 
@@ -159,19 +176,21 @@ function fetchHubspotByJlid(jlid) {
         customPlanDetails: paymentPlanParsed.customPlanDetails,
         zoomLink: contactProperties.zoom_masked_link || '',
         practiceDocumentLink: contactProperties.learner_practice_document_link || '',
+        
+        // Resolve Internal IDs to Names using helper functions
         jetGuideName: getHSUserLabel(contactProperties.jet_guide) || '',
         clsManagerName: getHSUserLabel(contactProperties.cls_manager) || '',
         tpManagerName: getHSUserLabel(contactProperties.teacher_manager) || '',
+        
         currency: contactProperties.deal_currency_code || 'EUR', 
         sessionsPerWeek: sessionsPerWeekString,
         timezone: contactProperties.time_zone || '',
-        dealAmount: parseFloat(contactProperties.amount || '0'),
         paymentReceivedDate: contactProperties.stage____payment_trigger_date || null,
         installmentTerms: contactProperties.installment_terms_final || '',
         discount: calculatedDiscount 
       };
+      
       Logger.log('HubSpot data fetched successfully for JLID: ' + jlid);
-      Logger.log(data);
       return { success: true, data: data };
     } else {
       Logger.log('No contact found for JLID: ' + jlid);

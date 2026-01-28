@@ -1,5 +1,15 @@
 <script>
 
+function escapeHtml(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // This templating syntax is used by Google Apps Script's HtmlService
 const resetToken = '<?= resetToken ?>';
 
@@ -1617,7 +1627,16 @@ function collectEmailFormData(emailType) {
                 if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} → ${newTeacher}`;
                 else if (newTeacher) teachersInfo = newTeacher;
                 else if (oldTeacher) teachersInfo = oldTeacher;
-                tr.innerHTML = `<td>${row[0] ? new Date(row[0]).toLocaleString() : 'N/A'}</td><td>${row[1] || 'N/A'}</td><td>${row[2] || 'N/A'}</td><td>${row[3] || 'N/A'}</td><td>${teachersInfo}</td><td>${row[6] || 'N/A'}</td><td><span class="status-badge ${statusClass}">${status}</span></td><td>${row[8] || 'N/A'}</td>`;
+tr.innerHTML = `
+  <td>${row[0] ? new Date(row[0]).toLocaleString() : 'N/A'}</td>
+  <td>${escapeHtml(row[1])}</td> <!-- Action -->
+  <td>${escapeHtml(row[2])}</td> <!-- JLID -->
+  <td>${escapeHtml(row[3])}</td> <!-- Learner -->
+  <td>${escapeHtml(teachersInfo)}</td>
+  <td>${escapeHtml(row[6])}</td> <!-- Course -->
+  <td><span class="status-badge ${statusClass}">${escapeHtml(status)}</span></td>
+  <td>${escapeHtml(row[8])}</td> <!-- Notes -->
+`;
                 auditLogBody.appendChild(tr);
             });
             const currentPage = result.page || 1;

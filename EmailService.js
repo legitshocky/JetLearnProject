@@ -1,3 +1,116 @@
+function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
+  Logger.log(`Starting combined parent/teacher/WhatsApp onboarding for learner: ${formData.learnerName}`);
+  
+  let parentTrackingId = null;
+  let teacherTrackingId = null;
+  let watiStatus = []; 
+  let overallStatus = 'Failed';
+  let logNotes = '';
+
+  try {
+    // --- 1. VALIDATE & PREPARE DATA ---
+    if (!formData.parentEmail || !isValidEmail(formData.parentEmail)) throw new Error('Parent Email is required.');
+    if (!formData.teacherName) throw new Error('A teacher must be assigned.');
+
+    // --- 2. LOOKUP TEACHER & APPLY PREFIX ---
+    const teacherData = getTeacherData();
+    const teacherInfo = teacherData.find(t => 
+      String(t.name).trim().toLowerCase() === String(formData.teacherName).trim().toLowerCase()
+    );
+
+    if (!teacherInfo || !isValidEmail(teacherInfo.email)) {
+        throw new Error(`Teacher '${formData.teacherName}' not found or has an invalid email.`);
+    }
+
+    if (teacherInfo.prefix) {
+        formData.teacherName = `${teacherInfo.prefix} ${teacherInfo.name}`;
+    }
+
+    // --- 3. PROCESS ATTACHMENTS & CALCULATIONS ---
+    if (!formData.zoomLink || !formData.zoomLink.startsWith('http')) {
+      formData.zoomLink = `https://live.jetlearn.com/join/${cleanJlidForZoom(formData.jlid)}`;
+    }
+
+    let allAttachments = [];
+    if (attachmentsBase64 && attachmentsBase64.length > 0) {
+      allAttachments.push(...uploadAttachments(attachmentsBase64));
+    }
+
+    // Call InvoiceService logic (Global scope allows this)
+    const pricingDetails = calculateInvoicePricing(formData);
+    formData.sessions = pricingDetails.displayTotalSessions;
+
+    // Generate Invoice PDF
+    if (formData.generateAndAttachInvoice) {
+      const validationErrors = validateInvoiceData(formData);
+      if (validationErrors.length > 0) throw new Error('Invoice data is invalid: ' + validationErrors.join('; '));
+      
+      const invoiceHtml = getInvoiceHTML(formData, pricingDetails);
+      const pdfName = `Invoice-${formData.learnerName.replace(/\s/g, '_')}-${formData.jlid || 'NA'}.pdf`;
+      const invoiceBlob = Utilities.newBlob(invoiceHtml, 'text/html').getAs(MimeType.PDF).setName(pdfName);
+      allAttachments.push(invoiceBlob);
+    }
+
+    // --- 4. SEND TRACKED EMAIL TO PARENT ---
+    const parentSubject = `Welcome to JetLearn - Enrollment Details for ${formData.learnerName}`;
+    const parentHtmlBody = getParentOnboardingEmailHTML(formData);
+    
+    const parentEmailResult = sendTrackedEmail({
+      to: formData.parentEmail, 
+      subject: parentSubject, 
+      htmlBody: parentHtmlBody, 
+      jlid: formData.jlid, 
+      attachments: allAttachments
+    });
+    parentTrackingId = parentEmailResult.trackingId;
+    
+    if (formData.dealId) logEmailToHubspot(formData.dealId, parentSubject, parentHtmlBody);
+
+    // --- 5. SEND WHATSAPP SEQUENCE ---
+    if (formData.sendWhatsapp) { 
+        // Call WatiService logic
+        watiStatus = sendOnboardingWhatsAppSequence(formData);
+        Logger.log("WATI Onboarding Status: " + JSON.stringify(watiStatus));
+    } else {
+        watiStatus = ["Skipped (Checkbox unchecked)"];
+    }
+
+    // --- 6. SEND TRACKED EMAIL TO TEACHER ---
+    const clsManagerEmail = findClsEmailByManagerName(formData.clsManager);
+    const ccList = new Set();
+    if(clsManagerEmail) ccList.add(clsManagerEmail);
+    if(teacherInfo.tpManagerEmail) ccList.add(teacherInfo.tpManagerEmail);
+
+    const teacherSubject = `New Learner Onboarded || ${formData.learnerName} (${formData.jlid || 'N/A'})`;
+    const teacherHtmlBody = getOnboardingEmailHTML(formData);
+    
+    const teacherEmailResult = sendTrackedEmail({
+      to: teacherInfo.email,
+      cc: Array.from(ccList).join(','),
+      subject: teacherSubject,
+      htmlBody: teacherHtmlBody,
+      jlid: formData.jlid
+    });
+    teacherTrackingId = teacherEmailResult.trackingId;
+
+    // --- 7. FINALIZE ---
+    overallStatus = 'Success';
+    logNotes = `Parent Email Sent (TID: ${parentTrackingId}). Teacher Email Sent (TID: ${teacherTrackingId}). WhatsApp: [${watiStatus.join(', ')}].`;
+    
+    return { success: true, message: 'Onboarding emails and WhatsApp messages sent successfully.' };
+
+  } catch (error) {
+    // --- UPDATED ERROR LOGGING ---
+    logError('EmailService: sendParentOnboardingWithInvoice', error);
+    
+    logNotes = `Failed during onboarding process: ${error.message}.`;
+    return { success: false, message: `Failed to complete onboarding: ${error.message}` };
+
+  } finally {
+    logAction('New Learner Onboarded', formData.jlid, formData.learnerName, '', formData.teacherName, formData.course, overallStatus, logNotes);
+  }
+}
+
 function sendTrackedEmail(payload) {
   const { to, cc, subject, htmlBody, jlid, attachments } = payload;
   const trackingId = Utilities.getUuid();
@@ -59,7 +172,7 @@ function sendOnboardingEmail(data, attachments = []) {
     if (!validation.isValid) {
       throw new Error(validation.message);
     }
-    
+
   try {
     const teacherData = getTeacherData();
     

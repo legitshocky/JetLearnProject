@@ -80,12 +80,13 @@ function getAuditLog(params = {}) {
 
 function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status, notes, reason = '', intervenedBy = '') {
   Logger.log(`logAction called: ${action} for JLID: ${jlid}`);
-
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(10000); 
+    
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.AUDIT_LOG);
     const timestamp = new Date();
     const sessionId = Utilities.getUuid();
-
     sheet.appendRow([
       timestamp,
       action || '',
@@ -100,14 +101,18 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       reason || '', 
       intervenedBy || ''  
     ]);
-
-    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.AUDIT_LOG}`];
-
+    SpreadsheetApp.flush();    
+    if(typeof _sheetDataCache !== 'undefined') {
+        delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.AUDIT_LOG}`];
+    }
     Logger.log('Action logged successfully: ' + action);
   } catch (error) {
-    Logger.log('Error logging action: ' + error.message);
+    Logger.log('Error logging action (Lock/Write failed): ' + error.message);
+  } finally {
+    lock.releaseLock();
   }
 }
+
 
 function logUserActivity(username, action, details) {
   try {

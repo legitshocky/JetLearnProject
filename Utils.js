@@ -198,3 +198,48 @@ function cleanJlidForZoom(jlid) {
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
+
+
+function backupDatabase() {
+  const BACKUP_FOLDER_ID = '1LzKa1U1-ou6fsHzIh35jO7z5WkOydSRn'; // Create a folder and put ID here
+  const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const fileName = `JetLearn_DB_Backup_${timestamp}`;
+  
+  const originalFile = DriveApp.getFileById(CONFIG.MIGRATION_SHEET_ID);
+  const backupFolder = DriveApp.getFolderById(BACKUP_FOLDER_ID);
+  
+  originalFile.makeCopy(fileName, backupFolder);
+  Logger.log("Backup completed: " + fileName);
+}
+
+function logError(context, errorObject) {
+  try {
+    const sheetName = "System Errors";
+    const sheet = getOrCreateSheet(sheetName);
+    
+    // Add headers if the sheet is new
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(["Timestamp", "User", "Context", "Message", "Stack Trace"]);
+      sheet.setFrozenRows(1);
+    }
+
+    const timestamp = new Date();
+    const user = Session.getActiveUser().getEmail();
+    const message = errorObject.message || String(errorObject);
+    const stack = errorObject.stack || "N/A";
+
+    // Append the error details
+    sheet.appendRow([timestamp, user, context, message, stack]);
+    
+    // Force save
+    SpreadsheetApp.flush();
+
+    // Console log as backup
+    Logger.log(`[${context}] Error logged to sheet: ${message}`);
+
+  } catch (e) {
+    // If logging fails, fall back to console only
+    Logger.log(`FAILED TO LOG ERROR to sheet: ${e.message}`);
+    Logger.log(`Original Error (${context}): ${errorObject.message}`);
+  }
+}
