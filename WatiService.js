@@ -758,7 +758,7 @@ const WATI_REASON_MAPPING = {
   "Course change after PRM": [
     { id: "migration_course_change_after_prm", label: "Course Change Post-PRM" }
   ],
-  "Slot change - Learner request": [
+  "Slot change -Learner request": [
     { id: "migration_slot_change_lr_request", label: "Slot Change (Learner)" }
   ],
   "Slot change - Teacher request": [
