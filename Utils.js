@@ -253,3 +253,7 @@ function cleanJlidForZoom(jlid) {
   // This regex now removes a trailing 'C' or 'M' followed by any number of digits.
   return jlid.trim().toUpperCase().replace(/(C|M)\d*$/, '');
 }
+
+function include(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}

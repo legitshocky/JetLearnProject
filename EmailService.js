@@ -55,6 +55,16 @@ function sendTrackedEmail(payload) {
 }
 
 function sendOnboardingEmail(data, attachments = []) {
+  // --- NEW: VALIDATION CHECK ---
+  const requiredFields = ['learnerName', 'teacherName', 'jlid', 'course'];
+  const validationError = validateRequiredFields(data, requiredFields);
+
+  if (validationError) {
+    Logger.log(`Onboarding Email Aborted: ${validationError}`);
+    return { success: false, message: validationError };
+  }
+  // -----------------------------
+
   try {
     const teacherData = getTeacherData();
     
@@ -96,7 +106,18 @@ function sendOnboardingEmail(data, attachments = []) {
   }
 }
 
+
 function sendMigrationEmail(data, attachments = []) {
+  // --- NEW: VALIDATION CHECK ---
+  const requiredFields = ['jlid', 'newTeacher', 'course', 'reasonOfMigration'];
+  const validationError = validateRequiredFields(data, requiredFields);
+
+  if (validationError) {
+    Logger.log(`Migration Email Aborted: ${validationError}`);
+    return { success: false, message: validationError };
+  }
+  // -----------------------------
+
   let finalStatus = 'Partial Success';
   let notes = [];
 
@@ -105,7 +126,7 @@ function sendMigrationEmail(data, attachments = []) {
     // 1. TEACHER EMAIL (Always CET)
     // ==========================================
     if (data.sendEmailToTeacher) {
-        if (!data.jlid || !data.newTeacher || !data.course) throw new Error('Missing fields for Email.');
+        // Note: The global validation at the top now handles the check for jlid, newTeacher, and course.
         
         const teacherData = getTeacherData();
         // Case-insensitive lookup for new teacher
@@ -218,6 +239,7 @@ function sendMigrationEmail(data, attachments = []) {
     logAction('Migration Process', data.jlid, data.learner, data.oldTeacher, data.newTeacher, data.course, finalStatus, notes.join('; '), data.reasonOfMigration);
   }
 }
+
 
 function handleTrackingPixel(trackingId) {
   const transparentPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
