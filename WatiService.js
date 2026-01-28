@@ -157,8 +157,9 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
     case "migration_slot_change_lr_request":
       requiredParams = [
         { name: "Parent", value: parentName },
-        { name: "Teacher", value: teacherName},
         { name: "Learner", value: learnerName },
+        { name: "Teacher", value: teacherName},
+        { name: "Date", value: dateStr },        // <--- THIS WAS MISSING
         { name: "Weekday", value: weekdayStr },
         { name: "Time", value: timeStr },
         { name: "link", value: classLink }
