@@ -226,11 +226,23 @@ function getCommunicationPageData() {
 
 function getSystemHealth() {
   Logger.log('getSystemHealth called');
+
   try {
     const health = {
       spreadsheetAccess: false,
       emailService: false,
-      sheets: { teacherData: false, courseName: false, auditLog: false },
+      sheets: {
+        teacherData: false,
+        courseName: false,
+        auditLog: false,
+        userProfiles: false,
+        teacherCourses: false,
+        personaData: false,
+        courseProgressSummary: false,
+        userActivityLog: false,
+        tasks: false, 
+        invoiceProducts: false 
+      },
       emailQuota: 'N/A', 
       lastCheck: new Date().toISOString()
     };
@@ -238,8 +250,24 @@ function getSystemHealth() {
     try {
       const migrationSpreadsheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID);
       health.spreadsheetAccess = true;
+
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TEACHER_DATA)) health.sheets.teacherData = true;
-      // ... check other sheets
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.COURSE_NAME)) health.sheets.courseName = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.AUDIT_LOG)) health.sheets.auditLog = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.USER_PROFILES)) health.sheets.userProfiles = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TEACHER_COURSES)) health.sheets.teacherCourses = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.COURSE_PROGRESS_SUMMARY)) health.sheets.courseProgressSummary = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG)) health.sheets.userActivityLog = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TASKS)) health.sheets.tasks = true;
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.INVOICE_PRODUCTS)) health.sheets.invoiceProducts = true; 
+
+      try {
+        const personaSpreadsheet = _getSpreadsheet(CONFIG.PERSONA_SHEET_ID);
+        health.sheets.personaData = personaSpreadsheet.getSheetByName(CONFIG.SHEETS.PERSONA_DATA) !== null;
+      } catch (e) {
+        Logger.log('Persona spreadsheet/sheet access failed: ' + e.message);
+      }
+
     } catch (error) {
       Logger.log('Migration Spreadsheet access failed: ' + error.message);
     }
@@ -254,6 +282,7 @@ function getSystemHealth() {
 
     return health;
   } catch (error) {
+    Logger.log('System health check failed: ' + error.message);
     return { error: error.message };
   }
 }
