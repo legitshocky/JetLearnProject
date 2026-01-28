@@ -146,7 +146,6 @@ function initializeSystem() {
     getOrCreateSheet(CONFIG.SHEETS.TASKS);
     const invoiceProductsSheet = getOrCreateSheet(CONFIG.SHEETS.INVOICE_PRODUCTS); 
 
-    // User creation logic is now in UserService.js, called here if needed
     const userProfilesData = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
     if (userProfilesData.length <= 1) { 
       createDefaultUsers(); 
@@ -158,24 +157,36 @@ function initializeSystem() {
       ]);
     }
 
-    const courseProgressSheet = getOrCreateSheet(CONFIG.SHEETS.COURSE_PROGRESS_SUMMARY);
+    const courseProgressSheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.COURSE_PROGRESS_SUMMARY);
     if (courseProgressSheet.getLastRow() === 0 || courseProgressSheet.getRange('A1').isBlank()) {
       courseProgressSheet.appendRow(['Course Name', 'Not Onboarded', '1-10%', '11-20%', '21-30%', '31-40%', '41-50%', '51-60%', '61-70%', '71-80%', '81-90%', '91-99%', '100%']);
     }
 
-    const userActivitySheet = getOrCreateSheet(CONFIG.SHEETS.USER_ACTIVITY_LOG);
+    const userActivitySheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG);
     if (userActivitySheet.getLastRow() === 0 || userActivitySheet.getRange('A1').isBlank()) {
         userActivitySheet.appendRow(['Timestamp', 'Username', 'Action', 'Details', 'UserEmail']);
     }
 
-    const tasksSheet = getOrCreateSheet(CONFIG.SHEETS.TASKS);
+    const tasksSheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.TASKS);
     if (tasksSheet.getLastRow() === 0 || tasksSheet.getRange('A1').isBlank()) {
         tasksSheet.appendRow(['Task ID', 'Created', 'Learner JLID', 'Learner Name', 'Task Description', 'Assigned To', 'Status', 'Due Date', 'Notes']);
     }
 
     if (invoiceProductsSheet.getLastRow() === 0 || invoiceProductsSheet.getRange('A1').isBlank()) {
         invoiceProductsSheet.appendRow(['Plan Name', 'Base Price EUR', 'Base Price GBP', 'Base Price USD', 'Base Price INR', 'Months Tenure', 'Default Sessions', 'Installment Count', 'Fixed Classes']); 
-        // ... (Default products can be added here or manually)
+        invoiceProductsSheet.appendRow(['Credit Transfer', 0.00, 0.00, 0.00, 0, 1, 1, 1, 0]); 
+        invoiceProductsSheet.appendRow(['GCSE Custom Revision', 0.00, 0.00, 0.00, 0, 1, 1, 1, 0]);
+        invoiceProductsSheet.appendRow(['GCSE Programming + Algorithms', 0.00, 0.00, 0.00, 0, 1, 1, 1, 0]);
+        invoiceProductsSheet.appendRow(['GCSE AC', 1788.00, 1500.00, 2000.00, 166667, 12, 1, 1, 48]); 
+        invoiceProductsSheet.appendRow(['GCSE NC', 1788.00, 1500.00, 2000.00, 166667, 12, 1, 1, 48]);
+        invoiceProductsSheet.appendRow(['PRM', 149.00, 125.00, 167.00, 13889, 1, 1, 1, 0]);
+
+        invoiceProductsSheet.appendRow(['3 Years', 5364.00, 4500.00, 6000.00, 500000, 36, 1, 1, 144]); 
+        invoiceProductsSheet.appendRow(['2 Years', 3576.00, 3000.00, 4000.00, 333333, 24, 1, 1, 96]); 
+        invoiceProductsSheet.appendRow(['Annual', 1788.00, 1500.00, 2000.00, 166667, 12, 1, 1, 48]); 
+        invoiceProductsSheet.appendRow(['Half-Yearly', 894.00, 750.00, 1000.00, 83333, 6, 1, 1, 24]); 
+        invoiceProductsSheet.appendRow(['Quarterly', 447.00, 375.00, 500.00, 41667, 3, 1, 3, 12]); 
+        invoiceProductsSheet.appendRow(['Monthly', 149.00, 125.00, 167.00, 13889, 1, 1, 1, 0]); 
     }
 
     Logger.log('System initialization completed successfully');
@@ -189,24 +200,80 @@ function initializeSystem() {
 function getCommunicationPageData() {
   Logger.log('getCommunicationPageData called');
   try {
-    const teachers = getActiveTeachers(); // TeacherService.js
-    const courses = getCourseNames();     // TeacherService.js
-    const tpManagers = getTPManagers();   // TeacherService.js
-    const invoiceProducts = getInvoiceProductsData(); // InvoiceService.js
+    const teachers = getActiveTeachers();
+    const courses = getCourseNames();
+    const tpManagers = getTPManagers();
+    const invoiceProducts = getInvoiceProductsData(); // Fetch invoice products
 
-    const allTeacherData = getTeacherData(); // TeacherService.js
+    const allTeacherData = getTeacherData(); 
     const clsManagers = new Set(allTeacherData.map(t => String(t.clsManagerResponsible || '').trim()).filter(name => name !== ''));
     
-    // Timezones list (Shortened for brevity, can remain here or move to Utils)
+    // NEW: Comprehensive Timezone List
     const timezones = [
-      '(GMT-12:00) International Date Line West', '(GMT-11:00) Coordinated Universal Time-11', '(GMT-10:00) Hawaii', 
-      '(GMT-09:00) Alaska', '(GMT-08:00) Pacific Time (US & Canada)', '(GMT-07:00) Mountain Time (US & Canada)', 
-      '(GMT-06:00) Central Time (US & Canada)', '(GMT-05:00) Eastern Time (US & Canada)', '(GMT-04:00) Atlantic Time (Canada)', 
-      '(GMT+00:00) Dublin, Edinburgh, Lisbon, London', '(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna', 
-      '(GMT+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius', '(GMT+03:00) Moscow, St. Petersburg, Volgograd', 
-      '(GMT+04:00) Abu Dhabi, Muscat', '(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi', '(GMT+08:00) Kuala Lumpur, Singapore', 
-      '(GMT+09:00) Osaka, Sapporo, Tokyo', '(GMT+10:00) Canberra, Melbourne, Sydney', '(GMT+12:00) Auckland, Wellington'
+      '(GMT-12:00) International Date Line West', '(GMT-11:00) Coordinated Universal Time-11', '(GMT-10:00) Hawaii', '(GMT-09:00) Alaska', 
+      '(GMT-08:00) Baja California', '(GMT-08:00) Pacific Time (US & Canada)', '(GMT-07:00) Arizona', '(GMT-07:00) Chihuahua, La Paz, Mazatlan', 
+      '(GMT-07:00) Mountain Time (US & Canada)', '(GMT-06:00) Central America', '(GMT-06:00) Central Time (US & Canada)', 
+      '(GMT-06:00) Guadalajara, Mexico City, Monterrey', '(GMT-06:00) Saskatchewan', '(GMT-05:00) Bogota, Lima, Quito', 
+      '(GMT-05:00) Eastern Time (US & Canada)', '(GMT-05:00) Indiana (East)', '(GMT-04:30) Caracas', '(GMT-04:00) Asuncion', 
+      '(GMT-04:00) Atlantic Time (Canada)', '(GMT-04:00) Cuiaba', '(GMT-04:00) Georgetown, La Paz, Manaus, San Juan', '(GMT-04:00) Santiago', 
+      '(GMT-03:30) Newfoundland', '(GMT-03:00) Brasilia', '(GMT-03:00) Buenos Aires', '(GMT-03:00) Cayenne, Fortaleza', '(GMT-03:00) Greenland', 
+      '(GMT-03:00) Montevideo', '(GMT-03:00) Salvador', '(GMT-02:00) Coordinated Universal Time-02', '(GMT-01:00) Azores', '(GMT-01:00) Cape Verde Is.', 
+      '(GMT+00:00) Casablanca', '(GMT+00:00) Coordinated Universal Time', '(GMT+00:00) Dublin, Edinburgh, Lisbon, London', 
+      '(GMT+00:00) Monrovia, Reykjavik', '(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna', 
+      '(GMT+01:00) Belgrade, Bratislava, Budapest, Ljubljana, Prague', '(GMT+01:00) Brussels, Copenhagen, Madrid, Paris', 
+      '(GMT+01:00) Sarajevo, Skopje, Warsaw, Zagreb', '(GMT+01:00) West Central Africa', '(GMT+01:00) Windhoek', '(GMT+02:00) Amman', 
+      '(GMT+02:00) Athens, Bucharest', '(GMT+02:00) Beirut', '(GMT+02:00) Cairo', '(GMT+02:00) Damascus', '(GMT+02:00) E. Europe', 
+      '(GMT+02:00) Harare, Pretoria', '(GMT+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius', '(GMT+02:00) Istanbul', 
+      '(GMT+02:00) Jerusalem', '(GMT+02:00) Kaliningrad', '(GMT+02:00) Tripoli', '(GMT+03:00) Baghdad', '(GMT+03:00) Kuwait, Riyadh', '(GMT+03:00) Minsk', 
+      '(GMT+03:00) Moscow, St. Petersburg, Volgograd', '(GMT+03:00) Nairobi', '(GMT+03:30) Tehran', '(GMT+04:00) Abu Dhabi, Muscat', '(GMT+04:00) Baku', 
+      '(GMT+04:00) Izhevsk, Samara', '(GMT+04:00) Port Louis', '(GMT+04:00) Tbilisi', '(GMT+04:00) Yerevan', '(GMT+04:30) Kabul', 
+      '(GMT+05:00) Ashgabat, Tashkent', '(GMT+05:00) Ekaterinburg', '(GMT+05:00) Islamabad, Karachi', '(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi', 
+      '(GMT+05:30) Sri Jayawardenepura', '(GMT+05:45) Kathmandu', '(GMT+06:00) Astana', '(GMT+06:00) Dhaka', '(GMT+06:00) Novosibirsk', 
+      '(GMT+06:30) Yangon (Rangoon)', '(GMT+07:00) Bangkok, Hanoi, Jakarta', '(GMT+07:00) Krasnoyarsk', 
+      '(GMT+08:00) Beijing, Chongqing, Hong Kong, Urumqi', '(GMT+08:00) Irkutsk', '(GMT+08:00) Kuala Lumpur, Singapore', '(GMT+08:00) Perth', 
+      '(GMT+08:00) Taipei', '(GMT+08:00) Ulaanbaatar', '(GMT+09:00) Osaka, Sapporo, Tokyo', '(GMT+09:00) Seoul', '(GMT+09:00) Yakutsk', 
+      '(GMT+09:30) Adelaide', '(GMT+09:30) Darwin', '(GMT+10:00) Brisbane', '(GMT+10:00) Canberra, Melbourne, Sydney', 
+      '(GMT+10:00) Guam, Port Moresby', '(GMT+10:00) Hobart', '(GMT+10:00) Vladivostok', '(GMT+11:00) Chokurdakh', '(GMT+11:00) Magadan', 
+      '(GMT+11:00) Solomon Is., New Caledonia', '(GMT+12:00) Anadyr, Petropavlovsk-Kamchatsky', '(GMT+12:00) Auckland, Wellington', 
+      '(GMT+12:00) Coordinated Universal Time+12', '(GMT+12:00) Fiji', '(GMT+13:00) Nuku\'alofa', '(GMT+13:00) Samoa'
     ];
+
+const TIMEZONE_IANA_MAP = {
+  // UK & Europe
+  '(GMT+00:00) Dublin, Edinburgh, Lisbon, London': 'Europe/London',
+  '(GMT+00:00) Monrovia, Reykjavik': 'Atlantic/Reykjavik',
+  '(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna': 'Europe/Berlin',
+  '(GMT+01:00) Brussels, Copenhagen, Madrid, Paris': 'Europe/Paris',
+  
+  // US & Americas
+  '(GMT-05:00) Eastern Time (US & Canada)': 'America/New_York',
+  '(GMT-05:00) Indiana (East)': 'America/Indiana/Indianapolis',
+  '(GMT-06:00) Central Time (US & Canada)': 'America/Chicago',
+  '(GMT-07:00) Mountain Time (US & Canada)': 'America/Denver',
+  '(GMT-07:00) Arizona': 'America/Phoenix',
+  '(GMT-08:00) Pacific Time (US & Canada)': 'America/Los_Angeles',
+  '(GMT-08:00) Baja California': 'America/Tijuana',
+  
+  // Asia / Pacific
+  '(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi': 'Asia/Kolkata',
+  '(GMT+04:00) Abu Dhabi, Muscat': 'Asia/Dubai',
+  '(GMT+08:00) Kuala Lumpur, Singapore': 'Asia/Singapore',
+  '(GMT+10:00) Canberra, Melbourne, Sydney': 'Australia/Sydney',
+  '(GMT+12:00) Auckland, Wellington': 'Pacific/Auckland'
+};
+
+const TIMEZONE_FRIENDLY_LABELS = {
+  'Europe/London': 'UK Time',
+  'Europe/Berlin': 'CET',
+  'Europe/Paris': 'CET',
+  'America/New_York': 'EST/EDT',
+  'America/Chicago': 'CST/CDT',
+  'America/Los_Angeles': 'PST/PDT',
+  'Asia/Kolkata': 'IST',
+  'Asia/Dubai': 'GST',
+  'Australia/Sydney': 'AEST',
+  'Asia/Singapore': 'SGT'
+};
 
     return {
       success: true,
