@@ -761,6 +761,9 @@ const WATI_REASON_MAPPING = {
   "Slot change -Learner request": [
     { id: "migration_slot_change_lr_request", label: "Slot Change (Learner)" }
   ],
+ "Slot change - Learner request": [
+    { id: "migration_slot_change_lr_request", label: "Slot Change (Learner)" }
+  ],
   "Slot change - Teacher request": [
     { id: "migration_releasing_teacher_bandwith_", label: "Teacher Bandwidth/Schedule Adjustment" }
   ],
