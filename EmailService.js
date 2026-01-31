@@ -224,23 +224,20 @@ function sendMigrationEmail(data, attachments = []) {
     Logger.log(`Migration Email Aborted: ${validationError}`);
     return { success: false, message: validationError };
   }
-  // -----------------------------
 
   let finalStatus = 'Partial Success';
   let notes = [];
+  let watiSuccess = true; // Track WATI status specifically
 
   try {
     // ==========================================
     // 1. TEACHER EMAIL (Always CET)
     // ==========================================
     if (data.sendEmailToTeacher) {
-        // Note: The global validation at the top now handles the check for jlid, newTeacher, and course.
-        
         const teacherData = getTeacherData();
-        // Case-insensitive lookup for new teacher
+        // Case-insensitive lookup
         const newTeacherInfo = teacherData.find(t => String(t.name).trim().toLowerCase() === String(data.newTeacher).trim().toLowerCase());
         
-        // Lookup old teacher if provided
         let oldTeacherInfo = null;
         if (data.oldTeacher) {
             oldTeacherInfo = teacherData.find(t => String(t.name).trim().toLowerCase() === String(data.oldTeacher).trim().toLowerCase());
@@ -282,65 +279,62 @@ function sendMigrationEmail(data, attachments = []) {
     // 2. WATI WHATSAPP (Parent's Timezone)
     // ==========================================
     if (data.sendWhatsappToParent) {
-        
-        // A. Fetch Hubspot Data to get Parent Phone & Name
+      try {
+        // A. Fetch Hubspot Data
         const hubspotResult = fetchHubspotByJlid(data.jlid);
-        if (!hubspotResult.success) {
-             throw new Error(`WATI Failed: Could not fetch data for JLID ${data.jlid}.`);
-        }
-        
-        const hsData = hubspotResult.data;
+        const hsData = hubspotResult.success ? hubspotResult.data : {};
         const parentPhone = hsData.parentContact;
         
-        if (!parentPhone) throw new Error("WATI Failed: Parent phone number missing in HubSpot.");
+        if (!parentPhone) throw new Error("Parent phone number missing in HubSpot.");
 
-        // B. Calculate Local Time for the message
-        const firstSession = data.classSessions && data.classSessions.length > 0 ? data.classSessions[0] : { day: "TBD", time: "TBD" };
-        const cetTime = firstSession.time; 
-        const parentTimezone = data.manualTimezone || hsData.timezone;
-        // Inject into data object for helper to find
-        data.calculatedLocalTime = convertCetToLocal(cetTime, parentTimezone); 
-
-        // C. DETERMINE TEMPLATE ID
-        // Priority 1: Use the specific template ID sent from the dropdown (data.watiTemplateName)
-        // Priority 2: Look up default for the reason
-        // Priority 3: Generic fallback
+        // B. Determine Template
         let templateId = data.watiTemplateName;
-        
-        if (!templateId || templateId === "") {
-            const mapping = WATI_REASON_MAPPING[data.reasonOfMigration];
-            if (mapping && mapping.length > 0) {
-                templateId = mapping[0].id; // Use the first mapped template
-            } else {
-                templateId = "migration_generic_update"; // Final fallback
-            }
+        if (!templateId) {
+            const templates = getTemplatesForReason(data.reasonOfMigration);
+            templateId = (templates && templates.length > 0) ? templates[0].id : "migration_generic_update";
         }
+
+        // C. Calculate Local Time
+        const firstSession = data.classSessions && data.classSessions.length > 0 ? data.classSessions[0] : { day: "TBD", time: "TBD" };
+        const parentTimezone = data.manualTimezone || hsData.timezone || "Europe/London";
+        data.calculatedLocalTime = convertCetToLocal(firstSession.time, parentTimezone); 
 
         // D. Build Parameters
         const watiParameters = getWatiParameters(templateId, data, hsData);
 
-        // Debug Log
-        Logger.log(`Sending WATI Template: ${templateId}`);
-        Logger.log(`Params: ${JSON.stringify(watiParameters)}`);
-
-        // E. Send Message
-        const watiResult = sendWatiMessage(parentPhone, templateId, watiParameters);
+        // E. Send using Unified Helper
+        const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters);
         
-        if(watiResult.success) {
-            notes.push(`WATI Sent (${templateId}) to ${parentPhone}`);
+        if (watiRes.success) {
+            notes.push(`WATI Sent (${templateId})`);
         } else {
-            notes.push(`WATI Failed: ${JSON.stringify(watiResult)}`);
+            watiSuccess = false;
+            notes.push(`WATI Failed: ${watiRes.message}`);
         }
+
+      } catch(e) {
+        watiSuccess = false;
+        Logger.log("WATI Migration Error: " + e.message);
+        notes.push("WATI Error: " + e.message);
+      }
     } else {
         notes.push("WhatsApp Skipped.");
     }
 
-    finalStatus = 'Success';
-    return { success: true, message: 'Migration process completed successfully.' };
+    // --- LOGIC FIX: Determine Status ---
+    // Success if Email didn't throw AND WATI didn't flag failure
+    if (watiSuccess) {
+        finalStatus = 'Success';
+        return { success: true, message: 'Migration process completed successfully.' };
+    } else {
+        finalStatus = 'Partial Success';
+        return { success: true, message: 'Email sent, but WhatsApp failed. Check Audit Log.' };
+    }
 
   } catch (error) {
     Logger.log(`Error in Migration Process: ${error.message}`);
-    notes.push(`Error: ${error.message}`);
+    notes.push(`Critical Error: ${error.message}`);
+    // If Email fails, the whole thing is considered Failed
     return { success: false, message: `Failed: ${error.message}` };
   } finally {
     // Log the outcome

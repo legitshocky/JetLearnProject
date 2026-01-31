@@ -371,24 +371,12 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
     throw new Error("WATI Configuration Error: Missing Script Properties.");
   }
 
-  // 1. Ensure Bearer prefix is present
-  if (!ACCESS_TOKEN.startsWith("Bearer ")) {
-    ACCESS_TOKEN = "Bearer " + ACCESS_TOKEN;
-  }
+  if (!ACCESS_TOKEN.startsWith("Bearer ")) ACCESS_TOKEN = "Bearer " + ACCESS_TOKEN;
+  if (API_ENDPOINT_BASE.endsWith("/")) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
 
-  // 2. Clean Base URL
-  if (API_ENDPOINT_BASE.endsWith("/")) {
-    API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
-  }
-
-  // 3. Sanitize Phone Number
   const cleanPhone = String(phoneNumber).replace(/\D/g, '');
-
-  // 4. Construct URL (Singular Endpoint + Query Parameter)
-  // NOTE: For the singular endpoint, the phone number MUST be in the URL.
   const FULL_API_ENDPOINT = `${API_ENDPOINT_BASE}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`;
 
-  // 5. Construct Payload (No 'template_messages' array, simple object)
   const payload = {
     "template_name": templateName,
     "broadcast_name": "JetLearn_Notification",
@@ -397,37 +385,29 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
 
   const options = {
     "method": "post",
-    "headers": {
-      "Authorization": ACCESS_TOKEN,
-      "Content-Type": "application/json"
-    },
+    "headers": { "Authorization": ACCESS_TOKEN, "Content-Type": "application/json" },
     "payload": JSON.stringify(payload),
     "muteHttpExceptions": true
   };
 
   try {
-    Logger.log(`[WATI] Sending to: ${FULL_API_ENDPOINT}`);
-    Logger.log(`[WATI] Payload: ${JSON.stringify(payload)}`);
-
+    Logger.log(`[WATI] Sending to: ${cleanPhone} | Template: ${templateName}`);
+    
     const response = UrlFetchApp.fetch(FULL_API_ENDPOINT, options);
     const responseCode = response.getResponseCode();
     const content = response.getContentText();
 
-    Logger.log(`[WATI] Response Code: ${responseCode}`);
-    
-    // Check for success (200)
-    if (responseCode !== 200) {
-      Logger.log(`[WATI] Error Body: ${content}`);
-      // Common WATI error: 400 usually means template name mismatch or param mismatch
-      throw new Error(`WATI API Error (${responseCode}): ${content || 'No Content returned'}`);
+    // --- CRITICAL FIX: CATCH HTML ERRORS ---
+    if (content.trim().startsWith("<")) {
+      Logger.log(`[WATI ERROR] Server returned HTML: ${content}`);
+      throw new Error(`WATI API returned a Server Error (${responseCode}). Check template variables.`);
     }
 
     const result = JSON.parse(content);
 
-    // WATI sometimes returns 200 but with result: false
     if (result.result === false || result.status === 'error') {
        const detail = (result.messages && result.messages.length > 0) ? result.messages[0].message : JSON.stringify(result);
-       throw new Error(`WATI Application Error: ${detail}`);
+       throw new Error(`WATI Rejected: ${detail}`);
     }
 
     return { success: true, result: result };
@@ -833,3 +813,17 @@ function getWatiConfigFromSheet() {
     return WATI_REASON_MAPPING; // Emergency fallback
   }
 }
+
+function sendWatiTemplate(parentContact, templateId, params) {
+  if (!parentContact) return { success: false, message: "Skipped: No Parent Phone" };
+  
+  const phone = String(parentContact).replace(/\D/g, '');
+  
+  try {
+    const res = sendWatiMessage(phone, templateId, params);
+    return { success: res.success, message: res.success ? "Sent" : ("WATI Error: " + JSON.stringify(res)) };
+  } catch (e) {
+    return { success: false, message: "Error: " + e.message };
+  }
+}
+
