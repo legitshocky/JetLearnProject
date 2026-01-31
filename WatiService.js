@@ -144,12 +144,17 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
     // ----------------------------------------------------
     case "migration_boomerang":
       requiredParams = [
-        { name: "parent", value: parentName },
-        { name: "learner", value: learnerName },
-        { name: "new_teacher", value: teacherName },
-        { name: "date", value: dateStr }
+        { name: "Parent", value: parentName },
+        { name: "Learner", value: learnerName },
+        { name: "Teacher", value: teacherName },     // New Teacher
+        { name: "Course", value: courseName },       // Added based on screenshot
+        { name: "Date", value: dateStr },
+        { name: "Weekday", value: weekdayStr },      // Added based on screenshot
+        { name: "Time", value: timeStr },            // Added based on screenshot
+        { name: "Link", value: classLink }           // Added based on screenshot
       ];
       break;
+
 
     // ----------------------------------------------------
     // 6. SLOT CHANGE
@@ -159,7 +164,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "Parent", value: parentName },
         { name: "Learner", value: learnerName },
         { name: "Teacher", value: teacherName},
-        { name: "Date", value: dateStr },        // <--- THIS WAS MISSING
+        { name: "Date", value: dateStr },        // <--- CRITICAL: MUST BE HERE
         { name: "Weekday", value: weekdayStr },
         { name: "Time", value: timeStr },
         { name: "link", value: classLink }
@@ -204,7 +209,40 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "link", value: classLink }
       ];
       break;
+
+    //----------------------------------------------------
+    // 9. TEACHER PERFORMANCE ISSUE
+    //----------------------------------------------------
       
+    case "migration_teacher_performance_issue":
+      requiredParams = [
+        { name: "Parent", value: parentName },       // Was 'parent'
+        { name: "Learner", value: learnerName },     // Was 'learner'
+        { name: "Teacher", value: teacherName },     // Was 'teacher'
+        { name: "course_type", value: courseName },  // Kept as is, assuming template uses snake_case here?
+        { name: "Date", value: dateStr },            // Was 'date'
+        { name: "Weekday", value: weekdayStr },
+        { name: "Time", value: timeStr },            // Was 'time'
+        { name: "Link", value: classLink }           // Was 'link'
+      ];
+      break;
+
+    //----------------------------------------------------
+    // 10. TEACHER CHANGE AFTER PRM
+    //----------------------------------------------------  
+
+    case "migration_teacher_change_after_prm":
+      requiredParams = [
+        { name: "Parent", value: parentName },       // Was 'parent'
+        { name: "Learner", value: learnerName },     // Was 'learner'
+        { name: "Teacher", value: teacherName },     // Was 'teacher'
+        { name: "Course", value: courseName},
+        { name: "Weekday", value: weekdayStr },
+        { name: "Time", value: timeStr },            // Was 'time'
+        { name: "Link", value: classLink }           // Was 'link'
+      ];
+      break;
+
     // ----------------------------------------------------
     // 9. DEFAULT FALLBACK
     // ----------------------------------------------------
@@ -221,6 +259,8 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
 
   return requiredParams;
 }
+
+
 
 function getWatiPreviewDetails(migrationData) {
   try {
@@ -377,10 +417,17 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
   const cleanPhone = String(phoneNumber).replace(/\D/g, '');
   const FULL_API_ENDPOINT = `${API_ENDPOINT_BASE}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`;
 
+  // --- FIX: SANITIZE PARAMETERS ---
+  // WATI fails if value is "" (empty string) or null. We force it to "N/A".
+  const safeParameters = parameters.map(p => ({
+    name: p.name,
+    value: (p.value === null || p.value === undefined || String(p.value).trim() === '') ? "N/A" : String(p.value)
+  }));
+
   const payload = {
     "template_name": templateName,
     "broadcast_name": "JetLearn_Notification",
-    "parameters": parameters
+    "parameters": safeParameters
   };
 
   const options = {
@@ -391,22 +438,24 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
   };
 
   try {
-    Logger.log(`[WATI] Sending to: ${cleanPhone} | Template: ${templateName}`);
+    // Log payload for debugging (Check Executions to see exactly what was sent)
+    Logger.log(`[WATI PAYLOAD] ${JSON.stringify(payload)}`);
     
     const response = UrlFetchApp.fetch(FULL_API_ENDPOINT, options);
     const responseCode = response.getResponseCode();
     const content = response.getContentText();
 
-    // --- CRITICAL FIX: CATCH HTML ERRORS ---
+    // Check for HTML error (Crash)
     if (content.trim().startsWith("<")) {
       Logger.log(`[WATI ERROR] Server returned HTML: ${content}`);
-      throw new Error(`WATI API returned a Server Error (${responseCode}). Check template variables.`);
+      throw new Error(`WATI API returned a Server Error (${responseCode}).`);
     }
 
     const result = JSON.parse(content);
 
+    // Check for WATI logic error
     if (result.result === false || result.status === 'error') {
-       const detail = (result.messages && result.messages.length > 0) ? result.messages[0].message : JSON.stringify(result);
+       const detail = (result.messages && result.messages.length > 0) ? result.messages[0].message : (result.info || JSON.stringify(result));
        throw new Error(`WATI Rejected: ${detail}`);
     }
 
@@ -417,6 +466,7 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
     throw e; 
   }
 }
+
 
 function processMigrationSubmission(data, sendEmail, sendWhatsapp) {
   const results = { email: 'Skipped', whatsapp: 'Skipped' };
@@ -821,7 +871,7 @@ function sendWatiTemplate(parentContact, templateId, params) {
   
   try {
     const res = sendWatiMessage(phone, templateId, params);
-    return { success: res.success, message: res.success ? "Sent" : ("WATI Error: " + JSON.stringify(res)) };
+    return { success: res.success, message: "Sent" };
   } catch (e) {
     return { success: false, message: "Error: " + e.message };
   }

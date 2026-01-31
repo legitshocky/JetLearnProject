@@ -109,9 +109,9 @@ function doGet(e) {
           .setTitle(`Monthly Migration Report (${perspectiveParam}) - ${reportData.month} ${reportData.year}`)
           .addMetaTag('viewport', 'width=device-width, initial-scale=1');
     }
-
+    
     const template = HtmlService.createTemplateFromFile('Index');
-    template.resetToken = e?.parameter?.resetToken || null;
+    template.resetToken = e?.parameter?.resetToken || ''; 
     
     // getLiveCurrencyRates is now in InvoiceService.js
     const rates = getLiveCurrencyRates();

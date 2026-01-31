@@ -10,8 +10,14 @@ function escapeHtml(text) {
     .replace(/'/g, "&#039;");
 }
 
-// This templating syntax is used by Google Apps Script's HtmlService
-const resetToken = '<?= resetToken ?>';
+
+let resetToken = "";
+if (typeof GLOBAL_RESET_TOKEN !== 'undefined' && GLOBAL_RESET_TOKEN && GLOBAL_RESET_TOKEN !== 'null' && GLOBAL_RESET_TOKEN !== '<?= resetToken ?>') {
+    resetToken = GLOBAL_RESET_TOKEN;
+}
+
+console.log("Final Debug Token:", resetToken); 
+
 
 // ### NEW CACHE-BUSTING METHOD ###
 // Read the live data from the HTML body instead of a scriptlet to avoid caching issues.
