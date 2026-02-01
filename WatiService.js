@@ -417,8 +417,7 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
   const cleanPhone = String(phoneNumber).replace(/\D/g, '');
   const FULL_API_ENDPOINT = `${API_ENDPOINT_BASE}/api/v1/sendTemplateMessage?whatsappNumber=${cleanPhone}`;
 
-  // --- FIX: SANITIZE PARAMETERS ---
-  // WATI fails if value is "" (empty string) or null. We force it to "N/A".
+  // 1. Sanitize Parameters (Prevent empty strings)
   const safeParameters = parameters.map(p => ({
     name: p.name,
     value: (p.value === null || p.value === undefined || String(p.value).trim() === '') ? "N/A" : String(p.value)
@@ -438,22 +437,24 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
   };
 
   try {
-    // Log payload for debugging (Check Executions to see exactly what was sent)
+    Logger.log(`[WATI] Sending to: ${cleanPhone}`);
     Logger.log(`[WATI PAYLOAD] ${JSON.stringify(payload)}`);
     
     const response = UrlFetchApp.fetch(FULL_API_ENDPOINT, options);
     const responseCode = response.getResponseCode();
     const content = response.getContentText();
 
-    // Check for HTML error (Crash)
+    // ============================================================
+    // 👇 THIS IS THE CRITICAL FIX YOU MIGHT BE MISSING 👇
+    // ============================================================
     if (content.trim().startsWith("<")) {
-      Logger.log(`[WATI ERROR] Server returned HTML: ${content}`);
-      throw new Error(`WATI API returned a Server Error (${responseCode}).`);
+      Logger.log(`[WATI CRITICAL ERROR] Server returned HTML: \n${content}`);
+      throw new Error(`WATI API returned HTML error (Code ${responseCode}). Check Executions log for details.`);
     }
+    // ============================================================
 
     const result = JSON.parse(content);
 
-    // Check for WATI logic error
     if (result.result === false || result.status === 'error') {
        const detail = (result.messages && result.messages.length > 0) ? result.messages[0].message : (result.info || JSON.stringify(result));
        throw new Error(`WATI Rejected: ${detail}`);
@@ -466,6 +467,7 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
     throw e; 
   }
 }
+
 
 
 function processMigrationSubmission(data, sendEmail, sendWhatsapp) {
@@ -610,74 +612,85 @@ function convertCetToLocal(timeStr, targetTzString) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
 
-    // --- STEP 1: Parse Input Time (Assumed CET) ---
+    // 1. Parse the input numbers (e.g., 11 and 00)
     let hours = 0, minutes = 0;
-    // Matches 15:30, 3:30 PM, 03:30PM
     const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
     
     if (timeMatch) {
       hours = parseInt(timeMatch[1]);
       minutes = parseInt(timeMatch[2]);
       const meridiem = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
-      
-      // Convert to 24h format for the Date object
       if (meridiem === 'PM' && hours < 12) hours += 12;
       if (meridiem === 'AM' && hours === 12) hours = 0;
     } else {
-      return timeStr; // Return original if regex fails
+      return timeStr; 
     }
 
-    // Create a Date object set to Today at that time in Berlin (CET)
-    // We use a specific date to handle Daylight Savings correctly for "Today"
-    const now = new Date();
-    const cetString = now.toLocaleString("en-US", {timeZone: "Europe/Berlin"});
-    const cetDate = new Date(cetString);
-    cetDate.setHours(hours);
-    cetDate.setMinutes(minutes);
-    cetDate.setSeconds(0);
-
-    // --- STEP 2: Determine Target IANA Zone ---
-    // (This logic maps the long HubSpot string to IANA ID)
-    let ianaZone = "Europe/London"; // Default fallback
+    // 2. Identify the target Timezone
+    let ianaZone = "Europe/London"; // Default
     const tz = targetTzString || "";
 
-    if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("Chennai") || tz.includes("Mumbai") || tz.includes("New Delhi")) ianaZone = "Asia/Kolkata";
-    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh")) ianaZone = "Europe/London";
-    else if (tz.includes("Eastern")) ianaZone = "America/New_York";
-    else if (tz.includes("Central Time")) ianaZone = "America/Chicago";
-    else if (tz.includes("Mountain") || tz.includes("Arizona")) ianaZone = "America/Denver";
-    else if (tz.includes("Pacific")) ianaZone = "America/Los_Angeles";
-    else if (tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Paris") || tz.includes("Rome") || tz.includes("Madrid") || tz.includes("Vienna") || tz.includes("Stockholm") || tz.includes("Brussels")) ianaZone = "Europe/Berlin";
-    else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) ianaZone = "Asia/Dubai";
+    // Mapping logic (Keep your existing mapping logic here)
+    if (tz.includes("India") || tz.includes("Kolkata")) ianaZone = "Asia/Kolkata";
+    else if (tz.includes("London") || tz.includes("UK")) ianaZone = "Europe/London";
+    else if (tz.includes("Eastern") || tz.includes("New_York")) ianaZone = "America/New_York";
+    else if (tz.includes("Central")) ianaZone = "America/Chicago";
+    else if (tz.includes("Mountain")) ianaZone = "America/Denver";
+    else if (tz.includes("Pacific") || tz.includes("Los_Angeles")) ianaZone = "America/Los_Angeles";
+    else if (tz.includes("Dubai")) ianaZone = "Asia/Dubai";
     else if (tz.includes("Singapore")) ianaZone = "Asia/Singapore";
-    else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra")) ianaZone = "Australia/Sydney";
-    else if (tz.includes("Auckland") || tz.includes("Wellington")) ianaZone = "Pacific/Auckland";
-    else if (tz.includes("Hong Kong")) ianaZone = "Asia/Hong_Kong";
+    else if (tz.includes("Sydney")) ianaZone = "Australia/Sydney";
     else if (tz.includes("Tokyo")) ianaZone = "Asia/Tokyo";
-    // ... Add other mappings if needed, but these cover 90% ...
+    else if (tz.includes("Brussels") || tz.includes("Berlin") || tz.includes("Paris") || tz.includes("CET")) ianaZone = "Europe/Berlin";
 
-    // --- STEP 3: Format Output ---
+    // ---------------------------------------------------------
+    // THE FIX: Force the time to be treated as Berlin/CET initially
+    // ---------------------------------------------------------
     
-    // A. Get the localized time (e.g., "5:30 PM")
+    // A. Create a date object with the input time (e.g. 11:00) in the SCRIPT'S local timezone (IST)
+    const scriptDate = new Date();
+    scriptDate.setHours(hours);
+    scriptDate.setMinutes(minutes);
+    scriptDate.setSeconds(0);
+
+    // B. Find out what time that IS in Berlin. 
+    // If it's 11:00 IST, it is 06:30 Berlin.
+    const berlinString = scriptDate.toLocaleString("en-US", { timeZone: "Europe/Berlin" });
+    const berlinDate = new Date(berlinString); 
+
+    // C. Calculate the difference. 
+    // 11:00 (Script) minus 06:30 (Berlin) = +4.5 hours difference.
+    const diff = scriptDate.getTime() - berlinDate.getTime();
+
+    // D. Add that difference back to the original time.
+    // 11:00 IST + 4.5 hours = 15:30 IST.
+    // And 15:30 IST is exactly 11:00 CET.
+    const correctDate = new Date(scriptDate.getTime() + diff);
+
+    // ---------------------------------------------------------
+
+    // 3. Output the result in the Target Timezone
     const timeOptions = {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
         timeZone: ianaZone
     };
-    const localTimeStr = cetDate.toLocaleString("en-US", timeOptions);
 
-    // B. Get the Friendly Label manually (e.g., "IST")
-    // If not in our list, fallback to the IANA Code
-    const label = TIMEZONE_FRIENDLY_LABELS[ianaZone] || "";
+    // Get the Friendly Label (e.g., CET, EST, IST)
+    // Note: Ensure TIMEZONE_FRIENDLY_LABELS is defined in your file as before
+    const label = (typeof TIMEZONE_FRIENDLY_LABELS !== 'undefined' && TIMEZONE_FRIENDLY_LABELS[ianaZone]) 
+                  ? TIMEZONE_FRIENDLY_LABELS[ianaZone] 
+                  : "";
 
-    return `${localTimeStr} ${label}`.trim();
+    return `${correctDate.toLocaleString("en-US", timeOptions)} ${label}`.trim();
 
   } catch (e) {
     Logger.log("Time Conversion Error: " + e.message);
     return timeStr + " (CET)";
   }
 }
+
 
 function fetchWatiDirectLink(phoneNumber) {
   const scriptProperties = PropertiesService.getScriptProperties();
