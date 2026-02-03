@@ -1523,6 +1523,40 @@
   </script>
   
           <?!= include('JavaScript'); ?>
+          <script>
+  // 1. The version currently loaded in the browser
+  // (This variable is injected by the server when the page FIRST loads)
+  const CLIENT_VERSION = '<?= getAppVersion() ?>';
+
+  function checkVersion() {
+    console.log("Checking version...");
+    google.script.run
+      .withSuccessHandler(serverVersion => {
+        console.log(`Client: ${CLIENT_VERSION} | Server: ${serverVersion}`);
+        
+        if (serverVersion !== CLIENT_VERSION) {
+          // Mismatch detected! The server has a new deployment.
+          // Force a hard reload from the server (bypass cache)
+          console.warn("Version mismatch! Reloading...");
+          
+          // Optional: Show a toast before reloading
+          try { showToast('info', 'Updating...', 'New version detected. Reloading...'); } catch(e) {}
+          
+          setTimeout(() => {
+            window.location.reload(true);
+          }, 1500);
+        }
+      })
+      .getAppVersion();
+  }
+
+  // Check version immediately on load
+  checkVersion();
+
+  // Check again every 5 minutes (in case you deploy while they are working)
+  setInterval(checkVersion, 300000); 
+</script>
+
 </body>
 </html>
   
