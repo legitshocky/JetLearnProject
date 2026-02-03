@@ -287,15 +287,93 @@
         </div>
       </div>
 
-    <div class="section">
-        <div class="section-label">Class Schedule</div>
+<div class="section">
+        <div class="section-label">Class Schedule (Converted to CET)</div>
+        <? 
+           // Helper: Calculates the exact hour difference between two zones and applies it
+           function toCET(timeStr, parentZone) {
+              if(!timeStr || !parentZone) return timeStr;
+              
+              try {
+                // 1. Parse the Input Time (e.g., "07:00 PM")
+                var match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+                if (!match) return timeStr;
+
+                var inputHours = parseInt(match[1], 10);
+                var inputMinutes = parseInt(match[2], 10);
+                var ampm = match[3] ? match[3].toUpperCase() : null;
+
+                // Normalize to 24h format for calculation
+                if (ampm === 'PM' && inputHours < 12) inputHours += 12;
+                if (ampm === 'AM' && inputHours === 12) inputHours = 0;
+
+                // 2. Identify the IANA ID for the Parent's Zone
+                var ianaZone = "Europe/Berlin"; // Default fallback
+                var tz = parentZone || "";
+
+                // --- MAPPING (Add more if needed) ---
+                if (tz.includes("Eastern") || tz.includes("New York") || tz.includes("Indiana")) ianaZone = "America/New_York";
+                else if (tz.includes("Pacific") || tz.includes("Los Angeles")) ianaZone = "America/Los_Angeles";
+                else if (tz.includes("Mountain") || tz.includes("Denver")) ianaZone = "America/Denver";
+                else if (tz.includes("Central Time") || tz.includes("Chicago")) ianaZone = "America/Chicago";
+                else if (tz.includes("India") || tz.includes("Kolkata")) ianaZone = "Asia/Kolkata";
+                else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("UK")) ianaZone = "Europe/London";
+                else if (tz.includes("Dubai")) ianaZone = "Asia/Dubai";
+                else if (tz.includes("Singapore")) ianaZone = "Asia/Singapore";
+                else if (tz.includes("Sydney")) ianaZone = "Australia/Sydney";
+                else if (tz.includes("Brisbane")) ianaZone = "Australia/Brisbane";
+                else if (tz.includes("Tokyo")) ianaZone = "Asia/Tokyo";
+                // ------------------------------------
+
+                // 3. Calculate the Offset Difference (The "Shift")
+                // We take the current moment, format it in both zones, and see the difference.
+                var now = new Date();
+                
+                // Get string time in Source Zone (e.g., "1/1/2026, 19:00:00")
+                var sourceStr = now.toLocaleString("en-US", {timeZone: ianaZone, hour12: false});
+                // Get string time in Target Zone (CET) (e.g., "1/2/2026, 01:00:00")
+                var targetStr = now.toLocaleString("en-US", {timeZone: "Europe/Berlin", hour12: false});
+
+                // Convert strings back to Dates to do math (Treating them as local to compare raw values)
+                var dSource = new Date(sourceStr);
+                var dTarget = new Date(targetStr);
+
+                // Difference in Milliseconds (e.g., 6 hours = 21600000 ms)
+                var diff = dTarget.getTime() - dSource.getTime();
+
+                // 4. Apply this difference to the Input Time
+                // Create a generic date object for the Input Time
+                var calculationDate = new Date();
+                calculationDate.setHours(inputHours);
+                calculationDate.setMinutes(inputMinutes);
+                
+                // Add the offset
+                var finalDate = new Date(calculationDate.getTime() + diff);
+
+                // 5. Format Output
+                var finalHours = finalDate.getHours();
+                var finalMinutes = finalDate.getMinutes();
+                var finalAmpm = finalHours >= 12 ? 'PM' : 'AM';
+                
+                finalHours = finalHours % 12;
+                finalHours = finalHours ? finalHours : 12; // 0 becomes 12
+                var finalMinStr = finalMinutes < 10 ? '0' + finalMinutes : finalMinutes;
+
+                return finalHours + ':' + finalMinStr + ' ' + finalAmpm;
+
+              } catch(e) {
+                // If anything crashes, return original time to be safe
+                return timeStr + " (Calc Error)"; 
+              }
+           }
+        ?>
+
         <? for (let i = 0; i < data.classSessions.length; i++) { 
-             // Logic to ensure format is clean (e.g., 5:00 PM)
-             let timeDisplay = data.classSessions[i].time;
+             // Convert input time (Parent Zone) -> CET
+             let cetTime = toCET(data.classSessions[i].time, data.manualTimezone);
         ?>
           <div class="schedule-item">
-            <!-- Explicitly adding (CET) as requested -->
-            <?= data.classSessions[i].day ?> at <?= timeDisplay ?> (CET)
+            <?= data.classSessions[i].day ?> at <?= cetTime ?> (CET)
           </div>
         <? } ?>
     </div>

@@ -263,16 +263,40 @@ const TIMEZONE_IANA_MAP = {
 };
 
 const TIMEZONE_FRIENDLY_LABELS = {
+  // Asia
+  'Asia/Kolkata': 'IST',
+  'Asia/Dubai': 'GST',
+  'Asia/Singapore': 'SGT',
+  'Asia/Bangkok': 'ICT',
+  'Asia/Hong_Kong': 'HKT',
+  'Asia/Tokyo': 'JST',
+  'Asia/Seoul': 'KST',
+  
+  // Europe
   'Europe/London': 'UK Time',
   'Europe/Berlin': 'CET',
   'Europe/Paris': 'CET',
-  'America/New_York': 'EST/EDT',
-  'America/Chicago': 'CST/CDT',
-  'America/Los_Angeles': 'PST/PDT',
-  'Asia/Kolkata': 'IST',
-  'Asia/Dubai': 'GST',
+  'Europe/Amsterdam': 'CET',
+  'Europe/Zurich': 'CET',
+  'Europe/Athens': 'EET',
+  'Europe/Moscow': 'MSK',
+  
+  // US/Americas
+  'America/New_York': 'EST', 
+  'America/Chicago': 'CST',
+  'America/Denver': 'MST',
+  'America/Phoenix': 'MST',
+  'America/Los_Angeles': 'PST', 
+  'America/Anchorage': 'AKST',
+  'Pacific/Honolulu': 'HST',
+  
+  // Australia/Pacific
   'Australia/Sydney': 'AEST',
-  'Asia/Singapore': 'SGT'
+  'Australia/Melbourne': 'AEST',
+  'Australia/Brisbane': 'AEST',
+  'Australia/Adelaide': 'ACST',
+  'Australia/Perth': 'AWST',
+  'Pacific/Auckland': 'NZT'
 };
 
     return {

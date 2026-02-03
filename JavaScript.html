@@ -4460,15 +4460,16 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     }
 
     // Toggle visibility based on Checkbox
-    if (watiCheckbox) {
+if (watiCheckbox) {
         watiCheckbox.addEventListener('change', function() {
             if (this.checked) {
-                // Trigger the logic to load templates for current reason
+                // Trigger the logic to load templates
                 if (reasonSelect.value) {
                     reasonSelect.dispatchEvent(new Event('change'));
                 }
+                watiContainer.style.display = 'block'; // Ensure it SHOWS
             } else {
-                watiContainer.style.display = 'none';
+                watiContainer.style.display = 'none';  // Ensure it HIDES
             }
         });
     }

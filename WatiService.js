@@ -612,84 +612,49 @@ function convertCetToLocal(timeStr, targetTzString) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
 
-    // 1. Parse the input numbers (e.g., 11 and 00)
-    let hours = 0, minutes = 0;
-    const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-    
-    if (timeMatch) {
-      hours = parseInt(timeMatch[1]);
-      minutes = parseInt(timeMatch[2]);
-      const meridiem = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
-      if (meridiem === 'PM' && hours < 12) hours += 12;
-      if (meridiem === 'AM' && hours === 12) hours = 0;
-    } else {
-      return timeStr; 
-    }
-
-    // 2. Identify the target Timezone
-    let ianaZone = "Europe/London"; // Default
+    // 1. Get the friendly label based on the dropdown selection text
+    let label = ""; // Default to empty if no match found
     const tz = targetTzString || "";
 
-    // Mapping logic (Keep your existing mapping logic here)
-    if (tz.includes("India") || tz.includes("Kolkata")) ianaZone = "Asia/Kolkata";
-    else if (tz.includes("London") || tz.includes("UK")) ianaZone = "Europe/London";
-    else if (tz.includes("Eastern") || tz.includes("New_York")) ianaZone = "America/New_York";
-    else if (tz.includes("Central")) ianaZone = "America/Chicago";
-    else if (tz.includes("Mountain")) ianaZone = "America/Denver";
-    else if (tz.includes("Pacific") || tz.includes("Los_Angeles")) ianaZone = "America/Los_Angeles";
-    else if (tz.includes("Dubai")) ianaZone = "Asia/Dubai";
-    else if (tz.includes("Singapore")) ianaZone = "Asia/Singapore";
-    else if (tz.includes("Sydney")) ianaZone = "Australia/Sydney";
-    else if (tz.includes("Tokyo")) ianaZone = "Asia/Tokyo";
-    else if (tz.includes("Brussels") || tz.includes("Berlin") || tz.includes("Paris") || tz.includes("CET")) ianaZone = "Europe/Berlin";
+    // --- Asia ---
+    if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("Chennai") || tz.includes("Mumbai") || tz.includes("New Delhi")) label = "IST";
+    else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) label = "GST";
+    else if (tz.includes("Singapore") || tz.includes("Kuala Lumpur")) label = "SGT";
+    else if (tz.includes("Bangkok") || tz.includes("Hanoi") || tz.includes("Jakarta")) label = "ICT";
+    else if (tz.includes("Hong Kong") || tz.includes("Beijing")) label = "HKT";
+    else if (tz.includes("Tokyo") || tz.includes("Osaka")) label = "JST";
+    else if (tz.includes("Seoul")) label = "KST";
 
-    // ---------------------------------------------------------
-    // THE FIX: Force the time to be treated as Berlin/CET initially
-    // ---------------------------------------------------------
-    
-    // A. Create a date object with the input time (e.g. 11:00) in the SCRIPT'S local timezone (IST)
-    const scriptDate = new Date();
-    scriptDate.setHours(hours);
-    scriptDate.setMinutes(minutes);
-    scriptDate.setSeconds(0);
+    // --- Europe ---
+    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh") || tz.includes("Lisbon")) label = "UK Time";
+    else if (tz.includes("Brussels") || tz.includes("Paris") || tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Madrid") || tz.includes("Rome") || tz.includes("Vienna") || tz.includes("Stockholm")) label = "CET";
+    else if (tz.includes("Athens") || tz.includes("Bucharest") || tz.includes("Cairo") || tz.includes("Jerusalem")) label = "EET";
+    else if (tz.includes("Moscow")) label = "MSK";
 
-    // B. Find out what time that IS in Berlin. 
-    // If it's 11:00 IST, it is 06:30 Berlin.
-    const berlinString = scriptDate.toLocaleString("en-US", { timeZone: "Europe/Berlin" });
-    const berlinDate = new Date(berlinString); 
+    // --- US/Americas ---
+    else if (tz.includes("Eastern") || tz.includes("New York") || tz.includes("Indiana")) label = "EST";
+    else if (tz.includes("Central Time") || tz.includes("Chicago") || tz.includes("Mexico City")) label = "CST";
+    else if (tz.includes("Mountain") || tz.includes("Denver") || tz.includes("Arizona")) label = "MST";
+    else if (tz.includes("Pacific") || tz.includes("Los Angeles") || tz.includes("Tijuana")) label = "PST";
+    else if (tz.includes("Alaska")) label = "AKST";
+    else if (tz.includes("Hawaii")) label = "HST";
+    else if (tz.includes("Brasilia") || tz.includes("Buenos Aires")) label = "BRT";
 
-    // C. Calculate the difference. 
-    // 11:00 (Script) minus 06:30 (Berlin) = +4.5 hours difference.
-    const diff = scriptDate.getTime() - berlinDate.getTime();
+    // --- Australia/Pacific ---
+    else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra") || tz.includes("Brisbane")) label = "AEST";
+    else if (tz.includes("Adelaide") || tz.includes("Darwin")) label = "ACST";
+    else if (tz.includes("Perth")) label = "AWST";
+    else if (tz.includes("Auckland") || tz.includes("Wellington")) label = "NZT";
 
-    // D. Add that difference back to the original time.
-    // 11:00 IST + 4.5 hours = 15:30 IST.
-    // And 15:30 IST is exactly 11:00 CET.
-    const correctDate = new Date(scriptDate.getTime() + diff);
-
-    // ---------------------------------------------------------
-
-    // 3. Output the result in the Target Timezone
-    const timeOptions = {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: ianaZone
-    };
-
-    // Get the Friendly Label (e.g., CET, EST, IST)
-    // Note: Ensure TIMEZONE_FRIENDLY_LABELS is defined in your file as before
-    const label = (typeof TIMEZONE_FRIENDLY_LABELS !== 'undefined' && TIMEZONE_FRIENDLY_LABELS[ianaZone]) 
-                  ? TIMEZONE_FRIENDLY_LABELS[ianaZone] 
-                  : "";
-
-    return `${correctDate.toLocaleString("en-US", timeOptions)} ${label}`.trim();
+    // 2. Return Input + Label (NO MATH)
+    // If we found a label, append it. If not, just return the time.
+    return label ? `${timeStr} ${label}` : timeStr;
 
   } catch (e) {
-    Logger.log("Time Conversion Error: " + e.message);
-    return timeStr + " (CET)";
+    return timeStr;
   }
 }
+
 
 
 function fetchWatiDirectLink(phoneNumber) {

@@ -216,7 +216,7 @@ function sendOnboardingEmail(data, attachments = []) {
 
 
 function sendMigrationEmail(data, attachments = []) {
-  // --- NEW: VALIDATION CHECK ---
+  // --- VALIDATION CHECK ---
   const requiredFields = ['jlid', 'newTeacher', 'course', 'reasonOfMigration'];
   const validationError = validateRequiredFields(data, requiredFields);
 
@@ -227,7 +227,7 @@ function sendMigrationEmail(data, attachments = []) {
 
   let finalStatus = 'Partial Success';
   let notes = [];
-  let watiSuccess = true; // Track WATI status specifically
+  let watiSuccess = true; 
 
   try {
     // ==========================================
@@ -235,7 +235,6 @@ function sendMigrationEmail(data, attachments = []) {
     // ==========================================
     if (data.sendEmailToTeacher) {
         const teacherData = getTeacherData();
-        // Case-insensitive lookup
         const newTeacherInfo = teacherData.find(t => String(t.name).trim().toLowerCase() === String(data.newTeacher).trim().toLowerCase());
         
         let oldTeacherInfo = null;
@@ -244,7 +243,7 @@ function sendMigrationEmail(data, attachments = []) {
         }
 
         if (!newTeacherInfo || !isValidEmail(newTeacherInfo.email)) {
-            throw new Error(`New teacher email invalid or not found: ${data.newTeacher}`);
+            throw new Error(`New teacher email invalid: ${data.newTeacher}`);
         }
         
         const finalClsEmailForCC = findClsEmailByManagerName(data.clsManager);
@@ -275,34 +274,36 @@ function sendMigrationEmail(data, attachments = []) {
         notes.push("Teacher Email Skipped.");
     }
 
+    // --- SAFETY PAUSE: Wait 2 seconds before hitting WATI API ---
+    // This prevents race conditions or rate limiting
+    if (data.sendEmailToTeacher && data.sendWhatsappToParent) {
+       Utilities.sleep(2000); 
+    }
+
     // ==========================================
-    // 2. WATI WHATSAPP (Parent's Timezone)
+    // 2. WATI WHATSAPP
     // ==========================================
     if (data.sendWhatsappToParent) {
       try {
-        // A. Fetch Hubspot Data
         const hubspotResult = fetchHubspotByJlid(data.jlid);
         const hsData = hubspotResult.success ? hubspotResult.data : {};
         const parentPhone = hsData.parentContact;
         
         if (!parentPhone) throw new Error("Parent phone number missing in HubSpot.");
 
-        // B. Determine Template
         let templateId = data.watiTemplateName;
         if (!templateId) {
             const templates = getTemplatesForReason(data.reasonOfMigration);
             templateId = (templates && templates.length > 0) ? templates[0].id : "migration_generic_update";
         }
 
-        // C. Calculate Local Time
         const firstSession = data.classSessions && data.classSessions.length > 0 ? data.classSessions[0] : { day: "TBD", time: "TBD" };
         const parentTimezone = data.manualTimezone || hsData.timezone || "Europe/London";
         data.calculatedLocalTime = convertCetToLocal(firstSession.time, parentTimezone); 
 
-        // D. Build Parameters
         const watiParameters = getWatiParameters(templateId, data, hsData);
 
-        // E. Send using Unified Helper
+        // Send using Unified Helper
         const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters);
         
         if (watiRes.success) {
@@ -314,33 +315,33 @@ function sendMigrationEmail(data, attachments = []) {
 
       } catch(e) {
         watiSuccess = false;
-        Logger.log("WATI Migration Error: " + e.message);
-        notes.push("WATI Error: " + e.message);
+        Logger.log("WATI Error: " + e.message);
+        // Clean error message to avoid saving HTML garbage to sheet
+        const safeError = e.message.substring(0, 150);
+        notes.push("WATI Error: " + safeError);
       }
     } else {
         notes.push("WhatsApp Skipped.");
     }
 
-    // --- LOGIC FIX: Determine Status ---
-    // Success if Email didn't throw AND WATI didn't flag failure
+    // --- STATUS CHECK ---
     if (watiSuccess) {
         finalStatus = 'Success';
         return { success: true, message: 'Migration process completed successfully.' };
     } else {
         finalStatus = 'Partial Success';
-        return { success: true, message: 'Email sent, but WhatsApp failed. Check Audit Log.' };
+        return { success: true, message: 'Email sent, but WhatsApp failed. Check Logs.' };
     }
 
   } catch (error) {
     Logger.log(`Error in Migration Process: ${error.message}`);
     notes.push(`Critical Error: ${error.message}`);
-    // If Email fails, the whole thing is considered Failed
     return { success: false, message: `Failed: ${error.message}` };
   } finally {
-    // Log the outcome
     logAction('Migration Process', data.jlid, data.learner, data.oldTeacher, data.newTeacher, data.course, finalStatus, notes.join('; '), data.reasonOfMigration);
   }
 }
+
 
 
 function handleTrackingPixel(trackingId) {
