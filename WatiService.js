@@ -564,43 +564,6 @@ function generateWatiPreviewWrapper(data) {
   }
 }
 
-const TIMEZONE_FRIENDLY_LABELS = {
-  // Asia
-  'Asia/Kolkata': 'IST',
-  'Asia/Dubai': 'GST',
-  'Asia/Singapore': 'SGT',
-  'Asia/Bangkok': 'ICT',
-  'Asia/Hong_Kong': 'HKT',
-  'Asia/Tokyo': 'JST',
-  
-  // Europe
-  'Europe/London': 'UK Time',
-  'Europe/Berlin': 'CET',
-  'Europe/Paris': 'CET',
-  'Europe/Amsterdam': 'CET',
-  'Europe/Zurich': 'CET',
-  'Europe/Athens': 'EET',
-  'Europe/Moscow': 'MSK',
-  
-  // US/Americas
-  'America/New_York': 'EST', // Or 'ET' if you prefer
-  'America/Chicago': 'CST',
-  'America/Denver': 'MST',
-  'America/Phoenix': 'MST',
-  'America/Los_Angeles': 'PST', // Or 'PT'
-  'America/Anchorage': 'AKST',
-  'Pacific/Honolulu': 'HST',
-  
-  // Australia/Pacific
-  'Australia/Sydney': 'AEST',
-  'Australia/Melbourne': 'AEST',
-  'Australia/Brisbane': 'AEST',
-  'Australia/Adelaide': 'ACST',
-  'Australia/Perth': 'AWST',
-  'Pacific/Auckland': 'NZT'
-};
-
-
 
 function fetchWatiDirectLink(phoneNumber) {
   const scriptProperties = PropertiesService.getScriptProperties();
