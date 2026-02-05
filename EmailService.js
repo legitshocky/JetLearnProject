@@ -216,7 +216,6 @@ function sendOnboardingEmail(data, attachments = []) {
 
 
 function sendMigrationEmail(data, attachments = []) {
-  // --- VALIDATION CHECK ---
   const requiredFields = ['jlid', 'newTeacher', 'course', 'reasonOfMigration'];
   const validationError = validateRequiredFields(data, requiredFields);
 
@@ -231,7 +230,7 @@ function sendMigrationEmail(data, attachments = []) {
 
   try {
     // ==========================================
-    // 1. TEACHER EMAIL (Always CET)
+    // 1. SEND EMAILS (TEACHERS)
     // ==========================================
     if (data.sendEmailToTeacher) {
         const teacherData = getTeacherData();
@@ -242,13 +241,13 @@ function sendMigrationEmail(data, attachments = []) {
             oldTeacherInfo = teacherData.find(t => String(t.name).trim().toLowerCase() === String(data.oldTeacher).trim().toLowerCase());
         }
 
+        // --- A. NEW TEACHER ---
         if (!newTeacherInfo || !isValidEmail(newTeacherInfo.email)) {
             throw new Error(`New teacher email invalid: ${data.newTeacher}`);
         }
         
         const finalClsEmailForCC = findClsEmailByManagerName(data.clsManager);
         
-        // Send to New Teacher
         const newTeacherResult = sendTrackedEmail({
           to: newTeacherInfo.email, 
           cc: finalClsEmailForCC, 
@@ -259,23 +258,29 @@ function sendMigrationEmail(data, attachments = []) {
         });
         notes.push(`Teacher Email Sent (TID: ${newTeacherResult.trackingId})`);
         
-        // Optional: Send to Old Teacher
+        // --- B. OLD TEACHER (Moved Here to ensure it runs) ---
         if (oldTeacherInfo && isValidEmail(oldTeacherInfo.email)) {
-           sendTrackedEmail({
-            to: oldTeacherInfo.email, 
-            cc: finalClsEmailForCC, 
-            subject: `${data.learner} - Migration`,
-            htmlBody: getOldTeacherEmailHTML(data, ''), 
-            jlid: data.jlid
-          });
-          notes.push("Old Teacher Email Sent.");
+           try {
+             sendTrackedEmail({
+              to: oldTeacherInfo.email, 
+              cc: finalClsEmailForCC, 
+              subject: `${data.learner} - Migration`,
+              htmlBody: getOldTeacherEmailHTML(data, ''), 
+              jlid: data.jlid
+            });
+            notes.push("Old Teacher Email Sent.");
+           } catch(e) {
+             Logger.log("Old Teacher Email Failed: " + e.message);
+             notes.push("Old Teacher Email Failed.");
+           }
+        } else if (data.oldTeacher) {
+           notes.push("Old Teacher Email Skipped (Invalid Email/Not Found).");
         }
     } else {
         notes.push("Teacher Email Skipped.");
     }
 
-    // --- SAFETY PAUSE: Wait 2 seconds before hitting WATI API ---
-    // This prevents race conditions or rate limiting
+    // Safety Pause
     if (data.sendEmailToTeacher && data.sendWhatsappToParent) {
        Utilities.sleep(2000); 
     }
@@ -284,11 +289,25 @@ function sendMigrationEmail(data, attachments = []) {
     // 2. WATI WHATSAPP
     // ==========================================
     if (data.sendWhatsappToParent) {
+      // We wrap the ENTIRE WATI block in its own try/catch
+      // This ensures that even if HubSpot/WATI crashes, the Emails (already sent above) are recorded.
       try {
-        const hubspotResult = fetchHubspotByJlid(data.jlid);
-        const hsData = hubspotResult.success ? hubspotResult.data : {};
-        const parentPhone = hsData.parentContact;
         
+        // SAFE HUBSPOT FETCH
+        let hsData = {};
+        try {
+           const hubspotResult = fetchHubspotByJlid(data.jlid);
+           if (hubspotResult.success) {
+               hsData = hubspotResult.data;
+           } else {
+               Logger.log("HubSpot Warning: " + hubspotResult.message);
+           }
+        } catch (hsError) {
+           Logger.log("HubSpot Critical Failure: " + hsError.message);
+           // We continue, but parent phone might be missing
+        }
+
+        const parentPhone = hsData.parentContact;
         if (!parentPhone) throw new Error("Parent phone number missing in HubSpot.");
 
         let templateId = data.watiTemplateName;
@@ -297,17 +316,16 @@ function sendMigrationEmail(data, attachments = []) {
             templateId = (templates && templates.length > 0) ? templates[0].id : "migration_generic_update";
         }
 
-        const firstSession = data.classSessions && data.classSessions.length > 0 ? data.classSessions[0] : { day: "TBD", time: "TBD" };
-        const parentTimezone = data.manualTimezone || hsData.timezone || "Europe/London";
-        data.calculatedLocalTime = convertCetToLocal(firstSession.time, parentTimezone); 
-
         const watiParameters = getWatiParameters(templateId, data, hsData);
 
-        // Send using Unified Helper
+        // LOGGING ENHANCEMENT
+        const logDetail = watiParameters.map(p => `${p.name}: ${p.value}`).join(' | ');
+
+        // SEND
         const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters);
         
         if (watiRes.success) {
-            notes.push(`WATI Sent (${templateId})`);
+            notes.push(`WATI Sent (${templateId}) -> [DATA: ${logDetail}]`);
         } else {
             watiSuccess = false;
             notes.push(`WATI Failed: ${watiRes.message}`);
@@ -315,10 +333,9 @@ function sendMigrationEmail(data, attachments = []) {
 
       } catch(e) {
         watiSuccess = false;
-        Logger.log("WATI Error: " + e.message);
-        // Clean error message to avoid saving HTML garbage to sheet
+        Logger.log("WATI Block Error: " + e.message);
         const safeError = e.message.substring(0, 150);
-        notes.push("WATI Error: " + safeError);
+        notes.push("Error: " + safeError);
       }
     } else {
         notes.push("WhatsApp Skipped.");

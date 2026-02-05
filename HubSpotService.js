@@ -13,18 +13,12 @@ function safeParseHubspotNumber(value, defaultValue = 0) {
 function fetchHubspotByJlid(jlid) {
   Logger.log('fetchHubspotByJlid called for JLID: ' + jlid);
   
-  if (!jlid) {
-    return { success: false, message: 'JLID is required for HubSpot lookup.' };
-  }
+  if (!jlid) return { success: false, message: 'JLID is required.' };
 
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-  if (!token) {
-    Logger.log('HubSpot API token not configured.');
-    return { success: false, message: 'HubSpot API token not configured. Please set it in Script Properties.' };
-  }
-
   const hubspotApiUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
 
+  // (Properties list remains the same)
   const properties = [
     'dealname', 'jetlearner_id', 'amount', 'deal_currency_code', 'hs_object_id', 'age', 'learner_status',
     'module_start_date', 'module_end_date', 'total_classes_committed_through_learner_s_journey',
@@ -43,57 +37,51 @@ function fetchHubspotByJlid(jlid) {
     limit: 1
   };
 
-  try {
-    const options = {
-      method: 'post',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(requestBody),
-      muteHttpExceptions: true
-    };
+  const options = {
+    method: 'post',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    payload: JSON.stringify(requestBody),
+    muteHttpExceptions: true
+  };
 
+  try {
     const response = UrlFetchApp.fetch(hubspotApiUrl, options);
     const responseCode = response.getResponseCode();
     const responseBody = response.getContentText();
+
+    // --- CRITICAL FIX START ---
+    // Check if HubSpot returned HTML (Error Page) instead of JSON
+    if (responseBody.trim().startsWith("<")) {
+      Logger.log(`[HUBSPOT ERROR] API returned HTML: ${responseBody}`);
+      return { success: false, message: `HubSpot API Error (${responseCode}): Connection Failed` };
+    }
+    // --- CRITICAL FIX END ---
+
     const jsonResponse = JSON.parse(responseBody);
 
     if (responseCode !== 200) {
-      Logger.log(`HubSpot API Error (${responseCode}): ${responseBody}`);
-      const errorMessage = jsonResponse.message || (jsonResponse.errors && jsonResponse.errors[0] && jsonResponse.errors[0].message) || 'Unknown error';
+      const errorMessage = jsonResponse.message || 'Unknown error';
       return { success: false, message: `HubSpot API Error: ${errorMessage}` };
     }
 
     if (jsonResponse.results && jsonResponse.results.length > 0) {
       const contactProperties = jsonResponse.results[0].properties; 
-      if (!contactProperties) {
-          Logger.log('HubSpot API: Deal found but properties object is null for JLID: ' + jlid);
-          return { success: false, message: 'HubSpot data found but properties are empty.' };
-      }
       
-      // ================== DISCOUNT CALCULATION LOGIC ==================
-      // Uses the new safe parser to prevent crashes if tenure is "12 months" string
       const tenure = safeParseHubspotNumber(contactProperties.subscription_tenure);
       const dealAmount = safeParseHubspotNumber(contactProperties.amount);
       const currencyCode = contactProperties.deal_currency_code || 'EUR'; 
       let calculatedDiscount = 0;
 
       if (tenure > 0 && dealAmount > 0) {
-          // 1. Calculate Standard Price in EUR (Base is €149/mo)
           const standardPriceEur = tenure * 149; 
-          
-          // 2. Get conversion rate using the helper from InvoiceService.js
           const conversionRate = getConversionRate(currencyCode); 
-          
-          // 3. Convert Standard Price to the Deal's Currency
           const standardPriceLocal = standardPriceEur * conversionRate;
-
-          // 4. Calculate Discount
           if (standardPriceLocal > dealAmount) {
               calculatedDiscount = standardPriceLocal - dealAmount;
           }
       }
-      // =================================================================
 
-      // Helper: Parse Class Timings string
+      // Helper: Parse Class Timings
       const parseClassTimings = (timingsString) => {
           if (!timingsString) return [];
           if (timingsString.includes(' at ')) {
@@ -106,14 +94,12 @@ function fetchHubspotByJlid(jlid) {
             }).filter(Boolean);
           }
           return timingsString.split(/[,;]/).map(dayStr => {
-              if (dayStr.trim()) {
-                  return { day: dayStr.trim(), time: '' };
-              }
+              if (dayStr.trim()) return { day: dayStr.trim(), time: '' };
               return null;
           }).filter(Boolean);
       };
 
-      // Helper: Parse Payment Plan string
+      // Helper: Parse Payment Plan
       const parsePaymentPlan = (hubspotPlan) => {
         if (!hubspotPlan) return { paymentPlanType: 'Upfront', installmentFrequency: '', customPlanDetails: '' };
         hubspotPlan = hubspotPlan.toLowerCase();
@@ -129,20 +115,15 @@ function fetchHubspotByJlid(jlid) {
         }
       };
       
-      // Helper: Parse Session Frequency
       let sessionsPerWeekString = '';
       const rawFrequency = contactProperties.frequency_of_classes;
       if (rawFrequency && typeof rawFrequency === 'string') {
           const numMatch = rawFrequency.match(/\d+/);
           if (numMatch) {
               const num = parseInt(numMatch[0], 10);
-              if (rawFrequency.toLowerCase().includes('week')) {
-                  sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/week`;
-              } else if (rawFrequency.toLowerCase().includes('month')) {
-                  sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/month`;
-              } else {
-                   sessionsPerWeekString = rawFrequency;
-              }
+              if (rawFrequency.toLowerCase().includes('week')) sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/week`;
+              else if (rawFrequency.toLowerCase().includes('month')) sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/month`;
+              else sessionsPerWeekString = rawFrequency;
           } else {
               sessionsPerWeekString = rawFrequency;
           }
@@ -158,11 +139,8 @@ function fetchHubspotByJlid(jlid) {
         parentEmail: contactProperties.parent_email || '',
         parentContact: contactProperties.phone_number_deal_ || contactProperties.phone || '',
         course: getCourseLabel(contactProperties.current_course) || '',
-        
-        // Use safe parser for numbers
-        subscriptionTenureMonths: safeParseHubspotNumber(contactProperties.subscription_tenure),
-        dealAmount: safeParseHubspotNumber(contactProperties.amount),
-        
+        subscriptionTenureMonths: tenure,
+        dealAmount: dealAmount,
         age: contactProperties.age || '', 
         currentTeacher: getTeacherLabel(contactProperties.current_teacher) || '',
         newTeacher: '', 
@@ -176,12 +154,9 @@ function fetchHubspotByJlid(jlid) {
         customPlanDetails: paymentPlanParsed.customPlanDetails,
         zoomLink: contactProperties.zoom_masked_link || '',
         practiceDocumentLink: contactProperties.learner_practice_document_link || '',
-        
-        // Resolve Internal IDs to Names using helper functions
         jetGuideName: getHSUserLabel(contactProperties.jet_guide) || '',
         clsManagerName: getHSUserLabel(contactProperties.cls_manager) || '',
         tpManagerName: getHSUserLabel(contactProperties.teacher_manager) || '',
-        
         currency: contactProperties.deal_currency_code || 'EUR', 
         sessionsPerWeek: sessionsPerWeekString,
         timezone: contactProperties.time_zone || '',
@@ -190,16 +165,13 @@ function fetchHubspotByJlid(jlid) {
         discount: calculatedDiscount 
       };
       
-      Logger.log('HubSpot data fetched successfully for JLID: ' + jlid);
       return { success: true, data: data };
     } else {
-      Logger.log('No contact found for JLID: ' + jlid);
       return { success: false, message: 'No learner found with this JLID in HubSpot.' };
     }
 
   } catch (error) {
-    Logger.log('Error fetching from HubSpot: ' + error.message + ' Stack: ' + error.stack);
-    return { success: false, message: 'Failed to connect to HubSpot: ' + error.message };
+    return { success: false, message: 'HubSpot Connection Error: ' + error.message };
   }
 }
 

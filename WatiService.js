@@ -1,10 +1,13 @@
 function getWatiParameters(templateName, migrationData, hubspotData) {
-  
-  // A. Prepare Data Variables
-  const session = (migrationData.classSessions && migrationData.classSessions.length > 0) 
-                  ? migrationData.classSessions[0] 
-                  : { day: "TBD", time: "TBD" };
-
+    let weekdayStr = "TBD";
+  let timeStr = "TBD";
+  if (migrationData.classSessions && migrationData.classSessions.length > 0) {
+    weekdayStr = migrationData.classSessions.map(s => s.day).join(' & ');
+    const parentTimezone = migrationData.manualTimezone || hubspotData.timezone || "Europe/London";    
+    timeStr = migrationData.classSessions.map(s => {
+       return convertCetToLocal(s.time, parentTimezone);
+    }).join(' & ');
+  }
   let dateStr = "TBD";
   try {
     if (migrationData.startDate) {
@@ -13,26 +16,15 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
     }
   } catch(e) {}
 
-  let timeStr = migrationData.calculatedLocalTime;
-  if (!timeStr) {
-      const rawTime = session.time || "TBD";
-      const tz = migrationData.manualTimezone || hubspotData.timezone || "Europe/London";
-      timeStr = convertCetToLocal(rawTime, tz);
-  }
-
   const parentName = hubspotData.parentName || "Parent";
   const learnerName = migrationData.learner || "Student";
   const teacherName = migrationData.newTeacher || "New Teacher"; 
   const oldTeacherName = migrationData.oldTeacher || "Previous Teacher"; 
   const courseName = migrationData.course || "Course";
   const classLink = migrationData.classLink || "https://live.jetlearn.com/login";
-  const weekdayStr = session.day || "Day";
-
-  // B. Construct Parameter Array based on Template ID
   let requiredParams = [];
-
   switch (templateName) {
-    
+
     // ----------------------------------------------------
     // NEW: TEACHER ON LEAVES - HIGHER STUDIES
     // ----------------------------------------------------
@@ -607,53 +599,6 @@ const TIMEZONE_FRIENDLY_LABELS = {
   'Australia/Perth': 'AWST',
   'Pacific/Auckland': 'NZT'
 };
-
-function convertCetToLocal(timeStr, targetTzString) {
-  try {
-    if (!timeStr || timeStr === "TBD") return "TBD";
-
-    // 1. Get the friendly label based on the dropdown selection text
-    let label = ""; // Default to empty if no match found
-    const tz = targetTzString || "";
-
-    // --- Asia ---
-    if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("Chennai") || tz.includes("Mumbai") || tz.includes("New Delhi")) label = "IST";
-    else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) label = "GST";
-    else if (tz.includes("Singapore") || tz.includes("Kuala Lumpur")) label = "SGT";
-    else if (tz.includes("Bangkok") || tz.includes("Hanoi") || tz.includes("Jakarta")) label = "ICT";
-    else if (tz.includes("Hong Kong") || tz.includes("Beijing")) label = "HKT";
-    else if (tz.includes("Tokyo") || tz.includes("Osaka")) label = "JST";
-    else if (tz.includes("Seoul")) label = "KST";
-
-    // --- Europe ---
-    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh") || tz.includes("Lisbon")) label = "UK Time";
-    else if (tz.includes("Brussels") || tz.includes("Paris") || tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Madrid") || tz.includes("Rome") || tz.includes("Vienna") || tz.includes("Stockholm")) label = "CET";
-    else if (tz.includes("Athens") || tz.includes("Bucharest") || tz.includes("Cairo") || tz.includes("Jerusalem")) label = "EET";
-    else if (tz.includes("Moscow")) label = "MSK";
-
-    // --- US/Americas ---
-    else if (tz.includes("Eastern") || tz.includes("New York") || tz.includes("Indiana")) label = "EST";
-    else if (tz.includes("Central Time") || tz.includes("Chicago") || tz.includes("Mexico City")) label = "CST";
-    else if (tz.includes("Mountain") || tz.includes("Denver") || tz.includes("Arizona")) label = "MST";
-    else if (tz.includes("Pacific") || tz.includes("Los Angeles") || tz.includes("Tijuana")) label = "PST";
-    else if (tz.includes("Alaska")) label = "AKST";
-    else if (tz.includes("Hawaii")) label = "HST";
-    else if (tz.includes("Brasilia") || tz.includes("Buenos Aires")) label = "BRT";
-
-    // --- Australia/Pacific ---
-    else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra") || tz.includes("Brisbane")) label = "AEST";
-    else if (tz.includes("Adelaide") || tz.includes("Darwin")) label = "ACST";
-    else if (tz.includes("Perth")) label = "AWST";
-    else if (tz.includes("Auckland") || tz.includes("Wellington")) label = "NZT";
-
-    // 2. Return Input + Label (NO MATH)
-    // If we found a label, append it. If not, just return the time.
-    return label ? `${timeStr} ${label}` : timeStr;
-
-  } catch (e) {
-    return timeStr;
-  }
-}
 
 
 
