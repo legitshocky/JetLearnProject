@@ -1080,96 +1080,44 @@ function submitMigrationForm(e) {
         updateEmailPreviewDebounced();
     }
 
-    function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInputEl, recipientEmailInputEl, parentNameInputEl, parentContactInputEl, subscriptionTenureInputEl, startingDateInputEl, endDateInputEl, paymentPlanSelectEl, zoomLinkInputEl, practiceDocLinkInputEl, jetGuideSelectEl, currentTeacherSelectEl, newTeacherSelectEl, formPrefix, timezoneSelectEl, clsSelectEl, tpSelectEl, subscriptionStartDateInputEl, planNameSelectEl, currencySelectEl, sessionsPerWeekSelectEl) {
+function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInputEl, recipientEmailInputEl, parentNameInputEl, parentContactInputEl, subscriptionTenureInputEl, startingDateInputEl, endDateInputEl, paymentPlanSelectEl, zoomLinkInputEl, practiceDocLinkInputEl, jetGuideSelectEl, currentTeacherSelectEl, newTeacherSelectEl, formPrefix, timezoneSelectEl, clsSelectEl, tpSelectEl, subscriptionStartDateInputEl, planNameSelectEl, currencySelectEl, sessionsPerWeekSelectEl) {
         const jlid = jlidInputEl.value.trim();
+        
         if (!jlid) {
             showToast('error', 'Input Required', 'Please enter a JLID to fetch data.');
             return;
         }
+
         showLoading('Fetching data from HubSpot...');
+        
         google.script.run
             .withSuccessHandler(result => {
                 hideLoading();
+                
                 if (result && result.success) {
                     const data = result.data;
-                    document.getElementById('onboardingParentDealId').value = data.dealId || '';
+                    
+                    // --- 1. Basic Fields ---
+                    const dealIdEl = document.getElementById('onboardingParentDealId');
+                    if (dealIdEl) dealIdEl.value = data.dealId || '';
+                    
                     jlidInputEl.value = data.jlid || jlid;
                     if (learnerNameInputEl) learnerNameInputEl.value = data.learnerName || '';
-                    if (courseInputEl) {
-                        if (courseInputEl.tagName === 'SELECT') {
-                            const currentCourses = Array.from(courseInputEl.options).map(o => o.value);
-                            if (data.course && !currentCourses.includes(data.course)) {
-                                const newOption = new Option(data.course, data.course, true, true);
-                                courseInputEl.appendChild(newOption);
-                            }
-                            courseInputEl.value = data.course || '';
-                        } else {
-                            courseInputEl.value = data.course || '';
-                        }
-                    }
                     if (ageInputEl) ageInputEl.value = data.age || '';
                     if (recipientEmailInputEl) recipientEmailInputEl.value = data.parentEmail || '';
                     if (parentNameInputEl) parentNameInputEl.value = data.parentName || data.learnerName || '';
                     if (parentContactInputEl) parentContactInputEl.value = data.parentContact || '';
-                    if (subscriptionTenureInputEl) {
-                      const tenureValue = data.subscriptionTenureMonths > 0 ? String(data.subscriptionTenureMonths) : '';
-                      const optionExists = Array.from(subscriptionTenureInputEl.options).some(o => o.value === tenureValue);
-                      if (!optionExists && tenureValue) {
-                          const newOption = new Option(tenureValue, tenureValue, true, true);
-                          subscriptionTenureInputEl.appendChild(newOption);
-                      }
-                      subscriptionTenureInputEl.value = tenureValue;
-                  }
-                  if (startingDateInputEl && data.startingDate) {
-                      startingDateInputEl.value = new Date(data.startingDate).toISOString().split('T')[0];
-                  }
-                  if (endDateInputEl && data.endDate) {
-                      endDateInputEl.value = new Date(data.endDate).toISOString().split('T')[0];
-                  }
-                  if (subscriptionStartDateInputEl && data.subscriptionStartDate) {
-                      subscriptionStartDateInputEl.value = new Date(data.subscriptionStartDate).toISOString().split('T')[0];
-                  }
-                  if (timezoneSelectEl && data.timezone) {
-                       const optionExists = Array.from(timezoneSelectEl.options).some(o => o.value.toLowerCase() === data.timezone.toLowerCase());
-                       if(!optionExists){
-                           const newOption = new Option(data.timezone, data.timezone, true, true);
-                           timezoneSelectEl.appendChild(newOption);
-                       }
-                       timezoneSelectEl.value = data.timezone;
-                  }
-                    const sessionContainerMap = {
-                        'onboardingParent': onboardingParentClassSessionsContainer,
-                        'onboarding': onboardingClassSessionsContainer,
-                        'migration': classSessionsContainer
-                    };
-                    const targetSessionContainer = sessionContainerMap[formPrefix];
-                    if (targetSessionContainer && data.classSessions && data.classSessions.length > 0) {
-                        targetSessionContainer.innerHTML = '';
-                        data.classSessions.forEach((session, index) => {
-                            const isInitial = index === 0;
-                            const newSession = createClassSessionGroup(isInitial, formPrefix);
-                            targetSessionContainer.appendChild(newSession);
-                            newSession.querySelector('.class-day-select').value = session.day;
-                            if (session.time) {
-                                const timeParts = session.time.match(/(\d{1,2}):(\d{2})\s(AM|PM)/i);
-                                if (timeParts) {
-                                  const [_, hour, minute, meridiem] = timeParts;
-                                  newSession.querySelector('.class-hour-select').value = hour.padStart(2, '0');
-                                  newSession.querySelector('.class-minute-select').value = minute;
-                                  newSession.querySelector('.class-meridiem-select').value = meridiem.toUpperCase();
-                                }
-                            }
-                        });
-                    } else if (targetSessionContainer && targetSessionContainer.children.length === 0) {
-                         targetSessionContainer.appendChild(createClassSessionGroup(true, formPrefix));
-                    }
+                    
                     if (zoomLinkInputEl) {
                         zoomLinkInputEl.value = data.zoomLink || `https://live.jetlearn.com/join/${cleanJlidForZoom(data.jlid || '')}`;
                     }
                     if (practiceDocLinkInputEl) practiceDocLinkInputEl.value = data.practiceDocumentLink || '';
+
+                    // --- 2. Helper to set Select values (Create option if missing) ---
                     const setSelectValue = (selectElement, value) => {
                         if (selectElement) {
-                            const optionExists = Array.from(selectElement.options).some(option => option.value === value);
+                            // Check if option exists (case-insensitive)
+                            const optionExists = Array.from(selectElement.options).some(option => option.value.toLowerCase() === String(value).toLowerCase());
                             if (!optionExists && value) {
                                 const newOption = new Option(value, value, true, true);
                                 selectElement.appendChild(newOption);
@@ -1177,25 +1125,102 @@ function submitMigrationForm(e) {
                             selectElement.value = value || '';
                         }
                     };
-                    setSelectValue(jetGuideSelectEl, data.jetGuideName);
-                    if (currentTeacherSelectEl) setSelectValue(currentTeacherSelectEl, data.currentTeacher);
-                    if (newTeacherSelectEl) setSelectValue(newTeacherSelectEl, data.newTeacher);
-                    if (clsSelectEl) setSelectValue(clsSelectEl, data.clsManagerName);
-                    if (tpSelectEl) setSelectValue(tpSelectEl, data.tpManagerName);
-                    if (planNameSelectEl) setSelectValue(planNameSelectEl, data.planName);
-                    if (currencySelectEl) setSelectValue(currencySelectEl, data.currency);
-                    if (sessionsPerWeekSelectEl) setSelectValue(sessionsPerWeekSelectEl, data.sessionsPerWeek);
-                    if (formPrefix === 'onboardingParent') {
-                        if (data.paymentType === 'Installment') {
-                            document.getElementById('onboardingParentPaymentInstallment').checked = true;
-                            onboardingParentInstallmentOptions.style.display = 'block';
+
+                    // --- 3. Dropdowns & Inputs ---
+                    if (courseInputEl) {
+                        if (courseInputEl.tagName === 'SELECT') {
+                            setSelectValue(courseInputEl, data.course);
                         } else {
-                            document.getElementById('onboardingParentPaymentUpfront').checked = true;
-                            onboardingParentInstallmentOptions.style.display = 'none';
+                            courseInputEl.value = data.course || '';
                         }
-                        setSelectValue(onboardingParentInstallmentFrequency, data.installmentFrequency);
-                        updateParentOnboardingPlanDetails();
                     }
+
+                    if (subscriptionTenureInputEl) {
+                        const tenureValue = data.subscriptionTenureMonths > 0 ? String(data.subscriptionTenureMonths) : '';
+                        setSelectValue(subscriptionTenureInputEl, tenureValue);
+                    }
+
+                    // Dates
+                    if (startingDateInputEl && data.startingDate) {
+                        startingDateInputEl.value = new Date(data.startingDate).toISOString().split('T')[0];
+                    }
+                    if (endDateInputEl && data.endDate) {
+                        endDateInputEl.value = new Date(data.endDate).toISOString().split('T')[0];
+                    }
+                    if (subscriptionStartDateInputEl && data.subscriptionStartDate) {
+                        subscriptionStartDateInputEl.value = new Date(data.subscriptionStartDate).toISOString().split('T')[0];
+                    }
+
+                    // Selects
+                    if (timezoneSelectEl && data.timezone) {
+                        setSelectValue(timezoneSelectEl, data.timezone);
+                    }
+                    
+                    setSelectValue(jetGuideSelectEl, data.jetGuideName);
+                    setSelectValue(currentTeacherSelectEl, data.currentTeacher);
+                    setSelectValue(newTeacherSelectEl, data.newTeacher);
+                    setSelectValue(clsSelectEl, data.clsManagerName);
+                    setSelectValue(tpSelectEl, data.tpManagerName);
+                    setSelectValue(planNameSelectEl, data.planName);
+                    setSelectValue(currencySelectEl, data.currency);
+                    setSelectValue(sessionsPerWeekSelectEl, data.sessionsPerWeek);
+
+                    // --- 4. Class Sessions Logic ---
+                    const sessionContainerMap = {
+                        'onboardingParent': document.getElementById('onboardingParentClassSessionsContainer'),
+                        'onboarding': document.getElementById('onboardingClassSessionsContainer'),
+                        'migration': document.getElementById('classSessionsContainer')
+                    };
+                    const targetSessionContainer = sessionContainerMap[formPrefix];
+                    
+                    if (targetSessionContainer && data.classSessions && data.classSessions.length > 0) {
+                        targetSessionContainer.innerHTML = ''; // Clear existing
+                        data.classSessions.forEach((session, index) => {
+                            const isInitial = index === 0;
+                            const newSession = createClassSessionGroup(isInitial, formPrefix);
+                            targetSessionContainer.appendChild(newSession);
+                            
+                            const daySelect = newSession.querySelector('.class-day-select');
+                            if(daySelect) daySelect.value = session.day;
+                            
+                            if (session.time) {
+                                const timeParts = session.time.match(/(\d{1,2}):(\d{2})\s(AM|PM)/i);
+                                if (timeParts) {
+                                    const [_, hour, minute, meridiem] = timeParts;
+                                    newSession.querySelector('.class-hour-select').value = hour.padStart(2, '0');
+                                    newSession.querySelector('.class-minute-select').value = minute;
+                                    newSession.querySelector('.class-meridiem-select').value = meridiem.toUpperCase();
+                                }
+                            }
+                        });
+                    } else if (targetSessionContainer && targetSessionContainer.children.length === 0) {
+                        // Create one empty row if none exist
+                        targetSessionContainer.appendChild(createClassSessionGroup(true, formPrefix));
+                    }
+
+                    // --- 5. Parent Onboarding Specific Logic ---
+                    if (formPrefix === 'onboardingParent') {
+                        const installmentRadio = document.getElementById('onboardingParentPaymentInstallment');
+                        const upfrontRadio = document.getElementById('onboardingParentPaymentUpfront');
+                        const installmentOptions = document.getElementById('onboardingParentInstallmentOptions');
+                        const freqSelect = document.getElementById('onboardingParentInstallmentFrequency');
+
+                        if (data.paymentType === 'Installment') {
+                            if(installmentRadio) installmentRadio.checked = true;
+                            if(installmentOptions) installmentOptions.style.display = 'block';
+                        } else {
+                            if(upfrontRadio) upfrontRadio.checked = true;
+                            if(installmentOptions) installmentOptions.style.display = 'none';
+                        }
+                        
+                        setSelectValue(freqSelect, data.installmentFrequency);
+                        
+                        // Recalculate totals
+                        if (typeof updateParentOnboardingPlanDetails === 'function') {
+                            updateParentOnboardingPlanDetails();
+                        }
+                    }
+
                     showToast('success', 'Data Fetched', 'Learner data populated from HubSpot.');
                 } else {
                     showToast('error', 'HubSpot Error', result ? result.message : 'Unknown error fetching data from HubSpot.');

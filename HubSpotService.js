@@ -1334,3 +1334,65 @@ function getBestPhoneNumberForDeal(dealId) {
     return null; // Fallback to the original deal property if this fails
   }
 }
+
+function getPhoneNumbersForDeal(dealId) {
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  if (!dealId || !token) return { best: null, all: [] };
+
+  try {
+    // 1. Get IDs of Contacts
+    const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/contacts`;
+    const assocOptions = { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true };
+    const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    const assocData = JSON.parse(assocRes.getContentText());
+
+    if (!assocData.results || assocData.results.length === 0) return { best: null, all: [] };
+
+    const contactIds = assocData.results.map(r => ({ id: r.toObjectId }));
+
+    // 2. Fetch Phone Properties
+    const contactsUrl = `https://api.hubapi.com/crm/v3/objects/contacts/batch/read`;
+    const contactsPayload = {
+      properties: ["mobilephone", "phone", "hs_whatsapp_phone_number"],
+      inputs: contactIds
+    };
+    
+    const contactsRes = UrlFetchApp.fetch(contactsUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(contactsPayload),
+      muteHttpExceptions: true
+    });
+    
+    const contactsData = JSON.parse(contactsRes.getContentText());
+    
+    // 3. Collect ALL numbers and pick the BEST one
+    let bestNumber = null;
+    let allNumbers = new Set();
+
+    if (contactsData.results) {
+        for (const contact of contactsData.results) {
+            const p = contact.properties;
+            
+            if (p.hs_whatsapp_phone_number) {
+                bestNumber = p.hs_whatsapp_phone_number;
+                allNumbers.add(p.hs_whatsapp_phone_number + " (WhatsApp)");
+            }
+            if (p.mobilephone) {
+                if (!bestNumber) bestNumber = p.mobilephone;
+                allNumbers.add(p.mobilephone + " (Mobile)");
+            }
+            if (p.phone) {
+                if (!bestNumber) bestNumber = p.phone;
+                allNumbers.add(p.phone + " (Phone)");
+            }
+        }
+    }
+    
+    return { best: bestNumber, all: Array.from(allNumbers) };
+
+  } catch (e) {
+    Logger.log(`[HubSpot Phone Fetch Error]: ${e.message}`);
+    return { best: null, all: [] }; 
+  }
+}
