@@ -750,16 +750,21 @@ function getWatiConfigFromSheet() {
   }
 }
 
-function sendWatiTemplate(parentContact, templateId, params) {
-  if (!parentContact) return { success: false, message: "Skipped: No Parent Phone" };
+function sendWatiTemplate(parentContact, templateId, params, manualOverridePhone = null) {
+  // 1. Determine the target phone
+  // If manual override exists, use it. Otherwise use the HubSpot contact.
+  let targetPhone = manualOverridePhone || parentContact;
+
+  if (!targetPhone) return { success: false, message: "Skipped: No Phone Number Found" };
   
-  const phone = String(parentContact).replace(/\D/g, '');
+  const phone = String(targetPhone).replace(/\D/g, '');
   
   try {
     const res = sendWatiMessage(phone, templateId, params);
-    return { success: res.success, message: "Sent" };
+    return { success: res.success, message: "Sent to " + phone };
   } catch (e) {
     return { success: false, message: "Error: " + e.message };
   }
 }
+
 

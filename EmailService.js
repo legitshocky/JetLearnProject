@@ -322,7 +322,8 @@ function sendMigrationEmail(data, attachments = []) {
         const logDetail = watiParameters.map(p => `${p.name}: ${p.value}`).join(' | ');
 
         // SEND
-        const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters);
+        const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters, data.manualPhone);
+
         
         if (watiRes.success) {
             notes.push(`WATI Sent (${templateId}) -> [DATA: ${logDetail}]`);

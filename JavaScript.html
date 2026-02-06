@@ -4754,10 +4754,8 @@ function fetchMigrationSpecificData() {
             course: migrationCourseSelect.value,
             reasonOfMigration: reasonOfMigrationSelect.value,
             classSessions: classSessions,
-            // We need to fetch Parent Name/Phone from HubSpot real-time or assume they exist
-            // For preview, we might just show placeholders if not stored locally
-            parentName: "(Parent Name from HubSpot)", 
-            parentPhone: "(Phone from HubSpot)"
+            manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
+
         };
     }
 
