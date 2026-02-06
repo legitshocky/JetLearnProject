@@ -1,13 +1,12 @@
 function safeParseHubspotNumber(value, defaultValue = 0) {
   if (value === null || value === undefined) return defaultValue;
   if (typeof value === 'number') return value;
-  
   // Remove everything that isn't a digit, a decimal point, or a minus sign
   const cleaned = String(value).replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(cleaned);
-  
   return isNaN(parsed) ? defaultValue : parsed;
 }
+
 
 
 function fetchHubspotByJlid(jlid) {
@@ -18,7 +17,6 @@ function fetchHubspotByJlid(jlid) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const hubspotApiUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
 
-  // (Properties list remains the same)
   const properties = [
     'dealname', 'jetlearner_id', 'amount', 'deal_currency_code', 'hs_object_id', 'age', 'learner_status',
     'module_start_date', 'module_end_date', 'total_classes_committed_through_learner_s_journey',
@@ -49,13 +47,11 @@ function fetchHubspotByJlid(jlid) {
     const responseCode = response.getResponseCode();
     const responseBody = response.getContentText();
 
-    // --- CRITICAL FIX START ---
-    // Check if HubSpot returned HTML (Error Page) instead of JSON
+    // --- CRITICAL HTML ERROR CHECK ---
     if (responseBody.trim().startsWith("<")) {
       Logger.log(`[HUBSPOT ERROR] API returned HTML: ${responseBody}`);
       return { success: false, message: `HubSpot API Error (${responseCode}): Connection Failed` };
     }
-    // --- CRITICAL FIX END ---
 
     const jsonResponse = JSON.parse(responseBody);
 
@@ -67,11 +63,20 @@ function fetchHubspotByJlid(jlid) {
     if (jsonResponse.results && jsonResponse.results.length > 0) {
       const contactProperties = jsonResponse.results[0].properties; 
       
+      // --- NEW PHONE LOGIC START ---
+      // 1. Try to get smart phone from Contact
+      const smartPhone = getBestPhoneNumberForDeal(contactProperties.hs_object_id);
+      
+      // 2. Fallback to Deal properties if smart fetch failed
+      const finalParentPhone = smartPhone || contactProperties.phone_number_deal_ || contactProperties.phone || '';
+      // --- NEW PHONE LOGIC END ---
+
       const tenure = safeParseHubspotNumber(contactProperties.subscription_tenure);
       const dealAmount = safeParseHubspotNumber(contactProperties.amount);
       const currencyCode = contactProperties.deal_currency_code || 'EUR'; 
       let calculatedDiscount = 0;
 
+      // Discount Logic
       if (tenure > 0 && dealAmount > 0) {
           const standardPriceEur = tenure * 149; 
           const conversionRate = getConversionRate(currencyCode); 
@@ -115,6 +120,7 @@ function fetchHubspotByJlid(jlid) {
         }
       };
       
+      // Helper: Parse Session String
       let sessionsPerWeekString = '';
       const rawFrequency = contactProperties.frequency_of_classes;
       if (rawFrequency && typeof rawFrequency === 'string') {
@@ -137,7 +143,10 @@ function fetchHubspotByJlid(jlid) {
         learnerName: `${contactProperties.dealname || ''}`.trim(),
         parentName: contactProperties.parent_name || '',
         parentEmail: contactProperties.parent_email || '',
-        parentContact: contactProperties.phone_number_deal_ || contactProperties.phone || '',
+        
+        // Use the smart phone number
+        parentContact: finalParentPhone, 
+        
         course: getCourseLabel(contactProperties.current_course) || '',
         subscriptionTenureMonths: tenure,
         dealAmount: dealAmount,
@@ -174,6 +183,7 @@ function fetchHubspotByJlid(jlid) {
     return { success: false, message: 'HubSpot Connection Error: ' + error.message };
   }
 }
+
 
 function logEmailToHubspot(dealId, subject, htmlBody) {
   if (!dealId) {
@@ -1252,3 +1262,75 @@ function verifySubscriptionWithCalendar(jlid, expectedStartDate, expectedEndDate
     }
 }
 
+function getBestPhoneNumberForDeal(dealId) {
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  if (!dealId || !token) return null;
+
+  try {
+    // 1. Get IDs of Contacts associated with this Deal
+    const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/contacts`;
+    const assocOptions = {
+      method: 'get',
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    };
+    
+    const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    const assocData = JSON.parse(assocRes.getContentText());
+
+    if (!assocData.results || assocData.results.length === 0) {
+      // No contacts found, fallback to deal property
+      return null;
+    }
+
+    // Get all Contact IDs
+    const contactIds = assocData.results.map(r => ({ id: r.toObjectId }));
+
+    // 2. Fetch Phone Properties for these Contacts
+    const contactsUrl = `https://api.hubapi.com/crm/v3/objects/contacts/batch/read`;
+    const contactsPayload = {
+      properties: ["mobilephone", "phone", "hs_whatsapp_phone_number"],
+      inputs: contactIds
+    };
+    
+    const contactsRes = UrlFetchApp.fetch(contactsUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(contactsPayload),
+      muteHttpExceptions: true
+    });
+    
+    const contactsData = JSON.parse(contactsRes.getContentText());
+
+    // 3. Logic to find the BEST number
+    let bestNumber = null;
+
+    if (contactsData.results && contactsData.results.length > 0) {
+        // Loop through all parents/contacts attached to this deal
+        for (const contact of contactsData.results) {
+            const props = contact.properties;
+            
+            // Priority 1: Specific WhatsApp Field
+            if (props.hs_whatsapp_phone_number) {
+                return props.hs_whatsapp_phone_number;
+            }
+            
+            // Priority 2: Mobile Phone
+            if (props.mobilephone && !bestNumber) {
+                bestNumber = props.mobilephone;
+            }
+            
+            // Priority 3: Standard Phone (Fallback)
+            if (props.phone && !bestNumber) {
+                bestNumber = props.phone;
+            }
+        }
+    }
+    
+    return bestNumber;
+
+  } catch (e) {
+    Logger.log(`[HubSpot Phone Fetch Error]: ${e.message}`);
+    return null; // Fallback to the original deal property if this fails
+  }
+}
