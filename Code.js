@@ -262,42 +262,6 @@ const TIMEZONE_IANA_MAP = {
   '(GMT+12:00) Auckland, Wellington': 'Pacific/Auckland'
 };
 
-const TIMEZONE_FRIENDLY_LABELS = {
-  // Asia
-  'Asia/Kolkata': 'IST',
-  'Asia/Dubai': 'GST',
-  'Asia/Singapore': 'SGT',
-  'Asia/Bangkok': 'ICT',
-  'Asia/Hong_Kong': 'HKT',
-  'Asia/Tokyo': 'JST',
-  'Asia/Seoul': 'KST',
-  
-  // Europe
-  'Europe/London': 'UK Time',
-  'Europe/Berlin': 'CET',
-  'Europe/Paris': 'CET',
-  'Europe/Amsterdam': 'CET',
-  'Europe/Zurich': 'CET',
-  'Europe/Athens': 'EET',
-  'Europe/Moscow': 'MSK',
-  
-  // US/Americas
-  'America/New_York': 'EST', 
-  'America/Chicago': 'CST',
-  'America/Denver': 'MST',
-  'America/Phoenix': 'MST',
-  'America/Los_Angeles': 'PST', 
-  'America/Anchorage': 'AKST',
-  'Pacific/Honolulu': 'HST',
-  
-  // Australia/Pacific
-  'Australia/Sydney': 'AEST',
-  'Australia/Melbourne': 'AEST',
-  'Australia/Brisbane': 'AEST',
-  'Australia/Adelaide': 'ACST',
-  'Australia/Perth': 'AWST',
-  'Pacific/Auckland': 'NZT'
-};
 
     return {
       success: true,
@@ -377,7 +341,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "208"; 
+const APP_VERSION = "211"; 
 
 function getAppVersion() {
   return APP_VERSION;
