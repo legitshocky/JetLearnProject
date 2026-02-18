@@ -1396,3 +1396,172 @@ function getPhoneNumbersForDeal(dealId) {
     return { best: null, all: [] }; 
   }
 }
+
+function fetchHubspotHistory(dealId) {
+  if (!dealId) return [];
+
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  const headers = { 'Authorization': 'Bearer ' + token };
+  const historyEvents = [];
+
+  try {
+    // 1. Fetch Associated TICKETS
+    const ticketUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/tickets`;
+    const ticketRes = UrlFetchApp.fetch(ticketUrl, { headers: headers, muteHttpExceptions: true });
+    const ticketAssoc = JSON.parse(ticketRes.getContentText()).results || [];
+
+    if (ticketAssoc.length > 0) {
+      const batchBody = {
+        properties: ["subject", "content", "createdate", "hs_pipeline_stage"],
+        inputs: ticketAssoc.map(t => ({ id: t.toObjectId }))
+      };
+      const detailsRes = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/batch/read', {
+        method: 'post',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(batchBody),
+        muteHttpExceptions: true
+      });
+      
+      const tickets = JSON.parse(detailsRes.getContentText()).results || [];
+      
+      // --- FILTERING LOGIC ---
+      // We only want to show tickets that impact the Teacher/Course
+      const relevantKeywords = ["Migration", "Pause", "Escalation", "Teacher Change", "Slot Change", "Onboarding"];
+      const ignoreKeywords = ["PRM", "Renewal", "Kit", "Device", "Laptop", "Feedback"];
+
+      tickets.forEach(t => {
+        const subject = t.properties.subject || "";
+        
+        // A. Exclude Noise (PRMs, Renewals)
+        if (ignoreKeywords.some(kw => subject.includes(kw))) return;
+
+        // B. (Optional) Only Include Specific Topics
+        // If you want to be very strict, uncomment the next line:
+        // if (!relevantKeywords.some(kw => subject.includes(kw))) return;
+
+        historyEvents.push({
+          timestamp: t.properties.createdate,
+          type: 'hubspot-ticket',
+          description: `[HubSpot Ticket] ${subject}`,
+          source: 'HubSpot'
+        });
+      });
+    }
+
+    // 2. Fetch Associated NOTES
+    // --- REMOVED ENTIRELY TO REDUCE NOISE ---
+    // Notes are usually sales calls ("Called mom, no answer") which we don't need here.
+
+    return historyEvents;
+
+  } catch (e) {
+    Logger.log("Error fetching HubSpot History: " + e.message);
+    return []; 
+  }
+}
+
+
+/**
+ * Fetches ALL migration tickets to analyze churn risk (Inbound vs Outbound).
+ */
+/**
+ * UPDATED: Fetches Migration tickets.
+ * Filters: Pipeline, Keywords (Kits/PRM), and Cancelled Stages.
+ */
+function getMigrationHistoryStats(jlid) {
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  const searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+  
+  const MIGRATION_PIPELINE_ID = '66161281'; 
+
+  // --- CONFIGURATION: Exclude specific Ticket Stages ---
+  // You can find these IDs in your HubSpot URL when viewing the pipeline settings
+  // or by inspecting a ticket in that column.
+  const EXCLUDED_STAGE_IDS = [
+      "133821818", // Example: ID for "Cancelled"
+      "153457301"  // Example: ID for "Rejected"
+  ];
+
+  const requestBody = {
+    filterGroups: [{
+      filters: [
+        { propertyName: "learner_uid", operator: "EQ", value: jlid },
+        { propertyName: "hs_pipeline", operator: "EQ", value: MIGRATION_PIPELINE_ID }
+      ]
+    }],
+    limit: 100, 
+    sorts: [{ propertyName: "createdate", direction: "DESCENDING" }],
+    properties: [ 
+      "subject", 
+      "createdate", 
+      "reason_of_migration__t_", 
+      "new_teacher", 
+      "current_teacher__t_",
+      "hs_pipeline_stage" // Fetch the status/stage
+    ]
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(searchUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(requestBody),
+      muteHttpExceptions: true
+    });
+    
+    const data = JSON.parse(response.getContentText());
+    if (!data.results) return { total: 0, inbound: 0, outbound: 0, events: [] };
+
+    const events = [];
+    let inboundCount = 0;
+    let outboundCount = 0;
+
+    const inboundReasons = [
+      "Slot change - Learner request", "Slot change -Learner request", 
+      "Teacher Affinity", "Pause Request", "Special Learning Needs"
+    ];
+    
+    // Keywords to ignore (Logistics, Reviews, etc.)
+    const ignoreKeywords = ["PRM", "Renewal", "Feedback", "Review", "Kit", "Laptop", "Device", "Tab"]; 
+
+    data.results.forEach(t => {
+      const subject = t.properties.subject || "";
+      const reason = t.properties.reason_of_migration__t_ || "";
+      const stage = t.properties.hs_pipeline_stage;
+
+      // 1. FILTER: Exclude specific Stages (Cancelled/Rejected)
+      if (EXCLUDED_STAGE_IDS.includes(stage)) {
+          return; 
+      }
+
+      // 2. FILTER: Skip non-migration subjects (Logistics/PRMs)
+      if (ignoreKeywords.some(kw => subject.includes(kw))) {
+          return; 
+      }
+
+      // 3. FILTER: Must have a Migration Reason OR explicitly say "Migration"
+      // This filters out empty "placeholder" tickets
+      if (!reason && !subject.includes("Migration")) {
+          return; 
+      }
+
+      const is_inbound = inboundReasons.includes(reason);
+      if (is_inbound) inboundCount++; else outboundCount++;
+
+      events.push({
+        id: t.id,
+        date: t.properties.createdate,
+        reason: reason || "Unspecified Migration",
+        type: is_inbound ? 'Inbound (Parent)' : 'Outbound (JetLearn)',
+        from: t.properties.current_teacher__t_,
+        to: t.properties.new_teacher
+      });
+    });
+
+    return { total: events.length, inbound: inboundCount, outbound: outboundCount, events: events };
+
+  } catch (e) {
+    Logger.log("Error analyzing migration stats: " + e.message);
+    return { total: 0, inbound:0, outbound:0, events: [] };
+  }
+}

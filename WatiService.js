@@ -235,6 +235,16 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
       ];
       break;
 
+      case "migration_teacher_affinity":
+        requiredParams = [
+        { name: "Parent", value: parentName },       // Was 'parent'
+        { name: "learner", value: learnerName },     // Was 'learner'
+        { name: "teacher", value: teacherName },     // Was 'teacher'
+        { name: "Weekday", value: weekdayStr },
+        { name: "Time", value: timeStr },            // Was 'time'
+        { name: "Meeting_Link", value: classLink }           // Was 'link'
+      ];
+      break;
     // ----------------------------------------------------
     // 9. DEFAULT FALLBACK
     // ----------------------------------------------------
@@ -647,7 +657,7 @@ const WATI_REASON_MAPPING = {
     { id: "migration_teacher_performance_issue", label: "Performance Issue" }
   ],
   "Teacher Affinity": [
-    { id: "migration_same_teacher_request", label: "Teacher Affinity" }
+    { id: "migration_teacher_affinity", label: "Teacher Affinity" }
   ],
   "Boomerang": [
     { id: "migration_boomerang", label: "Boomerang Return" }

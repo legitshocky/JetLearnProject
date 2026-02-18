@@ -1514,6 +1514,36 @@
       </button>
     </div>
 
+      <div class="modal-overlay" id="ticketListModal">
+    <div class="modal" style="max-width: 800px;">
+        <div class="modal-header">
+            <h3 class="modal-title" id="ticketListTitle">Ticket Details</h3>
+            <button class="modal-close" onclick="document.getElementById('ticketListModal').classList.remove('active')">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Reason/Subject</th>
+                            <th>From Teacher</th>
+                            <th>To Teacher</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticketListBody">
+                        <!-- Content injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" onclick="document.getElementById('ticketListModal').classList.remove('active')">Close</button>
+        </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>

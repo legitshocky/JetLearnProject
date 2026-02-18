@@ -7,9 +7,7 @@ function debugTestSpecificTemplates() {
   // ---------------------------------------
 
   const TARGET_TEMPLATES = [
-    "migration_teacher_change_after_prm",
-    "migration_teacher_performance_issue",
-    "migration_boomerang"
+    "migration_teacher_affinity"
   ];
 
   Logger.log("🚀 Starting Specific Template Test...");
@@ -22,13 +20,13 @@ function debugTestSpecificTemplates() {
     course: "Crime Fighting 101",
     classLink: "https://meet.google.com/bat-cave",
     startDate: "2026-02-01", // For {{Date}}
-    classSessions: [{ day: "Monday", time: "10:00 AM" }], // For {{Weekday}}
+    classSessions: [{ day: "Monday", time: "08:00 PM" }], // For {{Weekday}}
     manualTimezone: "Asia/Kolkata",
     calculatedLocalTime: "10:00 AM IST" // For {{Time}}
   };
 
   const mockHubSpot = {
-    parentName: "Commissioner Gordon",
+    parentName: "Sourav Pal",
     parentContact: MY_PHONE,
     timezone: "Asia/Kolkata"
   };

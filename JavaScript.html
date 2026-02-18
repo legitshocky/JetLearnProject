@@ -54,6 +54,7 @@ let globalClsManagers = []; // Store CLS managers data for reuse
 let globalJetGuides = []; // Store JetGuide data for reuse
 let globalInvoiceProducts = []; // NEW: Store invoice products data
 let globalTimezones = []; // Will be populated from the server
+let globalTicketData = [];
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
 let isParentInvoiceEndDateManuallySet = false;
@@ -2323,49 +2324,203 @@ tr.innerHTML = `
             .getComprehensiveLearnerHistory(jlid);
     }
 
-    function updateLearnerHistoryDisplay(result) {
-        hideLoading();
-        if (!result || result.success === false) {
-            historyResultsContainer.style.display = 'none';
-            showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
-            return;
-        }
-        historyResultsContainer.style.display = 'block';
-
-        const learnerProfile = result.learnerProfile || {};
-        const learnerName = learnerProfile.learnerName || learnerProfile.jlid || 'Unknown Learner';
-        historyResultsTitle.textContent = `History for: ${learnerName}`;
-        const profileCard = document.querySelector('.learner-profile-card');
-        if (learnerProfile.isPartial) {
-            profileCard.style.border = '1px solid var(--warning)';
-            historyProfileLearnerName.innerHTML = `${learnerProfile.learnerName || 'N/A'} <em style="color:var(--warning); font-size:0.8em;">(HubSpot data unavailable)</em>`;
-        } else {
-            profileCard.style.border = 'none';
-            historyProfileLearnerName.textContent = learnerProfile.learnerName || 'N/A';
-        }
-        historyProfileJlid.textContent = learnerProfile.jlid || 'N/A';
-        historyProfileAge.textContent = learnerProfile.age || 'N/A';
-        historyProfileCurrentCourse.textContent = learnerProfile.course || 'N/A';
-        historyProfileCurrentTeacher.textContent = learnerProfile.currentTeacher || 'N/A';
-        historyProfileSubscriptionType.textContent = learnerProfile.currentSubscriptionType || 'N/A';
-        historyProfileOnboardingDate.textContent = learnerProfile.startingDate ? new Date(learnerProfile.startingDate).toLocaleDateString('en-GB') : 'N/A';
-        historyProfileSubscriptionStartDate.textContent = learnerProfile.subscriptionStartDate ? new Date(learnerProfile.subscriptionStartDate).toLocaleDateString('en-GB') : 'N/A';
-        historyAISummary.textContent = result.aiSummary || 'No summary available.';
-        historyTimelineBody.innerHTML = '';
-        if (result.auditLogTimeline && result.auditLogTimeline.length > 0) {
-            result.auditLogTimeline.forEach(event => {
-                const eventDiv = document.createElement('div');
-                eventDiv.className = `timeline-event ${event.type}`;
-                eventDiv.innerHTML = `
-                    <div class="timeline-date">${event.timestamp ? new Date(event.timestamp).toLocaleString('en-GB') : 'N/A'}</div>
-                    <div class="timeline-description">${event.description}</div>`;
-                historyTimelineBody.appendChild(eventDiv);
-            });
-        } else {
-            historyTimelineBody.innerHTML = '<p style="text-align: center; color: var(--text-light);">No detailed audit log history found for this learner.</p>';
-        }
+    function openTicketList(filterType) {
+    const modal = document.getElementById('ticketListModal');
+    const tbody = document.getElementById('ticketListBody');
+    const title = document.getElementById('ticketListTitle');
+    
+    if (!modal || !tbody) {
+        console.error("Modal elements not found. Ensure Index.html has the modal HTML.");
+        return;
     }
 
+    tbody.innerHTML = '';
+    
+    // Filter tickets based on which box was clicked
+    let filteredTickets = [];
+    if (filterType === 'inbound') {
+        title.textContent = "Parent Requested Migrations";
+        filteredTickets = globalTicketData.filter(t => t.type.includes('Inbound'));
+    } else if (filterType === 'outbound') {
+        title.textContent = "JetLearn Initiated Migrations";
+        filteredTickets = globalTicketData.filter(t => t.type.includes('Outbound'));
+    } else {
+        title.textContent = "All Migration Pipeline Tickets";
+        filteredTickets = globalTicketData;
+    }
+
+    if (filteredTickets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:15px; color:#666;">No tickets found for this category.</td></tr>';
+    } else {
+        filteredTickets.forEach(t => {
+            const dateStr = t.date ? new Date(t.date).toLocaleDateString() : 'N/A';
+            const ticketUrl = `https://app.hubspot.com/contacts/19972323/ticket/${t.id}`;
+            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td style="font-weight:500;">${escapeHtml(t.reason || 'Migration')}</td>
+                <td>${escapeHtml(t.from || '-')}</td>
+                <td>${escapeHtml(t.to || '-')}</td>
+                <td>
+                    <a href="${ticketUrl}" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none; padding: 4px 10px; font-size: 0.8rem;">
+                        <i class="fas fa-external-link-alt"></i> Open
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    
+    modal.classList.add('active');
+}
+
+    function updateLearnerHistoryDisplay(result) {
+    hideLoading();
+    
+    const container = document.getElementById('historyResultsContainer');
+    if (!result || result.success === false) {
+        container.style.display = 'none';
+        showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
+        return;
+    }
+    container.style.display = 'block';
+    
+    // 1. Clear previous dynamic cards (Risk Card) to prevent duplicates
+    const existingCard = document.getElementById('journeyStabilityCard');
+    if(existingCard) existingCard.remove();
+
+    const learnerProfile = result.learnerProfile || {};
+    const learnerName = learnerProfile.learnerName || learnerProfile.jlid || 'Unknown Learner';
+    
+    // Update Title
+    document.getElementById('historyResultsTitle').textContent = `History for: ${learnerName}`;
+    
+    // --- 2. Render Journey Stability Card (The Clickable Boxes) ---
+    const analysis = result.journeyAnalysis;
+    if (analysis) {
+        // Store data globally so the modal function can access it
+        globalTicketData = analysis.ticketDetails || []; 
+
+        let colorClass = '#4caf50'; // Green
+        let bgClass = '#e8f5e9';
+        
+        if (analysis.riskLevel === 'Critical') { colorClass = '#d32f2f'; bgClass = '#ffebee'; } 
+        else if (analysis.riskLevel === 'High') { colorClass = '#f57c00'; bgClass = '#fff3e0'; } 
+        else if (analysis.riskLevel === 'Medium') { colorClass = '#fbc02d'; bgClass = '#fff9c4'; }
+
+        const stabilityCardHtml = `
+            <div id="journeyStabilityCard" class="learner-profile-card" style="border-left: 5px solid ${colorClass}; margin-bottom: 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0; color:${colorClass}; border-bottom:none;">Journey Stability: ${analysis.riskLevel}</h3>
+                    <span style="font-size:0.9em; background:${bgClass}; color:${colorClass}; padding:4px 8px; border-radius:4px; font-weight:bold;">
+                        ${analysis.outbound} System Changes
+                    </span>
+                </div>
+                
+                <p style="margin-top:10px; font-weight:500;">${analysis.riskMessage}</p>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-top:15px; text-align:center;">
+                    
+                    <!-- TOTAL BOX -->
+                    <div onclick="openTicketList('all')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='${colorClass}'; this.style.backgroundColor='var(--secondary)'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#333;">${analysis.totalMigrations}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">Total Changes</div>
+                    </div>
+
+                    <!-- INBOUND BOX -->
+                    <div onclick="openTicketList('inbound')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='#2196f3'; this.style.backgroundColor='#e3f2fd'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#2196f3;">${analysis.inbound}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">Parent Requests</div>
+                    </div>
+
+                    <!-- OUTBOUND BOX -->
+                    <div onclick="openTicketList('outbound')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='#f44336'; this.style.backgroundColor='#ffebee'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#f44336;">${analysis.outbound}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">JetLearn Initiated</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Insert after title
+        document.getElementById('historyResultsTitle').insertAdjacentHTML('afterend', stabilityCardHtml);
+    }
+
+    // --- 3. Render Profile Data ---
+    document.getElementById('historyProfileLearnerName').textContent = learnerProfile.learnerName || 'N/A';
+    document.getElementById('historyProfileJlid').textContent = learnerProfile.jlid || 'N/A';
+    document.getElementById('historyProfileAge').textContent = learnerProfile.age || 'N/A';
+    document.getElementById('historyProfileCurrentCourse').textContent = learnerProfile.course || 'N/A';
+    document.getElementById('historyProfileCurrentTeacher').textContent = learnerProfile.currentTeacher || 'N/A';
+    document.getElementById('historyProfileSubscriptionType').textContent = learnerProfile.currentSubscriptionType || 'N/A';
+    document.getElementById('historyProfileOnboardingDate').textContent = learnerProfile.startingDate ? new Date(learnerProfile.startingDate).toLocaleDateString('en-GB') : 'N/A';
+    document.getElementById('historyProfileSubscriptionStartDate').textContent = learnerProfile.subscriptionStartDate ? new Date(learnerProfile.subscriptionStartDate).toLocaleDateString('en-GB') : 'N/A';
+    
+    document.getElementById('historyAISummary').textContent = result.aiSummary || 'No summary available.';
+    
+    // --- 4. Render Timeline (With Strict Filtering) ---
+    const timelineBody = document.getElementById('historyTimelineBody');
+    timelineBody.innerHTML = '';
+    
+    if (result.auditLogTimeline && result.auditLogTimeline.length > 0) {
+        
+        // STRICT FILTER: Keywords to HIDE from the visual timeline
+        const hiddenKeywords = ["PRM", "Renewal", "Pause", "Leave", "Kit", "Device", "Laptop", "Feedback", "Review"];
+        
+        result.auditLogTimeline.forEach(event => {
+            const desc = event.description || "";
+            
+            // If it's a HubSpot Ticket, apply the strict filter
+            if (event.type === 'hubspot-ticket') {
+                 if (hiddenKeywords.some(kw => desc.includes(kw))) {
+                     return; // Skip rendering this item
+                 }
+                 // Only show if it looks like a migration
+                 if (!desc.includes("Migration") && !desc.includes("Teacher") && !desc.includes("Slot") && !desc.includes("Escalation")) {
+                     // return; // Uncomment this if you want to be ULTRA strict
+                 }
+            }
+
+            const eventDiv = document.createElement('div');
+            let iconColor = 'var(--primary)';
+            
+            if (event.type === 'hubspot-ticket') {
+                iconColor = '#e11d48'; 
+                event.type = 'migration'; 
+            } else if (event.type === 'hubspot-note') {
+                iconColor = '#ea580c';
+                event.type = 'note';
+            }
+            
+            eventDiv.className = `timeline-event ${event.type}`;
+            
+            if(event.source === 'HubSpot') {
+                eventDiv.style.borderLeftColor = iconColor;
+                eventDiv.style.backgroundColor = 'rgba(0,0,0,0.02)';
+            }
+
+            eventDiv.innerHTML = `
+                <div class="timeline-date">${event.timestamp ? new Date(event.timestamp).toLocaleString('en-GB') : 'N/A'}</div>
+                <div class="timeline-description">
+                    ${event.source === 'HubSpot' ? `<i class="fab fa-hubspot" style="margin-right:5px; color:${iconColor}"></i>` : ''} 
+                    ${escapeHtml(desc)}
+                </div>`;
+            timelineBody.appendChild(eventDiv);
+        });
+    } else {
+        timelineBody.innerHTML = '<p style="text-align: center; color: var(--text-light);">No relevant history found.</p>';
+    }
+}
 
     // Invoice Page Functions
     function populateSessionsPerWeekOptions(targetSelect = invoiceSessionsPerWeek) {
@@ -5088,6 +5243,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V27': ["**Journey Stability Analysis**: Added a 'Risk Assessment' card in Learner History. The system now calculates if a learner is facing too many migrations.","**Churn Risk Alerts**: Learners with less than 6 months tenure and 2+ system-initiated changes will be flagged as 'Critical Risk'.","**Inbound vs Outbound**: Migration history now distinguishes between Parent Requests (Inbound) and JetLearn Operational Changes (Outbound)."],
+    'V26': ["**Refactored Architecture**: The system backend has been modularized for faster performance and better stability.","**Crash Proofing**: Enhanced error handling for HubSpot and WATI connections."],
     'V25': ["**Hybrid Data Fetching**: Migrations now pull data from the latest HubSpot Ticket first, falling back to the Deal for greater accuracy.", "**WATI Integration**: Added the ability to send templated WhatsApp messages to parents during migration.", "**UI Enhancements**: Added a 'Review WA' button to preview WhatsApp messages before sending."],
     'V24': ["**Agentic AI Audit**: Implemented an automated daily audit system to check for discrepancies in onboarding data.", "**Email Activity Tracking**: Added a new page to view the status (Sent, Opened, Replied) of all emails sent from the system."],
     'V23': ["**Smart Invoice Generation**: Integrated an AI Agent on the Invoices page to read HubSpot sales notes and automatically populate complex invoice details."],

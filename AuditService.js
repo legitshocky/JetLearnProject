@@ -355,24 +355,67 @@ function getComprehensiveLearnerHistory(jlid) {
   let aiSummary = 'No summary available.';
   let overallSuccess = true;
   let overallMessage = 'Learner history fetched successfully.';
+  let journeyAnalysis = null; // New Object for Stats
 
   try {
-    if (!jlid || jlid.trim() === '') {
-      return { success: false, message: 'Learner ID (JLID) or Name is required for history lookup.' };
-    }
+    if (!jlid || jlid.trim() === '') return { success: false, message: 'JLID is required.' };
 
+    // 1. Fetch HubSpot Profile
     const hubspotResult = fetchHubspotByJlid(jlid);
     if (hubspotResult.success) {
       hubspotData = hubspotResult.data;
+      
+      // 1a. Fetch External Timeline (Notes/Tickets)
+      if (hubspotData.dealId) {
+        const externalHistory = fetchHubspotHistory(hubspotData.dealId);
+        auditLogTimeline = auditLogTimeline.concat(externalHistory);
+      }
+
+      // 1b. Fetch Journey Stability Stats (NEW)
+      const ticketStats = getMigrationHistoryStats(jlid);
+      
+      // Calculate Risk
+      let riskLevel = "Low";
+      let riskMessage = "Healthy Journey";
+      let monthsActive = 1;
+      
+      if (hubspotData.startingDate) {
+          const start = new Date(hubspotData.startingDate);
+          const now = new Date();
+          monthsActive = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+          if (monthsActive < 1) monthsActive = 1;
+      }
+      
+      const avgTenure = monthsActive / (ticketStats.total + 1);
+
+      if (ticketStats.outbound >= 2 && monthsActive <= 6) {
+          riskLevel = "Critical";
+          riskMessage = "🚨 Frequent Disruptions: 2+ JetLearn-initiated changes in < 6 months.";
+      } else if (ticketStats.total >= 3 && avgTenure < 4) {
+          riskLevel = "High";
+          riskMessage = "⚠️ High Churn Risk: Avg tenure is less than 4 months.";
+      } else if (ticketStats.total >= 3) {
+          riskLevel = "Medium";
+          riskMessage = "Frequent changes detected.";
+      }
+
+      journeyAnalysis = {
+          totalMigrations: ticketStats.total,
+          inbound: ticketStats.inbound,
+          outbound: ticketStats.outbound,
+          riskLevel: riskLevel,
+          riskMessage: riskMessage,
+          ticketDetails: ticketStats.events
+      };
+
     } else {
-      Logger.log(`Warning: HubSpot data retrieval failed for ${jlid}: ${hubspotResult.message}`);
-      hubspotData = { jlid: jlid, learnerName: jlid.toUpperCase().startsWith('JL') ? 'N/A' : jlid, isPartial: true };
+      hubspotData = { jlid: jlid, learnerName: 'N/A', isPartial: true };
       overallSuccess = false;
-      overallMessage = `HubSpot data could not be retrieved: ${hubspotResult.message}. Audit log data may be available.`;
+      overallMessage = `HubSpot data missing: ${hubspotResult.message}`;
     }
 
+    // 2. Fetch Local Audit Log
     const rawAuditLogResult = getRawLearnerAuditLog(jlid);
-
     if (rawAuditLogResult.success && rawAuditLogResult.data.length > 0) {
       const headers = rawAuditLogResult.headers;
       const actionCol = headers.indexOf('Action');
@@ -383,17 +426,8 @@ function getComprehensiveLearnerHistory(jlid) {
       const notesCol = headers.indexOf('Notes');
       const statusCol = headers.indexOf('Status');
       const reasonCol = headers.indexOf('Reason for Migration');
-
-      const requiredCols = [actionCol, timestampCol, oldTeacherCol, newTeacherCol, courseCol, notesCol, statusCol, reasonCol];
-      if (requiredCols.some(col => col === -1)) {
-        throw new Error("Audit Log sheet is missing one or more required columns for history generation.");
-      }
-      
-      const maxIndexRequired = Math.max(...requiredCols);
       
       rawAuditLogResult.data.forEach(row => {
-        if (!row || row.length <= maxIndexRequired) return;
-
         const timestamp = parseSheetDate(row[timestampCol]);
         if (!timestamp) return;
 
@@ -414,18 +448,9 @@ function getComprehensiveLearnerHistory(jlid) {
           eventType = 'migration';
           entryDescription = `Learner migrated from ${oldTeacher || 'N/A'} to ${newTeacher || 'N/A'}. Reason: ${finalReason || 'N/A'}. Status: ${status}.`;
           if (finalReason) migrationReasons[finalReason] = (migrationReasons[finalReason] || 0) + 1;
-          if (oldTeacher && newTeacher && oldTeacher !== newTeacher) {
-            teacherChangeEvents.push({ eventDate: timestamp.toISOString(), fromTeacher: oldTeacher, toTeacher: newTeacher, reason: finalReason || action });
-          }
-          if (course) { 
-            courseChangeEvents.push({ eventDate: timestamp.toISOString(), course: course, reason: finalReason || action });
-          }
         } else if (action.includes('Onboarding')) {
           eventType = 'onboarding';
-          entryDescription = `Learner onboarded with Teacher: ${newTeacher || 'N/A'} for Course: ${course || 'N/A'}. Status: ${status}.`;
-          if (newTeacher) {
-            teacherChangeEvents.push({ eventDate: timestamp.toISOString(), fromTeacher: 'Initial', toTeacher: newTeacher, reason: action });
-          }
+          entryDescription = `Learner onboarded with Teacher: ${newTeacher || 'N/A'}. Status: ${status}.`;
         }
         
         auditLogTimeline.push({
@@ -436,19 +461,21 @@ function getComprehensiveLearnerHistory(jlid) {
       });
     }
 
-    auditLogTimeline.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    // 3. Sort Combined Timeline
+    auditLogTimeline.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)); // Newest first for UI logic, though timeline usually needs oldest first, we'll reverse in UI if needed. Actually standard is oldest first.
+    auditLogTimeline.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)); // Correct: Oldest First
 
+    // 4. Generate AI Summary
     if (hubspotData && (hubspotData.learnerName !== 'N/A' || auditLogTimeline.length > 0)) {
       const aiResult = summarizeLearnerHistory(hubspotData, auditLogTimeline);
       aiSummary = aiResult.success ? aiResult.summary : `AI summary unavailable: ${aiResult.message}`;
-    } else {
-      aiSummary = 'Not enough information for an AI summary.';
     }
 
     return {
       success: overallSuccess,
       learnerProfile: hubspotData,
       auditLogTimeline: auditLogTimeline,
+      journeyAnalysis: journeyAnalysis, // <--- Passing the new object
       migrationStats: {
         count: migrationCount,
         reasons: migrationReasons,
@@ -460,10 +487,11 @@ function getComprehensiveLearnerHistory(jlid) {
     };
 
   } catch (error) {
-    Logger.log('FATAL Error in getComprehensiveLearnerHistory: ' + error.message + ' Stack: ' + error.stack);
-    return { success: false, message: 'An unexpected server error occurred while retrieving learner history: ' + error.message };
+    Logger.log('Error in getComprehensiveLearnerHistory: ' + error.message);
+    return { success: false, message: 'Server error: ' + error.message };
   }
 }
+
 function getTasks() {
     Logger.log('getTasks called');
     try {

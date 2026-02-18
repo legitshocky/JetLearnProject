@@ -479,3 +479,4 @@ function hasPermission(userRole, permission) {
   const userPermissions = PERMISSIONS[userRole] || [];
   return userPermissions.includes(permission);
 }
+
