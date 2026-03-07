@@ -55,6 +55,7 @@ let globalJetGuides = []; // Store JetGuide data for reuse
 let globalInvoiceProducts = []; // NEW: Store invoice products data
 let globalTimezones = []; // Will be populated from the server
 let globalTicketData = [];
+let globalTeacherDataList = [];
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
 let isParentInvoiceEndDateManuallySet = false;
@@ -3285,96 +3286,87 @@ function renderTeacherOptions(teachers) {
     const listEl = document.getElementById('hsTeacherOptionsList');
     const inputEl = document.getElementById('hsTeacherSearchInput');
     
-    listEl.innerHTML = ''; // Clear
+    if (!listEl) return;
+    listEl.innerHTML = ''; 
 
-    if (teachers.length === 0) {
+    // SAFETY FIX: Default to empty array if null
+    const safeList = teachers || []; 
+
+    if (safeList.length === 0) {
         listEl.innerHTML = '<div class="hs-option" style="color:#999; cursor:default;">No teachers found</div>';
         return;
     }
 
-    teachers.forEach(teacherName => {
+    safeList.forEach(teacherName => {
         const div = document.createElement('div');
         div.className = 'hs-option';
-        
-        // Simulating the "Name + Email" look from HubSpot 
-        // (Since your backend currently sends only names, we use name for both, 
-        //  but you can update backend to send objects later)
-        div.innerHTML = `
-            <div class="hs-option-name">${teacherName}</div>
-            <!-- <div class="hs-option-email">email_placeholder@jet-learn.com</div> --> 
-        `;
-
-        // Click Handler for Selection
+        div.innerHTML = `<div class="hs-option-name">${teacherName}</div>`;
         div.addEventListener('click', () => {
-            inputEl.value = teacherName; // Set input text
-            listEl.classList.remove('show'); // Hide list
-            loadTeacherSpecificDetails(teacherName); // Trigger Data Load
+            inputEl.value = teacherName; 
+            listEl.classList.remove('show'); 
+            loadTeacherSpecificDetails(teacherName); 
         });
-
         listEl.appendChild(div);
     });
 }
+
 
 
 // 2. Display Details when Teacher Selected
 function loadTeacherSpecificDetails(teacherName) {
     showLoading(`Fetching detailed analysis for ${teacherName}...`);
     
-    document.getElementById('teacherLoadEmptyState').style.display = 'none';
+    const emptyState = document.getElementById('teacherLoadEmptyState');
     const resultsContainer = document.getElementById('teacherLoadResults');
-    resultsContainer.style.display = 'none'; 
+    if(emptyState) emptyState.style.display = 'none';
+    if(resultsContainer) resultsContainer.style.display = 'none'; 
 
-    // CALL 1: Get Basic Load Stats & Proficiency
+    // CALL 1: Get Basic Load Stats
     google.script.run
         .withSuccessHandler(data => {
-            if(!data.success) {
-                showToast('error', 'Error', data.message);
+            if(!data || !data.success) { // Added null check
+                showToast('error', 'Error', data ? data.message : 'Unknown error');
                 hideLoading();
                 return;
             }
 
-            // --- Render Summary Cards ---
-            const statusEl = document.getElementById('loadDisplayStatus');
-            statusEl.textContent = data.status;
-            statusEl.style.color = data.status === 'Active' ? 'var(--success)' : 'var(--danger)';
-            document.getElementById('loadDisplayCount').textContent = data.totalLoad;
+            document.getElementById('loadDisplayStatus').textContent = data.status || '-';
+            document.getElementById('loadDisplayCount').textContent = data.totalLoad || '0';
             document.getElementById('loadDisplayLastActive').textContent = data.lastActivity || 'No recent activity';
 
-            // --- Render Courses Table ---
             const tbody = document.getElementById('loadDisplayTableBody');
-            tbody.innerHTML = '';
-
-            if (data.courses.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 2rem;">No active courses found.</td></tr>';
-            } else {
-                data.courses.forEach(c => {
-                    let badgeClass = 'status-info';
-                    if(c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
-                    else if(c.proficiency.includes('51-60')) badgeClass = 'status-warning';
-
-                    const row = `<tr><td style="font-weight: 500;">${c.course}</td><td><span class="status-badge ${badgeClass}">${c.proficiency}</span></td></tr>`;
-                    tbody.innerHTML += row;
-                });
+            if(tbody) {
+                tbody.innerHTML = '';
+                // SAFETY FIX: Check if courses exists before reading length
+                const courses = data.courses || []; 
+                
+                if (courses.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 2rem;">No active courses found.</td></tr>';
+                } else {
+                    courses.forEach(c => {
+                        let badgeClass = 'status-info';
+                        if(c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
+                        else if(c.proficiency.includes('51-60')) badgeClass = 'status-warning';
+                        
+                        const row = `<tr><td style="font-weight: 500;">${c.course}</td><td><span class="status-badge ${badgeClass}">${c.proficiency}</span></td></tr>`;
+                        tbody.innerHTML += row;
+                    });
+                }
             }
-            resultsContainer.style.display = 'block';
+            if(resultsContainer) resultsContainer.style.display = 'block';
 
-            // CALL 2: Get Attrition Risk Report (Chained)
+            // CALL 2: Get Attrition Risk Report
             google.script.run
                 .withSuccessHandler(report => {
-                    hideLoading(); // Stop spinner
-                    if (!report.success) {
-                        console.log("Attrition report failed/empty: " + report.message);
-                        return;
-                    }
+                    hideLoading(); 
+                    if (!report || !report.success) return;
                     
-                    // --- Create/Get Risk Table Section ---
                     let riskTableSection = document.getElementById('attritionRiskSection');
                     if (!riskTableSection) {
                         riskTableSection = document.createElement('div');
                         riskTableSection.id = 'attritionRiskSection';
                         riskTableSection.className = 'audit-log-container';
                         riskTableSection.style.marginTop = '30px';
-                        
                         riskTableSection.innerHTML = `
                             <h3 class="dashboard-section-title" style="color:#d32f2f;">
                                 <i class="fas fa-exclamation-circle"></i> Attrition Risk & History
@@ -3383,74 +3375,61 @@ function loadTeacherSpecificDetails(teacherName) {
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead>
-                                        <tr>
-                                            <th>Learner</th>
-                                            <th>Previous Teacher</th>
-                                            <th>Last Moved</th>
-                                            <th>Reason</th>
-                                            <th>Risk (90d)</th>
-                                            <th>Action</th>
-                                        </tr>
+                                        <tr><th>Learner</th><th>Previous Teacher</th><th>Last Moved</th><th>Reason</th><th>Risk (90d)</th><th>Action</th></tr>
                                     </thead>
                                     <tbody id="attritionRiskTableBody"></tbody>
                                 </table>
-                            </div>
-                        `;
+                            </div>`;
                         resultsContainer.appendChild(riskTableSection);
                     }
                     
-                    // --- Populate Risk Table ---
                     const riskTbody = document.getElementById('attritionRiskTableBody');
-                    riskTbody.innerHTML = '';
-                    
-                    if (report.students.length === 0) {
-                        riskTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No active students found in HubSpot.</td></tr>';
-                    } else {
-                        report.students.forEach(s => {
-                            let rowStyle = '';
-                            let riskBadge = `<span class="status-badge status-success">Stable</span>`;
-                            
-                            // High Risk Logic
-                            if (s.recentMoves >= 2) {
-                                rowStyle = 'background-color: #ffebee;'; // Red
-                                riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
-                            } else if (s.recentMoves === 1) {
-                                riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
-                            }
-                            
-                            const prevTeacherDisplay = s.prevTeacher === "N/A" ? '<span style="color:#aaa">Original</span>' : s.prevTeacher;
-                            const courseDisplay = s.course.length > 30 ? s.course.substring(0,30) + '...' : s.course;
-
-                            const tr = document.createElement('tr');
-                            tr.style = rowStyle;
-                            tr.innerHTML = `
-                                <td>
-                                    <strong>${s.name}</strong><br>
-                                    <small style="color:#666">${s.jlid}</small><br>
-                                    <small style="color:#4a3c8a">${courseDisplay}</small>
-                                </td>
-                                <td>${prevTeacherDisplay}</td>
-                                <td>${s.lastMoveDate}</td>
-                                <td style="font-size:0.85em;">${s.moveReason}</td>
-                                <td>${riskBadge}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${s.jlid}')" title="Copy JLID"><i class="fas fa-copy"></i></button>
-                                </td>
-                            `;
-                            riskTbody.appendChild(tr);
-                        });
+                    if(riskTbody) {
+                        riskTbody.innerHTML = '';
+                        
+                        // SAFETY FIX: Ensure students array exists
+                        const students = report.students || []; 
+                        
+                        if (students.length === 0) {
+                            riskTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No active students found in HubSpot.</td></tr>';
+                        } else {
+                            students.forEach(s => {
+                                let rowStyle = '';
+                                let riskBadge = `<span class="status-badge status-success">Stable</span>`;
+                                
+                                if (s.recentMoves >= 2) {
+                                    rowStyle = 'background-color: #ffebee;'; 
+                                    riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
+                                } else if (s.recentMoves === 1) {
+                                    riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
+                                }
+                                
+                                const prevTeacherDisplay = s.prevTeacher === "N/A" ? '<span style="color:#aaa">Original</span>' : s.prevTeacher;
+                                const tr = document.createElement('tr');
+                                tr.style = rowStyle;
+                                tr.innerHTML = `
+                                    <td><strong>${s.name}</strong><br><small style="color:#666">${s.jlid}</small></td>
+                                    <td>${prevTeacherDisplay}</td>
+                                    <td>${s.lastMoveDate}</td>
+                                    <td style="font-size:0.85em;">${s.moveReason}</td>
+                                    <td>${riskBadge}</td>
+                                    <td><button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${s.jlid}')"><i class="fas fa-copy"></i></button></td>
+                                `;
+                                riskTbody.appendChild(tr);
+                            });
+                        }
                     }
                 })
                 .withFailureHandler(error => {
-                    hideLoading(); // Ensure spinner stops even if this part fails
-                    console.error("Attrition Report Failed: ", error);
+                    hideLoading();
+                    console.log("Attrition Report Failed: ", error);
                 })
                 .getTeacherAttritionReport(teacherName);
-
         })
         .withFailureHandler(showError)
         .getTeacherSpecificLoad(teacherName);
 }
+
 
 // Helper to copy text (Add if missing in JavaScript.html)
 function copyToClipboardText(text) {
