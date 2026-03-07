@@ -429,9 +429,8 @@
                     </div>
 
                     <div class="form-group"><label for="onboardingParentFreeClasses" class="form-label">Free Classes</label><input type="number" id="onboardingParentFreeClasses" class="form-control" value="0" min="0"></div>
-                    <div class="form-group"><label for="onboardingParentDiscount" class="form-label">Discount</label><input type="number" id="onboardingParentDiscount" class="form-control" value="0" min="0"></div>
-                    
-                    <div class="form-group"><label for="onboardingParentPartialPayment" class="form-label">Partial Payment Received (Optional)</label><input type="number" id="onboardingParentPartialPayment" class="form-control" placeholder="e.g., 250" min="0"></div>
+                    <div class="form-group"><label for="onboardingParentDiscount" class="form-label">Discount</label><input type="number" id="onboardingParentDiscount" class="form-control" value="0" min="0" step="0.01"></div>                    
+                  <div class="form-group"><label for="onboardingParentPartialPayment" class="form-label">Partial Payment Received (Optional)</label><input type="number" id="onboardingParentPartialPayment" class="form-control" placeholder="e.g., 250.50" min="0" step="0.01"></div>
                 </div>
                 
                 <div class="form-group full-width" style="border-top: 1px solid var(--gray); padding-top: 1.5rem;">
@@ -777,12 +776,12 @@
                 </div>
                 <div class="form-group" id="customCurrencyDiscountGroup" style="display: none;">
                   <label for="invoiceCustomCurrencyExtraDiscountPercentage" class="form-label">Custom Currency Discount (%)</label>
-                  <input type="number" id="invoiceCustomCurrencyExtraDiscountPercentage" class="form-control" value="0" min="0" max="100">
+                  <input type="number" id="invoiceCustomCurrencyExtraDiscountPercentage" class="form-control" value="0" min="0.1" max="100">
                 </div>
 
                 <div class="form-group"><label for="invoiceSessionsPerWeek" class="form-label">Sessions per Week</label><select id="invoiceSessionsPerWeek" class="form-control form-select" required><option value="" disabled selected>Select sessions</option></select></div>
-                <div class="form-group"><label for="invoiceFreeClasses" class="form-label">Free Classes</label><input type="number" id="invoiceFreeClasses" class="form-control" value="0" min="0"></div>
-                <div class="form-group"><label for="invoiceDiscount" class="form-label">Discount</label><input type="number" id="invoiceDiscount" class="form-control" value="0" min="0"></div>
+                <div class="form-group"><label for="invoiceFreeClasses" class="form-label">Free Classes</label><input type="number" id="invoiceFreeClasses" class="form-control" value="0" min="0"></div> 
+                <div class="form-group"><label for="invoiceDiscount" class="form-label">Discount</label><input type="number" id="invoiceDiscount" class="form-control" value="0" min="0" step="0.01"></div>
                 <div class="form-group"><label for="invoiceCustomPaidAmount" class="form-label">Partial Payment Received (Optional)</label><input type="number" id="invoiceCustomPaidAmount" class="form-control" placeholder="e.g., 250" min="0"></div>
                 <div class="form-group"><label for="invoiceSubscriptionTenure" class="form-label">Subscription Tenure (Months)</label><select id="invoiceSubscriptionTenure" class="form-control form-select" required><option value="" disabled selected>Select tenure</option></select></div>
                 <div class="form-group"><label for="invoiceStartDate" class="form-label">Start Date</label><input type="date" id="invoiceStartDate" class="form-control" required></div>

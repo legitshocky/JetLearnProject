@@ -44,96 +44,79 @@ function fetchHubspotByJlid(jlid) {
 
   try {
     const response = UrlFetchApp.fetch(hubspotApiUrl, options);
-    const responseCode = response.getResponseCode();
     const responseBody = response.getContentText();
 
-    // --- CRITICAL HTML ERROR CHECK ---
-    if (responseBody.trim().startsWith("<")) {
-      Logger.log(`[HUBSPOT ERROR] API returned HTML: ${responseBody}`);
-      return { success: false, message: `HubSpot API Error (${responseCode}): Connection Failed` };
-    }
+    if (responseBody.trim().startsWith("<")) return { success: false, message: `HubSpot API Error: Connection Failed` };
 
     const jsonResponse = JSON.parse(responseBody);
-
-    if (responseCode !== 200) {
-      const errorMessage = jsonResponse.message || 'Unknown error';
-      return { success: false, message: `HubSpot API Error: ${errorMessage}` };
-    }
 
     if (jsonResponse.results && jsonResponse.results.length > 0) {
       const contactProperties = jsonResponse.results[0].properties; 
       
-      // --- NEW PHONE LOGIC START ---
-      // 1. Try to get smart phone from Contact
       const smartPhone = getBestPhoneNumberForDeal(contactProperties.hs_object_id);
-      
-      // 2. Fallback to Deal properties if smart fetch failed
       const finalParentPhone = smartPhone || contactProperties.phone_number_deal_ || contactProperties.phone || '';
-      // --- NEW PHONE LOGIC END ---
 
       const tenure = safeParseHubspotNumber(contactProperties.subscription_tenure);
       const dealAmount = safeParseHubspotNumber(contactProperties.amount);
       const currencyCode = contactProperties.deal_currency_code || 'EUR'; 
       let calculatedDiscount = 0;
 
-      // Discount Logic
       if (tenure > 0 && dealAmount > 0) {
           const standardPriceEur = tenure * 149; 
           const conversionRate = getConversionRate(currencyCode); 
           const standardPriceLocal = standardPriceEur * conversionRate;
           if (standardPriceLocal > dealAmount) {
-              calculatedDiscount = standardPriceLocal - dealAmount;
+              const rawDiscount = standardPriceLocal - dealAmount;
+              calculatedDiscount = parseFloat(rawDiscount.toFixed(2));
           }
       }
 
-      // Helper: Parse Class Timings
-      const parseClassTimings = (timingsString) => {
-          if (!timingsString) return [];
-          if (timingsString.includes(' at ')) {
-            return timingsString.split(';').map(sessionStr => {
-                const parts = sessionStr.trim().match(/(\w+)\s+at\s+(\d{1,2}:\d{2}\s(?:AM|PM))/i);
-                if (parts && parts.length === 3) {
-                    return { day: parts[1], time: parts[2] };
-                }
-                return null;
-            }).filter(Boolean);
+      // --- NEW: CHURN RISK CALCULATION ---
+      let churnAlert = null;
+      try {
+          const ticketStats = getMigrationHistoryStats(jlid); 
+          const today = new Date();
+          const threeMonthsAgo = new Date();
+          threeMonthsAgo.setMonth(today.getMonth() - 3);
+
+          // Filter tickets: Only count migrations in the last 90 days
+          const recentMigrations = ticketStats.events.filter(t => {
+              const tDate = new Date(t.date);
+              return tDate >= threeMonthsAgo;
+          });
+
+          if (recentMigrations.length >= 2) {
+              churnAlert = {
+                  level: 'Critical',
+                  count: recentMigrations.length,
+                  message: `⚠️ HIGH RISK: This learner has moved ${recentMigrations.length} times in the last 3 months!`
+              };
+          } else if (recentMigrations.length === 1) {
+              churnAlert = {
+                  level: 'Warning',
+                  count: 1,
+                  message: `Note: Learner moved 1 time recently.`
+              };
           }
-          return timingsString.split(/[,;]/).map(dayStr => {
-              if (dayStr.trim()) return { day: dayStr.trim(), time: '' };
-              return null;
-          }).filter(Boolean);
+      } catch (statsErr) {
+          Logger.log("Error calculating churn risk: " + statsErr.message);
+      }
+      // -----------------------------------
+
+      // Helper: Parse Class Timings
+      const parseClassTimings = (t) => { 
+          if(!t) return []; 
+          if(t.includes(' at ')) return t.split(';').map(s=>{const p=s.trim().match(/(\w+)\s+at\s+(\d{1,2}:\d{2}\s(?:AM|PM))/i);return p?{day:p[1],time:p[2]}:null}).filter(Boolean); 
+          return t.split(/[,;]/).map(d=>d.trim()?{day:d.trim(),time:''}:null).filter(Boolean); 
       };
 
       // Helper: Parse Payment Plan
-      const parsePaymentPlan = (hubspotPlan) => {
-        if (!hubspotPlan) return { paymentPlanType: 'Upfront', installmentFrequency: '', customPlanDetails: '' };
-        hubspotPlan = hubspotPlan.toLowerCase();
-        if (hubspotPlan.includes('upfront') || hubspotPlan.includes('fully paid')) {
-            return { paymentPlanType: 'Upfront', installmentFrequency: '', customPlanDetails: '' };
-        } else if (hubspotPlan.includes('installment')) {
-            let frequency = 'Monthly';
-            if (hubspotPlan.includes('bi-monthly') || hubspotPlan.includes('alternate')) frequency = 'Alternate';
-            else if (hubspotPlan.includes('quarterly')) frequency = 'Quarterly';
-            return { paymentPlanType: 'Installment', installmentFrequency: frequency, customPlanDetails: '' };
-        } else {
-            return { paymentPlanType: 'Custom', installmentFrequency: '', customPlanDetails: hubspotPlan };
-        }
+      const parsePaymentPlan = (h) => { 
+          if(!h) return {paymentPlanType:'Upfront',installmentFrequency:'',customPlanDetails:''}; 
+          h=h.toLowerCase(); 
+          if(h.includes('installment')) return {paymentPlanType:'Installment',installmentFrequency:h.includes('quarterly')?'Quarterly':'Monthly',customPlanDetails:''}; 
+          return {paymentPlanType:'Upfront',installmentFrequency:'',customPlanDetails:''}; 
       };
-      
-      // Helper: Parse Session String
-      let sessionsPerWeekString = '';
-      const rawFrequency = contactProperties.frequency_of_classes;
-      if (rawFrequency && typeof rawFrequency === 'string') {
-          const numMatch = rawFrequency.match(/\d+/);
-          if (numMatch) {
-              const num = parseInt(numMatch[0], 10);
-              if (rawFrequency.toLowerCase().includes('week')) sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/week`;
-              else if (rawFrequency.toLowerCase().includes('month')) sessionsPerWeekString = `${num} Session${num === 1 ? '' : 's'}/month`;
-              else sessionsPerWeekString = rawFrequency;
-          } else {
-              sessionsPerWeekString = rawFrequency;
-          }
-      }
 
       const paymentPlanParsed = parsePaymentPlan(contactProperties.payment_type);
 
@@ -143,10 +126,7 @@ function fetchHubspotByJlid(jlid) {
         learnerName: `${contactProperties.dealname || ''}`.trim(),
         parentName: contactProperties.parent_name || '',
         parentEmail: contactProperties.parent_email || '',
-        
-        // Use the smart phone number
         parentContact: finalParentPhone, 
-        
         course: getCourseLabel(contactProperties.current_course) || '',
         subscriptionTenureMonths: tenure,
         dealAmount: dealAmount,
@@ -167,22 +147,25 @@ function fetchHubspotByJlid(jlid) {
         clsManagerName: getHSUserLabel(contactProperties.cls_manager) || '',
         tpManagerName: getHSUserLabel(contactProperties.teacher_manager) || '',
         currency: contactProperties.deal_currency_code || 'EUR', 
-        sessionsPerWeek: sessionsPerWeekString,
+        sessionsPerWeek: contactProperties.frequency_of_classes || '',
         timezone: contactProperties.time_zone || '',
         paymentReceivedDate: contactProperties.stage____payment_trigger_date || null,
         installmentTerms: contactProperties.installment_terms_final || '',
-        discount: calculatedDiscount 
+        discount: calculatedDiscount,
+        
+        // Pass the alert object
+        churnAlert: churnAlert 
       };
       
       return { success: true, data: data };
     } else {
-      return { success: false, message: 'No learner found with this JLID in HubSpot.' };
+      return { success: false, message: 'No learner found with this JLID.' };
     }
-
   } catch (error) {
     return { success: false, message: 'HubSpot Connection Error: ' + error.message };
   }
 }
+
 
 
 function logEmailToHubspot(dealId, subject, htmlBody) {
@@ -1563,5 +1546,72 @@ function getMigrationHistoryStats(jlid) {
   } catch (e) {
     Logger.log("Error analyzing migration stats: " + e.message);
     return { total: 0, inbound:0, outbound:0, events: [] };
+  }
+}
+
+function getTeacherAttritionReport(teacherName) {
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+  
+  // 1. Search for Deals where 'current_teacher' matches the name
+  const requestBody = {
+    filterGroups: [{
+      filters: [{ propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName }]
+    }],
+    limit: 100, // Fetch up to 100 students (paginate if needed later)
+    properties: ["dealname", "jetlearner_id", "current_course", "module_start_date"]
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(searchUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(requestBody),
+      muteHttpExceptions: true
+    });
+    
+    const data = JSON.parse(response.getContentText());
+    if (!data.results) return { success: false, message: "No students found." };
+
+    // 2. For each student, check their migration count (Using the Audit Log cache for speed)
+    const auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const students = data.results.map(deal => {
+        const jlid = deal.properties.jetlearner_id;
+        
+        // Count migrations in last 90 days from local log
+        let recentMoves = 0;
+        let lastMoveDate = "N/A";
+        
+        if (auditData && auditData.length > 1) {
+            const now = new Date();
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(now.getMonth() - 3);
+            
+            // Assuming Col 0=Time, Col 1=Action, Col 2=JLID
+            auditData.forEach(row => {
+                if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
+                    const d = new Date(row[0]);
+                    if (d > threeMonthsAgo) recentMoves++;
+                    if (lastMoveDate === "N/A" || d > new Date(lastMoveDate)) lastMoveDate = d.toLocaleDateString();
+                }
+            });
+        }
+
+        return {
+            name: deal.properties.dealname,
+            jlid: jlid,
+            course: getCourseLabel(deal.properties.current_course),
+            recentMoves: recentMoves,
+            lastMove: lastMoveDate
+        };
+    });
+
+    // Sort: High risk (most moves) first
+    students.sort((a, b) => b.recentMoves - a.recentMoves);
+
+    return { success: true, students: students, teacher: teacherName };
+
+  } catch (e) {
+    return { success: false, message: e.message };
   }
 }

@@ -718,7 +718,39 @@
                   var installmentAmountPerTerm = (pricing.installments[0].amount) || 0;
                   var pendingCount = pricing.installments.filter(function(inst) { return !inst.isPaid; }).length;
               ?>
-              <li><strong>Installment Details:</strong> Total of <?!= pricing.installments.length ?> installments of <?!= pricing.currencySymbol ?><?= safeToFixed(installmentAmountPerTerm) ?>. <?!= pendingCount ?> installment<?!= pendingCount === 1 ? '' : 's' ?> pending.</li>
+<li>
+          <strong>Installment Details:</strong>
+          <? 
+             // Logic to check if all installments are the same amount
+             var isUniform = true;
+             var pendingCount = 0;
+             var nextAmount = 0;
+             
+             if(pricing.installments && pricing.installments.length > 0) {
+                var firstAmt = pricing.installments[0].amount;
+                for(var k=0; k < pricing.installments.length; k++){
+                   if(!pricing.installments[k].isPaid) {
+                       pendingCount++;
+                       nextAmount = pricing.installments[k].amount; // Grab the amount of the next pending one
+                   }
+                   // Check uniformity (ignore small floating point differences)
+                   if(Math.abs(pricing.installments[k].amount - firstAmt) > 0.1) {
+                       isUniform = false;
+                   }
+                }
+             }
+          ?>
+
+          <? if (isUniform) { ?>
+             <!-- Standard Scenario (All amounts equal) -->
+             Total of <?= data.numberOfInstallments ?> installments of <?= pricing.currencySymbol ?><?= safeToFixed(pricing.installments[0].amount) ?>. 
+             <?= pendingCount ?> installments pending.
+          <? } else { ?>
+             <!-- Partial Payment Scenario (Mixed amounts) -->
+             Total of <?= data.numberOfInstallments ?> installments. 
+             Remaining balance is split into <?= pendingCount ?> installments of <?= pricing.currencySymbol ?><?= safeToFixed(nextAmount) ?>.
+          <? } ?>
+        </li>
               <? } ?>
             </ul>
 

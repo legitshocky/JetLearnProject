@@ -165,7 +165,10 @@ function calculateInvoicePricing(formData, previewOnly = false) {
     const userSelectedTenureMonths = parseInt(formData.subscriptionTenure || '0');
     const freeClasses = parseInt(formData.freeClasses || '0');
     const sessionsPerWeekNum = parseInt((formData.sessionsPerWeek && String(formData.sessionsPerWeek).split(' ')[0]) || '0');
+    
+    // We treat this as "Amount Paid So Far"
     const customPaidAmount = parseFloat(formData.customPaidAmount || '0');
+    
     const invoiceProducts = getInvoiceProductsData();
     const selectedPlan = invoiceProducts.find(p => p['Plan Name'] === formData.planName);
 
@@ -173,7 +176,6 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         throw new Error(`Invoice plan '${formData.planName}' not found.`);
     }
     
-    // FIX: Force non-numbers to 0
     let fixedClassesPerPlan = parseInt(selectedPlan['Fixed Classes']);
     if (isNaN(fixedClassesPerPlan)) fixedClassesPerPlan = 0;
 
@@ -209,16 +211,22 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         effectiveBasePrice *= (1 - customCurrencyExtraDiscountPercentage / 100);
     }
 
-    if (discount > effectiveBasePrice) discount = effectiveBasePrice;
-    
+    // --- 1. Total Calculation Fix ---
+    // Total is ALWAYS Base - Discount
     let finalTotal = effectiveBasePrice - discount;
     if (finalTotal < 0) finalTotal = 0;
 
     const numInstallments = parseInt(formData.numberOfInstallments || '1');
     const isInstallment = formData.paymentType === 'Installment' && numInstallments > 0;
 
-    let amountPaid = parseFloat(formData.customPaidAmount) || 0;
-    if (amountPaid === 0) {
+    // --- 2. Amount Paid & Balance Logic ---
+    let amountPaid = 0;
+    
+    if (customPaidAmount > 0) {
+        // Explicit partial payment entered
+        amountPaid = customPaidAmount;
+    } else {
+        // Auto-calculate
         if (isInstallment && numInstallments > 0) {
             amountPaid = finalTotal / numInstallments;
         } else {
@@ -226,7 +234,8 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         }
     }
     
-    const balanceDue = finalTotal - amountPaid;
+    const balanceDue = Math.max(0, finalTotal - amountPaid);
+    // -------------------------------------
 
     let totalClasses = (fixedClassesPerPlan > 0) ? fixedClassesPerPlan + freeClasses : (userSelectedTenureMonths * 4 * sessionsPerWeekNum) + freeClasses;
     totalClasses = Math.max(0, totalClasses);
@@ -246,14 +255,15 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         }
     }
 
+    // --- 3. Installment Array Logic ---
     const installments = [];
+    
     if (isInstallment && formData.installmentType && formData.dueDayToPay) {
         const billingAnchorDate = formData.firstPaymentDate ? new Date(formData.firstPaymentDate) : new Date(formData.startDate);
         const dueDay = parseInt(formData.dueDayToPay);
-        let lastDueDate = new Date(billingAnchorDate);
-
+        
         let monthIncrement = 1;
-            switch (formData.installmentType) {
+        switch (formData.installmentType) {
             case 'Alternate': monthIncrement = 2; break;
             case 'Quarterly': monthIncrement = 3; break;
             case '4 Months': monthIncrement = 4; break;
@@ -266,26 +276,65 @@ function calculateInvoicePricing(formData, previewOnly = false) {
             case '11 Months': monthIncrement = 11; break;
             case '12 Months': monthIncrement = 12; break;
         }
+
         if (customPaidAmount > 0) {
-            const installmentAmount = balanceDue > 0 && numInstallments > 0 ? balanceDue / numInstallments : 0;
-            for (let i = 0; i < numInstallments; i++) {
-                let nextDueDate = new Date(lastDueDate);
-                if (i > 0) {
+            // CASE A: Custom Partial Payment Logic
+            // 1. First payment is what they entered (Is Paid: YES)
+            installments.push({ 
+                number: 1, 
+                amount: customPaidAmount, 
+                isPaid: true, 
+                dueDate: billingAnchorDate, 
+                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate) 
+            });
+
+            // 2. Remaining installments split the Balance Due
+            const remainingCount = numInstallments - 1; 
+            
+            if (remainingCount > 0 && balanceDue > 0) {
+                const nextAmount = balanceDue / remainingCount;
+                let lastDueDate = new Date(billingAnchorDate);
+
+                for (let i = 0; i < remainingCount; i++) {
+                    let nextDueDate = new Date(lastDueDate);
                     nextDueDate.setMonth(nextDueDate.getMonth() + monthIncrement);
+                    nextDueDate.setDate(dueDay);
+                    
+                    installments.push({ 
+                        number: i + 2, 
+                        amount: nextAmount, 
+                        isPaid: false, 
+                        dueDate: nextDueDate, 
+                        dueDateFormatted: formatDateDDMMYYYY(nextDueDate) 
+                    });
+                    lastDueDate = nextDueDate;
                 }
-                nextDueDate.setDate(dueDay);
-                installments.push({ number: i + 1, amount: installmentAmount, isPaid: false, dueDate: nextDueDate, dueDateFormatted: formatDateDDMMYYYY(nextDueDate) });
-                lastDueDate = nextDueDate;
             }
         } else {
+            // CASE B: Standard Logic (Even Split)
             const installmentAmount = finalTotal / numInstallments;
-            installments.push({ number: 1, amount: installmentAmount, isPaid: true, dueDate: billingAnchorDate, dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate) });
+            
+            installments.push({ 
+                number: 1, 
+                amount: installmentAmount, 
+                isPaid: true, 
+                dueDate: billingAnchorDate, 
+                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate) 
+            });
+
             let lastDueDate = new Date(billingAnchorDate);
             for (let i = 1; i < numInstallments; i++) {
                 let nextDueDate = new Date(lastDueDate);
                 nextDueDate.setMonth(nextDueDate.getMonth() + monthIncrement);
                 nextDueDate.setDate(dueDay);
-                installments.push({ number: i + 1, amount: installmentAmount, isPaid: false, dueDate: nextDueDate, dueDateFormatted: formatDateDDMMYYYY(nextDueDate) });
+                
+                installments.push({ 
+                    number: i + 1, 
+                    amount: installmentAmount, 
+                    isPaid: false, 
+                    dueDate: nextDueDate, 
+                    dueDateFormatted: formatDateDDMMYYYY(nextDueDate) 
+                });
                 lastDueDate = nextDueDate;
             }
         }
@@ -295,9 +344,9 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         unitPrice: unitPrice,
         effectiveBasePrice: effectiveBasePrice,
         discount: discount,
-        finalTotal: finalTotal,
-        amountPaid: amountPaid,
-        balanceDue: balanceDue,
+        finalTotal: finalTotal, // Total Deal Value
+        amountPaid: amountPaid, // Collected
+        balanceDue: balanceDue, // Remaining
         currencySymbol: finalCurrencySymbol,
         subscriptionTenureMonths: userSelectedTenureMonths,
         startDateFormatted: formatDate(new Date(formData.startDate)),
@@ -310,6 +359,7 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         upfrontDueDate: formData.upfrontDueDate ? formatDate(new Date(formData.upfrontDueDate)) : null
     };
 }
+
 function validateInvoiceData(formData) { 
   const errors = [];
 

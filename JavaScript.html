@@ -1166,7 +1166,53 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     setSelectValue(currencySelectEl, data.currency);
                     setSelectValue(sessionsPerWeekSelectEl, data.sessionsPerWeek);
 
-                    // --- 4. Class Sessions Logic ---
+                    // --- 4. FIX: SET DISCOUNT ---
+                    if (formPrefix === 'onboardingParent') {
+                        const discountEl = document.getElementById('onboardingParentDiscount');
+                        if (discountEl) {
+                            discountEl.value = data.discount || 0;
+                        }
+                    }
+
+                    // --- 5. NEW: CHURN RISK ALERT ---
+                    // Determine where to show the alert based on the active form
+                    let activeForm = null;
+                    if (formPrefix === 'migration') activeForm = document.getElementById('migrationForm');
+                    else if (formPrefix === 'onboardingParent') activeForm = document.getElementById('onboardingParentEmailForm');
+                    
+                    // Remove old alert
+                    const oldAlert = document.getElementById('churnAlertBox');
+                    if (oldAlert) oldAlert.remove();
+
+                    if (activeForm && data.churnAlert && (data.churnAlert.level === 'Critical' || data.churnAlert.level === 'Warning')) {
+                        const alertDiv = document.createElement('div');
+                        alertDiv.id = 'churnAlertBox';
+                        
+                        const isCritical = data.churnAlert.level === 'Critical';
+                        const bgColor = isCritical ? '#ffebee' : '#fff3e0'; // Red vs Orange bg
+                        const borderColor = isCritical ? '#d32f2f' : '#ff9800';
+                        const textColor = isCritical ? '#c62828' : '#e65100';
+                        const icon = isCritical ? 'fa-exclamation-triangle' : 'fa-info-circle';
+
+                        alertDiv.style.cssText = `background-color: ${bgColor}; border: 2px solid ${borderColor}; color: ${textColor}; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;`;
+                        
+                        alertDiv.innerHTML = `
+                            <div style="display:flex; align-items:center; gap:15px;">
+                                <i class="fas ${icon}" style="font-size:1.8rem;"></i>
+                                <div>
+                                    <div style="font-size:1.1rem; text-transform:uppercase;">${data.churnAlert.level} Alert</div>
+                                    <div style="font-weight:normal; margin-top:4px;">${data.churnAlert.message}</div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Insert at the top of the form container
+                        const formTitle = activeForm.previousElementSibling; // Usually the h2 title
+                        if (formTitle) formTitle.insertAdjacentElement('afterend', alertDiv);
+                    }
+                    // ---------------------------------------
+
+                    // --- 6. Class Sessions Logic ---
                     const sessionContainerMap = {
                         'onboardingParent': document.getElementById('onboardingParentClassSessionsContainer'),
                         'onboarding': document.getElementById('onboardingClassSessionsContainer'),
@@ -1175,7 +1221,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     const targetSessionContainer = sessionContainerMap[formPrefix];
                     
                     if (targetSessionContainer && data.classSessions && data.classSessions.length > 0) {
-                        targetSessionContainer.innerHTML = ''; // Clear existing
+                        targetSessionContainer.innerHTML = ''; 
                         data.classSessions.forEach((session, index) => {
                             const isInitial = index === 0;
                             const newSession = createClassSessionGroup(isInitial, formPrefix);
@@ -1195,11 +1241,10 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                             }
                         });
                     } else if (targetSessionContainer && targetSessionContainer.children.length === 0) {
-                        // Create one empty row if none exist
                         targetSessionContainer.appendChild(createClassSessionGroup(true, formPrefix));
                     }
 
-                    // --- 5. Parent Onboarding Specific Logic ---
+                    // --- 7. Parent Onboarding Specific Logic ---
                     if (formPrefix === 'onboardingParent') {
                         const installmentRadio = document.getElementById('onboardingParentPaymentInstallment');
                         const upfrontRadio = document.getElementById('onboardingParentPaymentUpfront');
@@ -1216,7 +1261,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                         
                         setSelectValue(freqSelect, data.installmentFrequency);
                         
-                        // Recalculate totals
+                        // Recalculate totals NOW that discount is set
                         if (typeof updateParentOnboardingPlanDetails === 'function') {
                             updateParentOnboardingPlanDetails();
                         }
@@ -1235,6 +1280,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
             })
             .fetchHubspotByJlid(jlid);
     }
+
 
     function resetHubspotFields(formPrefix) {
         const formElement = document.getElementById(`${formPrefix}EmailForm`) || document.getElementById(formPrefix === 'onboarding' ? 'onboardingForm' : formPrefix === 'migration' ? 'migrationForm' : '') || document.getElementById(formPrefix === 'invoice' ? 'invoiceForm' : '');
@@ -2702,148 +2748,140 @@ tr.innerHTML = `
 
 
 function calculateInvoicePricingClient(formData) {
-        let effectiveBasePrice = 0;
-        let discount = parseFloat(formData.discount || '0');
-        let customCurrencyExtraDiscountPercentage = parseFloat(formData.customCurrencyExtraDiscountPercentage || '0');
-        let finalCurrencySymbol = getCurrencySymbolClient(formData.currency);
-        const userSelectedTenureMonths = parseInt(formData.subscriptionTenure || '0');
-        const freeClasses = parseInt(formData.freeClasses || '0');
-        
-        // FIXED: Robust parsing for sessions per week (extract digit from string like "2 Sessions/week")
-        let sessionsPerWeekNum = 0;
-        if (formData.sessionsPerWeek) {
-            const match = String(formData.sessionsPerWeek).match(/(\d+)/);
-            if (match) sessionsPerWeekNum = parseInt(match[0]);
-        }
-
-        const customPaidAmount = parseFloat(formData.customPaidAmount || '0');
-        const selectedPlan = globalInvoiceProducts.find(p => p['Plan Name'] === formData.planName);
-        
-        // FIXED: Handle "Fixed Classes" strictly as a number
-        let fixedClassesVal = 0;
-        if (selectedPlan) {
-            fixedClassesVal = parseInt(selectedPlan['Fixed Classes']);
-            if (isNaN(fixedClassesVal)) fixedClassesVal = 0;
-        }
-
-        if (!selectedPlan) {
-            return { effectiveBasePrice: 0, discount: 0, customCurrencyExtraDiscountPercentage: 0, calculatedTotal: 0, finalTotal: 0, currencySymbol: finalCurrencySymbol, subscriptionTenureMonths: userSelectedTenureMonths, startDateFormatted: formData.startDate, endDateFormatted: formData.endDate, numberOfInstallments: parseInt(formData.numberOfInstallments || '1'), displayTotalSessions: 0, planDescription: formData.planName, freeClassesProvided: freeClasses, installments: [] };
-        }
-
-        // Currency Conversion
-        let targetCurrencyCode = formData.currency;
-        let finalConversionRateFromEUR = 1;
-        if (targetCurrencyCode === 'CUSTOM') {
-            targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase();
-            finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
-                ? parseFloat(formData.customCurrencyRate)
-                : getConversionRateClient('EUR', targetCurrencyCode);
-            finalCurrencySymbol = getCurrencySymbolClient(targetCurrencyCode);
-        } else {
-            if (['EUR', 'GBP', 'USD'].includes(targetCurrencyCode)) {
-                finalConversionRateFromEUR = 1.0;
-            } else {
-                finalConversionRateFromEUR = getConversionRateClient('EUR', targetCurrencyCode);
-            }
-        }
-
-        const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-        const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1');
-        const monthlyRateEUR = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;
-        
-        effectiveBasePrice = monthlyRateEUR * userSelectedTenureMonths;
-        if (isNaN(effectiveBasePrice)) effectiveBasePrice = 0;
-
-        if (formData.currency === 'CUSTOM' && effectiveBasePrice > 0 && customCurrencyExtraDiscountPercentage > 0) {
-            effectiveBasePrice *= (1 - customCurrencyExtraDiscountPercentage / 100);
-        }
-        effectiveBasePrice *= finalConversionRateFromEUR;
-
-        if (discount > effectiveBasePrice) discount = effectiveBasePrice;
-        let calculatedTotalBeforeCustomOverride = effectiveBasePrice - discount;
-        if (calculatedTotalBeforeCustomOverride < 0) calculatedTotalBeforeCustomOverride = 0;
-        
-        const finalTotal = customPaidAmount > 0 ? customPaidAmount : calculatedTotalBeforeCustomOverride;
-
-        // FIXED: Calculation Logic
-        let totalClasses = 0;
-        if (fixedClassesVal > 0) {
-            totalClasses = fixedClassesVal + freeClasses;
-        } else {
-            // Only calculate dynamically if fixed class is 0
-            totalClasses = (userSelectedTenureMonths * 4 * sessionsPerWeekNum) + freeClasses;
-        }
-        totalClasses = Math.max(0, totalClasses);
-
-        let weeksRequired = 0;
-        if (sessionsPerWeekNum > 0) {
-            weeksRequired = Math.ceil(totalClasses / sessionsPerWeekNum);
-        } else if (totalClasses > 0) {
-            weeksRequired = totalClasses;
-        }
-
-        let finalEndDate;
-        const startDate = new Date(formData.startDate);
-        if (formData.endDate && formData.endDate.trim() !== '' && isInvoiceEndDateManuallySet) {
-            finalEndDate = new Date(formData.endDate);
-        } else {
-            finalEndDate = new Date(startDate);
-            if (weeksRequired > 0) {
-                finalEndDate.setDate(startDate.getDate() + (weeksRequired * 7) - 1);
-            } else {
-                finalEndDate.setDate(startDate.getDate());
-            }
-        }
-
-        // Installment Logic
-        const installments = [];
-        if (formData.paymentType === 'Installment' && formData.numberOfInstallments > 0 && formData.installmentType && formData.dueDayToPay) {
-            const numInstallments = parseInt(formData.numberOfInstallments);
-            const installmentAmount = finalTotal / numInstallments;
-            const billingAnchorDate = formData.firstPaymentDate ? new Date(formData.firstPaymentDate) : new Date(formData.startDate);
-            const dueDay = parseInt(formData.dueDayToPay);
-
-            installments.push({
-                number: 1,
-                amount: installmentAmount,
-                isPaid: true,
-                dueDate: billingAnchorDate,
-                dueDateFormatted: formatDateDDMMYYYYClient(billingAnchorDate)
-            });
-
-            let monthIncrement = 1;
-            switch (formData.installmentType) {
-                case 'Alternate': monthIncrement = 2; break;
-                case 'Quarterly': monthIncrement = 3; break;
-                case '4 Months': monthIncrement = 4; break;
-                case '5 Months': monthIncrement = 5; break;
-                case '6 Months': monthIncrement = 6; break;
-                case '7 Months': monthIncrement = 7; break;
-                case '8 Months': monthIncrement = 8; break;
-                case '9 Months': monthIncrement = 9; break;
-                case '10 Months': monthIncrement = 10; break;
-                case '11 Months': monthIncrement = 11; break;
-                case '12 Months': monthIncrement = 12; break;
-            }
-
-            let lastDueDate = new Date(billingAnchorDate);
-            for (let i = 1; i < numInstallments; i++) {
-                let nextDueDate = new Date(lastDueDate);
-                nextDueDate.setMonth(nextDueDate.getMonth() + monthIncrement);
-                nextDueDate.setDate(dueDay);
-                installments.push({
-                    number: i + 1,
-                    amount: installmentAmount,
-                    isPaid: false,
-                    dueDate: nextDueDate,
-                    dueDateFormatted: formatDateDDMMYYYYClient(nextDueDate)
-                });
-                lastDueDate = nextDueDate;
-            }
-        }
-
-        return { effectiveBasePrice, discount, customCurrencyExtraDiscountPercentage, calculatedTotal: calculatedTotalBeforeCustomOverride, finalTotal, currencySymbol: finalCurrencySymbol, subscriptionTenureMonths: userSelectedTenureMonths, startDateFormatted: formData.startDate, endDateFormatted: formData.endDate, numberOfInstallments: parseInt(formData.numberOfInstallments || '1'), displayTotalSessions: totalClasses, planDescription: formData.planName, freeClassesProvided: freeClasses, installments: [] };
+    let effectiveBasePrice = 0;
+    let discount = parseFloat(formData.discount || '0');
+    let customCurrencyExtraDiscountPercentage = parseFloat(formData.customCurrencyExtraDiscountPercentage || '0');
+    let finalCurrencySymbol = getCurrencySymbolClient(formData.currency);
+    const userSelectedTenureMonths = parseInt(formData.subscriptionTenure || '0');
+    const freeClasses = parseInt(formData.freeClasses || '0');
+    
+    // Parse sessions per week
+    let sessionsPerWeekNum = 0;
+    if (formData.sessionsPerWeek) {
+        const match = String(formData.sessionsPerWeek).match(/(\d+)/);
+        if (match) sessionsPerWeekNum = parseInt(match[0]);
     }
+
+    const customPaidAmount = parseFloat(formData.customPaidAmount || '0');
+    const selectedPlan = globalInvoiceProducts.find(p => p['Plan Name'] === formData.planName);
+    
+    let fixedClassesVal = 0;
+    if (selectedPlan) {
+        fixedClassesVal = parseInt(selectedPlan['Fixed Classes']);
+        if (isNaN(fixedClassesVal)) fixedClassesVal = 0;
+    }
+
+    if (!selectedPlan) {
+        return { effectiveBasePrice: 0, discount: 0, calculatedTotal: 0, finalTotal: 0, currencySymbol: finalCurrencySymbol, displayTotalSessions: 0 };
+    }
+
+    // Currency Conversion
+    let targetCurrencyCode = formData.currency;
+    let finalConversionRateFromEUR = 1;
+    if (targetCurrencyCode === 'CUSTOM') {
+        targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase();
+        finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
+            ? parseFloat(formData.customCurrencyRate)
+            : getConversionRateClient('EUR', targetCurrencyCode);
+        finalCurrencySymbol = getCurrencySymbolClient(targetCurrencyCode);
+    } else {
+        if (['EUR', 'GBP', 'USD'].includes(targetCurrencyCode)) {
+            finalConversionRateFromEUR = 1.0;
+        } else {
+            finalConversionRateFromEUR = getConversionRateClient('EUR', targetCurrencyCode);
+        }
+    }
+
+    const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
+    const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1');
+    const monthlyRateEUR = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;
+    
+    effectiveBasePrice = monthlyRateEUR * userSelectedTenureMonths;
+    if (isNaN(effectiveBasePrice)) effectiveBasePrice = 0;
+
+    if (formData.currency === 'CUSTOM' && effectiveBasePrice > 0 && customCurrencyExtraDiscountPercentage > 0) {
+        effectiveBasePrice *= (1 - customCurrencyExtraDiscountPercentage / 100);
+    }
+    effectiveBasePrice *= finalConversionRateFromEUR;
+
+    // --- FIX: Total Calculation ---
+    // The Total is ALWAYS (Base Price - Discount), regardless of what was paid
+    let finalTotal = effectiveBasePrice - discount;
+    if (finalTotal < 0) finalTotal = 0;
+
+    const numInstallments = parseInt(formData.numberOfInstallments || '1');
+    const isInstallment = formData.paymentType === 'Installment';
+
+    // --- FIX: Amount Paid & Balance Logic ---
+    let amountPaid = 0;
+
+    if (customPaidAmount > 0) {
+        // If user typed a specific amount, that is what is paid
+        amountPaid = customPaidAmount;
+    } else {
+        // If field is empty, auto-calculate based on plan type
+        if (isInstallment && numInstallments > 0) {
+            amountPaid = finalTotal / numInstallments;
+        } else {
+            amountPaid = finalTotal; // Upfront means 100% paid
+        }
+    }
+
+    const balanceDue = Math.max(0, finalTotal - amountPaid);
+
+    // Calculate Classes
+    let totalClasses = 0;
+    if (fixedClassesVal > 0) {
+        totalClasses = fixedClassesVal + freeClasses;
+    } else {
+        totalClasses = (userSelectedTenureMonths * 4 * sessionsPerWeekNum) + freeClasses;
+    }
+    totalClasses = Math.max(0, totalClasses);
+
+    // Date Logic
+    let weeksRequired = 0;
+    if (sessionsPerWeekNum > 0) {
+        weeksRequired = Math.ceil(totalClasses / sessionsPerWeekNum);
+    } else if (totalClasses > 0) {
+        weeksRequired = totalClasses;
+    }
+
+    let finalEndDate;
+    const startDate = new Date(formData.startDate);
+    if (formData.endDate && formData.endDate.trim() !== '' && isInvoiceEndDateManuallySet) {
+        finalEndDate = new Date(formData.endDate);
+    } else {
+        finalEndDate = new Date(startDate);
+        if (weeksRequired > 0) {
+            finalEndDate.setDate(startDate.getDate() + (weeksRequired * 7) - 1);
+        } else {
+            finalEndDate.setDate(startDate.getDate());
+        }
+    }
+
+    // Note: We don't generate the full installment array here for the simple display
+    // The backend handles the complex date generation for the PDF.
+    
+    return { 
+        effectiveBasePrice, 
+        discount, 
+        customCurrencyExtraDiscountPercentage, 
+        calculatedTotal: finalTotal, 
+        finalTotal, // This is the full deal value
+        amountPaid, // This is what is received so far
+        balanceDue, // This is the remaining
+        currencySymbol: finalCurrencySymbol, 
+        subscriptionTenureMonths: userSelectedTenureMonths, 
+        startDateFormatted: formData.startDate, 
+        endDateFormatted: formData.endDate, 
+        numberOfInstallments: numInstallments, 
+        displayTotalSessions: totalClasses, 
+        planDescription: formData.planName, 
+        freeClassesProvided: freeClasses, 
+        installments: [] 
+    };
+}
+
 
     const EUR_BASE_RATES_CLIENT = {
       'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348, 'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50, 'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951, 'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
@@ -3201,31 +3239,37 @@ function collectInvoiceFormData() {
     }
 
 function loadTeacherLoadPage() {
-    const selectEl = document.getElementById('loadDashboardTeacherSelect');
+    const inputEl = document.getElementById('loadDashboardTeacherInput');
+    const dataListEl = document.getElementById('loadDashboardTeacherList');
     
-    // Populate dropdown only if empty
-    if(selectEl.options.length <= 1) {
+    // Populate list only if empty
+    if (dataListEl.options.length === 0) {
         showLoading('Loading teacher list...');
         google.script.run
             .withSuccessHandler(teachers => {
                 hideLoading();
-                selectEl.innerHTML = '<option value="" disabled selected>Select a teacher...</option>';
+                dataListEl.innerHTML = ''; // Clear existing
                 
                 teachers.forEach(name => {
                     const option = document.createElement('option');
                     option.value = name;
-                    option.textContent = name;
-                    selectEl.appendChild(option);
+                    dataListEl.appendChild(option);
                 });
 
-                // Add Change Listener
-                selectEl.addEventListener('change', function() {
-                    if(this.value) loadTeacherSpecificDetails(this.value);
+                // Add Change Listener to the INPUT box
+                // When user selects a name or types a valid one, it triggers
+                inputEl.addEventListener('change', function() {
+                    const val = this.value;
+                    // Only search if the value is not empty
+                    if (val) {
+                        loadTeacherSpecificDetails(val);
+                    }
                 });
 
                 // Add Refresh Listener
                 document.getElementById('refreshTeacherListBtn').onclick = function() {
-                   selectEl.innerHTML = '<option value="" disabled selected>Reloading...</option>';
+                   dataListEl.innerHTML = '';
+                   inputEl.value = '';
                    loadTeacherLoadPage();
                 };
             })
@@ -3234,31 +3278,30 @@ function loadTeacherLoadPage() {
     }
 }
 
+
 // 2. Display Details when Teacher Selected
 function loadTeacherSpecificDetails(teacherName) {
-    showLoading(`Fetching details for ${teacherName}...`);
+    showLoading(`Fetching detailed analysis for ${teacherName}...`);
     
     document.getElementById('teacherLoadEmptyState').style.display = 'none';
     const resultsContainer = document.getElementById('teacherLoadResults');
     resultsContainer.style.display = 'none'; 
 
+    // 1. Get Load Stats (Existing)
     google.script.run
         .withSuccessHandler(data => {
-            hideLoading();
             if(!data.success) {
                 showToast('error', 'Error', data.message);
+                hideLoading();
                 return;
             }
 
-            // Fill Cards
             const statusEl = document.getElementById('loadDisplayStatus');
             statusEl.textContent = data.status;
             statusEl.style.color = data.status === 'Active' ? 'var(--success)' : 'var(--danger)';
-
             document.getElementById('loadDisplayCount').textContent = data.totalLoad;
             document.getElementById('loadDisplayLastActive').textContent = data.lastActivity || 'No recent activity';
 
-            // Fill Table
             const tbody = document.getElementById('loadDisplayTableBody');
             tbody.innerHTML = '';
 
@@ -3270,20 +3313,92 @@ function loadTeacherSpecificDetails(teacherName) {
                     if(c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
                     else if(c.proficiency.includes('51-60')) badgeClass = 'status-warning';
 
-                    const row = `
-                        <tr>
-                            <td style="font-weight: 500;">${c.course}</td>
-                            <td><span class="status-badge ${badgeClass}">${c.proficiency}</span></td>
-                        </tr>
-                    `;
+                    const row = `<tr><td style="font-weight: 500;">${c.course}</td><td><span class="status-badge ${badgeClass}">${c.proficiency}</span></td></tr>`;
                     tbody.innerHTML += row;
                 });
             }
-
             resultsContainer.style.display = 'block';
+
+            // --- 2. NEW: FETCH ATTRITION RISK REPORT (Chained Call) ---
+            google.script.run
+                .withSuccessHandler(report => {
+                    hideLoading();
+                    if (!report.success) return;
+                    
+                    // Check if table exists, else create it
+                    let riskTableSection = document.getElementById('attritionRiskSection');
+                    if (!riskTableSection) {
+                        riskTableSection = document.createElement('div');
+                        riskTableSection.id = 'attritionRiskSection';
+                        riskTableSection.className = 'audit-log-container';
+                        riskTableSection.style.marginTop = '30px';
+                        riskTableSection.innerHTML = `
+                            <h3 class="dashboard-section-title" style="color:#d32f2f;">
+                                <i class="fas fa-exclamation-circle"></i> Attrition Risk Analysis
+                            </h3>
+                            <p class="form-text-muted" style="margin-bottom:15px;">Use this list to plan migrations. Students in <span style="color:#d32f2f; font-weight:bold;">Red</span> have moved recently and are high risk.</p>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Learner</th>
+                                            <th>Recent Moves (90d)</th>
+                                            <th>Last Moved</th>
+                                            <th>Course</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="attritionRiskTableBody"></tbody>
+                                </table>
+                            </div>
+                        `;
+                        resultsContainer.appendChild(riskTableSection);
+                    }
+                    
+                    const riskTbody = document.getElementById('attritionRiskTableBody');
+                    riskTbody.innerHTML = '';
+                    
+                    if (report.students.length === 0) {
+                        riskTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No active students found for this teacher.</td></tr>';
+                    } else {
+                        report.students.forEach(s => {
+                            let rowStyle = '';
+                            let moveBadge = `<span class="status-badge status-success">${s.recentMoves}</span>`;
+                            
+                            if (s.recentMoves >= 2) {
+                                rowStyle = 'background-color: #ffebee;'; // Red High Risk
+                                moveBadge = `<span class="status-badge status-failed">${s.recentMoves} (High Risk)</span>`;
+                            } else if (s.recentMoves === 1) {
+                                rowStyle = 'background-color: #fff8e1;'; // Yellow Medium
+                                moveBadge = `<span class="status-badge status-warning">${s.recentMoves}</span>`;
+                            }
+                            
+                            const tr = document.createElement('tr');
+                            tr.style = rowStyle;
+                            tr.innerHTML = `
+                                <td><strong>${s.name}</strong><br><small style="color:#666">${s.jlid}</small></td>
+                                <td style="text-align:center;">${moveBadge}</td>
+                                <td>${s.lastMove}</td>
+                                <td>${s.course}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${s.jlid}')"><i class="fas fa-copy"></i> ID</button>
+                                </td>
+                            `;
+                            riskTbody.appendChild(tr);
+                        });
+                    }
+                })
+                .getTeacherAttritionReport(teacherName);
         })
         .withFailureHandler(showError)
         .getTeacherSpecificLoad(teacherName);
+}
+
+// Helper to copy text (Add if missing in JavaScript.html)
+function copyToClipboardText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('success', 'Copied', 'JLID copied to clipboard.');
+    });
 }
 
 // 2. ADD THIS NEW FUNCTION
