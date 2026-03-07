@@ -1553,12 +1553,12 @@ function getTeacherAttritionReport(teacherName) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
   
-  // 1. Search for Deals where 'current_teacher' matches the name
+  // 1. Search for Active Deals for this teacher
   const requestBody = {
     filterGroups: [{
       filters: [{ propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName }]
     }],
-    limit: 100, // Fetch up to 100 students (paginate if needed later)
+    limit: 100, 
     properties: ["dealname", "jetlearner_id", "current_course", "module_start_date"]
   };
 
@@ -1573,26 +1573,37 @@ function getTeacherAttritionReport(teacherName) {
     const data = JSON.parse(response.getContentText());
     if (!data.results) return { success: false, message: "No students found." };
 
-    // 2. For each student, check their migration count (Using the Audit Log cache for speed)
+    // 2. Cross-reference with Audit Log for Migration History
     const auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    
     const students = data.results.map(deal => {
         const jlid = deal.properties.jetlearner_id;
         
-        // Count migrations in last 90 days from local log
         let recentMoves = 0;
-        let lastMoveDate = "N/A";
+        let lastMoveDate = null;
+        let prevTeacher = "N/A"; // Default
+        let moveReason = "N/A";  // Default
         
+        // Audit Log Cols: 0=Time, 1=Action, 2=JLID, 4=OldTeacher, 10=Reason
         if (auditData && auditData.length > 1) {
             const now = new Date();
             const threeMonthsAgo = new Date();
             threeMonthsAgo.setMonth(now.getMonth() - 3);
             
-            // Assuming Col 0=Time, Col 1=Action, Col 2=JLID
             auditData.forEach(row => {
+                // Check if row belongs to this kid AND is a Migration
                 if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
                     const d = new Date(row[0]);
+                    
+                    // Count risk (recent moves)
                     if (d > threeMonthsAgo) recentMoves++;
-                    if (lastMoveDate === "N/A" || d > new Date(lastMoveDate)) lastMoveDate = d.toLocaleDateString();
+                    
+                    // Identify the LATEST move to capture details
+                    if (!lastMoveDate || d > lastMoveDate) {
+                        lastMoveDate = d;
+                        prevTeacher = row[4] || "Unknown";
+                        moveReason = row[10] || "Unspecified";
+                    }
                 }
             });
         }
@@ -1602,11 +1613,13 @@ function getTeacherAttritionReport(teacherName) {
             jlid: jlid,
             course: getCourseLabel(deal.properties.current_course),
             recentMoves: recentMoves,
-            lastMove: lastMoveDate
+            lastMoveDate: lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : "No Record",
+            prevTeacher: prevTeacher,
+            moveReason: moveReason
         };
     });
 
-    // Sort: High risk (most moves) first
+    // Sort: High risk first, then by name
     students.sort((a, b) => b.recentMoves - a.recentMoves);
 
     return { success: true, students: students, teacher: teacherName };
@@ -1615,3 +1628,4 @@ function getTeacherAttritionReport(teacherName) {
     return { success: false, message: e.message };
   }
 }
+

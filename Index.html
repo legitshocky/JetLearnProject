@@ -1040,15 +1040,16 @@
               <div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
                 <h2 class="form-title" style="font-size: 1.2rem; margin-bottom: 1rem;">Select Teacher</h2>
                 <div class="form-group" style="display: flex; gap: 1rem; align-items: center;">
+                    <!-- Inside Index.html - Teacher Load Section -->
                   <div style="flex-grow: 1; max-width: 500px;">
-                    <select id="loadDashboardTeacherSelect" class="form-control form-select">
-                      <option value="" disabled selected>Loading teachers...</option>
-                    </select>
+                    <!-- Custom Dropdown Container -->
+                    <div class="hs-dropdown-container">
+                        <input type="text" id="hsTeacherSearchInput" class="hs-input-box" placeholder="Select or type to search..." autocomplete="off">
+                        <div id="hsTeacherOptionsList" class="hs-options-list">
+                            <!-- Options will be injected here via JS -->
+                        </div>
+                    </div>
                   </div>
-                  <button class="btn btn-primary" id="refreshTeacherListBtn">
-                    <i class="fas fa-sync-alt"></i>
-                  </button>
-                </div>
                 <p class="form-text-muted">Select a teacher to view their active course load, proficiency, and recent activity.</p>
               </div>
 

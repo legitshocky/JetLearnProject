@@ -3239,43 +3239,80 @@ function collectInvoiceFormData() {
     }
 
 function loadTeacherLoadPage() {
-    const inputEl = document.getElementById('loadDashboardTeacherInput');
-    const dataListEl = document.getElementById('loadDashboardTeacherList');
-    
-    // Populate list only if empty
-    if (dataListEl.options.length === 0) {
-        showLoading('Loading teacher list...');
+    const inputEl = document.getElementById('hsTeacherSearchInput');
+    const listEl = document.getElementById('hsTeacherOptionsList');
+
+    if (!inputEl || !listEl) return;
+
+    // 1. Fetch Data if empty
+    if (globalTeacherDataList.length === 0) {
+        showLoading('Loading teacher directory...');
         google.script.run
             .withSuccessHandler(teachers => {
                 hideLoading();
-                dataListEl.innerHTML = ''; // Clear existing
-                
-                teachers.forEach(name => {
-                    const option = document.createElement('option');
-                    option.value = name;
-                    dataListEl.appendChild(option);
-                });
-
-                // Add Change Listener to the INPUT box
-                // When user selects a name or types a valid one, it triggers
-                inputEl.addEventListener('change', function() {
-                    const val = this.value;
-                    // Only search if the value is not empty
-                    if (val) {
-                        loadTeacherSpecificDetails(val);
-                    }
-                });
-
-                // Add Refresh Listener
-                document.getElementById('refreshTeacherListBtn').onclick = function() {
-                   dataListEl.innerHTML = '';
-                   inputEl.value = '';
-                   loadTeacherLoadPage();
-                };
+                // Store data globally: teachers is array of names strings
+                // Ideally backend sends {name, email}, but for now we assume strings
+                globalTeacherDataList = teachers; 
+                renderTeacherOptions(teachers); // Initial Render
             })
             .withFailureHandler(showError)
             .getTeacherListForDropdown();
     }
+
+    // 2. Event Listener: Show list on click/focus
+    inputEl.addEventListener('focus', () => {
+        listEl.classList.add('show');
+    });
+
+    // 3. Event Listener: Filtering as you type
+    inputEl.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const filtered = globalTeacherDataList.filter(t => t.toLowerCase().includes(searchTerm));
+        renderTeacherOptions(filtered);
+        listEl.classList.add('show'); // Ensure it's open while typing
+    });
+
+    // 4. Event Listener: Close when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!inputEl.contains(e.target) && !listEl.contains(e.target)) {
+            listEl.classList.remove('show');
+        }
+    });
+}
+
+// Helper to render the HTML list
+function renderTeacherOptions(teachers) {
+    const listEl = document.getElementById('hsTeacherOptionsList');
+    const inputEl = document.getElementById('hsTeacherSearchInput');
+    
+    listEl.innerHTML = ''; // Clear
+
+    if (teachers.length === 0) {
+        listEl.innerHTML = '<div class="hs-option" style="color:#999; cursor:default;">No teachers found</div>';
+        return;
+    }
+
+    teachers.forEach(teacherName => {
+        const div = document.createElement('div');
+        div.className = 'hs-option';
+        
+        // Simulating the "Name + Email" look from HubSpot 
+        // (Since your backend currently sends only names, we use name for both, 
+        //  but you can update backend to send objects later)
+        div.innerHTML = `
+            <div class="hs-option-name">${teacherName}</div>
+            <!-- <div class="hs-option-email">email_placeholder@jet-learn.com</div> --> 
+        `;
+
+        // Click Handler for Selection
+        div.addEventListener('click', () => {
+            inputEl.value = teacherName; // Set input text
+            listEl.classList.remove('show'); // Hide list
+            loadTeacherSpecificDetails(teacherName); // Trigger Data Load
+        });
+
+        listEl.appendChild(div);
+    });
 }
 
 
@@ -3287,7 +3324,7 @@ function loadTeacherSpecificDetails(teacherName) {
     const resultsContainer = document.getElementById('teacherLoadResults');
     resultsContainer.style.display = 'none'; 
 
-    // 1. Get Load Stats (Existing)
+    // CALL 1: Get Basic Load Stats & Proficiency
     google.script.run
         .withSuccessHandler(data => {
             if(!data.success) {
@@ -3296,12 +3333,14 @@ function loadTeacherSpecificDetails(teacherName) {
                 return;
             }
 
+            // --- Render Summary Cards ---
             const statusEl = document.getElementById('loadDisplayStatus');
             statusEl.textContent = data.status;
             statusEl.style.color = data.status === 'Active' ? 'var(--success)' : 'var(--danger)';
             document.getElementById('loadDisplayCount').textContent = data.totalLoad;
             document.getElementById('loadDisplayLastActive').textContent = data.lastActivity || 'No recent activity';
 
+            // --- Render Courses Table ---
             const tbody = document.getElementById('loadDisplayTableBody');
             tbody.innerHTML = '';
 
@@ -3319,32 +3358,37 @@ function loadTeacherSpecificDetails(teacherName) {
             }
             resultsContainer.style.display = 'block';
 
-            // --- 2. NEW: FETCH ATTRITION RISK REPORT (Chained Call) ---
+            // CALL 2: Get Attrition Risk Report (Chained)
             google.script.run
                 .withSuccessHandler(report => {
-                    hideLoading();
-                    if (!report.success) return;
+                    hideLoading(); // Stop spinner
+                    if (!report.success) {
+                        console.log("Attrition report failed/empty: " + report.message);
+                        return;
+                    }
                     
-                    // Check if table exists, else create it
+                    // --- Create/Get Risk Table Section ---
                     let riskTableSection = document.getElementById('attritionRiskSection');
                     if (!riskTableSection) {
                         riskTableSection = document.createElement('div');
                         riskTableSection.id = 'attritionRiskSection';
                         riskTableSection.className = 'audit-log-container';
                         riskTableSection.style.marginTop = '30px';
+                        
                         riskTableSection.innerHTML = `
                             <h3 class="dashboard-section-title" style="color:#d32f2f;">
-                                <i class="fas fa-exclamation-circle"></i> Attrition Risk Analysis
+                                <i class="fas fa-exclamation-circle"></i> Attrition Risk & History
                             </h3>
-                            <p class="form-text-muted" style="margin-bottom:15px;">Use this list to plan migrations. Students in <span style="color:#d32f2f; font-weight:bold;">Red</span> have moved recently and are high risk.</p>
+                            <p class="form-text-muted" style="margin-bottom:15px;">Active students for <strong>${report.teacher}</strong>. <span style="color:#d32f2f; font-weight:bold;">Red</span> rows indicate high churn risk (2+ recent moves).</p>
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead>
                                         <tr>
                                             <th>Learner</th>
-                                            <th>Recent Moves (90d)</th>
+                                            <th>Previous Teacher</th>
                                             <th>Last Moved</th>
-                                            <th>Course</th>
+                                            <th>Reason</th>
+                                            <th>Risk (90d)</th>
                                             <th>Action</th>
                                         </tr>
                                     </thead>
@@ -3355,40 +3399,54 @@ function loadTeacherSpecificDetails(teacherName) {
                         resultsContainer.appendChild(riskTableSection);
                     }
                     
+                    // --- Populate Risk Table ---
                     const riskTbody = document.getElementById('attritionRiskTableBody');
                     riskTbody.innerHTML = '';
                     
                     if (report.students.length === 0) {
-                        riskTbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No active students found for this teacher.</td></tr>';
+                        riskTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No active students found in HubSpot.</td></tr>';
                     } else {
                         report.students.forEach(s => {
                             let rowStyle = '';
-                            let moveBadge = `<span class="status-badge status-success">${s.recentMoves}</span>`;
+                            let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                             
+                            // High Risk Logic
                             if (s.recentMoves >= 2) {
-                                rowStyle = 'background-color: #ffebee;'; // Red High Risk
-                                moveBadge = `<span class="status-badge status-failed">${s.recentMoves} (High Risk)</span>`;
+                                rowStyle = 'background-color: #ffebee;'; // Red
+                                riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
                             } else if (s.recentMoves === 1) {
-                                rowStyle = 'background-color: #fff8e1;'; // Yellow Medium
-                                moveBadge = `<span class="status-badge status-warning">${s.recentMoves}</span>`;
+                                riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
                             }
                             
+                            const prevTeacherDisplay = s.prevTeacher === "N/A" ? '<span style="color:#aaa">Original</span>' : s.prevTeacher;
+                            const courseDisplay = s.course.length > 30 ? s.course.substring(0,30) + '...' : s.course;
+
                             const tr = document.createElement('tr');
                             tr.style = rowStyle;
                             tr.innerHTML = `
-                                <td><strong>${s.name}</strong><br><small style="color:#666">${s.jlid}</small></td>
-                                <td style="text-align:center;">${moveBadge}</td>
-                                <td>${s.lastMove}</td>
-                                <td>${s.course}</td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${s.jlid}')"><i class="fas fa-copy"></i> ID</button>
+                                    <strong>${s.name}</strong><br>
+                                    <small style="color:#666">${s.jlid}</small><br>
+                                    <small style="color:#4a3c8a">${courseDisplay}</small>
+                                </td>
+                                <td>${prevTeacherDisplay}</td>
+                                <td>${s.lastMoveDate}</td>
+                                <td style="font-size:0.85em;">${s.moveReason}</td>
+                                <td>${riskBadge}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${s.jlid}')" title="Copy JLID"><i class="fas fa-copy"></i></button>
                                 </td>
                             `;
                             riskTbody.appendChild(tr);
                         });
                     }
                 })
+                .withFailureHandler(error => {
+                    hideLoading(); // Ensure spinner stops even if this part fails
+                    console.error("Attrition Report Failed: ", error);
+                })
                 .getTeacherAttritionReport(teacherName);
+
         })
         .withFailureHandler(showError)
         .getTeacherSpecificLoad(teacherName);

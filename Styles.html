@@ -1897,4 +1897,78 @@ body.dark-mode .app-footer {
     position: relative;
 }
 
+/* --- HubSpot-style Dropdown CSS --- */
+.hs-dropdown-container {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    font-family: 'Inter', sans-serif;
+}
+
+.hs-input-box {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cbd6e2;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #33475b;
+    background-color: #f5f8fa;
+    cursor: text;
+    transition: all 0.3s;
+}
+
+.hs-input-box:focus {
+    background-color: #fff;
+    border-color: #ff7a59; /* HubSpot Orange/JetLearn Accent */
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 122, 89, 0.2);
+}
+
+.hs-options-list {
+    display: none; /* Hidden by default */
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    max-height: 250px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #cbd6e2;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 1000;
+    margin-top: 2px;
+}
+
+.hs-options-list.show {
+    display: block;
+}
+
+.hs-option {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f4f8;
+}
+
+.hs-option:last-child {
+    border-bottom: none;
+}
+
+.hs-option:hover {
+    background-color: #e5f5f8; /* Light Blue Hover */
+}
+
+.hs-option-name {
+    font-weight: 500;
+    color: #33475b;
+    font-size: 14px;
+}
+
+.hs-option-email {
+    font-size: 12px;
+    color: #7c98b6;
+    margin-top: 2px;
+}
+
   </style>
