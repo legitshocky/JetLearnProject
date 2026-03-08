@@ -1552,7 +1552,7 @@ function getMigrationHistoryStats(jlid) {
 function getTeacherAttritionReport(teacherName) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
-  const PORTAL_ID = '19972323'; // Your HubSpot Portal ID
+  const PORTAL_ID = '7729491'; // Your HubSpot Portal ID
   
   // 1. Search Criteria (Matches your HubSpot Screenshot)
   const requestBody = {

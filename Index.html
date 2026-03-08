@@ -1056,20 +1056,30 @@
               <!-- 2. RESULTS DISPLAY (Cards + Table) -->
               <div id="teacherLoadResults" style="display: none;">
                 
-                <!-- Summary Cards -->
-                <div class="dashboard-grid" style="margin-bottom: 1.5rem;">
+                <!-- Summary Cards (Updated to 4 Columns) -->
+                <div class="dashboard-grid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(4, 1fr);">
                   <div class="main-metric-card">
                     <h3 class="main-metric-title">Status</h3>
                     <p class="main-metric-value" id="loadDisplayStatus" style="font-size: 1.5rem;">-</p>
                   </div>
+                  
                   <div class="main-metric-card">
                     <h3 class="main-metric-title">Active Courses</h3>
                     <p class="main-metric-value" id="loadDisplayCount">-</p>
                   </div>
+
+                  <!-- NEW CARD -->
+                  <div class="main-metric-card">
+                    <h3 class="main-metric-title">Active Learners</h3>
+                    <p class="main-metric-value" id="loadDisplayLearners">-</p>
+                    <small style="color:#718096; font-size:0.7rem;">HubSpot Active</small>
+                  </div>
+                  <!-- -------- -->
+
                   <div class="main-metric-card">
                     <h3 class="main-metric-title">Last Updated</h3>
                     <p class="main-metric-value" id="loadDisplayLastActive" style="font-size: 1.2rem;">-</p>
-                    <small class="text-muted">Based on Audit Log Activity</small>
+                    <small class="text-muted">Based on Audit Log</small>
                   </div>
                 </div>
 

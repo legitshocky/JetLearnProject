@@ -2401,8 +2401,7 @@ tr.innerHTML = `
     } else {
         filteredTickets.forEach(t => {
             const dateStr = t.date ? new Date(t.date).toLocaleDateString() : 'N/A';
-            const ticketUrl = `https://app.hubspot.com/contacts/19972323/ticket/${t.id}`;
-            
+            const ticketUrl = `https://app.hubspot.com/contacts/7729491/ticket/${t.id}`;            
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${dateStr}</td>
@@ -3321,8 +3320,12 @@ function loadTeacherSpecificDetails(teacherName) {
     const resultsContainer = document.getElementById('teacherLoadResults');
     if(emptyState) emptyState.style.display = 'none';
     if(resultsContainer) resultsContainer.style.display = 'none'; 
+    
+    // Reset the new card to hyphen while loading
+    const learnersEl = document.getElementById('loadDisplayLearners');
+    if(learnersEl) learnersEl.textContent = '-';
 
-    // CALL 1: Get Basic Load Stats & Proficiency
+    // CALL 1: Get Basic Load Stats & Proficiency (Google Sheets)
     google.script.run
         .withSuccessHandler(data => {
             if(!data || !data.success) {
@@ -3360,11 +3363,19 @@ function loadTeacherSpecificDetails(teacherName) {
             }
             if(resultsContainer) resultsContainer.style.display = 'block';
 
-            // CALL 2: Get Attrition Risk & Active Pool Report (Chained)
+            // CALL 2: Get Attrition Risk & Active Pool Report (HubSpot)
             google.script.run
                 .withSuccessHandler(report => {
                     hideLoading(); // Stop spinner
                     if (!report || !report.success) return;
+                    
+                    const students = report.students || [];
+
+                    // --- NEW: Update Active Learners Count ---
+                    if(learnersEl) {
+                        learnersEl.textContent = students.length;
+                    }
+                    // -----------------------------------------
                     
                     // --- Create/Get Risk Table Section ---
                     let riskTableSection = document.getElementById('attritionRiskSection');
@@ -3407,55 +3418,61 @@ function loadTeacherSpecificDetails(teacherName) {
                     if(riskTbody) {
                         riskTbody.innerHTML = '';
                         
-                        const students = report.students || [];
-                        
                         if (students.length === 0) {
                             riskTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No matching active students found.</td></tr>';
                         } else {
-                            students.forEach(s => {
-                                let rowStyle = '';
-                                let riskBadge = `<span class="status-badge status-success">Stable</span>`;
-                                
-                                // Risk Logic
-                                if (s.recentMoves >= 2) {
-                                    rowStyle = 'background-color: #ffebee;'; // Red High Risk
-                                    riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
-                                } else if (s.recentMoves === 1) {
-                                    riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
-                                }
-                                
-                                const prevTeacherDisplay = s.prevTeacher === "N/A" ? '<span style="color:#aaa">Original</span>' : s.prevTeacher;
-                                const courseDisplay = s.course.length > 35 ? s.course.substring(0,35) + '...' : s.course;
+                        report.students.forEach(s => {
+                            let rowStyle = '';
+                            let riskBadge = `<span class="status-badge status-success">Stable</span>`;
+                            
+                            // Risk Logic
+                            if (s.recentMoves >= 2) {
+                                rowStyle = 'background-color: #ffebee;'; // Red High Risk
+                                riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
+                            } else if (s.recentMoves === 1) {
+                                riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
+                            }
+                            
+                            // --- FIX START ---
+                            // Check first, then format. Do NOT escape the HTML tag, only the name.
+                            const prevTeacherDisplay = s.prevTeacher === "N/A" 
+                                ? '<span style="color:#aaa">Original</span>' 
+                                : escapeHtml(s.prevTeacher);
+                            // --- FIX END ---
+                            
+                            const courseDisplay = s.course.length > 35 ? s.course.substring(0,35) + '...' : s.course;
 
-                                const tr = document.createElement('tr');
-                                tr.style = rowStyle;
-                                tr.innerHTML = `
-                                    <td>
-                                        <strong>${escapeHtml(s.name)}</strong><br>
-                                        <small style="color:#666">${escapeHtml(s.jlid)}</small><br>
-                                        <small style="color:#4a3c8a">${escapeHtml(courseDisplay)}</small>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-info">${escapeHtml(s.status)}</span><br>
-                                        <small style="color:#999; font-size:0.75em;">Stage: ${escapeHtml(s.stage || '-')}</small>
-                                    </td>
-                                    <td>${escapeHtml(prevTeacherDisplay)}</td>
-                                    <td>${s.lastMoveDate}</td>
-                                    <td style="font-size:0.85em;">${escapeHtml(s.moveReason)}</td>
-                                    <td>${riskBadge}</td>
-                                    <td>
-                                        <div style="display:flex; gap:5px;">
-                                            <a href="${s.hubspotLink}" target="_blank" class="btn btn-sm btn-outline" title="Open HubSpot Deal" style="color:#ff7a59; border-color:#ff7a59;">
-                                                <i class="fab fa-hubspot"></i>
-                                            </a>
-                                            <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${escapeHtml(s.jlid)}')" title="Copy JLID">
-                                                <i class="fas fa-copy"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                `;
-                                riskTbody.appendChild(tr);
-                            });
+                            const tr = document.createElement('tr');
+                            tr.style = rowStyle;
+                            
+                            // Notice below: ${prevTeacherDisplay} does NOT have escapeHtml() around it anymore
+                            tr.innerHTML = `
+                                <td>
+                                    <strong>${escapeHtml(s.name)}</strong><br>
+                                    <small style="color:#666">${escapeHtml(s.jlid)}</small><br>
+                                    <small style="color:#4a3c8a">${escapeHtml(courseDisplay)}</small>
+                                </td>
+                                <td>
+                                    <span class="status-badge status-info">${escapeHtml(s.status)}</span><br>
+                                    <small style="color:#999; font-size:0.75em;">Stage: ${escapeHtml(s.stage || '-')}</small>
+                                </td>
+                                <td>${prevTeacherDisplay}</td> 
+                                <td>${s.lastMoveDate}</td>
+                                <td style="font-size:0.85em;">${escapeHtml(s.moveReason)}</td>
+                                <td>${riskBadge}</td>
+                                <td>
+                                    <div style="display:flex; gap:5px;">
+                                        <a href="${s.hubspotLink}" target="_blank" class="btn btn-sm btn-outline" title="Open HubSpot Deal" style="color:#ff7a59; border-color:#ff7a59;">
+                                            <i class="fab fa-hubspot"></i>
+                                        </a>
+                                        <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${escapeHtml(s.jlid)}')" title="Copy JLID">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            `;
+                            riskTbody.appendChild(tr);
+                        });
                         }
                     }
                 })
@@ -3469,7 +3486,6 @@ function loadTeacherSpecificDetails(teacherName) {
         .withFailureHandler(showError)
         .getTeacherSpecificLoad(teacherName);
 }
-
 
 
 // Helper to copy text (Add if missing in JavaScript.html)
