@@ -723,3 +723,87 @@ function getAIGeneratedInsights(currentData, previousData) {
     }
 }
 
+function getDoubleMigrationReport(params) {
+  try {
+    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    if (!sheetData || sheetData.length < 2) return [];
+
+    const fromDate = new Date(params.fromDate);
+    fromDate.setHours(0, 0, 0, 0);
+    const toDate = new Date(params.toDate);
+    toDate.setHours(23, 59, 59, 999);
+
+    // Map to group migrations by JLID
+    // Structure: { JLID: { name, events: [ {date, oldT, newT, reason} ] } }
+    const learnerMap = {};
+
+    // Column Indexes (0-based) based on your Audit Log
+    // 0:Time, 1:Action, 2:JLID, 3:Learner, 4:OldT, 5:NewT, 7:Status, 10:Reason
+    
+    sheetData.slice(1).forEach(row => {
+      const action = String(row[1] || "");
+      const status = String(row[7] || "");
+      
+      // Filter: Must be a Migration and NOT Failed
+      if (!action.includes("Migration") || status === 'Failed') return;
+
+      const date = parseSheetDate(row[0]);
+      if (!date || date < fromDate || date > toDate) return;
+
+      const jlid = String(row[2]).trim();
+      if (!jlid) return;
+
+      if (!learnerMap[jlid]) {
+        learnerMap[jlid] = {
+          name: row[3],
+          events: []
+        };
+      }
+
+      learnerMap[jlid].events.push({
+        date: date,
+        dateStr: formatDateDDMMYYYY(date),
+        oldTeacher: row[4],
+        newTeacher: row[5],
+        reason: row[10] || "Unspecified"
+      });
+    });
+
+    // Process the map to find Double Migrations (Count >= 2)
+    const doubleMigrations = [];
+
+    Object.keys(learnerMap).forEach(jlid => {
+      const data = learnerMap[jlid];
+      // Sort events by date
+      data.events.sort((a, b) => a.date - b.date);
+
+      if (data.events.length >= 2) {
+        // Construct the "Path" (e.g. A -> B -> C)
+        const path = [];
+        const reasons = [];
+        
+        data.events.forEach((e, index) => {
+           if (index === 0) path.push(e.oldTeacher || "?");
+           path.push(e.newTeacher);
+           reasons.push(e.reason);
+        });
+
+        doubleMigrations.push({
+            jlid: jlid,
+            name: data.name,
+            count: data.events.length,
+            path: path.join(" <i class='fas fa-arrow-right' style='font-size:0.8em; color:#bbb; margin:0 5px;'></i> "),
+            reasons: reasons.join(", "),
+            lastDate: data.events[data.events.length - 1].dateStr
+        });
+      }
+    });
+
+    // Sort by count descending (worst cases first)
+    return doubleMigrations.sort((a, b) => b.count - a.count);
+
+  } catch (e) {
+    Logger.log("Error in getDoubleMigrationReport: " + e.message);
+    return [];
+  }
+}

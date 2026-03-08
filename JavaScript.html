@@ -4981,6 +4981,103 @@ function viewEmailActivityDetails(trackingId) {
         })
         .getEmailLogDetails(trackingId);
 }
+function generateReport() {
+        const fromVal = reportFromDateInput.value;
+        const toVal = reportToDateInput.value;
+        
+        if(!fromVal || !toVal) {
+             showToast('error', 'Date Range', 'Please select From and To dates.');
+             return;
+        }
+
+        showLoading('Generating intelligence report...');
+        const params = { 
+            fromDate: fromVal, 
+            toDate: toVal,
+        };
+
+        // 1. Get Standard Report
+        google.script.run.withSuccessHandler(result => {
+            if(result && result.success && result.data) { 
+                globalReportData = result; 
+                renderEnhancedReport(result.data, result.aiInsights); 
+                
+                // --- 2. NEW: CHAIN CALL FOR DOUBLE MIGRATIONS ---
+                google.script.run.withSuccessHandler(doubleMigs => {
+                    hideLoading(); // Hide loading only after both are done
+                    renderDoubleMigrationSection(doubleMigs);
+                }).getDoubleMigrationReport(params);
+                // ------------------------------------------------
+            }
+            else { 
+                hideLoading();
+                reportContentArea.innerHTML = `<p style="text-align: center; color: var(--danger);">No data found for this period.</p>`;
+            }
+        }).withFailureHandler(showError).getEnhancedMigrationReport(params);
+    }
+
+    // --- NEW: RENDER FUNCTION FOR DOUBLE MIGRATIONS ---
+    function renderDoubleMigrationSection(data) {
+        // Find or Create container
+        let container = document.getElementById('doubleMigrationSection');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'doubleMigrationSection';
+            container.className = 'report-section';
+            container.style.marginTop = '20px';
+            container.style.borderLeft = '5px solid #ff9800'; // Orange warning
+            reportContentArea.prepend(container); // Put it at the TOP for visibility
+        }
+
+        if (!data || data.length === 0) {
+            // Optional: Hide section if no issues found, or show "All Good" message
+            container.innerHTML = `
+                <h3><i class="fas fa-check-circle" style="color:var(--success);"></i> Stability Check</h3>
+                <p style="color:#666;">No learners migrated 2+ times in this period. Great job!</p>
+            `;
+            return;
+        }
+
+        let html = `
+            <h3><i class="fas fa-exclamation-triangle" style="color:var(--warning);"></i> Frequent Migrations (Stability Alert)</h3>
+            <p style="margin-bottom:15px; color:#666;">
+                These <strong>${data.length} learners</strong> were migrated <strong>2 or more times</strong> in the selected period. 
+                Investigate immediately to prevent churn.
+            </p>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Learner</th>
+                            <th style="text-align:center;">Count</th>
+                            <th>Teacher Path</th>
+                            <th>Reasons</th>
+                            <th>Last Move</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        data.forEach(row => {
+            html += `
+                <tr>
+                    <td>
+                        <strong>${escapeHtml(row.name)}</strong><br>
+                        <small style="color:#999">${escapeHtml(row.jlid)}</small>
+                    </td>
+                    <td style="text-align:center;">
+                        <span class="status-badge status-failed" style="font-size:1em;">${row.count}</span>
+                    </td>
+                    <td>${row.path}</td>
+                    <td><small>${escapeHtml(row.reasons)}</small></td>
+                    <td>${row.lastDate}</td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
 
 function fetchMigrationSpecificData() {
         const jlid = jlidInput.value.trim();
