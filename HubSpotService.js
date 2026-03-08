@@ -1552,14 +1552,23 @@ function getMigrationHistoryStats(jlid) {
 function getTeacherAttritionReport(teacherName) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+  const PORTAL_ID = '19972323'; // Your HubSpot Portal ID
   
-  // 1. Search for Active Deals for this teacher
+  // 1. Search Criteria (Matches your HubSpot Screenshot)
   const requestBody = {
-    filterGroups: [{
-      filters: [{ propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName }]
-    }],
+    filterGroups: [
+      {
+        filters: [
+          // Filter 1: Current Teacher
+          { propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName },
+          // Filter 2: Learner Status (Positive List based on your screenshot)
+          { propertyName: "learner_status", operator: "IN", values: ["Active Learner", "Friendly Learner", "VIP", "Break & Return"] }
+        ]
+      }
+    ],
     limit: 100, 
-    properties: ["dealname", "jetlearner_id", "current_course", "module_start_date"]
+    // Fetch extra properties
+    properties: ["dealname", "jetlearner_id", "current_course", "module_start_date", "learner_status", "dealstage"]
   };
 
   try {
@@ -1581,24 +1590,19 @@ function getTeacherAttritionReport(teacherName) {
         
         let recentMoves = 0;
         let lastMoveDate = null;
-        let prevTeacher = "N/A"; // Default
-        let moveReason = "N/A";  // Default
+        let prevTeacher = "N/A"; 
+        let moveReason = "N/A";  
         
-        // Audit Log Cols: 0=Time, 1=Action, 2=JLID, 4=OldTeacher, 10=Reason
         if (auditData && auditData.length > 1) {
             const now = new Date();
             const threeMonthsAgo = new Date();
             threeMonthsAgo.setMonth(now.getMonth() - 3);
             
             auditData.forEach(row => {
-                // Check if row belongs to this kid AND is a Migration
                 if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
                     const d = new Date(row[0]);
-                    
-                    // Count risk (recent moves)
                     if (d > threeMonthsAgo) recentMoves++;
                     
-                    // Identify the LATEST move to capture details
                     if (!lastMoveDate || d > lastMoveDate) {
                         lastMoveDate = d;
                         prevTeacher = row[4] || "Unknown";
@@ -1612,6 +1616,11 @@ function getTeacherAttritionReport(teacherName) {
             name: deal.properties.dealname,
             jlid: jlid,
             course: getCourseLabel(deal.properties.current_course),
+            // New Fields
+            status: deal.properties.learner_status,
+            stage: deal.properties.dealstage, // This will be the ID
+            hubspotLink: `https://app.hubspot.com/contacts/${PORTAL_ID}/deal/${deal.id}`,
+            
             recentMoves: recentMoves,
             lastMoveDate: lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : "No Record",
             prevTeacher: prevTeacher,
@@ -1619,7 +1628,7 @@ function getTeacherAttritionReport(teacherName) {
         };
     });
 
-    // Sort: High risk first, then by name
+    // Sort: High risk first
     students.sort((a, b) => b.recentMoves - a.recentMoves);
 
     return { success: true, students: students, teacher: teacherName };
