@@ -709,7 +709,7 @@ function getDoubleMigrationReport(params) {
       if (!jlid) return;
 
       if (!learnerMap[jlid]) {
-          learnerMap[jlid] = { name: row[3] || "Unknown", events:[] };
+          learnerMap[jlid] = { name: row[3] || "Unknown", events: [] };
       }
 
       learnerMap[jlid].events.push({
@@ -764,15 +764,13 @@ function getDoubleMigrationReport(params) {
             lastDate: uniqueEvents[uniqueEvents.length - 1].dateStr,
             
             // --- CRITICAL FIX IS HERE ---
-            // We map over the array to REMOVE the 'date' property before sending to the browser.
-            // If we don't do this, Google Apps Script crashes silently and returns null to the frontend.
+            // We map over the array to REMOVE the native 'date' property before sending to the browser.
             timeline: uniqueEvents.map(e => ({
                 dateStr: e.dateStr,
                 oldTeacher: e.oldTeacher,
                 newTeacher: e.newTeacher,
                 reason: e.reason
             }))
-            // ----------------------------
         });
       }
     });

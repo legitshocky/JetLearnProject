@@ -3411,13 +3411,15 @@ function loadTeacherSpecificDetails(teacherName) {
                                 rowStyle = 'background-color: #ffebee;'; // Red High Risk
                                 riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
                             } else if (s.recentMoves === 1) {
-                                riskBadge = `<span class="status-badge status-warning">1 Move</span>`;
+                                // FIX: High-contrast inline styling for readability
+                                riskBadge = `<span class="status-badge" style="background-color: #fff3e0; color: #e65100; border: 1px solid #ffb74d;">1 Move</span>`;
                             }
+
                             
                             // --- FIX START ---
                             // Check first, then format. Do NOT escape the HTML tag, only the name.
                             const prevTeacherDisplay = s.prevTeacher === "N/A" 
-                                ? '<span style="color:#aaa">Original</span>' 
+                                ? '<span style="color:#aaa">No Teacher Changes</span>' 
                                 : escapeHtml(s.prevTeacher);
                             // --- FIX END ---
                             
@@ -5556,6 +5558,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V28':["**Teacher Attrition Risk**: The Teacher Load page now fetches active learners directly from HubSpot and displays their 90-day migration risk, previous teacher, and exact reason for moving.","**Frequent Migrations Report**: The Reports dashboard now includes a 'Stability Check' that flags learners who have moved 2 or more times, displaying their complete step-by-step migration journey to prevent 'ping-pong' scheduling.","**WATI & UI Enhancements**: Fixed WhatsApp template parameter matching, added a manual phone number override on the migration form, and improved readability for UI warning badges."],
     'V27': ["**Journey Stability Analysis**: Added a 'Risk Assessment' card in Learner History. The system now calculates if a learner is facing too many migrations.","**Churn Risk Alerts**: Learners with less than 6 months tenure and 2+ system-initiated changes will be flagged as 'Critical Risk'.","**Inbound vs Outbound**: Migration history now distinguishes between Parent Requests (Inbound) and JetLearn Operational Changes (Outbound)."],
     'V26': ["**Refactored Architecture**: The system backend has been modularized for faster performance and better stability.","**Crash Proofing**: Enhanced error handling for HubSpot and WATI connections."],
     'V25': ["**Hybrid Data Fetching**: Migrations now pull data from the latest HubSpot Ticket first, falling back to the Deal for greater accuracy.", "**WATI Integration**: Added the ability to send templated WhatsApp messages to parents during migration.", "**UI Enhancements**: Added a 'Review WA' button to preview WhatsApp messages before sending."],
