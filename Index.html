@@ -1031,83 +1031,85 @@
         <div id="teacherProfileContent"></div>
       </div>
 
-            <div id="loadPage" class="page-content" style="display: none;">
-              <div class="header">
-                <h1 class="page-title">Teacher Load Dashboard</h1>
-              </div>
+<div id="loadPage" class="page-content" style="display: none;">
+          <div class="header">
+            <h1 class="page-title">Teacher Load Dashboard</h1>
+          </div>
 
-              <!-- 1. DROPDOWN SEARCH -->
-              <div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
-                <h2 class="form-title" style="font-size: 1.2rem; margin-bottom: 1rem;">Select Teacher</h2>
-                <div class="form-group" style="display: flex; gap: 1rem; align-items: center;">
-                    <!-- Inside Index.html - Teacher Load Section -->
-                  <div style="flex-grow: 1; max-width: 500px;">
-                    <!-- Custom Dropdown Container -->
-                    <div class="hs-dropdown-container">
-                        <input type="text" id="hsTeacherSearchInput" class="hs-input-box" placeholder="Select or type to search..." autocomplete="off">
-                        <div id="hsTeacherOptionsList" class="hs-options-list">
-                            <!-- Options will be injected here via JS -->
-                        </div>
+          <!-- 1. DROPDOWN SEARCH -->
+          <div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
+            <h2 class="form-title" style="font-size: 1.2rem; margin-bottom: 1rem;">Select Teacher</h2>
+            <div class="form-group" style="display: flex; gap: 1rem; align-items: center;">
+              <div style="flex-grow: 1; max-width: 500px;">
+                <!-- Custom Dropdown Container -->
+                <div class="hs-dropdown-container">
+                    <input type="text" id="hsTeacherSearchInput" class="hs-input-box" placeholder="Select or type to search..." autocomplete="off">
+                    <div id="hsTeacherOptionsList" class="hs-options-list">
+                        <!-- Options will be injected here via JS -->
                     </div>
-                  </div>
-                <p class="form-text-muted">Select a teacher to view their active course load, proficiency, and recent activity.</p>
+                </div>
               </div>
+              <button class="btn btn-primary" id="refreshTeacherListBtn">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+            <p class="form-text-muted">Select a teacher to view their active course load, proficiency, and recent activity.</p>
+          </div>
 
-              <!-- 2. RESULTS DISPLAY (Cards + Table) -->
-              <div id="teacherLoadResults" style="display: none;">
-                
-                <!-- Summary Cards (Updated to 4 Columns) -->
-                <div class="dashboard-grid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(4, 1fr);">
-                  <div class="main-metric-card">
-                    <h3 class="main-metric-title">Status</h3>
-                    <p class="main-metric-value" id="loadDisplayStatus" style="font-size: 1.5rem;">-</p>
-                  </div>
-                  
-                  <div class="main-metric-card">
-                    <h3 class="main-metric-title">Active Courses</h3>
-                    <p class="main-metric-value" id="loadDisplayCount">-</p>
-                  </div>
-
-                  <!-- NEW CARD -->
-                  <div class="main-metric-card">
-                    <h3 class="main-metric-title">Active Learners</h3>
-                    <p class="main-metric-value" id="loadDisplayLearners">-</p>
-                    <small style="color:#718096; font-size:0.7rem;">HubSpot Active</small>
-                  </div>
-                  <!-- -------- -->
-
-                  <div class="main-metric-card">
-                    <h3 class="main-metric-title">Last Updated</h3>
-                    <p class="main-metric-value" id="loadDisplayLastActive" style="font-size: 1.2rem;">-</p>
-                    <small class="text-muted">Based on Audit Log</small>
-                  </div>
-                </div>
-
-                <!-- Detailed Table -->
-                <div class="audit-log-container">
-                  <h3 class="dashboard-section-title">Onboarded Courses</h3>
-                  <div class="table-container">
-                    <table class="data-table">
-                      <thead>
-                        <tr>
-                          <th>Course Name</th>
-                          <th style="width: 200px;">Proficiency</th>
-                        </tr>
-                      </thead>
-                      <tbody id="loadDisplayTableBody">
-                        <!-- Rows injected by JS -->
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+          <!-- 2. RESULTS DISPLAY (Cards + Table) -->
+          <div id="teacherLoadResults" style="display: none;">
+            
+            <!-- Summary Cards (Updated to 4 Columns) -->
+            <div class="dashboard-grid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(4, 1fr);">
+              <div class="main-metric-card">
+                <h3 class="main-metric-title">Status</h3>
+                <p class="main-metric-value" id="loadDisplayStatus" style="font-size: 1.5rem;">-</p>
               </div>
               
-              <!-- Empty State -->
-              <div id="teacherLoadEmptyState" style="text-align: center; padding: 3rem; color: var(--text-light);">
-                <i class="fas fa-chalkboard-teacher" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                <p>Please select a teacher from the dropdown above.</p>
+              <div class="main-metric-card">
+                <h3 class="main-metric-title">Active Courses</h3>
+                <p class="main-metric-value" id="loadDisplayCount">-</p>
+              </div>
+
+              <!-- NEW CARD -->
+              <div class="main-metric-card">
+                <h3 class="main-metric-title">Active Learners</h3>
+                <p class="main-metric-value" id="loadDisplayLearners">-</p>
+                <small style="color:#718096; font-size:0.7rem;">HubSpot Active</small>
+              </div>
+
+              <div class="main-metric-card">
+                <h3 class="main-metric-title">Last Updated</h3>
+                <p class="main-metric-value" id="loadDisplayLastActive" style="font-size: 1.2rem;">-</p>
+                <small class="text-muted">Based on Audit Log</small>
               </div>
             </div>
+
+            <!-- Detailed Table -->
+            <div class="audit-log-container">
+              <h3 class="dashboard-section-title">Onboarded Courses</h3>
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Course Name</th>
+                      <th style="width: 200px;">Proficiency</th>
+                    </tr>
+                  </thead>
+                  <tbody id="loadDisplayTableBody">
+                    <!-- Rows injected by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Empty State -->
+          <div id="teacherLoadEmptyState" style="text-align: center; padding: 3rem; color: var(--text-light);">
+            <i class="fas fa-chalkboard-teacher" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+            <p>Please select a teacher from the dropdown above.</p>
+          </div>
+      </div> <!-- CRITICAL CLOSING TAG FOR LOAD PAGE -->
 
       <!-- Reports Page -->
       <div id="reportsPage" class="page-content" style="display: none;">
@@ -1124,6 +1126,7 @@
                 <button class="btn btn-outline" id="emailReportBtn"><i class="fas fa-envelope"></i> Send Report Now</button>
             </div>
         </div>
+        
         <div class="report-filters">
             <div class="form-group">
                 <label for="reportFromDate" class="form-label">From Date</label>
@@ -1142,13 +1145,14 @@
                     <option value="Ops">Ops</option>
                 </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" style="align-self: flex-end;">
                 <button type="button" class="btn btn-primary" id="generateReportBtn"><i class="fas fa-chart-bar"></i> Generate Report</button>
             </div>
         </div>
         
+        <!-- This is where the JS will inject the Charts, Tables, and Double Migration Alert -->
         <div id="report-content-area"></div>
-      </div>
+      </div> <!-- CRITICAL CLOSING TAG FOR REPORTS PAGE -->
 
       <!-- System Health Page -->
       <div id="healthPage" class="page-content" style="display: none;">

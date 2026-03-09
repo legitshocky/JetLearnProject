@@ -1,27 +1,23 @@
 function calculateDashboardStats() {
-  Logger.log('calculateDashboardStats called');
-
   const stats = {
     migrations: { total: 0, successful: 0, failed: 0, today: 0, thisWeek: 0, thisMonth: 0, successRate: 0 },
     onboardings: { total: 0, today: 0, thisWeek: 0, thisMonth: 0 },
-    recentActivities: []
+    recentActivities:[]
   };
 
   try {
+    const rawSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const auditData = (rawSheetData && Array.isArray(rawSheetData) && rawSheetData.length > 1) ? rawSheetData.slice(1) :[];
+
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const thisWeekStart = new Date(now.getTime() - (now.getDay()) * 24 * 60 * 60 * 1000); 
     thisWeekStart.setHours(0,0,0,0);
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    let combinedActivities = [];
+    let combinedActivities =[];
 
-    // --- 1. Process Migrations & Onboardings from Audit Log ---
-    try {
-      const rawSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-      const auditData = rawSheetData.length > 1 ? rawSheetData.slice(1) : [];
-
-      auditData.forEach(row => {
+    auditData.forEach(row => {
         const timestamp = parseSheetDate(row[0]);
         if (!timestamp || isNaN(timestamp.getTime())) return;
 
@@ -31,9 +27,7 @@ function calculateDashboardStats() {
         const newTeacher = row[5];
         const oldTeacher = row[4];
 
-        // --- LOGIC UPDATE: Combine all Onboarding variations ---
-        const isOnboarding = action.includes('New Learner Onboarded') || 
-                             action.includes('Email Sent (Onboarding');
+        const isOnboarding = action.includes('New Learner Onboarded') || action.includes('Email Sent (Onboarding');
 
         if (action.includes('Migration')) {
           stats.migrations.total++;
@@ -52,7 +46,6 @@ function calculateDashboardStats() {
             status: status
           });
         } 
-        // --- Check for the expanded Onboarding definition ---
         else if (isOnboarding) {
           if (status === 'Success' || status === 'Partial Success') {
             stats.onboardings.total++;
@@ -60,29 +53,23 @@ function calculateDashboardStats() {
             if (timestamp >= thisWeekStart) stats.onboardings.thisWeek++;
             if (timestamp >= thisMonthStart) stats.onboardings.thisMonth++;
           }
-
           combinedActivities.push({
             timestamp: timestamp,
             type: 'onboarding',
             title: 'New Learner Onboarded',
             description: `${learner} ${newTeacher ? 'assigned to ' + newTeacher : 'onboarded'}`,
-            // FIX APPLIED HERE: Pass actual status instead of forcing 'Warning'
             status: status 
           });
         }
-      });
-    } catch (e) {
-      Logger.log('Error processing Audit Log stats: ' + e.message);
-    }
+    });
 
     if (stats.migrations.total > 0) {
       stats.migrations.successRate = Math.round((stats.migrations.successful / stats.migrations.total) * 100);
     }
     
-    // --- 2. Process Email Activities ---
     try {
       const emailLogs = _getCachedSheetData(CONFIG.SHEETS.EMAIL_LOGS);
-      if (emailLogs.length > 1) {
+      if (emailLogs && Array.isArray(emailLogs) && emailLogs.length > 1) {
           const headers = emailLogs[0];
           const trackingIdCol = headers.findIndex(h => h.trim() === 'Tracking ID'); 
           const statusCol = headers.findIndex(h => h.trim() === 'Status');
@@ -92,30 +79,21 @@ function calculateDashboardStats() {
           const openedAtCol = headers.findIndex(h => h.trim() === 'Opened At');
           const repliedAtCol = headers.findIndex(h => h.trim() === 'Replied At');
 
-          const recentEmailRows = emailLogs.slice(1); 
-
-          recentEmailRows.forEach(row => {
+          emailLogs.slice(1).forEach(row => {
               if (statusCol === -1 || trackingIdCol === -1) return;
-
               const status = row[statusCol];
               if (status === 'Sent' || status === 'Opened' || status === 'Replied') {
                   let timestamp;
-                  let displayTitle = `Email ${status}`;
-                  
-                  if (status === 'Opened' && openedAtCol > -1 && row[openedAtCol]) {
-                      timestamp = parseSheetDate(row[openedAtCol]);
-                  } else if (status === 'Replied' && repliedAtCol > -1 && row[repliedAtCol]) {
-                      timestamp = parseSheetDate(row[repliedAtCol]);
-                  } else if (sentAtCol > -1) {
-                      timestamp = parseSheetDate(row[sentAtCol]);
-                  }
+                  if (status === 'Opened' && openedAtCol > -1 && row[openedAtCol]) timestamp = parseSheetDate(row[openedAtCol]);
+                  else if (status === 'Replied' && repliedAtCol > -1 && row[repliedAtCol]) timestamp = parseSheetDate(row[repliedAtCol]);
+                  else if (sentAtCol > -1) timestamp = parseSheetDate(row[sentAtCol]);
                   
                   if (!timestamp) return;
 
                   combinedActivities.push({
                       timestamp: timestamp,
                       type: 'email',
-                      title: displayTitle,
+                      title: `Email ${status}`,
                       description: `To: ${recipientCol > -1 ? row[recipientCol] : 'Unknown'} | Subject: "${subjectCol > -1 ? row[subjectCol] : 'No Subject'}"`,
                       status: (status === 'Replied' ? 'Info' : (status === 'Sent' ? 'Skipped' : 'Success')),
                       trackingId: row[trackingIdCol]
@@ -123,36 +101,55 @@ function calculateDashboardStats() {
               }
           });
       }
-    } catch (e) {
-        Logger.log('Error processing Email Logs stats: ' + e.message);
-    }
+    } catch (e) { Logger.log('Error processing Email Logs: ' + e.message); }
     
-    // Sort descending
     combinedActivities.sort((a, b) => b.timestamp - a.timestamp);
     
-    // --- DATE FIX IS HERE ---
-    // Convert Date objects to ISO Strings so the browser (Moment.js) can read them perfectly
     stats.recentActivities = combinedActivities.slice(0, 7).map(activity => {
-        let timeStr = null; // Send ISO string or null
-        try {
-            if (activity.timestamp instanceof Date && !isNaN(activity.timestamp)) {
-                timeStr = activity.timestamp.toISOString(); 
-            }
-        } catch (e) { Logger.log('Date conversion error: ' + e.message); }
-
-        return {
-            ...activity,
-            timestamp: timeStr 
-        };
+        let timeStr = null; 
+        try { if (activity.timestamp instanceof Date && !isNaN(activity.timestamp)) timeStr = activity.timestamp.toISOString(); } catch (e) {}
+        return { ...activity, timestamp: timeStr };
     });
 
     return stats;
 
   } catch (error) {
-    Logger.log('CRITICAL Error in getDashboardStatistics: ' + error.message);
+    Logger.log('CRITICAL Error in calculateDashboardStats: ' + error.message);
     return stats;
   }
 }
+
+
+function getMigrationTrends(days = 30) {
+  try {
+    const auditData = getAuditLog({ limit: 1000 }).data || [];
+    const trends = {};
+    const now = new Date();
+
+    for (let i = 0; i < days; i++) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      trends[dateStr] = { successful: 0, failed: 0 };
+    }
+
+    auditData.forEach(row => {
+      if (row[1] && String(row[1]).includes('Migration')) { 
+        const date = new Date(row[0]);
+        const dateStr = date.toISOString().split('T')[0];
+        if (trends[dateStr]) {
+          if (row[7] === 'Success') trends[dateStr].successful++;
+          else trends[dateStr].failed++;
+        }
+      }
+    });
+
+    return Object.entries(trends)
+      .sort(([a], [b]) => new Date(a) - new Date(b))
+      .map(([date, data]) => ({ date, successful: data.successful, failed: data.failed, total: data.successful + data.failed }));
+  } catch (error) { return []; }
+}
+
 
 function getMigrationTrends(days = 30) {
   Logger.log('getMigrationTrends called for ' + days + ' days');
@@ -204,42 +201,42 @@ function getMigrationTrends(days = 30) {
 
 //Monthly & AI Reports:
 function getEnhancedMigrationReport(params) {
-    Logger.log(`getEnhancedMigrationReport (V3) called with: ${JSON.stringify(params)}`);
     try {
-        const auditData = getAuditLog({ limit: 20000 }).data; 
-        const migrationLogs = auditData.filter(row => String(row[1]).includes('Migration'));
-        if (migrationLogs.length === 0) {
-            return { success: true, message: "No migration data found.", data: null };
-        }
-
-        const headers = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG)[0] || [];
-        const timestampCol = headers.indexOf('Timestamp');
+        const rawSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+        const sheetData = (rawSheetData && Array.isArray(rawSheetData)) ? rawSheetData : [];
+        const headers = sheetData[0] ||[];
+        
+        const timestampCol = 0;
+        const actionCol = headers.indexOf('Action');
         const reasonCol = headers.indexOf('Reason for Migration');
         const intervenedCol = headers.indexOf('Intervened By');
         const oldTeacherCol = headers.indexOf('Old Teacher');
         const newTeacherCol = headers.indexOf('New Teacher');
         const courseCol = headers.indexOf('Course');
 
+        if (actionCol === -1 || reasonCol === -1 || intervenedCol === -1) {
+            return { success: true, message: "Missing columns.", data: null };
+        }
+
         const toDate = new Date(params.toDate);
+        toDate.setHours(23, 59, 59, 999);
         const fromDate = new Date(params.fromDate);
+        fromDate.setHours(0, 0, 0, 0);
+
         const periodDuration = toDate.getTime() - fromDate.getTime();
         const prevToDate = new Date(fromDate.getTime() - (24 * 60 * 60 * 1000)); 
         const prevFromDate = new Date(prevToDate.getTime() - periodDuration);
 
         const processPeriod = (start, end) => {
             const periodData = {
-                totalMigrations: 0,
-                clsInvolvement: 0,
-                tpInvolvement: 0,
-                opsInvolvement: 0,
-                reasonBreakdown: {},
-                teamInvolvementByReason: {},
-                teacherMigrationsFrom: {},
-                teacherMigrationsTo: {},
-                courseMigrations: {}
+                totalMigrations: 0, clsInvolvement: 0, tpInvolvement: 0, opsInvolvement: 0,
+                reasonBreakdown: {}, teamInvolvementByReason: {}, teacherMigrationsFrom: {}, teacherMigrationsTo: {}, courseMigrations: {}
             };
 
-            migrationLogs.forEach(row => {
+            sheetData.slice(1).forEach(row => {
+                const action = String(row[actionCol] || "");
+                if (!action.includes('Migration')) return;
+
                 const timestamp = parseSheetDate(row[timestampCol]);
                 if (!timestamp || timestamp < start || timestamp > end) return;
 
@@ -253,13 +250,10 @@ function getEnhancedMigrationReport(params) {
 
                 periodData.reasonBreakdown[reason] = (periodData.reasonBreakdown[reason] || 0) + 1;
                 
-                if (!periodData.teamInvolvementByReason[reason]) {
-                    periodData.teamInvolvementByReason[reason] = { cls: 0, tp: 0, ops: 0 };
-                }
+                if (!periodData.teamInvolvementByReason[reason]) periodData.teamInvolvementByReason[reason] = { cls: 0, tp: 0, ops: 0 };
                 if (teams.includes('cls')) periodData.teamInvolvementByReason[reason].cls++;
                 if (teams.includes('tp')) periodData.teamInvolvementByReason[reason].tp++;
                 if (teams.includes('ops')) periodData.teamInvolvementByReason[reason].ops++;
-
 
                 const oldTeacher = String(row[oldTeacherCol] || '').trim();
                 const newTeacher = String(row[newTeacherCol] || '').trim();
@@ -267,9 +261,7 @@ function getEnhancedMigrationReport(params) {
                 if (newTeacher) periodData.teacherMigrationsTo[newTeacher] = (periodData.teacherMigrationsTo[newTeacher] || 0) + 1;
 
                 const course = String(row[courseCol] || 'Unknown').trim();
-                if (!periodData.courseMigrations[course]) {
-                    periodData.courseMigrations[course] = { count: 0, reasons: {} };
-                }
+                if (!periodData.courseMigrations[course]) periodData.courseMigrations[course] = { count: 0, reasons: {} };
                 periodData.courseMigrations[course].count++;
                 periodData.courseMigrations[course].reasons[reason] = (periodData.courseMigrations[course].reasons[reason] || 0) + 1;
             });
@@ -279,14 +271,10 @@ function getEnhancedMigrationReport(params) {
         const currentPeriod = processPeriod(fromDate, toDate);
         const previousPeriod = processPeriod(prevFromDate, prevToDate);
 
-        const calculateChange = (current, previous) => {
-            if (previous === 0) return current > 0 ? 10000 : 0; 
-            return ((current - previous) / previous) * 100;
-        };
+        const calculateChange = (current, previous) => (previous === 0) ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
         
         const daysInPeriod = (toDate.getTime() - fromDate.getTime()) / (1000 * 3600 * 24) + 1;
         const daysInPrevPeriod = (prevToDate.getTime() - prevFromDate.getTime()) / (1000 * 3600 * 24) + 1;
-
         const currentAvg = daysInPeriod > 0 ? (currentPeriod.totalMigrations / daysInPeriod) : 0;
         const prevAvg = daysInPrevPeriod > 0 ? (previousPeriod.totalMigrations / daysInPrevPeriod) : 0;
 
@@ -296,10 +284,8 @@ function getEnhancedMigrationReport(params) {
             clsRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.clsInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: (previousPeriod.totalMigrations > 0 ? (previousPeriod.clsInvolvement / previousPeriod.totalMigrations) * 100 : 0) },
             tpRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.tpInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: (previousPeriod.totalMigrations > 0 ? (previousPeriod.tpInvolvement / previousPeriod.totalMigrations) * 100 : 0) },
         };
-        
         kpis.clsRate.change = kpis.clsRate.current - kpis.clsRate.previous;
         kpis.tpRate.change = kpis.tpRate.current - kpis.tpRate.previous;
-
 
         const allTeachers = new Set([...Object.keys(currentPeriod.teacherMigrationsFrom), ...Object.keys(currentPeriod.teacherMigrationsTo)]);
         const teacherImpact = Array.from(allTeachers).map(name => {
@@ -325,122 +311,91 @@ function getEnhancedMigrationReport(params) {
 
         return { success: true, data: reportData, aiInsights: aiInsights };
     } catch (error) {
-        Logger.log('Error in getEnhancedMigrationReport: ' + error.message + ' Stack: ' + error.stack);
-        return { success: false, message: 'Error generating enhanced report: ' + error.message, data: null };
+        Logger.log('Error in getEnhancedMigrationReport: ' + error.message);
+        return { success: false, message: 'Error generating report: ' + error.message, data: null };
     }
 }
 
 function getEnhancedAIInsights(reportData, monthName) {
-    Logger.log(`Getting Enhanced AI insights for ${monthName}.`);
     const GOOGLE_API_KEY = PropertiesService.getScriptProperties().getProperty('GOOGLE_GENERATIVE_AI_KEY');
     if (!GOOGLE_API_KEY) {
         return { executive: "AI insights unavailable: API key not configured.", rootCause: "", impact: "" };
     }
 
-    const model = 'gemini-2.5-flash';
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${GOOGLE_API_KEY}`;
+    const model = 'gemini-1.5-flash'; 
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
     
     const prompt = `
-      You are a top-tier Senior Operations Analyst at JetLearn. Your task is to provide a three-part analysis of the monthly learner migration data.
-      Your response MUST be a single, valid JSON object with three keys: "executive", "rootCause", and "impact". Each key's value should be a concise, analytical string using markdown for bolding. Do not include any text outside this JSON object.
+      You are a top-tier Senior Operations Analyst at JetLearn. Provide a three-part analysis of migration data for ${monthName}.
+      Return valid JSON with keys: "executive", "rootCause", "impact". No other text.
 
-      Analyze the following data for the month of ${monthName}:
-      ${JSON.stringify(reportData, null, 2)}
+      Data:
+      ${JSON.stringify(reportData)}
 
-      Based on this data, generate the following three summaries:
+      1. executive: High-level summary for leadership.
+      2. rootCause: Analysis of top migration reasons.
+      3. impact: Actionable analysis on teachers/courses.
+    `;
 
-      1.  **executive**: A high-level summary for leadership. Focus on the most significant KPI change (e.g., total migrations percentage change) and its primary business implication. Mention the most impactful team shift. Be direct and start with the most critical finding.
+    try {
+        const payload = { contents: [{ parts:[{ text: prompt }] }] };
+        const response = callGenerativeAIWithRetry(endpoint, payload); 
+        if (response.getResponseCode() === 200) {
+            let textPart = JSON.parse(response.getContentText())?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+            textPart = textPart.replace(/```json/g, '').replace(/```/g, '').trim();
+            return JSON.parse(textPart);
+        }
+        return { executive: "AI Error", rootCause: "", impact: "" };
+    } catch (error) {
+        return { executive: `AI Error: ${error.message}`, rootCause: "", impact: "" };
+    }
+}
 
-      2.  **rootCause**: An analysis for operations managers. Identify the top migration driver from the 'reasonBreakdown'. If it's 'Unknown', highlight the data integrity issue. For the top *known* reason, explain which team is handling it and what that implies (e.g., "**Attrition** is a high-touch issue handled by **CLS**").
 
-      3.  **impact**: An actionable analysis for team leads. Identify the teacher with the most negative 'netFlow' and recommend a specific action (e.g., "warrants a performance review or support session"). Also, identify the course with the highest migration 'count' and recommend an action (e.g., "recommend a review of the curriculum or teacher cohort for this course").
+
+function getEnhancedAIInsights(reportData, monthName) {
+    const GOOGLE_API_KEY = PropertiesService.getScriptProperties().getProperty('GOOGLE_GENERATIVE_AI_KEY');
+    if (!GOOGLE_API_KEY) {
+        return { executive: "AI insights unavailable: API key not configured.", rootCause: "", impact: "" };
+    }
+
+    const model = 'gemini-1.5-flash'; 
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
+    
+    const prompt = `
+      You are a top-tier Senior Operations Analyst at JetLearn. Provide a three-part analysis of migration data for ${monthName}.
+      Return valid JSON with keys: "executive", "rootCause", "impact". No other text.
+
+      Data:
+      ${JSON.stringify(reportData)}
+
+      1. executive: High-level summary for leadership.
+      2. rootCause: Analysis of top migration reasons.
+      3. impact: Actionable analysis on teachers/courses.
     `;
 
     try {
         const payload = { contents: [{ parts: [{ text: prompt }] }] };
-        const response = callGenerativeAIWithRetry(endpoint, payload); // Use the new retry wrapper
-        const responseCode = response.getResponseCode();
-        const responseBody = response.getContentText();
-
-        if (responseCode === 200) {
-            const jsonResponse = JSON.parse(responseBody);
-            let textPart = jsonResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        const response = callGenerativeAIWithRetry(endpoint, payload); 
+        if (response.getResponseCode() === 200) {
+            let textPart = JSON.parse(response.getContentText())?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
             textPart = textPart.replace(/```json/g, '').replace(/```/g, '').trim();
-            Logger.log('AI Insights Generated: ' + textPart);
             return JSON.parse(textPart);
         }
-        
-        Logger.log(`AI API Error (${responseCode}): ${responseBody}`);
-        return { executive: "AI insights could not be generated due to an API error.", rootCause: "", impact: "" };
+        return { executive: "AI Error", rootCause: "", impact: "" };
     } catch (error) {
-        Logger.log('Error calling or parsing AI API: ' + error.message);
-        return { executive: `AI insights are unavailable due to a connection or parsing error: ${error.message}`, rootCause: "", impact: "" };
+        return { executive: `AI Error: ${error.message}`, rootCause: "", impact: "" };
     }
 }
+
+
 
 function generateMonthlyReport(month, year, perspective = 'All') {
-    Logger.log(`Generating monthly report for month: ${month + 1}, year: ${year}, Perspective: ${perspective}`);
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-    const headers = sheetData[0] || [];
-    const timestampCol = 0;
-    const actionCol = headers.indexOf('Action');
-    const reasonCol = headers.indexOf('Reason for Migration');
-    const intervenedCol = headers.indexOf('Intervened By');
-
-    if (actionCol === -1 || reasonCol === -1 || intervenedCol === -1) {
-        Logger.log("Audit Log sheet is missing required columns for reporting: Action, Reason for Migration, Intervened By.");
-        return { month: "Error", year: year, total: 0, CLS_Involvement: 0, TP_Involvement: 0, Ops_Involvement: 0, reasons: { "Error": "Missing Columns" } };
-    }
-    
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
-
-    const report = {
-        month: monthNames[month],
-        year: year,
-        perspective: perspective,
-        total: 0,
-        CLS_Involvement: 0,
-        TP_Involvement: 0,
-        Ops_Involvement: 0,
-        reasons: {}
-    };
-
-    const perspectiveFilter = perspective.toLowerCase();
-
-    const migrationLogs = sheetData.slice(1).filter(row => {
-        if (!row[actionCol] || !row[actionCol].includes('Migration')) return false;
-
-        const timestamp = new Date(row[timestampCol]);
-        if (timestamp.getFullYear() !== year || timestamp.getMonth() !== month) return false;
-
-        const teams = (row[intervenedCol] || '').toLowerCase();
-        if (perspective !== 'All' && !teams.includes(perspectiveFilter)) {
-            return false;
-        }
-        return true;
-    });
-
-    report.total = migrationLogs.length;
-    if (report.total === 0) {
-        Logger.log(`No migration data found for perspective ${perspective} in the specified month.`);
-        return report;
-    }
-
-    migrationLogs.forEach(row => {
-        const teams = (row[intervenedCol] || '').toLowerCase();
-        if (teams.includes('cls')) report.CLS_Involvement++;
-        if (teams.includes('tp')) report.TP_Involvement++;
-        if (teams.includes('ops')) report.Ops_Involvement++;
-
-        const reason = (row[reasonCol] || 'Unknown').trim();
-        if (reason) {
-            report.reasons[reason] = (report.reasons[reason] || 0) + 1;
-        }
-    });
-
-    Logger.log(`Monthly report generated successfully for ${perspective}: ` + JSON.stringify(report));
-    return report;
+    const start = new Date(year, month, 1);
+    const end = new Date(year, month + 1, 0);
+    return getEnhancedMigrationReport({ fromDate: start, toDate: end });
 }
+
 
 function emailMonthlyReport() {
     Logger.log('Starting monthly report email process.');
@@ -726,84 +681,108 @@ function getAIGeneratedInsights(currentData, previousData) {
 function getDoubleMigrationReport(params) {
   try {
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-    if (!sheetData || sheetData.length < 2) return [];
+    
+    if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
+        Logger.log("Audit Log empty or null.");
+        return[];
+    }
 
     const fromDate = new Date(params.fromDate);
     fromDate.setHours(0, 0, 0, 0);
     const toDate = new Date(params.toDate);
     toDate.setHours(23, 59, 59, 999);
 
-    // Map to group migrations by JLID
-    // Structure: { JLID: { name, events: [ {date, oldT, newT, reason} ] } }
     const learnerMap = {};
 
-    // Column Indexes (0-based) based on your Audit Log
-    // 0:Time, 1:Action, 2:JLID, 3:Learner, 4:OldT, 5:NewT, 7:Status, 10:Reason
-    
+    // 1. Gather all valid migrations
     sheetData.slice(1).forEach(row => {
       const action = String(row[1] || "");
       const status = String(row[7] || "");
       
-      // Filter: Must be a Migration and NOT Failed
-      if (!action.includes("Migration") || status === 'Failed') return;
+      // Ignore non-migrations and explicit failures
+      if (!action.includes("Migration") || status.trim().toLowerCase() === 'failed') return;
 
       const date = parseSheetDate(row[0]);
-      if (!date || date < fromDate || date > toDate) return;
+      if (!date || isNaN(date.getTime()) || date < fromDate || date > toDate) return;
 
       const jlid = String(row[2]).trim();
       if (!jlid) return;
 
       if (!learnerMap[jlid]) {
-        learnerMap[jlid] = {
-          name: row[3],
-          events: []
-        };
+          learnerMap[jlid] = { name: row[3] || "Unknown", events:[] };
       }
 
       learnerMap[jlid].events.push({
-        date: date,
+        date: date, // Native date object (needed for sorting)
         dateStr: formatDateDDMMYYYY(date),
-        oldTeacher: row[4],
-        newTeacher: row[5],
-        reason: row[10] || "Unspecified"
+        oldTeacher: String(row[4] || "").trim(),
+        newTeacher: String(row[5] || "").trim(),
+        reason: String(row[10] || "Unspecified").trim()
       });
     });
 
-    // Process the map to find Double Migrations (Count >= 2)
-    const doubleMigrations = [];
+    const doubleMigrations =[];
 
+    // 2. De-duplicate and Count
     Object.keys(learnerMap).forEach(jlid => {
       const data = learnerMap[jlid];
-      // Sort events by date
-      data.events.sort((a, b) => a.date - b.date);
+      
+      // SORT: Oldest to Newest using the native Date object
+      data.events.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-      if (data.events.length >= 2) {
-        // Construct the "Path" (e.g. A -> B -> C)
+      const uniqueEvents =[];
+      let lastTeacher = null;
+
+      data.events.forEach(e => {
+          // If the New Teacher is exactly the same as the previous New Teacher, skip it (Retry/Duplicate)
+          if (e.newTeacher !== lastTeacher) {
+              uniqueEvents.push(e);
+              lastTeacher = e.newTeacher;
+          }
+      });
+
+      // MUST have 2 or more unique teacher changes
+      if (uniqueEvents.length >= 2) {
         const path = [];
-        const reasons = [];
+        const reasons =[];
         
-        data.events.forEach((e, index) => {
-           if (index === 0) path.push(e.oldTeacher || "?");
+        uniqueEvents.forEach((e, index) => {
+           if (index === 0) path.push(e.oldTeacher || "Original");
            path.push(e.newTeacher);
            reasons.push(e.reason);
         });
 
+        // Clean up reasons string to remove obvious repeats
+        const uniqueReasons = [...new Set(reasons)].filter(r => r !== "Unspecified").join(", ") || "No reason specified";
+
         doubleMigrations.push({
             jlid: jlid,
             name: data.name,
-            count: data.events.length,
+            count: uniqueEvents.length,
             path: path.join(" <i class='fas fa-arrow-right' style='font-size:0.8em; color:#bbb; margin:0 5px;'></i> "),
-            reasons: reasons.join(", "),
-            lastDate: data.events[data.events.length - 1].dateStr
+            reasons: uniqueReasons,
+            lastDate: uniqueEvents[uniqueEvents.length - 1].dateStr,
+            
+            // --- CRITICAL FIX IS HERE ---
+            // We map over the array to REMOVE the 'date' property before sending to the browser.
+            // If we don't do this, Google Apps Script crashes silently and returns null to the frontend.
+            timeline: uniqueEvents.map(e => ({
+                dateStr: e.dateStr,
+                oldTeacher: e.oldTeacher,
+                newTeacher: e.newTeacher,
+                reason: e.reason
+            }))
+            // ----------------------------
         });
       }
     });
 
-    // Sort by count descending (worst cases first)
     return doubleMigrations.sort((a, b) => b.count - a.count);
 
   } catch (e) {
-    Logger.log("Error in getDoubleMigrationReport: " + e.message);
-    return [];
+    Logger.log("Error in getDoubleMigrationReport: " + e.stack);
+    return[];
   }
 }
+
+

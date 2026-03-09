@@ -356,9 +356,26 @@ function sendMigrationEmail(data, attachments = []) {
     notes.push(`Critical Error: ${error.message}`);
     return { success: false, message: `Failed: ${error.message}` };
   } finally {
-    logAction('Migration Process', data.jlid, data.learner, data.oldTeacher, data.newTeacher, data.course, finalStatus, notes.join('; '), data.reasonOfMigration);
+    // FIX: Format the checkbox array into a comma-separated string, then pass it to logAction
+    const intervenedStr = Array.isArray(data.migrationIntervenedBy) 
+        ? data.migrationIntervenedBy.join(', ') 
+        : (data.migrationIntervenedBy || '');
+
+    logAction(
+        'Migration Process', 
+        data.jlid, 
+        data.learner, 
+        data.oldTeacher, 
+        data.newTeacher, 
+        data.course, 
+        finalStatus, 
+        notes.join('; '), 
+        data.reasonOfMigration, 
+        intervenedStr // <--- THIS WAS MISSING!
+    );
   }
 }
+
 
 
 

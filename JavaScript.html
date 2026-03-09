@@ -1028,7 +1028,10 @@ function submitMigrationForm(e) {
           sendWhatsappToParent: sendWhatsapp, 
           manualTimezone: selectedTimezone,
           
-          // --- NEW FIELD ADDED HERE ---
+          // --- FIX: ADD THIS LINE ---
+          manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
+          // --------------------------
+          
           watiTemplateName: selectedWatiTemplate 
       };
 
@@ -1879,28 +1882,6 @@ tr.innerHTML = `
         reportContentArea.innerHTML = '<p style="text-align: center; color: var(--text-light);">Select a date range and click "Generate Report" to view the Migration Intelligence Dashboard.</p>';
     }
 
-    function generateReport() {
-        showLoading('Generating intelligence report...');
-        const params = { 
-            fromDate: reportFromDateInput.value, 
-            toDate: reportToDateInput.value,
-        };
-        google.script.run.withSuccessHandler(result => {
-            hideLoading();
-            if(result && result.success) { 
-                if (result.data) {
-                    globalReportData = result; 
-                    renderEnhancedReport(result.data, result.aiInsights); 
-                } else {
-                    reportContentArea.innerHTML = `<p style="text-align: center; color: var(--text-light);">${result.message || 'No data found for this period.'}</p>`;
-                }
-            }
-            else { 
-                showToast('error', 'Report Error', (result && result.message) ? result.message : 'Unknown error generating report.'); 
-                reportContentArea.innerHTML = `<p style="text-align: center; color: var(--danger);">${(result && result.message) ? result.message : 'Could not generate report.'}</p>`;
-            }
-        }).withFailureHandler(showError).getEnhancedMigrationReport(params);
-    }
     
     function safeToFixedClient(value, decimals = 2) {
       const num = parseFloat(value);
@@ -4981,59 +4962,70 @@ function viewEmailActivityDetails(trackingId) {
         })
         .getEmailLogDetails(trackingId);
 }
-function generateReport() {
-        const fromVal = reportFromDateInput.value;
-        const toVal = reportToDateInput.value;
+    function generateReport() {
+        const fromVal = document.getElementById('reportFromDate').value;
+        const toVal = document.getElementById('reportToDate').value;
         
         if(!fromVal || !toVal) {
              showToast('error', 'Date Range', 'Please select From and To dates.');
              return;
         }
 
+        // Reset UI
+        document.getElementById('report-content-area').innerHTML = '';
         showLoading('Generating intelligence report...');
+        
         const params = { 
             fromDate: fromVal, 
             toDate: toVal,
         };
 
-        // 1. Get Standard Report
+        // CALL 1: Standard Analytics (KPIs, Charts)
         google.script.run.withSuccessHandler(result => {
             if(result && result.success && result.data) { 
                 globalReportData = result; 
                 renderEnhancedReport(result.data, result.aiInsights); 
                 
-                // --- 2. NEW: CHAIN CALL FOR DOUBLE MIGRATIONS ---
+                // --- CALL 2: Double Migration Stability Check (CHAINED) ---
+                console.log("Fetching Double Migration Report...");
                 google.script.run.withSuccessHandler(doubleMigs => {
-                    hideLoading(); // Hide loading only after both are done
+                    hideLoading(); 
+                    console.log("Double Migrations Found:", doubleMigs ? doubleMigs.length : 0);
                     renderDoubleMigrationSection(doubleMigs);
+                }).withFailureHandler(err => {
+                    hideLoading();
+                    console.error("Double Migration Error:", err);
                 }).getDoubleMigrationReport(params);
-                // ------------------------------------------------
+                // ----------------------------------------------------------
             }
             else { 
                 hideLoading();
-                reportContentArea.innerHTML = `<p style="text-align: center; color: var(--danger);">No data found for this period.</p>`;
+                document.getElementById('report-content-area').innerHTML = `<p style="text-align: center; color: var(--danger);">No data found for this period.</p>`;
             }
         }).withFailureHandler(showError).getEnhancedMigrationReport(params);
     }
 
-    // --- NEW: RENDER FUNCTION FOR DOUBLE MIGRATIONS ---
+
+    // --- NEW: RENDER FUNCTION FOR STABILITY TABLE ---
     function renderDoubleMigrationSection(data) {
-        // Find or Create container
+        const mainArea = document.getElementById('report-content-area');
+        if (!mainArea) return;
+
         let container = document.getElementById('doubleMigrationSection');
         if (!container) {
             container = document.createElement('div');
             container.id = 'doubleMigrationSection';
             container.className = 'report-section';
             container.style.marginTop = '20px';
-            container.style.borderLeft = '5px solid #ff9800'; // Orange warning
-            reportContentArea.prepend(container); // Put it at the TOP for visibility
+            container.style.borderLeft = '5px solid #ff9800'; 
+            mainArea.prepend(container); 
         }
 
         if (!data || data.length === 0) {
-            // Optional: Hide section if no issues found, or show "All Good" message
+            container.style.borderLeft = '5px solid #4caf50'; 
             container.innerHTML = `
                 <h3><i class="fas fa-check-circle" style="color:var(--success);"></i> Stability Check</h3>
-                <p style="color:#666;">No learners migrated 2+ times in this period. Great job!</p>
+                <p style="color:#666;">No learners were migrated 2+ times in the selected period.</p>
             `;
             return;
         }
@@ -5041,36 +5033,51 @@ function generateReport() {
         let html = `
             <h3><i class="fas fa-exclamation-triangle" style="color:var(--warning);"></i> Frequent Migrations (Stability Alert)</h3>
             <p style="margin-bottom:15px; color:#666;">
-                These <strong>${data.length} learners</strong> were migrated <strong>2 or more times</strong> in the selected period. 
-                Investigate immediately to prevent churn.
+                Alert: <strong>${data.length} learners</strong> were migrated <strong>2 or more times</strong>.
             </p>
             <div class="table-container">
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Learner</th>
-                            <th style="text-align:center;">Count</th>
-                            <th>Teacher Path</th>
-                            <th>Reasons</th>
-                            <th>Last Move</th>
+                            <th style="width: 25%">Learner</th>
+                            <th style="width: 10%; text-align:center;">Count</th>
+                            <th style="width: 65%">Migration Journey (Oldest $\rightarrow$ Newest)</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
         data.forEach(row => {
+            let journeyHtml = `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">`;
+            row.timeline.forEach((step, index) => {
+                const isLast = index === row.timeline.length - 1;
+                const teacherText = index === 0 
+                    ? `${escapeHtml(step.oldTeacher)} <i class="fas fa-arrow-right" style="color:#999; font-size:0.8em;"></i> <strong>${escapeHtml(step.newTeacher)}</strong>`
+                    : `Moved to <strong>${escapeHtml(step.newTeacher)}</strong>`;
+
+                journeyHtml += `
+                    <li style="margin-bottom: 6px; font-size: 0.9em; ${isLast ? 'color:#4a3c8a; font-weight:500;' : 'color:#4a5568;'}">
+                        <span style="color:#718096; font-family:monospace; margin-right:8px;">[${step.dateStr}]</span>
+                        ${teacherText}
+                        <br>
+                        <span style="font-size:0.85em; color:#e65100; background:#fff3e0; padding:1px 6px; border-radius:4px; margin-left: 80px;">
+                            Reason: ${escapeHtml(step.reason)}
+                        </span>
+                    </li>
+                `;
+            });
+            journeyHtml += `</ul>`;
+
             html += `
                 <tr>
-                    <td>
+                    <td style="vertical-align: top; padding-top: 15px;">
                         <strong>${escapeHtml(row.name)}</strong><br>
                         <small style="color:#999">${escapeHtml(row.jlid)}</small>
                     </td>
-                    <td style="text-align:center;">
-                        <span class="status-badge status-failed" style="font-size:1em;">${row.count}</span>
+                    <td style="text-align:center; vertical-align: top; padding-top: 15px;">
+                        <span class="status-badge status-failed" style="font-size:1.1em; padding:5px 10px;">${row.count}</span>
                     </td>
-                    <td>${row.path}</td>
-                    <td><small>${escapeHtml(row.reasons)}</small></td>
-                    <td>${row.lastDate}</td>
+                    <td style="padding: 10px;">${journeyHtml}</td>
                 </tr>
             `;
         });
