@@ -1,0 +1,1709 @@
+<!-- ── External libs: syntax highlighting ──────────────────────────────── -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<!-- Common language packs -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+
+<div id="aiPmPage" class="page-content" style="display:none;">
+
+  <!-- ── Page Header ─────────────────────────────────────────────────────── -->
+  <div class="page-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+    <div>
+      <h1 class="page-title" style="margin:0; font-size:1.6rem;">
+        <i class="fas fa-robot" style="color:var(--primary); margin-right:8px;"></i>
+        AI Product Manager
+      </h1>
+      <p style="margin:4px 0 0; color:var(--text-muted); font-size:0.9rem;">
+        Analyses your live data and suggests features. Only visible to Admin.
+      </p>
+    </div>
+
+    <!-- Model selector -->
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:8px; background:var(--card-bg,#fff); border:1px solid var(--gray,#e2e8f0); border-radius:8px; padding:6px 12px;">
+        <i class="fas fa-microchip" style="color:var(--primary); font-size:0.85rem;"></i>
+        <select id="aiModelSelector" style="border:none; background:transparent; font-size:0.82rem; color:var(--text-color); cursor:pointer; outline:none;" onchange="aiSaveModel()">
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash ✅ Recommended</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash (Free, retiring soon)</option>
+          <option value="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B (Free, lightweight)</option>
+        </select>
+      </div>
+      <button id="runAIAnalysisBtn" class="btn btn-primary" style="display:flex; align-items:center; gap:8px; padding:10px 22px;">
+        <i class="fas fa-brain"></i> Run Analysis
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Stats Bar ───────────────────────────────────────────────────────── -->
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem;" id="aiStatsBar">
+    <div class="stat-card" style="text-align:center; padding:1rem;">
+      <div style="font-size:1.8rem; font-weight:700; color:var(--primary);" id="aiStatPending">0</div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">Pending Review</div>
+    </div>
+    <div class="stat-card" style="text-align:center; padding:1rem;">
+      <div style="font-size:1.8rem; font-weight:700; color:#15803d;" id="aiStatApproved">0</div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">Approved</div>
+    </div>
+    <div class="stat-card" style="text-align:center; padding:1rem;">
+      <div style="font-size:1.8rem; font-weight:700; color:#1d4ed8;" id="aiStatDeployed">0</div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">Deployed</div>
+    </div>
+    <div class="stat-card" style="text-align:center; padding:1rem;">
+      <div style="font-size:1.8rem; font-weight:700; color:#b91c1c;" id="aiStatRejected">0</div>
+      <div style="font-size:0.8rem; color:var(--text-muted);">Rejected</div>
+    </div>
+  </div>
+
+  <!-- ── Tab Switcher ────────────────────────────────────────────────────── -->
+  <div style="display:flex; border-bottom:2px solid var(--gray,#e2e8f0); margin-bottom:1.5rem; gap:0;">
+    <button class="ai-main-tab active" id="aiTabCards" onclick="aiSwitchMainTab('cards')" style="padding:10px 24px; border:none; background:transparent; cursor:pointer; font-size:0.92rem; font-weight:600; color:var(--primary); border-bottom:2px solid var(--primary); margin-bottom:-2px; display:flex; align-items:center; gap:8px;">
+      <i class="fas fa-th-list"></i> Suggestions
+    </button>
+    <button class="ai-main-tab" id="aiTabChat" onclick="aiSwitchMainTab('chat')" style="padding:10px 24px; border:none; background:transparent; cursor:pointer; font-size:0.92rem; font-weight:600; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-2px; display:flex; align-items:center; gap:8px;">
+      <i class="fas fa-comments"></i> AI Chat
+      <span id="aiChatBadge" style="display:none; background:var(--primary); color:#fff; border-radius:10px; font-size:0.65rem; padding:1px 6px;">NEW</span>
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 1: SUGGESTION CARDS                                               -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div id="aiCardsPanel">
+    <!-- Filter tabs -->
+    <div style="display:flex; gap:8px; margin-bottom:1.5rem; flex-wrap:wrap;" id="aiFilterTabs">
+      <button class="ai-filter-btn active" data-filter="all"      onclick="aiSetFilter('all')">All</button>
+      <button class="ai-filter-btn"        data-filter="Pending"  onclick="aiSetFilter('Pending')">⏳ Pending</button>
+      <button class="ai-filter-btn"        data-filter="Approved" onclick="aiSetFilter('Approved')">✅ Approved</button>
+      <button class="ai-filter-btn"        data-filter="Deployed" onclick="aiSetFilter('Deployed')">🚀 Deployed</button>
+      <button class="ai-filter-btn"        data-filter="Rejected" onclick="aiSetFilter('Rejected')">❌ Rejected</button>
+      <button class="ai-filter-btn"        data-filter="Snoozed"  onclick="aiSetFilter('Snoozed')">💤 Snoozed</button>
+    </div>
+
+    <!-- Cards container -->
+    <div id="aiSuggestionsContainer">
+      <div id="aiEmptyState" style="text-align:center; padding:4rem 2rem; color:var(--text-muted);">
+        <i class="fas fa-robot" style="font-size:3rem; opacity:0.3; margin-bottom:1rem; display:block;"></i>
+        <p style="font-size:1rem; margin:0;">No suggestions yet. Click <strong>Run Analysis</strong> to let the AI analyse your system.</p>
+      </div>
+      <div id="aiCardsList"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 2: AI CHAT                                                        -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div id="aiChatPanel" style="display:none;">
+    <div style="display:flex; flex-direction:column; height:calc(100vh - 340px); min-height:480px; background:var(--card-bg,#fff); border:1px solid var(--gray,#e2e8f0); border-radius:12px; overflow:hidden;">
+
+      <!-- Chat toolbar -->
+      <div style="padding:8px 14px; border-bottom:1px solid var(--gray,#e2e8f0); display:flex; align-items:center; justify-content:space-between; background:var(--card-bg,#fff); gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e; flex-shrink:0;"></div>
+          <span style="font-size:0.8rem; color:var(--text-muted);">AI ready</span>
+          <!-- Token counter -->
+          <span id="aiTokenCounter" style="font-size:0.72rem; color:var(--text-muted); background:var(--gray,#f1f5f9); padding:2px 8px; border-radius:10px; display:none;">
+            <i class="fas fa-coins" style="font-size:0.65rem;"></i> <span id="aiTokenCount">0</span> tokens
+          </span>
+        </div>
+        <div style="display:flex; gap:5px; align-items:center;">
+          <button onclick="aiToggleSettings()" id="aiSettingsBtn" title="Model settings" style="background:none; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:4px;">
+            <i class="fas fa-sliders-h"></i> Settings
+          </button>
+          <button onclick="aiClearChat()" title="Clear chat" style="background:none; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.75rem; color:var(--text-muted);">
+            <i class="fas fa-trash-alt"></i> Clear
+          </button>
+          <button onclick="aiExportChat()" title="Export chat" style="background:none; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; cursor:pointer; font-size:0.75rem; color:var(--text-muted);">
+            <i class="fas fa-download"></i> Export
+          </button>
+        </div>
+      </div>
+
+      <!-- Settings panel (hidden by default) -->
+      <div id="aiSettingsPanel" style="display:none; padding:12px 16px; border-bottom:1px solid var(--gray,#e2e8f0); background:#f8fafc; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+
+        <!-- System instruction -->
+        <div style="flex:1; min-width:240px;">
+          <label style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:4px;">System Instruction</label>
+          <textarea id="aiSystemInstructionInput" rows="3"
+            style="width:100%; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:6px 10px; font-size:0.78rem; font-family:inherit; resize:vertical; background:var(--card-bg,#fff); color:var(--text-color); box-sizing:border-box;"
+            placeholder="Override the default system instruction..."></textarea>
+          <div style="display:flex; gap:6px; margin-top:4px;">
+            <button onclick="aiSaveSystemInstruction()" style="font-size:0.72rem; background:var(--primary); color:#fff; border:none; border-radius:5px; padding:3px 10px; cursor:pointer;">Save</button>
+            <button onclick="aiResetSystemInstruction()" style="font-size:0.72rem; background:none; border:1px solid var(--gray); border-radius:5px; padding:3px 10px; cursor:pointer; color:var(--text-muted);">Reset Default</button>
+          </div>
+        </div>
+
+        <!-- Temperature -->
+        <div style="min-width:160px;">
+          <label style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:4px;">Temperature <span id="aiTempVal">0.7</span></label>
+          <input type="range" id="aiTempSlider" min="0" max="2" step="0.05" value="0.7"
+            oninput="document.getElementById('aiTempVal').textContent = this.value"
+            style="width:100%; accent-color:var(--primary);">
+          <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-muted);">
+            <span>Precise</span><span>Balanced</span><span>Creative</span>
+          </div>
+        </div>
+
+        <!-- Top-P -->
+        <div style="min-width:140px;">
+          <label style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:4px;">Top-P <span id="aiTopPVal">0.95</span></label>
+          <input type="range" id="aiTopPSlider" min="0" max="1" step="0.01" value="0.95"
+            oninput="document.getElementById('aiTopPVal').textContent = this.value"
+            style="width:100%; accent-color:var(--primary);">
+        </div>
+
+        <!-- Max output tokens -->
+        <div style="min-width:140px;">
+          <label style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; display:block; margin-bottom:4px;">Max Tokens <span id="aiMaxTokVal">8192</span></label>
+          <input type="range" id="aiMaxTokSlider" min="256" max="8192" step="256" value="8192"
+            oninput="document.getElementById('aiMaxTokVal').textContent = this.value"
+            style="width:100%; accent-color:var(--primary);">
+        </div>
+
+      </div>
+
+      <!-- Chat messages -->
+      <div id="aiChatMessages" style="flex:1; overflow-y:auto; padding:1.2rem; display:flex; flex-direction:column; gap:12px;">
+        <!-- Welcome message -->
+        <div class="ai-msg ai-msg-bot" style="display:flex; gap:10px; align-items:flex-start;">
+          <div style="width:32px; height:32px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fas fa-robot" style="color:#fff; font-size:0.8rem;"></i>
+          </div>
+          <div style="background:var(--gray,#f1f5f9); border-radius:0 12px 12px 12px; padding:10px 14px; max-width:80%; font-size:0.88rem; line-height:1.5;">
+            <p style="margin:0 0 8px;">👋 Hi! I'm your AI Product Manager for <strong>JetLearn</strong>. I have access to your live system data and can help you:</p>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="background:#fff; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; font-size:0.8rem; cursor:pointer;" onclick="aiSendQuick('What are the top issues in my system right now?')">📊 Analyse current system issues</span>
+              <span style="background:#fff; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; font-size:0.8rem; cursor:pointer;" onclick="aiSendQuick('Suggest a feature to reduce teacher migrations')">💡 Suggest specific features</span>
+              <span style="background:#fff; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; font-size:0.8rem; cursor:pointer;" onclick="aiSendQuick('Write code to add an automated migration alert system')">💻 Write implementation code</span>
+              <span style="background:#fff; border:1px solid var(--gray,#e2e8f0); border-radius:6px; padding:4px 10px; font-size:0.8rem; cursor:pointer;" onclick="aiSendQuick('Which teachers are most at risk of losing learners?')">🔍 Answer data questions</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Typing indicator (hidden by default) -->
+      <div id="aiTypingIndicator" style="display:none; padding:0 1.2rem 8px; display:none;">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <div style="width:32px; height:32px; border-radius:50%; background:var(--primary); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fas fa-robot" style="color:#fff; font-size:0.8rem;"></i>
+          </div>
+          <div style="background:var(--gray,#f1f5f9); border-radius:0 12px 12px 12px; padding:10px 14px;">
+            <div class="ai-typing-dots">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick prompts -->
+      <div id="aiQuickPrompts" style="padding:8px 16px; border-top:1px solid var(--gray,#e2e8f0); display:flex; gap:6px; overflow-x:auto; flex-wrap:nowrap;">
+        <button class="ai-quick-btn" onclick="aiSendQuick('Show me teachers with highest migration rate')">🏃 Migration risk</button>
+        <button class="ai-quick-btn" onclick="aiSendQuick('What features should I build next quarter?')">🗓️ Next quarter</button>
+        <button class="ai-quick-btn" onclick="aiSendQuick('Write code for a learner retention dashboard widget')">💻 Code: retention widget</button>
+        <button class="ai-quick-btn" onclick="aiSendQuick('Create a suggestion card for automated onboarding emails')">📋 Create suggestion</button>
+        <button class="ai-quick-btn" onclick="aiSendQuick('Which area needs the most attention right now?')">🔥 Priority focus</button>
+      </div>
+
+      <!-- Attachment preview bar -->
+      <div id="aiAttachBar" style="display:none; padding:8px 16px 0; border-top:1px solid var(--gray,#e2e8f0); background:var(--card-bg,#fff);">
+        <div id="aiAttachList" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- Input area -->
+      <div style="padding:10px 16px 12px; border-top:1px solid var(--gray,#e2e8f0); background:var(--card-bg,#fff);">
+        <!-- Attachment + input row -->
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+
+          <!-- Attach button -->
+          <div style="position:relative;">
+            <button id="aiAttachBtn" onclick="document.getElementById('aiFileInput').click()"
+              title="Attach file"
+              style="width:38px;height:38px;border-radius:9px;border:1px solid var(--gray,#e2e8f0);background:var(--card-bg,#fff);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-muted,#94a3b8);transition:all 0.15s;flex-shrink:0;">
+              <i class="fas fa-paperclip" style="font-size:0.95rem;"></i>
+            </button>
+            <input id="aiFileInput" type="file" multiple
+              accept=".txt,.js,.gs,.html,.css,.json,.csv,.md,.py,.xml,.log,.ts,.png,.jpg,.jpeg,.gif,.webp,.pdf"
+              style="display:none;" onchange="aiHandleFileAttach(event)">
+          </div>
+
+          <!-- Textarea -->
+          <textarea
+            id="aiChatInput"
+            placeholder="Ask about your data, attach files for reference, or ask me to write code..."
+            rows="1"
+            style="flex:1;border:1px solid var(--gray,#e2e8f0);border-radius:10px;padding:10px 14px;font-size:0.88rem;resize:none;outline:none;font-family:inherit;line-height:1.5;max-height:140px;overflow-y:auto;background:var(--card-bg,#fff);color:var(--text-color);"
+            onkeydown="aiChatKeydown(event)"
+            oninput="aiAutoResize(this)"
+          ></textarea>
+
+          <!-- Send button -->
+          <button id="aiChatSendBtn" onclick="aiSendMessage()"
+            style="background:var(--primary);color:#fff;border:none;border-radius:10px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity 0.2s;">
+            <i class="fas fa-paper-plane" style="font-size:0.85rem;"></i>
+          </button>
+        </div>
+
+        <!-- Hint text -->
+        <div style="margin-top:5px;font-size:0.7rem;color:var(--text-muted,#94a3b8);padding-left:2px;">
+          Attach code (.js .html .css .json .csv .txt), images (.png .jpg .webp) or PDFs — max 4MB per file
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Code Viewer Modal ─────────────────────────────────────────────────── -->
+<div id="aiCodeModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg,#fff); border-radius:12px; width:90%; max-width:860px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:1.2rem 1.5rem; border-bottom:1px solid var(--gray); display:flex; align-items:center; justify-content:space-between;">
+      <h3 style="margin:0; font-size:1.1rem;">
+        <i class="fas fa-code" style="color:var(--primary); margin-right:8px;"></i>
+        Generated Code — Review &amp; Deploy
+      </h3>
+      <button onclick="aiCloseCodeModal()" style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--text-muted);">×</button>
+    </div>
+    <div style="background:#eff6ff; border-bottom:1px solid #bfdbfe; padding:0.8rem 1.5rem; font-size:0.85rem; color:#1e40af;">
+      <strong>How to deploy:</strong> Copy each file's code → paste into your project → <code>clasp push</code>. Then click "Mark as Deployed".
+    </div>
+    <div id="aiCodeFileTabs" style="display:flex; gap:0; border-bottom:1px solid var(--gray); overflow-x:auto;"></div>
+    <div style="flex:1; overflow-y:auto; padding:1.5rem;">
+      <div id="aiCodeInstructions" style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:1rem; margin-bottom:1rem; font-size:0.85rem; color:#166534; display:none;">
+        <strong><i class="fas fa-list-ol"></i> Integration Instructions:</strong>
+        <div id="aiCodeInstructionsText" style="margin-top:6px; white-space:pre-wrap;"></div>
+      </div>
+      <div id="aiCodeTesting" style="background:#fefce8; border:1px solid #fef08a; border-radius:8px; padding:1rem; margin-bottom:1rem; font-size:0.85rem; color:#854d0e; display:none;">
+        <strong><i class="fas fa-vial"></i> Testing Steps:</strong>
+        <div id="aiCodeTestingText" style="margin-top:6px; white-space:pre-wrap;"></div>
+      </div>
+      <pre id="aiCodeContent" style="background:#1e1e2e; color:#cdd6f4; padding:1.2rem; border-radius:8px; font-size:0.8rem; overflow-x:auto; white-space:pre-wrap; margin:0;"></pre>
+    </div>
+    <div style="padding:1rem 1.5rem; border-top:1px solid var(--gray); display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="aiCopyCurrentCode()" style="display:flex; align-items:center; gap:6px;">
+          <i class="fas fa-copy"></i> Copy This File
+        </button>
+        <button class="btn btn-outline" onclick="aiCopyAllCode()" style="display:flex; align-items:center; gap:6px;">
+          <i class="fas fa-files"></i> Copy All Files
+        </button>
+      </div>
+      <button id="aiMarkDeployedBtn" class="btn" onclick="aiMarkDeployed()" style="background:#15803d; color:#fff; display:flex; align-items:center; gap:6px;">
+        <i class="fas fa-rocket"></i> Mark as Deployed
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reject Modal ──────────────────────────────────────────────────────── -->
+<div id="aiRejectModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg,#fff); border-radius:12px; width:90%; max-width:460px; padding:1.5rem; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h3 style="margin:0 0 1rem; font-size:1.1rem;"><i class="fas fa-times-circle" style="color:#b91c1c; margin-right:6px;"></i>Reject Suggestion</h3>
+    <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:1rem;">Optional: tell the AI why you're rejecting this so it learns.</p>
+    <textarea id="aiRejectReason" rows="3" class="form-control" placeholder="e.g. Already planned, Not relevant right now..."></textarea>
+    <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:1rem;">
+      <button class="btn btn-outline" onclick="aiCloseRejectModal()">Cancel</button>
+      <button class="btn" style="background:#b91c1c; color:#fff;" onclick="aiConfirmReject()">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Inline Chat Code Block Modal ────────────────────────────────────── -->
+<div id="aiChatCodeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg,#fff); border-radius:12px; width:90%; max-width:800px; max-height:85vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:1rem 1.5rem; border-bottom:1px solid var(--gray); display:flex; align-items:center; justify-content:space-between;">
+      <h3 style="margin:0; font-size:1rem;"><i class="fas fa-code" style="color:var(--primary); margin-right:8px;"></i><span id="aiChatCodeTitle">Generated Code</span></h3>
+      <button onclick="document.getElementById('aiChatCodeModal').style.display='none'" style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--text-muted);">×</button>
+    </div>
+    <div style="flex:1; overflow-y:auto; padding:1.2rem;">
+      <pre id="aiChatCodeContent" style="background:#1e1e2e; color:#cdd6f4; padding:1.2rem; border-radius:8px; font-size:0.8rem; overflow-x:auto; white-space:pre-wrap; margin:0;"></pre>
+    </div>
+    <div style="padding:1rem 1.5rem; border-top:1px solid var(--gray); display:flex; gap:8px; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="aiCopyChatCode()" style="display:flex; align-items:center; gap:6px;"><i class="fas fa-copy"></i> Copy Code</button>
+      <button class="btn" id="aiSaveAsSuggestionBtn" style="background:#15803d; color:#fff; display:flex; align-items:center; gap:6px;" onclick="aiSaveCodeAsSuggestion()">
+        <i class="fas fa-plus-circle"></i> Save as Suggestion Card
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- STYLES                                                                    -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<style>
+  .ai-filter-btn {
+    padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--gray, #e2e8f0); background: transparent;
+    cursor: pointer; font-size: 0.82rem; color: var(--text-muted); transition: all 0.15s;
+  }
+  .ai-filter-btn.active, .ai-filter-btn:hover {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+  .ai-suggestion-card {
+    background: var(--card-bg, #fff); border: 1px solid var(--gray, #e2e8f0);
+    border-radius: 10px; padding: 1.2rem 1.4rem; margin-bottom: 1rem; transition: box-shadow 0.2s;
+  }
+  .ai-suggestion-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  .ai-priority-Critical { border-left: 4px solid #b91c1c; }
+  .ai-priority-High     { border-left: 4px solid #d97706; }
+  .ai-priority-Medium   { border-left: 4px solid #2563eb; }
+  .ai-priority-Low      { border-left: 4px solid #6b7280; }
+  .ai-code-file-tab {
+    padding: 8px 16px; border: none; border-bottom: 2px solid transparent;
+    background: transparent; cursor: pointer; font-size: 0.82rem;
+    color: var(--text-muted); white-space: nowrap;
+  }
+  .ai-code-file-tab.active { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
+  .ai-main-tab { transition: all 0.15s; }
+  .ai-quick-btn {
+    padding: 5px 12px; border-radius: 16px; border: 1px solid var(--gray,#e2e8f0);
+    background: var(--card-bg,#fff); cursor: pointer; font-size: 0.75rem;
+    color: var(--text-muted); white-space: nowrap; transition: all 0.15s;
+  }
+  .ai-quick-btn:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+  /* Typing dots animation */
+  .ai-typing-dots { display: flex; gap: 4px; align-items: center; height: 18px; }
+  .ai-typing-dots span {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-muted,#94a3b8); animation: aiDotBounce 1.2s infinite ease-in-out;
+  }
+  .ai-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .ai-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes aiDotBounce {
+    0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+    40%           { transform: scale(1);   opacity: 1; }
+  }
+
+  /* Chat message code blocks */
+  .ai-chat-code-block {
+    background: #1e1e2e; color: #cdd6f4; border-radius: 8px;
+    padding: 12px; font-size: 0.78rem; font-family: monospace;
+    overflow-x: auto; margin: 8px 0; white-space: pre-wrap; cursor: pointer;
+    position: relative;
+  }
+  .ai-chat-code-block:hover::after {
+    content: '📋 Click to expand'; position: absolute; top: 6px; right: 8px;
+    background: rgba(255,255,255,0.15); color: #fff; padding: 2px 8px;
+    border-radius: 4px; font-size: 0.7rem;
+  }
+  .ai-msg-bot .ai-suggestion-inline {
+    background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;
+    padding: 10px 14px; margin-top: 8px; font-size: 0.82rem;
+  }
+</style>
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT                                                                -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<script>
+var _cbk = '```';
+// ── State ─────────────────────────────────────────────────────────────────────
+let _aiAllSuggestions  = [];
+let _aiCurrentFilter   = 'all';
+let _aiCurrentCode     = null;
+let _aiCurrentFileIdx  = 0;
+let _aiPendingRejectId = null;
+let _aiPendingDeployId = null;
+let _aiChatHistory     = [];   // [{role:'user'|'model', parts:[{text}]}]
+let _aiIsSending       = false;
+let _aiLastChatCode    = null; // stores last code block from chat for saving
+let _aiLastChatSuggestion = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function loadAIPMPage() {
+  // Load saved model preference
+  google.script.run
+    .withSuccessHandler(val => {
+      if (val) document.getElementById('aiModelSelector').value = val;
+    })
+    .withFailureHandler(() => {})
+    .getScriptProperty('AI_SELECTED_MODEL');
+
+  // Load suggestions
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error', 'AI PM', res.message); return; }
+      _aiAllSuggestions = res.suggestions || [];
+      aiRenderAll();
+    })
+    .withFailureHandler(err => showToast('error', 'AI PM', err.message))
+    .getAISuggestions();
+
+  // Load chat history from storage
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res && res.success && res.history) {
+        _aiChatHistory = res.history;
+        aiRestoreChatHistory(res.history);
+      }
+    })
+    .withFailureHandler(() => {})
+    .getAIChatHistory();
+}
+
+// ── Model save ────────────────────────────────────────────────────────────────
+function aiSaveModel() {
+  const model = document.getElementById('aiModelSelector').value;
+  google.script.run.setScriptProperty('AI_SELECTED_MODEL', model);
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
+function aiSwitchMainTab(tab) {
+  const isCards = tab === 'cards';
+  document.getElementById('aiCardsPanel').style.display = isCards ? 'block' : 'none';
+  document.getElementById('aiChatPanel').style.display  = isCards ? 'none'  : 'flex';
+  document.getElementById('aiChatPanel').style.flexDirection = 'column';
+
+  document.getElementById('aiTabCards').style.color       = isCards ? 'var(--primary)' : 'var(--text-muted)';
+  document.getElementById('aiTabCards').style.borderBottomColor = isCards ? 'var(--primary)' : 'transparent';
+  document.getElementById('aiTabChat').style.color        = isCards ? 'var(--text-muted)' : 'var(--primary)';
+  document.getElementById('aiTabChat').style.borderBottomColor  = isCards ? 'transparent' : 'var(--primary)';
+
+  if (!isCards) {
+    document.getElementById('aiChatBadge').style.display = 'none';
+    setTimeout(() => document.getElementById('aiChatInput').focus(), 100);
+    aiScrollChatToBottom();
+  }
+}
+
+// ── Run Analysis ──────────────────────────────────────────────────────────────
+document.getElementById('runAIAnalysisBtn').addEventListener('click', () => {
+  const btn = document.getElementById('runAIAnalysisBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analysing...';
+  showLoading('AI is analysing your system data...');
+  const model = document.getElementById('aiModelSelector').value;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-brain"></i> Run Analysis';
+      if (!res.success) { showToast('error', 'Analysis Failed', res.message); return; }
+
+      // Deduplicate by id
+      const existingIds = new Set(_aiAllSuggestions.map(x => x.id));
+      const newOnes = (res.suggestions || [])
+        .filter(s => !existingIds.has(s.id))
+        .map(s => ({ ...s, status: 'Pending' }));
+      _aiAllSuggestions = [...newOnes, ..._aiAllSuggestions];
+      aiRenderAll();
+      showToast('success', 'Analysis Complete', newOnes.length + ' new suggestions generated.');
+
+      // Show badge on chat tab
+      if (newOnes.length > 0) document.getElementById('aiChatBadge').style.display = 'inline';
+    })
+    .withFailureHandler(err => {
+      hideLoading();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-brain"></i> Run Analysis';
+      showToast('error', 'Analysis Failed', err.message);
+    })
+    .runAIPMAnalysis(model);
+});
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function aiSetFilter(filter) {
+  _aiCurrentFilter = filter;
+  document.querySelectorAll('.ai-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  aiRenderCards();
+}
+
+// ── Render all ────────────────────────────────────────────────────────────────
+function aiRenderAll() {
+  const counts = { Pending: 0, Approved: 0, Deployed: 0, Rejected: 0 };
+  _aiAllSuggestions.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
+  document.getElementById('aiStatPending').textContent  = counts.Pending;
+  document.getElementById('aiStatApproved').textContent = counts.Approved;
+  document.getElementById('aiStatDeployed').textContent = counts.Deployed;
+  document.getElementById('aiStatRejected').textContent = counts.Rejected;
+  aiRenderCards();
+}
+
+// ── Render cards ──────────────────────────────────────────────────────────────
+function aiRenderCards() {
+  const container = document.getElementById('aiCardsList');
+  const empty     = document.getElementById('aiEmptyState');
+  const filtered  = _aiCurrentFilter === 'all'
+    ? _aiAllSuggestions
+    : _aiAllSuggestions.filter(s => s.status === _aiCurrentFilter);
+
+  if (filtered.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  container.innerHTML = filtered.map(s => aiCardHTML(s)).join('');
+}
+
+// ── Card HTML ─────────────────────────────────────────────────────────────────
+function aiCardHTML(s) {
+  const priorityColors = { Critical:'#b91c1c', High:'#d97706', Medium:'#2563eb', Low:'#6b7280' };
+  const statusColors   = { Pending:'#d97706', Approved:'#15803d', Deployed:'#1d4ed8', Rejected:'#b91c1c', Snoozed:'#6b7280' };
+  const effortColors   = { Low:'#15803d', Medium:'#d97706', High:'#b91c1c' };
+  const areaIcons      = { 'Attrition':'fa-user-minus','Teacher Load':'fa-chalkboard-teacher','Onboarding':'fa-user-plus','Migrations':'fa-exchange-alt','Milestones':'fa-flag' };
+
+  const pColor  = priorityColors[s.priority] || '#6b7280';
+  const sColor  = statusColors[s.status]     || '#6b7280';
+  const eColor  = effortColors[s.effort]     || '#6b7280';
+  const icon    = areaIcons[s.area]          || 'fa-lightbulb';
+  const dateStr = s.date ? new Date(s.date).toLocaleDateString('en-GB') : '';
+  const sid     = escapeHtml(s.id);
+
+  let actionBtns = '';
+  if (s.status === 'Pending') {
+    actionBtns =
+      '<button class="btn btn-sm" style="background:#15803d;color:#fff;" onclick="aiApprove(\'' + sid + '\')">'
+        + '<i class="fas fa-check"></i> Approve</button>'
+      + '<button class="btn btn-sm btn-outline" onclick="aiSnooze(\'' + sid + '\')">'
+        + '<i class="fas fa-clock"></i> Later</button>'
+      + '<button class="btn btn-sm" style="background:#b91c1c;color:#fff;" onclick="aiReject(\'' + sid + '\')">'
+        + '<i class="fas fa-times"></i> Reject</button>';
+  } else if (s.status === 'Approved') {
+    actionBtns =
+      '<button class="btn btn-sm btn-primary" onclick="aiViewCode(\'' + sid + '\')">'
+        + '<i class="fas fa-code"></i> View Code</button>'
+      + '<button class="btn btn-sm" style="background:#1d4ed8;color:#fff;" onclick="aiDeployDirect(\'' + sid + '\')">'
+        + '<i class="fas fa-rocket"></i> Mark Deployed</button>';
+  } else if (s.status === 'Snoozed') {
+    actionBtns =
+      '<button class="btn btn-sm btn-outline" onclick="aiUnsnoozeSuggestion(\'' + sid + '\')">'
+        + '<i class="fas fa-redo"></i> Reconsider</button>';
+  }
+
+  const dateHtml     = dateStr ? '<span style="font-size:0.72rem;color:var(--text-muted);">' + dateStr + '</span>' : '';
+  const descHtml     = s.description ? '<p style="margin:0 0 8px;font-size:0.85rem;color:var(--text-muted);">' + escapeHtml(s.description) + '</p>' : '';
+  const evidenceHtml = s.data_evidence
+    ? '<div style="font-size:0.78rem;color:#2563eb;background:#eff6ff;padding:6px 10px;border-radius:6px;margin-bottom:8px;"><i class="fas fa-chart-bar"></i> <strong>Evidence:</strong> ' + escapeHtml(s.data_evidence) + '</div>' : '';
+  const filesVal     = s.files_to_change || s.filesToChange || '';
+  const filesHtml    = filesVal
+    ? '<div style="font-size:0.78rem;color:var(--text-muted);"><i class="fas fa-file-code"></i> Files: <code style="font-size:0.78rem;">' + escapeHtml(filesVal) + '</code></div>' : '';
+  const actionHtml   = actionBtns ? '<div style="display:flex;gap:8px;margin-top:1rem;flex-wrap:wrap;">' + actionBtns + '</div>' : '';
+
+  return '<div class="ai-suggestion-card ai-priority-' + s.priority + '" id="ai-card-' + sid + '">'
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">'
+      + '<div style="flex:1;min-width:0;">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'
+          + '<span style="background:' + pColor + '22;color:' + pColor + ';border:1px solid ' + pColor + '44;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:600;">' + s.priority + '</span>'
+          + '<span style="background:var(--gray,#f1f5f9);color:var(--text-muted);padding:2px 8px;border-radius:4px;font-size:0.72rem;"><i class="fas ' + icon + '"></i> ' + s.area + '</span>'
+          + '<span style="background:' + eColor + '22;color:' + eColor + ';border:1px solid ' + eColor + '44;padding:2px 8px;border-radius:4px;font-size:0.72rem;">⏱ ' + s.effort + ' effort</span>'
+          + '<span style="background:' + sColor + '22;color:' + sColor + ';border:1px solid ' + sColor + '44;padding:2px 8px;border-radius:4px;font-size:0.72rem;">' + s.status + '</span>'
+          + dateHtml
+        + '</div>'
+        + '<h4 style="margin:0 0 6px;font-size:1rem;font-weight:600;">' + escapeHtml(s.suggestion || s.title || '') + '</h4>'
+        + '<div style="background:#fafafa;border-left:3px solid ' + pColor + ';padding:8px 12px;border-radius:0 6px 6px 0;margin-bottom:8px;">'
+          + '<p style="margin:0;font-size:0.83rem;color:#444;"><strong>Problem:</strong> ' + escapeHtml(s.problem || '') + '</p>'
+        + '</div>'
+        + descHtml + evidenceHtml + filesHtml
+      + '</div>'
+    + '</div>'
+    + actionHtml
+  + '</div>';
+}
+
+// ── Approve ───────────────────────────────────────────────────────────────────
+function aiApprove(id) {
+  const card = document.getElementById('ai-card-' + id);
+  if (card) card.style.opacity = '0.5';
+  showLoading('AI is writing the implementation code...');
+  const model = document.getElementById('aiModelSelector').value;
+
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res.success) {
+        if (card) card.style.opacity = '1';
+        showToast('error', 'Approval Failed', res.message);
+        return;
+      }
+      const s = _aiAllSuggestions.find(x => String(x.id) === String(id));
+      if (s) s.status = 'Approved';
+      aiRenderAll();
+      _aiCurrentCode     = res.codeResult;
+      _aiPendingDeployId = id;
+      aiOpenCodeModal(res.codeResult);
+      showToast('success', 'Approved!', 'Code generated. Review and deploy.');
+    })
+    .withFailureHandler(err => {
+      hideLoading();
+      if (card) card.style.opacity = '1';
+      showToast('error', 'Approval Failed', err.message);
+    })
+    .approveSuggestion(id, model);
+}
+
+// ── View Code (FIXED — fetches from sheet) ────────────────────────────────────
+function aiViewCode(id) {
+  showLoading('Loading generated code...');
+  google.script.run
+    .withSuccessHandler(res => {
+      hideLoading();
+      if (!res.success) { showToast('error', 'Error', res.message); return; }
+      _aiCurrentCode     = res.codeResult;
+      _aiPendingDeployId = id;
+      aiOpenCodeModal(res.codeResult);
+    })
+    .withFailureHandler(err => { hideLoading(); showToast('error', 'Error', err.message); })
+    .getApprovedCode(id);
+}
+
+// ── Code modal ────────────────────────────────────────────────────────────────
+function aiOpenCodeModal(codeResult) {
+  _aiCurrentCode    = codeResult;
+  _aiCurrentFileIdx = 0;
+  const tabsEl = document.getElementById('aiCodeFileTabs');
+  tabsEl.innerHTML = (codeResult.files || []).map(function(f, i) {
+    return '<button class="ai-code-file-tab ' + (i === 0 ? 'active' : '') + '" onclick="aiSelectFileTab(' + i + ')">' + escapeHtml(f.filename) + '</button>';
+  }).join('');
+  const instrEl = document.getElementById('aiCodeInstructions');
+  const testEl  = document.getElementById('aiCodeTesting');
+  if (codeResult.instructions) { document.getElementById('aiCodeInstructionsText').textContent = codeResult.instructions; instrEl.style.display = 'block'; } else instrEl.style.display = 'none';
+  if (codeResult.testing)      { document.getElementById('aiCodeTestingText').textContent = codeResult.testing; testEl.style.display = 'block'; } else testEl.style.display = 'none';
+  aiSelectFileTab(0);
+  document.getElementById('aiCodeModal').style.display = 'flex';
+}
+
+function aiSelectFileTab(idx) {
+  _aiCurrentFileIdx = idx;
+  document.querySelectorAll('.ai-code-file-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  const file = (_aiCurrentCode.files || [])[idx];
+  if (file) document.getElementById('aiCodeContent').textContent = '// === ' + file.filename + ' ===\n// ' + file.action + ': ' + file.description + '\n\n' + file.code;
+}
+
+function aiCloseCodeModal() { document.getElementById('aiCodeModal').style.display = 'none'; }
+
+function aiCopyCurrentCode() {
+  navigator.clipboard.writeText(document.getElementById('aiCodeContent').textContent)
+    .then(() => showToast('success', 'Copied', 'Code copied to clipboard.'));
+}
+
+function aiCopyAllCode() {
+  if (!_aiCurrentCode) return;
+  const all = (_aiCurrentCode.files || []).map(f => '// ===== ' + f.filename + ' =====\n// ' + f.action + ': ' + f.description + '\n\n' + f.code).join('\n\n// ────────────────────────\n\n');
+  navigator.clipboard.writeText(all).then(() => showToast('success', 'Copied All', 'All file code copied to clipboard.'));
+}
+
+// ── Deploy (FIXED) ────────────────────────────────────────────────────────────
+function aiMarkDeployed() {
+  if (!_aiPendingDeployId) { showToast('error', 'Error', 'No suggestion linked. Please close and use Mark Deployed on the card.'); return; }
+  aiDeployDirect(_aiPendingDeployId);
+  aiCloseCodeModal();
+}
+
+function aiDeployDirect(id) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error', 'Error', res.message); return; }
+      const s = _aiAllSuggestions.find(x => String(x.id) === String(id));
+      if (s) s.status = 'Deployed';
+      _aiCurrentCode     = null;
+      _aiPendingDeployId = null;
+      aiRenderAll();
+      showToast('success', '🚀 Deployed!', 'Feature marked as deployed.');
+    })
+    .withFailureHandler(err => showToast('error', 'Error', err.message))
+    .markSuggestionDeployed(id, '');
+}
+
+// ── Reject (FIXED) ────────────────────────────────────────────────────────────
+function aiReject(id) {
+  _aiPendingRejectId = id;
+  document.getElementById('aiRejectReason').value = '';
+  document.getElementById('aiRejectModal').style.display = 'flex';
+}
+
+function aiCloseRejectModal() {
+  document.getElementById('aiRejectModal').style.display = 'none';
+  _aiPendingRejectId = null;
+}
+
+function aiConfirmReject() {
+  const reason = document.getElementById('aiRejectReason').value;
+  const id     = _aiPendingRejectId;
+  if (!id) return;
+  aiCloseRejectModal();
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error', 'Error', res.message); return; }
+      const s = _aiAllSuggestions.find(x => String(x.id) === String(id));
+      if (s) s.status = 'Rejected';
+      aiRenderAll();
+      showToast('info', 'Rejected', 'Suggestion rejected.');
+    })
+    .withFailureHandler(err => showToast('error', 'Error', err.message))
+    .rejectSuggestion(id, reason);
+}
+
+// ── Snooze / Unsnooze (FIXED) ─────────────────────────────────────────────────
+function aiSnooze(id) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error', 'Error', res.message); return; }
+      const s = _aiAllSuggestions.find(x => String(x.id) === String(id));
+      if (s) s.status = 'Snoozed';
+      aiRenderAll();
+      showToast('info', 'Snoozed', 'Suggestion moved to Later.');
+    })
+    .withFailureHandler(err => showToast('error', 'Error', err.message))
+    .snoozeSuggestion(id);
+}
+
+function aiUnsnoozeSuggestion(id) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error', 'Error', res.message); return; }
+      const s = _aiAllSuggestions.find(x => String(x.id) === String(id));
+      if (s) s.status = 'Pending';
+      aiRenderAll();
+      showToast('info', 'Reconsidered', 'Suggestion moved back to Pending.');
+    })
+    .withFailureHandler(err => showToast('error', 'Error', err.message))
+    .unsnoozeSuggestion(id);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CHAT FUNCTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function aiChatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSendMessage(); }
+}
+
+function aiAutoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function aiSendQuick(text) {
+  document.getElementById('aiChatInput').value = text;
+  aiSwitchMainTab('chat');
+  aiSendMessage();
+}
+
+function aiScrollChatToBottom() {
+  const el = document.getElementById('aiChatMessages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+function aiRestoreChatHistory(history) {
+  if (!history || history.length === 0) return;
+  history.forEach(msg => {
+    if (msg.role === 'user')  aiAppendMessage('user', msg.parts[0].text);
+    if (msg.role === 'model') aiAppendMessage('bot',  msg.parts[0].text);
+  });
+  aiScrollChatToBottom();
+}
+
+// ── Full markdown renderer — matches AI Studio output quality ─────────────────
+// ── Code store — avoids putting code in HTML attributes (fixes rendering bugs) ─
+const _aiCodeStore = {};
+let   _aiCodeStoreIdx = 0;
+
+function _storeCode(code, lang) {
+  const key = 'code_' + (++_aiCodeStoreIdx);
+  _aiCodeStore[key] = { code: code, lang: lang };
+  return key;
+}
+
+// ── Full markdown renderer ────────────────────────────────────────────────────
+function aiMarkdownToHtml(raw) {
+  if (!raw) return '';
+  let t = raw;
+
+  // STEP 1 — Extract ALL code blocks first, replace with safe placeholders
+  // This prevents any other regex from touching code content
+  const codeBlocks = [];
+  t = t.replace(/```([\w-]*)\r?\n?([\s\S]*?)```/g, function(_, lang, code) {
+    const idx = codeBlocks.length;
+    codeBlocks.push({ lang: (lang || 'code').trim(), code: code.trim() });
+    return '\x00CODEBLOCK_' + idx + '\x00';
+  });
+
+  // STEP 2 — Escape HTML in everything except placeholders
+  t = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // STEP 3 — Restore code blocks as proper rendered HTML
+  t = t.replace(/\x00CODEBLOCK_(\d+)\x00/g, function(_, i) {
+    const b   = codeBlocks[parseInt(i)];
+    const key = _storeCode(b.code, b.lang);
+
+    // suggestion_card — render as interactive card
+    if (b.lang === 'suggestion_card') {
+      try {
+        const s  = JSON.parse(b.code);
+        const pc = ({Critical:'#b91c1c',High:'#d97706',Medium:'#2563eb',Low:'#6b7280'})[s.priority] || '#6b7280';
+        return '<div class="ai-sug-card-inline">' +
+          '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">' +
+            '<span style="background:'+pc+'22;color:'+pc+';border:1px solid '+pc+'44;padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:600;">'+(s.priority||'Medium')+'</span>' +
+            '<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:4px;font-size:0.72rem;">'+(s.area||'General')+'</span>' +
+            '<span style="background:#f1f5f9;color:#64748b;padding:2px 8px;border-radius:4px;font-size:0.72rem;">⏱ '+(s.effort||'Medium')+'</span>' +
+          '</div>' +
+          '<strong style="font-size:0.95rem;display:block;margin-bottom:4px;">'+(s.suggestion||'')+'</strong>' +
+          '<p style="margin:4px 0;font-size:0.82rem;color:#555;">'+(s.problem||'')+'</p>' +
+          (s.data_evidence ? '<p style="margin:4px 0;font-size:0.78rem;color:#2563eb;background:#eff6ff;padding:4px 8px;border-radius:4px;">📊 '+s.data_evidence+'</p>' : '') +
+          '<p style="margin:4px 0 0;font-size:0.78rem;color:#64748b;">📁 '+(Array.isArray(s.files_to_change)?s.files_to_change.join(', '):(s.files_to_change||''))+'</p>' +
+          '<button onclick="aiDoSaveSuggestionFromStore(\''+key+'\')" class="ai-save-sug-btn">＋ Save as Suggestion Card</button>' +
+        '</div>';
+      } catch(e) { /* fall through to normal code block */ }
+    }
+
+    // Escape code for display only (NOT for attributes)
+    const safeCode = b.code
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;');
+
+    const lineCount = b.code.split('\n').length;
+    const isLong    = lineCount > 25;
+
+    return '<div class="ai-code-block">' +
+      '<div class="ai-code-topbar">' +
+        '<span class="ai-code-lang-badge">' + (b.lang || 'code') + '</span>' +
+        '<div class="ai-code-actions">' +
+          '<button class="ai-code-btn" onclick="aiCodeAction(\'copy\',\''+key+'\',this)"><i class="fas fa-copy"></i> Copy</button>' +
+          (isLong ? '<button class="ai-code-btn" onclick="aiCodeAction(\'expand\',\''+key+'\',this)"><i class="fas fa-expand-alt"></i> View Full</button>' : '') +
+          '<button class="ai-code-btn" onclick="aiCodeAction(\'download\',\''+key+'\',this)"><i class="fas fa-download"></i> Download</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ai-code-body' + (isLong ? ' ai-code-collapsed' : '') + '" id="codebody_'+key+'">' +
+        '<pre><code class="ai-code-content">' + safeCode + '</code></pre>' +
+      '</div>' +
+      (isLong ? '<div class="ai-code-expand-bar" onclick="aiToggleCodeExpand(\''+key+'\')">▼ Show all '+lineCount+' lines</div>' : '') +
+    '</div>';
+  });
+
+  // STEP 4 — Headings (must come before list/paragraph processing)
+  t = t.replace(/^#### (.+)$/gm, '<h4 class="ai-h4">$1</h4>');
+  t = t.replace(/^### (.+)$/gm,  '<h3 class="ai-h3">$1</h3>');
+  t = t.replace(/^## (.+)$/gm,   '<h2 class="ai-h2">$1</h2>');
+  t = t.replace(/^# (.+)$/gm,    '<h1 class="ai-h1">$1</h1>');
+
+  // STEP 5 — Horizontal rules
+  t = t.replace(/^---+$/gm, '<hr class="ai-hr">');
+
+  // STEP 6 — Inline formatting (order matters: bold before italic)
+  t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  t = t.replace(/\*\*(.+?)\*\*/g,     '<strong>$1</strong>');
+  t = t.replace(/\*(.+?)\*/g,         '<em>$1</em>');
+  t = t.replace(/~~(.+?)~~/g,         '<del>$1</del>');
+  t = t.replace(/`([^`]+)`/g,         '<code class="ai-inline-code">$1</code>');
+
+  // STEP 7 — Blockquotes
+  t = t.replace(/^&gt; (.+)$/gm, '<blockquote class="ai-blockquote">$1</blockquote>');
+
+  // STEP 8 — Tables
+  t = t.replace(/(\|.+\|\n\|[-| :]+\|\n(?:\|.+\|\n?)+)/g, function(table) {
+    const rows = table.trim().split('\n');
+    let html = '<div class="ai-table-wrap"><table class="ai-table">';
+    let isHeader = true;
+    rows.forEach(function(row) {
+      if (/^\|[-| :]+\|$/.test(row.trim())) { isHeader = false; return; }
+      const cells = row.split('|').slice(1,-1);
+      const tag   = isHeader ? 'th' : 'td';
+      html += '<tr>' + cells.map(function(c){ return '<'+tag+'>'+c.trim()+'</'+tag+'>'; }).join('') + '</tr>';
+      if (isHeader) isHeader = false;
+    });
+    return html + '</table></div>';
+  });
+
+  // STEP 9 — Lists (process as blocks to avoid breaking other elements)
+  // Unordered
+  t = t.replace(/((?:^[ \t]*[-*+] .+$\n?)+)/gm, function(block) {
+    const items = block.trim().split('\n').map(function(l) {
+      return '<li>' + l.replace(/^[ \t]*[-*+] /, '') + '</li>';
+    });
+    return '<ul class="ai-ul">' + items.join('') + '</ul>';
+  });
+  // Ordered
+  t = t.replace(/((?:^\d+\. .+$\n?)+)/gm, function(block) {
+    const items = block.trim().split('\n').map(function(l) {
+      return '<li>' + l.replace(/^\d+\. /, '') + '</li>';
+    });
+    return '<ol class="ai-ol">' + items.join('') + '</ol>';
+  });
+
+  // STEP 10 — Paragraphs (double newline = paragraph break)
+  // Split on double newlines, wrap non-HTML blocks in <p>
+  const parts = t.split(/\n\n+/);
+  t = parts.map(function(part) {
+    part = part.trim();
+    if (!part) return '';
+    // Don't wrap already-HTML blocks
+    if (/^<(div|ul|ol|h[1-6]|blockquote|hr|table|pre)/.test(part)) return part;
+    return '<p class="ai-p">' + part.replace(/\n/g, '<br>') + '</p>';
+  }).join('\n');
+
+  return '<div class="ai-msg-content">' + t + '</div>';
+}
+
+// ── Code actions (copy / expand / download) ───────────────────────────────────
+function aiCodeAction(action, key, btn) {
+  const entry = _aiCodeStore[key];
+  if (!entry) return;
+
+  if (action === 'copy') {
+    navigator.clipboard.writeText(entry.code).then(function() {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+      btn.style.color = '#22c55e';
+      setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 2000);
+    });
+
+  } else if (action === 'expand') {
+    document.getElementById('aiChatCodeTitle').textContent   = entry.lang;
+    document.getElementById('aiChatCodeContent').textContent = entry.code;
+    _aiLastChatCode = entry.code;
+    document.getElementById('aiChatCodeModal').style.display = 'flex';
+
+  } else if (action === 'download') {
+    const ext  = { javascript:'js', js:'js', html:'html', css:'css', python:'py', json:'json' }[entry.lang] || 'txt';
+    const blob = new Blob([entry.code], { type: 'text/plain' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = 'jetlearn-code.' + ext;
+    a.click();
+  }
+}
+
+function aiToggleCodeExpand(key) {
+  const body    = document.getElementById('codebody_' + key);
+  const bar     = body ? body.nextElementSibling : null;
+  if (!body) return;
+  const isCollapsed = body.classList.contains('ai-code-collapsed');
+  body.classList.toggle('ai-code-collapsed', !isCollapsed);
+  if (bar) bar.textContent = isCollapsed ? '▲ Collapse' : '▼ Show all lines';
+}
+
+function aiDoSaveSuggestionFromStore(key) {
+  const entry = _aiCodeStore[key];
+  if (!entry) return;
+  try {
+    const sug = JSON.parse(entry.code);
+    sug.id = 'chat_sug_' + Date.now();
+    aiDoSaveSuggestion(sug);
+  } catch(e) { showToast('error','Error','Could not parse suggestion.'); }
+}
+
+// ── Store parsed suggestion cards from chat ─────────────────────────────────
+// ── Store parsed suggestion cards from chat ───────────────────────────────────
+const _aiChatSuggestions = {};
+
+function aiAppendMessage(role, text, opts) {
+  opts = opts || {};
+  const container = document.getElementById('aiChatMessages');
+  const isBot     = role === 'bot' || role === 'model';
+  const msgDiv    = document.createElement('div');
+  msgDiv.style.cssText = 'display:flex;gap:10px;align-items:flex-start;animation:aiFadeIn 0.2s ease;' +
+    (isBot ? '' : 'flex-direction:row-reverse;');
+
+  const avatar = document.createElement('div');
+  avatar.style.cssText = 'width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.85rem;' +
+    (isBot ? 'background:var(--primary,#6366f1);color:#fff;' : 'background:#e2e8f0;color:#64748b;');
+  avatar.innerHTML = isBot ? '<i class="fas fa-robot"></i>' : '<i class="fas fa-user"></i>';
+
+  const bubble = document.createElement('div');
+  bubble.style.cssText = 'max-width:82%;font-size:0.875rem;line-height:1.6;border-radius:' +
+    (isBot ? '2px 14px 14px 14px' : '14px 2px 14px 14px') + ';padding:12px 16px;' +
+    (isBot ? 'background:var(--card-bg,#fff);border:1px solid var(--gray,#e2e8f0);color:var(--text-color,#1e293b);'
+           : 'background:var(--primary,#6366f1);color:#fff;');
+
+  if (isBot) {
+    // Parse suggestion cards before rendering so we can store them
+    const cardRegex = /```suggestion_card[\s\S]*?({[\s\S]*?})[\s\S]*?```/g;
+    let cardIdx = 0;
+    let match;
+    const tempId = 'msg_' + Date.now();
+    while ((match = cardRegex.exec(text)) !== null) {
+      try {
+        const sug = JSON.parse(match[1].trim());
+        sug.id = 'chat_sug_' + Date.now() + '_' + cardIdx;
+        _aiChatSuggestions[tempId + '_' + cardIdx] = sug;
+        _aiLastChatSuggestion = sug;
+        cardIdx++;
+      } catch(e) {}
+    }
+    bubble.innerHTML = aiMarkdownToHtml(text);
+    // Wire up save buttons with stored index
+    bubble.querySelectorAll('[onclick^="aiSaveSuggestionCard"]').forEach(function(btn, bi) {
+      btn.setAttribute('onclick', 'aiSaveSuggestionCardByRef("' + tempId + '_' + bi + '")');
+    });
+  } else {
+    // User messages: just text, no markdown
+    bubble.style.whiteSpace = 'pre-wrap';
+    bubble.textContent = text;
+  }
+
+  // Truncated warning
+  if (opts.truncated) {
+    const warn = document.createElement('div');
+    warn.style.cssText = 'margin-top:8px;padding:4px 8px;background:#fef3c7;border-radius:4px;font-size:0.75rem;color:#92400e;';
+    warn.textContent = '⚠️ Response was long — you can ask me to continue if needed.';
+    bubble.appendChild(warn);
+  }
+
+  msgDiv.appendChild(avatar);
+  msgDiv.appendChild(bubble);
+  container.appendChild(msgDiv);
+  aiScrollChatToBottom();
+  return msgDiv;
+}
+
+function aiSaveSuggestionCard(idx) {
+  // Called from inline button in rendered markdown
+  if (!_aiLastChatSuggestion) return;
+  aiDoSaveSuggestion(_aiLastChatSuggestion);
+}
+
+function aiSaveSuggestionCardByRef(ref) {
+  const sug = _aiChatSuggestions[ref] || _aiLastChatSuggestion;
+  if (!sug) { showToast('error','Error','Suggestion data not found.'); return; }
+  aiDoSaveSuggestion(sug);
+}
+
+function aiDoSaveSuggestion(sug) {
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success) { showToast('error','Error',res.message); return; }
+      _aiAllSuggestions.unshift({ ...sug, status: 'Pending' });
+      aiRenderAll();
+      showToast('success','Saved!','Suggestion added to your cards.');
+      // Show notification on Suggestions tab
+      document.getElementById('aiTabCards').innerHTML = '<i class="fas fa-th-list"></i> Suggestions <span style="background:#15803d;color:#fff;border-radius:10px;font-size:0.65rem;padding:1px 6px;">NEW</span>';
+    })
+    .withFailureHandler(err => showToast('error','Error',err.message))
+    .saveChatSuggestion(sug);
+}
+
+// aiCopyCodeBlock and aiExpandCodeBlock replaced by aiCodeAction() above
+
+function aiExpandChatCode(code, title) {
+  document.getElementById('aiChatCodeTitle').textContent   = title || 'code';
+  document.getElementById('aiChatCodeContent').textContent = code;
+  _aiLastChatCode = code;
+  document.getElementById('aiChatCodeModal').style.display = 'flex';
+}
+
+function aiCopyChatCode() {
+  const code = document.getElementById('aiChatCodeContent').textContent;
+  navigator.clipboard.writeText(code).then(() => showToast('success','Copied','Code copied to clipboard.'));
+}
+
+function aiSaveCodeAsSuggestion() {
+  if (!_aiLastChatSuggestion) { showToast('info','Info','No suggestion card found in the last response.'); return; }
+  aiDoSaveSuggestion(_aiLastChatSuggestion);
+  document.getElementById('aiChatCodeModal').style.display = 'none';
+}
+
+// ── Send message ──────────────────────────────────────────────────────────────
+// ── Attachment state ──────────────────────────────────────────────────────────
+// Each entry: { name, size, kind:'text'|'image'|'pdf', content, mimeType }
+let _aiAttachments = [];
+
+function aiHandleFileAttach(event) {
+  const files    = Array.from(event.target.files);
+  if (!files.length) return;
+
+  const MAX_SIZE  = 4 * 1024 * 1024; // 4MB
+  const MAX_FILES = 5;
+
+  if (_aiAttachments.length + files.length > MAX_FILES) {
+    showToast('error', 'Too many files', 'Max ' + MAX_FILES + ' attachments at a time.');
+    event.target.value = '';
+    return;
+  }
+
+  files.forEach(file => {
+    if (file.size > MAX_SIZE) {
+      showToast('error', 'File too large', file.name + ' exceeds 4MB.');
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    const isPDF   = file.type === 'application/pdf';
+    const kind    = isImage ? 'image' : isPDF ? 'pdf' : 'text';
+    const reader  = new FileReader();
+
+    if (kind === 'text') {
+      reader.onload = e => {
+        _aiAttachments.push({ name: file.name, size: file.size, kind: 'text', content: e.target.result, mimeType: 'text/plain' });
+        aiRenderAttachBar();
+      };
+      reader.readAsText(file);
+    } else {
+      // Images and PDFs — read as base64 DataURL
+      reader.onload = e => {
+        const dataUrl  = e.target.result;                      // data:image/png;base64,AAAA...
+        const base64   = dataUrl.split(',')[1];                // strip prefix
+        _aiAttachments.push({ name: file.name, size: file.size, kind: kind, content: base64, mimeType: file.type, previewUrl: dataUrl });
+        aiRenderAttachBar();
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  event.target.value = '';
+}
+
+function aiRenderAttachBar() {
+  const bar  = document.getElementById('aiAttachBar');
+  const list = document.getElementById('aiAttachList');
+
+  if (_aiAttachments.length === 0) {
+    bar.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+
+  bar.style.display = 'block';
+  list.innerHTML = _aiAttachments.map((a, i) => {
+    const kb = a.size > 1024*1024 ? (a.size/1024/1024).toFixed(1)+'MB' : (a.size/1024).toFixed(1)+'KB';
+
+    if (a.kind === 'image') {
+      // Show thumbnail for images
+      return '<div class="ai-attach-chip ai-attach-image-chip">' +
+        '<img src="' + a.previewUrl + '" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;">' +
+        '<div style="display:flex;flex-direction:column;min-width:0;">' +
+          '<span class="ai-attach-name" title="' + a.name + '">' + a.name + '</span>' +
+          '<span class="ai-attach-size">' + kb + '</span>' +
+        '</div>' +
+        '<button class="ai-attach-remove" onclick="aiRemoveAttachment(' + i + ')">×</button>' +
+      '</div>';
+    }
+
+    const icon = a.kind === 'pdf' ? '📄' : aiFileIcon(a.name);
+    return '<div class="ai-attach-chip">' +
+      '<span class="ai-attach-icon">' + icon + '</span>' +
+      '<div style="display:flex;flex-direction:column;min-width:0;">' +
+        '<span class="ai-attach-name" title="' + a.name + '">' + a.name + '</span>' +
+        '<span class="ai-attach-size">' + kb + '</span>' +
+      '</div>' +
+      '<button class="ai-attach-remove" onclick="aiRemoveAttachment(' + i + ')">×</button>' +
+    '</div>';
+  }).join('');
+}
+
+function aiFileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = {'js':'🟨','gs':'🟨','ts':'🟦','html':'🟧','css':'🎨','json':'📋','csv':'📊','txt':'📄','md':'📝','py':'🐍','xml':'📰','log':'📃'};
+  return map[ext] || '📎';
+}
+
+function aiRemoveAttachment(idx) {
+  _aiAttachments.splice(idx, 1);
+  aiRenderAttachBar();
+}
+
+function aiSendMessage() {
+  if (_aiIsSending) return;
+  const input = document.getElementById('aiChatInput');
+  const text  = input.value.trim();
+  if (!text && _aiAttachments.length === 0) return;
+
+  _aiIsSending = true;
+  input.value  = '';
+  input.style.height = 'auto';
+  document.getElementById('aiChatSendBtn').style.opacity = '0.5';
+  document.getElementById('aiChatSendBtn').disabled = true;
+  document.getElementById('aiTokenCounter').style.display = 'none';
+
+  const attachSnapshot = [..._aiAttachments];
+  _aiAttachments = [];
+  aiRenderAttachBar();
+
+  // ── Build Gemini parts array for this turn ──────────────────────────────
+  // Gemini multimodal: parts can be text, inlineData (image), or document (PDF)
+  const parts = [];
+
+  // Text part first
+  if (text) parts.push({ type: 'text', text: text });
+
+  // Attachment parts
+  attachSnapshot.forEach(a => {
+    if (a.kind === 'text') {
+      parts.push({ type: 'text', text: '**[File: ' + a.name + ']**\n' + _cbk + aiExtToLang(a.name) + '\n' + a.content + '\n' + _cbk });
+    } else if (a.kind === 'image') {
+      parts.push({ type: 'image', mimeType: a.mimeType, data: a.content }); // base64
+    } else if (a.kind === 'pdf') {
+      parts.push({ type: 'pdf', mimeType: 'application/pdf', data: a.content });
+    }
+  });
+
+  // Fallback if only attachments with no text
+  if (parts.length === 0) parts.push({ type: 'text', text: 'Please review the attached file.' });
+
+  // ── Show message in UI ──────────────────────────────────────────────────
+  const displayText  = text || '*(attachment)*';
+  const chipHtml = attachSnapshot.length > 0
+    ? '<div class="ai-msg-attach-chips">' +
+        attachSnapshot.map(a =>
+          a.kind === 'image'
+            ? '<span class="ai-msg-chip"><img src="' + a.previewUrl + '" style="width:18px;height:18px;object-fit:cover;border-radius:3px;vertical-align:middle;"> ' + a.name + '</span>'
+            : '<span class="ai-msg-chip">' + (a.kind === 'pdf' ? '📄' : aiFileIcon(a.name)) + ' ' + a.name + '</span>'
+        ).join('')
+      + '</div>'
+    : '';
+
+  aiAppendMessageRich('user', displayText, chipHtml);
+
+  // ── Build history entry — text summary for history (images stored as markers) ──
+  let historyText = text || '';
+  attachSnapshot.forEach(a => {
+    if (a.kind === 'text') {
+      historyText += (historyText ? '\n\n' : '') + '**[File: ' + a.name + ']**\n' + _cbk + aiExtToLang(a.name) + '\n' + a.content + '\n' + _cbk;
+    } else {
+      historyText += (historyText ? '\n\n' : '') + '[Attached ' + a.kind + ': ' + a.name + ']';
+    }
+  });
+  _aiChatHistory.push({ role: 'user', parts: [{ text: historyText }] });
+
+  // ── Read model settings ─────────────────────────────────────────────────
+  const model       = document.getElementById('aiModelSelector').value;
+  const temperature = parseFloat(document.getElementById('aiTempSlider').value);
+  const topP        = parseFloat(document.getElementById('aiTopPSlider').value);
+  const maxTokens   = parseInt(document.getElementById('aiMaxTokSlider').value);
+  const sysOverride = document.getElementById('aiSystemInstructionInput').value.trim();
+
+  // Show typing
+  const typingEl = document.getElementById('aiTypingIndicator');
+  typingEl.style.display = 'flex';
+  aiScrollChatToBottom();
+
+  // ── Send to backend ─────────────────────────────────────────────────────
+  const settings = { temperature, topP, maxTokens, sysOverride };
+
+  google.script.run
+    .withSuccessHandler(res => {
+      typingEl.style.display = 'none';
+      _aiIsSending = false;
+      document.getElementById('aiChatSendBtn').style.opacity = '1';
+      document.getElementById('aiChatSendBtn').disabled = false;
+
+      if (!res.success) {
+        aiAppendMessage('bot', '❌ **Error:** ' + res.message);
+        return;
+      }
+
+      _aiChatHistory.push({ role: 'model', parts: [{ text: res.reply }] });
+      if (res.suggestion) _aiLastChatSuggestion = res.suggestion;
+
+      aiAppendMessage('bot', res.reply, { truncated: res.truncated });
+
+      // Show token usage
+      if (res.tokenCount) {
+        document.getElementById('aiTokenCount').textContent = res.tokenCount.toLocaleString();
+        document.getElementById('aiTokenCounter').style.display = 'inline-flex';
+      }
+
+      if (_aiChatHistory.length > 40) _aiChatHistory = _aiChatHistory.slice(-40);
+      google.script.run.saveAIChatHistory(_aiChatHistory);
+    })
+    .withFailureHandler(err => {
+      typingEl.style.display = 'none';
+      _aiIsSending = false;
+      document.getElementById('aiChatSendBtn').style.opacity = '1';
+      document.getElementById('aiChatSendBtn').disabled = false;
+      aiAppendMessage('bot', '❌ **Error:** ' + err.message);
+    })
+    .sendAIChat(_aiChatHistory, model, settings, parts);
+}
+
+
+function aiToggleSettings() {
+  const panel = document.getElementById('aiSettingsPanel');
+  const btn   = document.getElementById('aiSettingsBtn');
+  const open  = panel.style.display === 'none' || panel.style.display === '';
+  panel.style.display = open ? 'flex' : 'none';
+  btn.style.background = open ? 'var(--primary)' : '';
+  btn.style.color      = open ? '#fff' : '';
+  btn.style.borderColor= open ? 'var(--primary)' : '';
+}
+
+function aiSaveSystemInstruction() {
+  const val = document.getElementById('aiSystemInstructionInput').value.trim();
+  google.script.run.setScriptProperty('AI_SYSTEM_OVERRIDE', val);
+  showToast('success', 'Saved', 'System instruction saved.');
+}
+
+function aiResetSystemInstruction() {
+  document.getElementById('aiSystemInstructionInput').value = '';
+  google.script.run.setScriptProperty('AI_SYSTEM_OVERRIDE', '');
+  showToast('info', 'Reset', 'Using default system instruction.');
+}
+
+// Live token estimate as user types (rough: 1 token ≈ 4 chars)
+(function() {
+  function attachCounter() {
+    const inp = document.getElementById('aiChatInput');
+    if (!inp) return;
+    inp.addEventListener('input', function() {
+      const histChars   = _aiChatHistory.reduce((s, t) => s + (t.parts[0].text||'').length, 0);
+      const inputChars  = inp.value.length;
+      const total       = Math.round((histChars + inputChars) / 4);
+      document.getElementById('aiTokenCount').textContent = total.toLocaleString();
+      document.getElementById('aiTokenCounter').style.display = total > 0 ? 'inline-flex' : 'none';
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attachCounter);
+  else attachCounter();
+})();
+
+function aiExtToLang(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  const map = { js:'javascript', gs:'javascript', ts:'typescript', html:'html', css:'css', json:'json', csv:'csv', py:'python', md:'markdown', xml:'xml', txt:'', log:'' };
+  return map[ext] || '';
+}
+
+// Rich message append — supports extra HTML below text (for attachment chips)
+function aiAppendMessageRich(role, text, extraHtml) {
+  const msgDiv = aiAppendMessage(role, text);
+  if (extraHtml && msgDiv) {
+    const bubble = msgDiv.querySelector('div:last-child');
+    if (bubble) bubble.insertAdjacentHTML('beforeend', extraHtml);
+  }
+}
+
+// ── Clear / Export ─────────────────────────────────────────────────────────────
+function aiClearChat() {
+  if (!confirm('Clear all chat history? This cannot be undone.')) return;
+  _aiChatHistory        = [];
+  _aiLastChatSuggestion = null;
+  const container = document.getElementById('aiChatMessages');
+  while (container.children.length > 1) container.removeChild(container.lastChild);
+  google.script.run.saveAIChatHistory([]);
+  showToast('info','Cleared','Chat history cleared.');
+}
+
+function aiExportChat() {
+  const lines = _aiChatHistory.map(m =>
+    (m.role === 'user' ? '👤 You:\n' : '🤖 AI:\n') + m.parts[0].text
+  ).join('\n\n─────────────────────\n\n');
+  const blob = new Blob([lines], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'jetlearn-ai-chat-' + new Date().toISOString().slice(0,10) + '.txt';
+  a.click();
+}
+</script>
+<style>
+/* ══════════════════════════════════════════════════════════════════════
+   CODE BLOCKS — Claude/AI Studio quality
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Outer wrapper */
+.ai-code-block {
+  margin: 12px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #3a3a4e;
+  background: #1a1b26;
+  font-size: 0.82rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+}
+
+/* Top bar — language + action buttons */
+.ai-code-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px;
+  background: #24253a;
+  border-bottom: 1px solid #3a3a4e;
+  gap: 8px;
+}
+
+.ai-code-lang-badge {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.72rem;
+  color: #a5b4fc;
+  letter-spacing: 0.05em;
+  text-transform: lowercase;
+}
+
+.ai-code-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ai-code-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid #4a4a6a;
+  border-radius: 5px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ai-code-btn:hover {
+  background: #3a3a5e;
+  color: #e2e8f0;
+  border-color: #6366f1;
+}
+.ai-code-btn i { font-size: 0.68rem; }
+
+/* Code body */
+.ai-code-body {
+  position: relative;
+  overflow: hidden;
+}
+.ai-code-body.ai-code-collapsed {
+  max-height: 320px;
+  overflow: hidden;
+}
+.ai-code-body.ai-code-collapsed::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 60px;
+  background: linear-gradient(transparent, #1a1b26);
+  pointer-events: none;
+}
+
+.ai-code-body pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: transparent;
+}
+
+.ai-code-content {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: #cdd6f4;
+  white-space: pre;
+  display: block;
+  tab-size: 2;
+}
+
+/* Expand bar */
+.ai-code-expand-bar {
+  text-align: center;
+  padding: 7px;
+  background: #24253a;
+  border-top: 1px solid #3a3a4e;
+  color: #7c83c8;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ai-code-expand-bar:hover { background: #2e2f4a; color: #a5b4fc; }
+
+/* ── Inline code ─────────────────────────────────────────────────────── */
+.ai-inline-code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82em;
+  background: rgba(99,102,241,0.12);
+  color: #818cf8;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(99,102,241,0.2);
+}
+
+/* ── Message content container ───────────────────────────────────────── */
+.ai-msg-content { line-height: 1.65; }
+.ai-p  { margin: 0 0 10px; line-height: 1.65; }
+.ai-p:last-child { margin-bottom: 0; }
+.ai-h1 { margin: 16px 0 8px; font-size: 1.15rem; font-weight: 700; }
+.ai-h2 { margin: 14px 0 8px; font-size: 1.05rem; font-weight: 700; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 4px; }
+.ai-h3 { margin: 12px 0 6px; font-size: 0.98rem; font-weight: 600; }
+.ai-h4 { margin: 10px 0 4px; font-size: 0.92rem; font-weight: 600; color: #475569; }
+.ai-hr { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 12px 0; }
+.ai-ul { margin: 6px 0 10px 20px; padding: 0; }
+.ai-ol { margin: 6px 0 10px 20px; padding: 0; }
+.ai-ul li, .ai-ol li { margin: 3px 0; line-height: 1.6; }
+.ai-blockquote {
+  border-left: 3px solid #6366f1;
+  margin: 8px 0;
+  padding: 6px 14px;
+  background: #f8f9ff;
+  border-radius: 0 6px 6px 0;
+  color: #475569;
+}
+.ai-table-wrap { overflow-x: auto; margin: 10px 0; }
+.ai-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.ai-table th { background: var(--primary,#6366f1); color: #fff; padding: 7px 12px; text-align: left; font-weight: 600; }
+.ai-table td { padding: 6px 12px; border-bottom: 1px solid #e2e8f0; }
+.ai-table tr:last-child td { border-bottom: none; }
+.ai-table tr:nth-child(even) td { background: #f8fafc; }
+
+/* ── Suggestion card (from chat) ─────────────────────────────────────── */
+.ai-sug-card-inline {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+.ai-save-sug-btn {
+  margin-top: 10px;
+  background: #15803d;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s;
+}
+.ai-save-sug-btn:hover { background: #166534; }
+
+/* ── Message animation ─────────────────────────────────────────────── */
+/* ── Message animation ───────────────────────────────────────────────────── */
+@keyframes aiFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>
+<style>
+/* ── Attachment chips in input bar ───────────────────────────────────── */
+.ai-attach-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--card-bg,#fff); border: 1px solid var(--gray,#e2e8f0);
+  border-radius: 20px; padding: 4px 10px 4px 8px;
+  font-size: 0.75rem; color: var(--text-color,#1e293b);
+  animation: aiFadeIn 0.2s ease; max-width: 180px;
+}
+.ai-attach-icon { font-size: 0.85rem; flex-shrink: 0; }
+.ai-attach-name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100px; font-weight: 500;
+}
+.ai-attach-size { color: var(--text-muted,#94a3b8); font-size: 0.68rem; flex-shrink: 0; }
+.ai-attach-remove {
+  background: none; border: none; cursor: pointer; color: #94a3b8;
+  font-size: 1rem; line-height: 1; padding: 0 0 0 2px;
+  transition: color 0.15s; flex-shrink: 0;
+}
+.ai-attach-remove:hover { color: #ef4444; }
+
+/* Attach button hover state */
+#aiAttachBtn:hover {
+  background: var(--primary,#6366f1) !important;
+  color: #fff !important;
+  border-color: var(--primary,#6366f1) !important;
+}
+
+/* ── Attachment chips shown inside sent messages ─────────────────────── */
+.ai-msg-attach-chips {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+}
+.ai-msg-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 12px; padding: 2px 10px; font-size: 0.72rem;
+}
+
+/* ── Drag and drop overlay ───────────────────────────────────────────── */
+#aiDropOverlay {
+  display: none; position: absolute; inset: 0; z-index: 100;
+  background: rgba(99,102,241,0.08);
+  border: 2px dashed var(--primary,#6366f1);
+  border-radius: 12px;
+  align-items: center; justify-content: center;
+  flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+#aiDropOverlay.active { display: flex; }
+#aiDropOverlay i { font-size: 2rem; color: var(--primary,#6366f1); }
+#aiDropOverlay span { font-size: 0.9rem; color: var(--primary,#6366f1); font-weight: 600; }
+</style>
+
+<script>
+// ── Drag and drop onto chat panel ─────────────────────────────────────────────
+(function() {
+  function ready() {
+    const panel = document.getElementById('aiChatPanel');
+    if (!panel) return;
+
+    // Inject drop overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'aiDropOverlay';
+    overlay.innerHTML = '<i class="fas fa-cloud-upload-alt"></i><span>Drop files to attach</span>';
+    panel.style.position = 'relative';
+    panel.appendChild(overlay);
+
+    panel.addEventListener('dragover', e => {
+      e.preventDefault();
+      overlay.classList.add('active');
+    });
+    panel.addEventListener('dragleave', e => {
+      if (!panel.contains(e.relatedTarget)) overlay.classList.remove('active');
+    });
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      overlay.classList.remove('active');
+      const files = Array.from(e.dataTransfer.files);
+      if (!files.length) return;
+      // Reuse the file handler
+      const fakeEvent = { target: { files: files, value: '' } };
+      aiHandleFileAttach(fakeEvent);
+    });
+  }
+
+  // Run after DOM is ready
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
+  else ready();
+})();
+</script>
+<style>
+/* ── Image attach chip ───────────────────────────────────────────────── */
+.ai-attach-image-chip {
+  padding: 4px 10px 4px 6px !important;
+  align-items: center;
+}
+/* ── Settings panel ──────────────────────────────────────────────────── */
+#aiSettingsPanel { display: none; }
+/* Token counter badge ─────────────────────────────────────────────────── */
+#aiTokenCounter { display: inline-flex; align-items: center; gap: 4px; }
+/* ── Highlight.js overrides to match our dark theme ──────────────────── */
+.ai-code-body pre code.hljs {
+  background: transparent !important;
+  padding: 0 !important;
+  font-family: 'SF Mono','Fira Code','Cascadia Code','Consolas',monospace;
+  font-size: 0.8rem;
+  line-height: 1.7;
+}
+</style>
+
+<script>
+// ── Apply syntax highlighting after every bot message ─────────────────────────
+// We hook into aiAppendMessage — after innerHTML is set, run hljs on new blocks
+const _origAppend = window.aiAppendMessage;
+window.aiAppendMessage = function(role, text, opts) {
+  const el = _origAppend ? _origAppend(role, text, opts) : null;
+  if (role === 'bot' || role === 'model') {
+    // Give DOM time to render, then highlight all new code blocks
+    setTimeout(function() {
+      document.querySelectorAll('.ai-code-content:not(.hljs)').forEach(function(block) {
+        if (typeof hljs !== 'undefined') {
+          hljs.highlightElement(block);
+        }
+      });
+    }, 50);
+  }
+  return el;
+};
+
+// Also re-highlight on page restore
+const _origRestore = window.aiRestoreChatHistory;
+window.aiRestoreChatHistory = function(history) {
+  if (_origRestore) _origRestore(history);
+  setTimeout(function() {
+    document.querySelectorAll('.ai-code-content:not(.hljs)').forEach(function(b) {
+      if (typeof hljs !== 'undefined') hljs.highlightElement(b);
+    });
+  }, 200);
+};
+</script>

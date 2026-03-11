@@ -322,7 +322,7 @@ function getEnhancedAIInsights(reportData, monthName) {
         return { executive: "AI insights unavailable: API key not configured.", rootCause: "", impact: "" };
     }
 
-    const model = 'gemini-1.5-flash'; 
+    const model = 'gemini-2.5-flash'; 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
     
     const prompt = `
@@ -359,7 +359,7 @@ function getEnhancedAIInsights(reportData, monthName) {
         return { executive: "AI insights unavailable: API key not configured.", rootCause: "", impact: "" };
     }
 
-    const model = 'gemini-1.5-flash'; 
+    const model = 'gemini-2.5-flash'; 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
     
     const prompt = `

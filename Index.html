@@ -113,6 +113,7 @@
         <div class="menu-item" data-page="health"><i class="fas fa-heartbeat"></i><span>System Health</span></div>
         <div class="menu-item" data-page="persona"><i class="fas fa-user-tie"></i><span>Teacher Persona</span><span class="badge">Tool</span></div>
         <div class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>Settings</span></div>
+        <div class="menu-item" data-page="aiPm" id="aiPmMenuItem" style="display:none;"><i class="fas fa-robot"></i><span>AI Manager</span><span class="badge" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;">AI</span></div>
       </div>
       <div class="sidebar-footer">
         <div class="user-profile">
@@ -1268,6 +1269,9 @@
         </div>
       </div>
       
+      <!-- AI PM Page -->
+      <?!= include('AI'); ?>
+
       <!-- =================================== -->
       <!-- === CORRECTED FOOTER PLACEMENT ==== -->
       <!-- =================================== -->

@@ -1552,23 +1552,23 @@ function getMigrationHistoryStats(jlid) {
 function getTeacherAttritionReport(teacherName) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
-  const PORTAL_ID = '7729491'; // Your HubSpot Portal ID
-  
-  // 1. Search Criteria (Matches your HubSpot Screenshot)
+  const PORTAL_ID = '7729491';
+
   const requestBody = {
     filterGroups: [
       {
         filters: [
-          // Filter 1: Current Teacher
           { propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName },
-          // Filter 2: Learner Status (Positive List based on your screenshot)
           { propertyName: "learner_status", operator: "IN", values: ["Active Learner", "Friendly Learner", "VIP", "Break & Return"] }
         ]
       }
     ],
-    limit: 100, 
-    // Fetch extra properties
-    properties: ["dealname", "jetlearner_id", "current_course", "module_start_date", "learner_status", "dealstage"]
+    limit: 100,
+    properties: [
+      "dealname", "jetlearner_id", "current_course", "module_start_date",
+      "learner_status", "dealstage", "amount", "subscription_tenure",
+      "deal_currency_code", "payment_type", "installment_type", "subscription"
+    ]
   };
 
   try {
@@ -1578,63 +1578,164 @@ function getTeacherAttritionReport(teacherName) {
       payload: JSON.stringify(requestBody),
       muteHttpExceptions: true
     });
-    
+
     const data = JSON.parse(response.getContentText());
     if (!data.results) return { success: false, message: "No students found." };
 
-    // 2. Cross-reference with Audit Log for Migration History
     const auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-    
-    const students = data.results.map(deal => {
-        const jlid = deal.properties.jetlearner_id;
-        
-        let recentMoves = 0;
-        let lastMoveDate = null;
-        let prevTeacher = "N/A"; 
-        let moveReason = "N/A";  
-        
-        if (auditData && auditData.length > 1) {
-            const now = new Date();
-            const threeMonthsAgo = new Date();
-            threeMonthsAgo.setMonth(now.getMonth() - 3);
-            
-            auditData.forEach(row => {
-                if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
-                    const d = new Date(row[0]);
-                    if (d > threeMonthsAgo) recentMoves++;
-                    
-                    if (!lastMoveDate || d > lastMoveDate) {
-                        lastMoveDate = d;
-                        prevTeacher = row[4] || "Unknown";
-                        moveReason = row[10] || "Unspecified";
-                    }
-                }
-            });
-        }
 
-        return {
-            name: deal.properties.dealname,
-            jlid: jlid,
-            course: getCourseLabel(deal.properties.current_course),
-            // New Fields
-            status: deal.properties.learner_status,
-            stage: deal.properties.dealstage, // This will be the ID
-            hubspotLink: `https://app.hubspot.com/contacts/${PORTAL_ID}/deal/${deal.id}`,
-            
-            recentMoves: recentMoves,
-            lastMoveDate: lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : "No Record",
-            prevTeacher: prevTeacher,
-            moveReason: moveReason
-        };
+    const students = data.results.map(deal => {
+      const jlid           = deal.properties.jetlearner_id;
+      const amount         = safeParseHubspotNumber(deal.properties.amount);
+      const tenure         = safeParseHubspotNumber(deal.properties.subscription_tenure);
+      const currency       = deal.properties.deal_currency_code || 'EUR';
+      const planName       = (deal.properties.subscription     || '').toLowerCase();
+      const rawPaymentType = (deal.properties.payment_type     || '').toLowerCase();
+      const rawInstType    = (deal.properties.installment_type || '').toLowerCase();
+
+      // DEBUG: Log raw HubSpot payment field values so we can see exactly what comes back
+      Logger.log(`[AttritionReport] JLID: ${jlid} | name: ${deal.properties.dealname} | payment_type: "${deal.properties.payment_type}" | installment_type: "${deal.properties.installment_type}" | tenure: ${tenure} | amount: ${amount} | currency: ${currency}`);
+
+      // Detect installment: check both payment_type AND installment_type fields
+      // casting wide net to catch all HubSpot variants
+      const isInstallment = rawPaymentType.includes('installment')
+                         || rawPaymentType.includes('emi')
+                         || rawPaymentType.includes('recurring')
+                         || rawInstType.includes('installment')
+                         || rawInstType.includes('emi')
+                         || rawInstType.includes('monthly')
+                         || rawInstType.includes('quarterly');
+      const paymentTag = isInstallment ? 'Installment' : 'Upfront';
+
+      // DEBUG: Log what was decided
+      Logger.log(`[AttritionReport]   → isInstallment: ${isInstallment} | paymentTag: ${paymentTag}`);
+
+      // ── EUR conversion ──────────────────────────────────────────────────
+      // getConversionRate returns LOCAL per 1 EUR (e.g. INR≈90, GBP≈0.85)
+      // So: amountEur = amountLocal / rate
+      // Sanity check: if result is implausibly large (>50,000) the rate is
+      // likely inverted — flip it.
+      const rate = getConversionRate(currency) || 1;
+      let amountEur = (currency === 'EUR') ? amount : amount / rate;
+      if (amountEur > 50000) amountEur = amount * rate; // rate was inverted
+      amountEur = Math.round(amountEur);
+
+      // DEBUG: Log EUR conversion
+      Logger.log(`[AttritionReport]   → rate: ${rate} | amountEur: ${amountEur}`);
+
+      // ── DEAL VALUE CLASSIFICATION ───────────────────────────────────────
+      // GCSE (10m product)  → always High Value
+      // INSTALLMENT         → per-month EUR: ≥119 High, ≥61 Mid, <61 Low
+      // UPFRONT by bracket  :
+      //   1m          : per-month (≥119 High, ≥61 Mid)
+      //   3m Quarterly: ≥357 High,  ≥183 Mid   (119×3, 61×3)
+      //   6m Half-Yr  : ≥499 High,  ≥300 Mid
+      //   12m Annual  : ≥899 High,  ≥600 Mid
+      //   24m 2-Year  : ≥1400 High, ≥900 Mid
+      //   36m+ 3-Year+: always High
+      //   Odd tenures : per-month fallback
+      // ───────────────────────────────────────────────────────────────────
+
+      let dealValueLabel = "Low Value";
+      let dealValueColor = "#b91c1c";
+      let dealValueBg    = "#fee2e2";
+
+      const setHigh    = () => { dealValueLabel = "High Value"; dealValueColor = "#15803d"; dealValueBg = "#dcfce7"; };
+      const setMid     = () => { dealValueLabel = "Mid Value";  dealValueColor = "#b45309"; dealValueBg = "#fef3c7"; };
+      const setUnknown = () => { dealValueLabel = "Unknown";    dealValueColor = "#4a5568"; dealValueBg = "#e2e8f0"; };
+
+      const applyTier = (highFloor, midFloor) => {
+        if      (amountEur >= highFloor) setHigh();
+        else if (amountEur >= midFloor)  setMid();
+        // else stays Low Value
+      };
+
+      const applyPerMonthTier = () => {
+        if (tenure <= 0) { setUnknown(); return; }
+        const pmv = amountEur / tenure;
+        Logger.log(`[AttritionReport]   → per-month EUR: ${pmv.toFixed(2)}`);
+        if      (pmv >= 119) setHigh();
+        else if (pmv >= 61)  setMid();
+        // else stays Low Value
+      };
+
+      if (amountEur === 0 || tenure === 0) {
+        setUnknown();
+
+      } else if (planName.includes('gcse')) {
+        // GCSE — always High Value regardless of payment type or amount
+        setHigh();
+
+      } else if (isInstallment) {
+        // Installment — pure per-month EUR value
+        applyPerMonthTier();
+
+      } else {
+        // Upfront — tenure bracket
+        if      (tenure >= 36) { setHigh(); }            // 3-Year+ always High
+        else if (tenure >= 24) { applyTier(1400, 900); } // 2-Year
+        else if (tenure >= 12) { applyTier(899,  600); } // Annual
+        else if (tenure >= 6)  { applyTier(499,  300); } // Half-Yearly
+        else if (tenure >= 3)  { applyTier(357,  183); } // Quarterly
+        else if (tenure === 1) { applyPerMonthTier(); }  // Monthly
+        else                   { applyPerMonthTier(); }  // Odd tenure fallback
+      }
+
+      Logger.log(`[AttritionReport]   → FINAL label: ${dealValueLabel}`);
+
+      // ── Audit log: migration history ────────────────────────────────────
+      let recentMoves  = 0;
+      let lastMoveDate = null;
+      let prevTeacher  = "N/A";
+      let moveReason   = "N/A";
+
+      if (auditData && auditData.length > 1) {
+        const now            = new Date();
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(now.getMonth() - 3);
+
+        auditData.forEach(row => {
+          if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
+            const d = parseSheetDate(row[0]);
+            if (d && d > threeMonthsAgo) recentMoves++;
+            if (d && (!lastMoveDate || d > lastMoveDate)) {
+              lastMoveDate = d;
+              prevTeacher  = row[4]  || "Unknown";
+              moveReason   = row[10] || "Unspecified";
+            }
+          }
+        });
+      }
+
+      return {
+        name:    deal.properties.dealname,
+        jlid:    jlid,
+        course:  getCourseLabel(deal.properties.current_course),
+        status:  deal.properties.learner_status,
+        hubspotLink: `https://app.hubspot.com/contacts/${PORTAL_ID}/deal/${deal.id}`,
+
+        // Value fields
+        dealValueLabel:   dealValueLabel,
+        dealValueColor:   dealValueColor,
+        dealValueBg:      dealValueBg,
+        dealAmountLocal:  amount,
+        dealAmountEur:    amountEur,
+        dealCurrency:     currency,
+        dealTenureMonths: tenure,
+        paymentTag:       paymentTag,
+
+        recentMoves:  recentMoves,
+        lastMoveDate: lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : "No Record",
+        prevTeacher:  prevTeacher,
+        moveReason:   moveReason
+      };
     });
 
-    // Sort: High risk first
     students.sort((a, b) => b.recentMoves - a.recentMoves);
-
     return { success: true, students: students, teacher: teacherName };
 
   } catch (e) {
+    Logger.log("Error in getTeacherAttritionReport: " + e.message);
     return { success: false, message: e.message };
   }
 }
-

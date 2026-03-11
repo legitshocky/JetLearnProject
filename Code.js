@@ -9,7 +9,7 @@ const CONFIG = {
   PERSONA_SHEET_ID: '1rSweVyLKEwb1xThFHMLoH4xWnrLs8wbRM_61VtRjGww', 
   DRIVE_FOLDER_ID: '1K-Zb9BO2dm_dPg2AWTDT5t-ghkPoRNSW', 
   HUBSPOT_API_KEY: 'pat-na1-840cfb1a-acb3-45d6-8b0d-31f8c3f7cb34', 
-  CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com', 
+  CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com',
   EXCHANGE_RATE_API_URL: 'https://v6.exchangerate-api.com/v6/YOUR_API_KEY/latest/EUR', // Ensure this is set if using live rates
 
   SHEETS: {
@@ -53,7 +53,7 @@ const ROLES = {
 };
 
 const PERMISSIONS = {
-  [ROLES.ADMIN]: ['view_dashboard', 'send_emails', 'view_audit', 'manage_users', 'view_reports', 'use_persona_tool', 'manage_settings', 'send_generic_emails', 'manage_invoices', 'run_audit_center', 'manage_agentic_audit'], 
+  [ROLES.ADMIN]: ['view_dashboard', 'send_emails', 'view_audit', 'manage_users', 'view_reports', 'use_persona_tool', 'manage_settings', 'send_generic_emails', 'manage_invoices', 'run_audit_center', 'manage_agentic_audit', 'use_ai_pm'],
   [ROLES.USER]: ['view_dashboard', 'send_emails', 'view_audit', 'use_persona_tool', 'view_reports', 'send_generic_emails', 'manage_invoices', 'run_audit_center'], 
   [ROLES.GUEST]: ['view_dashboard']
 };

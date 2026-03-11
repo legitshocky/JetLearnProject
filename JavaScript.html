@@ -682,7 +682,8 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         loadPage: loadTeacherLoadPage,
         teacherProfilePage: () => loadTeacherProfile(context),
         invoicesPage: loadInvoicePage,
-        emailActivitiesPage: loadEmailActivitiesPage
+        emailActivitiesPage: loadEmailActivitiesPage,
+        aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); }
     };
 
     if (pageLoaders[pageId]) pageLoaders[pageId]();
@@ -699,6 +700,9 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         userManagementTabBtn.style.display = hasPermission('manage_users') ? 'block' : 'none';
         // NEW: Show Agentic Audit section for admins with the right permission
         agenticAuditContainer.style.display = hasPermission('manage_agentic_audit') ? 'block' : 'none';
+        // AI PM — admin only
+        const aiPmMenuItem = document.getElementById('aiPmMenuItem');
+        if (aiPmMenuItem) aiPmMenuItem.style.display = hasPermission('use_ai_pm') ? 'flex' : 'none';
     }
 
     function handleCommunicationTabClick(event) {
@@ -3295,181 +3299,212 @@ function renderTeacherOptions(teachers) {
 // 2. Display Details when Teacher Selected
 function loadTeacherSpecificDetails(teacherName) {
     showLoading(`Fetching detailed analysis for ${teacherName}...`);
-    
-    // Reset UI states
-    const emptyState = document.getElementById('teacherLoadEmptyState');
-    const resultsContainer = document.getElementById('teacherLoadResults');
-    if(emptyState) emptyState.style.display = 'none';
-    if(resultsContainer) resultsContainer.style.display = 'none'; 
-    
-    // Reset the new card to hyphen while loading
-    const learnersEl = document.getElementById('loadDisplayLearners');
-    if(learnersEl) learnersEl.textContent = '-';
 
-    // CALL 1: Get Basic Load Stats & Proficiency (Google Sheets)
+    const emptyState       = document.getElementById('teacherLoadEmptyState');
+    const resultsContainer = document.getElementById('teacherLoadResults');
+    if (emptyState)       emptyState.style.display = 'none';
+    if (resultsContainer) resultsContainer.style.display = 'none';
+
+    const learnersEl = document.getElementById('loadDisplayLearners');
+    if (learnersEl) learnersEl.textContent = '-';
+
+    // Remove previous attrition section to prevent duplicates on teacher switch
+    const existing = document.getElementById('attritionRiskSection');
+    if (existing) existing.remove();
+
+    // ── CALL 1: Basic Load Stats & Proficiency (Google Sheets) ───────────
     google.script.run
         .withSuccessHandler(data => {
-            if(!data || !data.success) {
+            if (!data || !data.success) {
                 showToast('error', 'Error', data ? data.message : 'Unknown error');
                 hideLoading();
                 return;
             }
 
-            // --- Render Summary Cards ---
-            document.getElementById('loadDisplayStatus').textContent = data.status || '-';
             const statusEl = document.getElementById('loadDisplayStatus');
-            statusEl.style.color = data.status === 'Active' ? 'var(--success)' : 'var(--danger)';
-            
-            document.getElementById('loadDisplayCount').textContent = data.totalLoad || '0';
-            document.getElementById('loadDisplayLastActive').textContent = data.lastActivity || 'No recent activity';
+            if (statusEl) {
+                statusEl.textContent  = data.status || '-';
+                statusEl.style.color  = data.status === 'Active' ? 'var(--success)' : 'var(--danger)';
+            }
+            document.getElementById('loadDisplayCount').textContent       = data.totalLoad    || '0';
+            document.getElementById('loadDisplayLastActive').textContent  = data.lastActivity || 'No recent activity';
 
-            // --- Render Courses Table ---
             const tbody = document.getElementById('loadDisplayTableBody');
-            if(tbody) {
+            if (tbody) {
                 tbody.innerHTML = '';
-                const courses = data.courses || []; 
-                
+                const courses = data.courses || [];
                 if (courses.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 2rem;">No active courses found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:2rem;">No active courses found.</td></tr>';
                 } else {
                     courses.forEach(c => {
                         let badgeClass = 'status-info';
-                        if(c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
-                        else if(c.proficiency.includes('51-60')) badgeClass = 'status-warning';
-                        
-                        const row = `<tr><td style="font-weight: 500;">${escapeHtml(c.course)}</td><td><span class="status-badge ${badgeClass}">${escapeHtml(c.proficiency)}</span></td></tr>`;
-                        tbody.innerHTML += row;
+                        if (c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
+                        else if (c.proficiency.includes('51-60'))                   badgeClass = 'status-warning';
+                        tbody.innerHTML += `<tr>
+                            <td style="font-weight:500;">${escapeHtml(c.course)}</td>
+                            <td><span class="status-badge ${badgeClass}">${escapeHtml(c.proficiency)}</span></td>
+                        </tr>`;
                     });
                 }
             }
-            if(resultsContainer) resultsContainer.style.display = 'block';
 
-            // CALL 2: Get Attrition Risk & Active Pool Report (HubSpot)
+            if (resultsContainer) resultsContainer.style.display = 'block';
+
+            // ── CALL 2: Attrition Risk & Active Pool (HubSpot) ───────────
             google.script.run
                 .withSuccessHandler(report => {
-                    hideLoading(); // Stop spinner
+                    hideLoading();
                     if (!report || !report.success) return;
-                    
+
                     const students = report.students || [];
+                    if (learnersEl) learnersEl.textContent = students.length;
 
-                    // --- NEW: Update Active Learners Count ---
-                    if(learnersEl) {
-                        learnersEl.textContent = students.length;
-                    }
-                    // -----------------------------------------
-                    
-                    // --- Create/Get Risk Table Section ---
-                    let riskTableSection = document.getElementById('attritionRiskSection');
-                    if (!riskTableSection) {
-                        riskTableSection = document.createElement('div');
-                        riskTableSection.id = 'attritionRiskSection';
-                        riskTableSection.className = 'audit-log-container';
-                        riskTableSection.style.marginTop = '30px';
-                        
-                        riskTableSection.innerHTML = `
-                            <h3 class="dashboard-section-title" style="color:#d32f2f;">
-                                <i class="fas fa-exclamation-circle"></i> Attrition Risk & Active Pool
-                            </h3>
-                            <p class="form-text-muted" style="margin-bottom:15px;">
-                                Active students (Active, VIP, Friendly, Break & Return). 
-                                <span style="color:#d32f2f; font-weight:bold;">Red</span> rows indicate 2+ recent moves.
-                            </p>
-                            <div class="table-container">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Learner</th>
-                                            <th>Status</th>
-                                            <th>Previous</th>
-                                            <th>Last Moved</th>
-                                            <th>Reason</th>
-                                            <th>Risk (90d)</th>
-                                            <th>Links</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="attritionRiskTableBody"></tbody>
-                                </table>
-                            </div>
-                        `;
-                        resultsContainer.appendChild(riskTableSection);
-                    }
-                    
-                    // --- Populate Risk Table ---
+                    // Build risk section fresh each time
+                    const riskSection = document.createElement('div');
+                    riskSection.id        = 'attritionRiskSection';
+                    riskSection.className = 'audit-log-container';
+                    riskSection.style.marginTop = '30px';
+
+                    riskSection.innerHTML = `
+                        <h3 class="dashboard-section-title" style="color:#d32f2f;">
+                            <i class="fas fa-exclamation-circle"></i> Attrition Risk &amp; Active Pool
+                        </h3>
+                        <p class="form-text-muted" style="margin-bottom:15px;">
+                            Active students (Active, VIP, Friendly, Break &amp; Return).
+                            <span style="color:#d32f2f; font-weight:bold;">Red</span> rows indicate 2+ recent moves.
+                        </p>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Learner</th>
+                                        <th>Status</th>
+                                        <th>Deal Value</th>
+                                        <th>Previous Teacher</th>
+                                        <th>Last Moved</th>
+                                        <th>Reason</th>
+                                        <th>Risk (90d)</th>
+                                        <th>Links</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="attritionRiskTableBody"></tbody>
+                            </table>
+                        </div>
+                    `;
+                    resultsContainer.appendChild(riskSection);
+
                     const riskTbody = document.getElementById('attritionRiskTableBody');
-                    if(riskTbody) {
-                        riskTbody.innerHTML = '';
-                        
-                        if (students.length === 0) {
-                            riskTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No matching active students found.</td></tr>';
-                        } else {
-                        report.students.forEach(s => {
-                            let rowStyle = '';
-                            let riskBadge = `<span class="status-badge status-success">Stable</span>`;
-                            
-                            // Risk Logic
-                            if (s.recentMoves >= 2) {
-                                rowStyle = 'background-color: #ffebee;'; // Red High Risk
-                                riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
-                            } else if (s.recentMoves === 1) {
-                                // FIX: High-contrast inline styling for readability
-                                riskBadge = `<span class="status-badge" style="background-color: #fff3e0; color: #e65100; border: 1px solid #ffb74d;">1 Move</span>`;
-                            }
+                    if (!riskTbody) return;
 
-                            
-                            // --- FIX START ---
-                            // Check first, then format. Do NOT escape the HTML tag, only the name.
-                            const prevTeacherDisplay = s.prevTeacher === "N/A" 
-                                ? '<span style="color:#aaa">No Teacher Changes</span>' 
-                                : escapeHtml(s.prevTeacher);
-                            // --- FIX END ---
-                            
-                            const courseDisplay = s.course.length > 35 ? s.course.substring(0,35) + '...' : s.course;
-
-                            const tr = document.createElement('tr');
-                            tr.style = rowStyle;
-                            
-                            // Notice below: ${prevTeacherDisplay} does NOT have escapeHtml() around it anymore
-                            tr.innerHTML = `
-                                <td>
-                                    <strong>${escapeHtml(s.name)}</strong><br>
-                                    <small style="color:#666">${escapeHtml(s.jlid)}</small><br>
-                                    <small style="color:#4a3c8a">${escapeHtml(courseDisplay)}</small>
-                                </td>
-                                <td>
-                                    <span class="status-badge status-info">${escapeHtml(s.status)}</span><br>
-                                    <small style="color:#999; font-size:0.75em;">Stage: ${escapeHtml(s.stage || '-')}</small>
-                                </td>
-                                <td>${prevTeacherDisplay}</td> 
-                                <td>${s.lastMoveDate}</td>
-                                <td style="font-size:0.85em;">${escapeHtml(s.moveReason)}</td>
-                                <td>${riskBadge}</td>
-                                <td>
-                                    <div style="display:flex; gap:5px;">
-                                        <a href="${s.hubspotLink}" target="_blank" class="btn btn-sm btn-outline" title="Open HubSpot Deal" style="color:#ff7a59; border-color:#ff7a59;">
-                                            <i class="fab fa-hubspot"></i>
-                                        </a>
-                                        <button class="btn btn-sm btn-outline" onclick="copyToClipboardText('${escapeHtml(s.jlid)}')" title="Copy JLID">
-                                            <i class="fas fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            `;
-                            riskTbody.appendChild(tr);
-                        });
-                        }
+                    if (students.length === 0) {
+                        riskTbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:1.5rem;">No matching active students found.</td></tr>';
+                        return;
                     }
+
+                    students.forEach(s => {
+
+                        // ── Risk badge & row highlight ──────────────────
+                        let rowStyle = '';
+                        let riskBadge = `<span class="status-badge status-success">Stable</span>`;
+                        if (s.recentMoves >= 2) {
+                            rowStyle  = 'background-color:#ffebee;';
+                            riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
+                        } else if (s.recentMoves === 1) {
+                            riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
+                        }
+
+                        // ── Deal Value badge ────────────────────────────
+                        const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
+                        const dealValueBadge = isUnknown
+                            ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
+                            : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
+
+                        // ── Amount display ──────────────────────────────
+                        // Show local currency amount; if non-EUR also show ~EUR equivalent
+                        let amountDisplay = '';
+                        if (s.dealAmountLocal > 0) {
+                            const localStr = s.dealCurrency !== 'EUR'
+                                ? `${escapeHtml(s.dealCurrency)} ${s.dealAmountLocal.toLocaleString()}`
+                                : `€${s.dealAmountLocal.toLocaleString()}`;
+                            const eurNote  = (s.dealCurrency !== 'EUR' && s.dealAmountEur > 0)
+                                ? ` <small style="color:#888;">(~€${s.dealAmountEur.toLocaleString()})</small>`
+                                : '';
+                            amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
+                        }
+
+                        // ── Payment tag: Upfront (green) / Installment (blue) ──
+                        const paymentTagBadge = s.paymentTag === 'Installment'
+                            ? `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd;">Installment</span>`
+                            : `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">Upfront</span>`;
+
+                        // ── Tenure label ────────────────────────────────
+                        const tenureLabel = s.dealTenureMonths > 0
+                            ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
+                            : '';
+
+                        // ── Previous teacher ────────────────────────────
+                        const prevTeacherDisplay = (!s.prevTeacher || s.prevTeacher === 'N/A')
+                            ? '<span style="color:#aaa;">No Teacher Changes</span>'
+                            : escapeHtml(s.prevTeacher);
+
+                        // ── Course (truncated) ──────────────────────────
+                        const courseDisplay = s.course && s.course.length > 35
+                            ? s.course.substring(0, 35) + '...'
+                            : (s.course || '-');
+
+                        const tr = document.createElement('tr');
+                        tr.style.cssText = rowStyle;
+                        tr.innerHTML = `
+                            <td>
+                                <strong>${escapeHtml(s.name)}</strong><br>
+                                <small style="color:#666;">${escapeHtml(s.jlid)}</small><br>
+                                <small style="color:#4a3c8a;" title="${escapeHtml(s.course || '')}">${escapeHtml(courseDisplay)}</small>
+                            </td>
+                            <td>
+                                <span class="status-badge status-info">${escapeHtml(s.status)}</span>
+                            </td>
+                            <td>
+                                ${dealValueBadge}
+                                ${amountDisplay}
+                                ${paymentTagBadge}
+                                ${tenureLabel}
+                            </td>
+                            <td>${prevTeacherDisplay}</td>
+                            <td>${escapeHtml(s.lastMoveDate)}</td>
+                            <td style="font-size:0.85em;">${escapeHtml(s.moveReason)}</td>
+                            <td>${riskBadge}</td>
+                            <td>
+                                <div style="display:flex; gap:5px;">
+                                    <a href="${escapeHtml(s.hubspotLink)}" target="_blank"
+                                       class="btn btn-sm btn-outline"
+                                       title="Open HubSpot Deal"
+                                       style="color:#ff7a59; border-color:#ff7a59;">
+                                        <i class="fab fa-hubspot"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline"
+                                            onclick="copyToClipboardText('${escapeHtml(s.jlid)}')"
+                                            title="Copy JLID">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        riskTbody.appendChild(tr);
+                    });
                 })
                 .withFailureHandler(error => {
                     hideLoading();
-                    console.error("Attrition Report Failed: ", error);
+                    console.error('Attrition Report Failed:', error);
+                    showToast('error', 'Attrition Report', 'Could not load attrition data.');
                 })
                 .getTeacherAttritionReport(teacherName);
-
         })
-        .withFailureHandler(showError)
+        .withFailureHandler(err => {
+            hideLoading();
+            showError(err);
+        })
         .getTeacherSpecificLoad(teacherName);
 }
-
 
 // Helper to copy text (Add if missing in JavaScript.html)
 function copyToClipboardText(text) {
@@ -5610,6 +5645,7 @@ document.addEventListener('DOMContentLoaded', () => {
       changelogModal.classList.add('active');
     });
   }
+  
 });
 
 
