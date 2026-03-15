@@ -56,6 +56,7 @@ let globalInvoiceProducts = []; // NEW: Store invoice products data
 let globalTimezones = []; // Will be populated from the server
 let globalTicketData = [];
 let globalTeacherDataList = [];
+let allTeacherDetailsCache = [];
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
 let isParentInvoiceEndDateManuallySet = false;
@@ -3225,45 +3226,50 @@ function collectInvoiceFormData() {
 
 function loadTeacherLoadPage() {
     const inputEl = document.getElementById('hsTeacherSearchInput');
-    const listEl = document.getElementById('hsTeacherOptionsList');
+    const listEl  = document.getElementById('hsTeacherOptionsList');
 
     if (!inputEl || !listEl) return;
 
-    // 1. Fetch Data if empty
-    if (globalTeacherDataList.length === 0) {
+    // Wire up persona status filter dropdown
+    const filterEl = document.getElementById('personaStatusFilter');
+    if (filterEl) filterEl.onchange = function() { renderPersonaTable(); };
+
+    // Fetch full teacher details if cache is empty
+    if (allTeacherDetailsCache.length === 0) {
         showLoading('Loading teacher directory...');
         google.script.run
-            .withSuccessHandler(teachers => {
+            .withSuccessHandler(function(teachers) {
                 hideLoading();
-                // Store data globally: teachers is array of names strings
-                // Ideally backend sends {name, email}, but for now we assume strings
-                globalTeacherDataList = teachers; 
-                renderTeacherOptions(teachers); // Initial Render
+                allTeacherDetailsCache = teachers || [];
+                globalTeacherDataList  = allTeacherDetailsCache.map(function(t) { return t.name || t; });
+                renderTeacherOptions(globalTeacherDataList);
             })
-            .withFailureHandler(showError)
-            .getTeacherListForDropdown();
+            .withFailureHandler(function(err) { hideLoading(); showError(err); })
+            .getTeacherDetailsForTable();
+    } else {
+        globalTeacherDataList = allTeacherDetailsCache.map(function(t) { return t.name || t; });
+        renderTeacherOptions(globalTeacherDataList);
     }
 
-    // 2. Event Listener: Show list on click/focus
-    inputEl.addEventListener('focus', () => {
+    // Show list on focus
+    inputEl.addEventListener('focus', function() { listEl.classList.add('show'); });
+
+    // Filter as you type
+    inputEl.addEventListener('input', function() {
+        var searchTerm = this.value.toLowerCase();
+        var filtered   = globalTeacherDataList.filter(function(t) { return t.toLowerCase().includes(searchTerm); });
+        renderTeacherOptions(filtered);
         listEl.classList.add('show');
     });
 
-    // 3. Event Listener: Filtering as you type
-    inputEl.addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase();
-        const filtered = globalTeacherDataList.filter(t => t.toLowerCase().includes(searchTerm));
-        renderTeacherOptions(filtered);
-        listEl.classList.add('show'); // Ensure it's open while typing
-    });
-
-    // 4. Event Listener: Close when clicking outside
+    // Close when clicking outside
     document.addEventListener('click', function(e) {
         if (!inputEl.contains(e.target) && !listEl.contains(e.target)) {
             listEl.classList.remove('show');
         }
     });
 }
+
 
 // Helper to render the HTML list
 function renderTeacherOptions(teachers) {
@@ -5647,6 +5653,215 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   
 });
+
+    document.querySelectorAll('#loadPage .tab-button').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            document.querySelectorAll('#loadPage .tab-button').forEach(function(b) {
+                b.classList.remove('active');
+            });
+            document.querySelectorAll('#loadPage .tab-content').forEach(function(c) {
+                c.classList.remove('active');
+            });
+ 
+            var tabButton = e.currentTarget;
+            tabButton.classList.add('active');
+ 
+            var tabContentEl = document.getElementById(tabButton.dataset.tab + 'Tab');
+            if (tabContentEl) tabContentEl.classList.add('active');
+ 
+            if (tabButton.dataset.tab === 'personaMatch') {
+                renderPersonaTable();
+            }
+        });
+    });
+
+    // This renders the list of teachers in the "Persona & Replacement" tab
+    function renderPersonaTable() {
+        var filterEl     = document.getElementById('personaStatusFilter');
+        var statusFilter = filterEl ? filterEl.value : 'All';
+        var tbody        = document.getElementById('personaTeacherTableBody');
+        var countLabel   = document.getElementById('personaTeacherCountLabel');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+ 
+        if (!allTeacherDetailsCache || allTeacherDetailsCache.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;">'
+                + 'Teacher data is loading. Please wait or refresh the page.</td></tr>';
+            return;
+        }
+ 
+        var total    = allTeacherDetailsCache.length;
+        var filtered = statusFilter === 'All'
+            ? allTeacherDetailsCache
+            : allTeacherDetailsCache.filter(function(t) { return t.status === statusFilter; });
+ 
+        var statusLabel = statusFilter === 'All' ? 'All Teachers' : statusFilter + ' Teachers';
+        if (countLabel) countLabel.textContent = statusLabel + ': ' + filtered.length + ' / ' + total;
+ 
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;'
+                + 'color:var(--text-muted);">No teachers found.</td></tr>';
+            return;
+        }
+ 
+        filtered.forEach(function(teacher) {
+            var totalLearners = teacher.activeCourses || 0;
+            var coding        = teacher.activeCoding  || 0;
+            var math          = teacher.activeMath    || 0;
+            var loadColor     = totalLearners > 20 ? '#b91c1c' : totalLearners < 5 ? '#d97706' : '#15803d';
+ 
+            var learnerHtml =
+                '<span style="font-weight:700;color:' + loadColor + ';font-size:1rem;">' + totalLearners + '</span>'
+                + ' <span style="font-size:0.75rem;color:var(--text-muted);">total</span>'
+                + '&nbsp;&nbsp;'
+                + '<span style="font-size:0.75rem;background:#eff6ff;color:#1d4ed8;'
+                + 'border:1px solid #bfdbfe;padding:2px 7px;border-radius:4px;margin-right:4px;">'
+                + '<i class="fas fa-code" style="margin-right:3px;"></i>' + coding + ' Coding</span>'
+                + '<span style="font-size:0.75rem;background:#fdf4ff;color:#7e22ce;'
+                + 'border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
+                + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>';
+ 
+            var tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td><strong>' + escapeHtml(teacher.name) + '</strong></td>'
+                + '<td><span class="status-badge status-'
+                + teacher.status.toLowerCase().replace(/ /g, '-') + '">'
+                + escapeHtml(teacher.status) + '</span></td>'
+                + '<td>' + learnerHtml + '</td>'
+                + '<td style="text-align:right;">'
+                    + '<button class="btn btn-primary btn-sm find-replacement-btn">'
+                    + '<i class="fas fa-robot"></i> Find Replacement'
+                    + '</button></td>';
+            tr.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
+            tr.querySelector('.find-replacement-btn').addEventListener('click', function() {
+                openCloneModal(this.dataset.teacherName);
+            });
+            tbody.appendChild(tr);
+
+    });
+}
+
+var filterEl = document.getElementById('personaStatusFilter');
+    if (filterEl) {
+        filterEl.onchange = function() { renderPersonaTable(); };
+    }
+
+
+
+// ── Global: open Find Replacement modal ──────────────────────────────────────
+function openCloneModal(teacherName) {
+    var nameEl = document.getElementById('cloneTargetName');
+    var ctxEl  = document.getElementById('cloneTargetContext');
+    if (nameEl) nameEl.textContent = teacherName;
+    if (ctxEl)  ctxEl.style.display = 'none';
+    showLoading('Analysing best replacements with AI...');
+
+    google.script.run
+        .withSuccessHandler(function(result) {
+            hideLoading();
+
+            if (!result || !result.success) {
+                showToast('error', 'Analysis Failed', result ? result.message : 'Unknown error from server.');
+                return;
+            }
+
+            if (result.targetContext) {
+                var ctx = result.targetContext;
+                if (ctxEl) ctxEl.style.display = 'block';
+                var coursesEl  = document.getElementById('cloneTargetCourses');
+                var learnersEl = document.getElementById('cloneTargetLearners');
+                var escalEl    = document.getElementById('cloneTargetEscalations');
+                if (coursesEl)  coursesEl.textContent  = (ctx.courses && ctx.courses.length) ? ctx.courses.join(', ') : 'No courses mapped';
+                if (learnersEl) learnersEl.textContent = ctx.activeLearners || 0;
+                if (escalEl)    escalEl.textContent    = ctx.escalations || 0;
+            }
+
+            var summaryEl = document.getElementById('cloneAISummary');
+            if (summaryEl) {
+                if (result.aiEnriched && result.aiSummary) {
+                    summaryEl.style.display = 'block';
+                    summaryEl.innerHTML = '<span style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:8px;">✦ AI Analysis</span>' + escapeHtml(result.aiSummary);
+                } else {
+                    summaryEl.style.display = 'none';
+                }
+            }
+
+            var tbody = document.getElementById('cloneTeacherTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (!result.data || result.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;">No suitable replacements found.</td></tr>';
+            } else {
+                result.data.forEach(function(match, idx) {
+                    try {
+                        var name          = String(match.name            || 'Unknown');
+                        var matchScore    = Number(match.matchScore)     || 0;
+                        var traitScore    = Number(match.traitScore)     || 0;
+                        var ageScore      = Number(match.ageScore)       || 0;
+                        var courseScore   = Number(match.courseScore)    || 0;
+                        var escalScore    = Number(match.escalationScore)|| 0;
+                        var upskillCount  = Number(match.upskillCount    || match.activeLearners) || 0;
+                        var escalRisk     = String(match.escalationRisk  || 'No Escalations');
+                        var escColor      = String(match.escalationColor || '#15803d');
+                        var courseOverlap = String(match.courseOverlap   || 'N/A');
+                        var ageGroupMatch = String(match.ageGroupMatch   || 'N/A');
+                        var aiEnriched    = Boolean(match.aiEnriched);
+                        var confidence    = String(match.aiConfidence    || '');
+                        var aiReason      = String(match.aiReason        || '');
+                        var aiWarning     = String(match.aiWarning       || '');
+                        var aiCaveat      = String(match.aiCaveat        || '');
+
+                        var scoreColor = matchScore >= 70 ? '#15803d' : matchScore >= 40 ? '#d97706' : '#b91c1c';
+                        var scoreBg    = matchScore >= 70 ? '#f0fdf4' : matchScore >= 40 ? '#fffbeb' : '#fef2f2';
+                        var loadColor  = upskillCount > 35 ? '#15803d' : upskillCount >= 20 ? '#d97706' : '#b91c1c';
+
+                        var confidenceHtml = '';
+                        if (aiEnriched && confidence) {
+                            var confColor = confidence === 'High' ? '#15803d' : confidence === 'Medium' ? '#b45309' : '#b91c1c';
+                            var confBg    = confidence === 'High' ? '#dcfce7' : confidence === 'Medium' ? '#fef3c7' : '#fee2e2';
+                            confidenceHtml = '<span style="font-size:0.68rem;background:' + confBg + ';color:' + confColor + ';border:1px solid ' + confColor + '44;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:5px;">' + escapeHtml(confidence) + ' Confidence</span>';
+                        }
+
+                        var rankLabel   = idx === 0 ? '<span style="font-size:0.68rem;background:#fbbf24;color:#78350f;padding:1px 6px;border-radius:4px;margin-left:4px;">Top Pick</span>' : '';
+                        var reasonHtml  = (aiEnriched && aiReason)  ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;font-style:italic;">✦ ' + escapeHtml(aiReason) + '</div>' : '';
+                        var warningHtml = (aiEnriched && aiWarning) ? '<div style="font-size:0.72rem;color:#b91c1c;background:#fee2e2;border-radius:4px;padding:2px 6px;margin-top:3px;display:inline-block;">⚠ ' + escapeHtml(aiWarning) + '</div>' : '';
+                        var caveatHtml  = (aiEnriched && aiCaveat)  ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">💡 ' + escapeHtml(aiCaveat) + '</div>' : '';
+                        var breakdown   = 'Traits:' + traitScore + '/30 | Age:' + ageScore + '/20 | Courses:' + courseScore + '/30 | Stability:' + escalScore + '/20';
+
+                        var tr = document.createElement('tr');
+                        tr.innerHTML =
+                            '<td style="min-width:180px;"><strong>' + escapeHtml(name) + '</strong>' + rankLabel + confidenceHtml + reasonHtml + warningHtml + caveatHtml + '</td>'
+                            + '<td><div title="' + escapeHtml(breakdown) + '" style="display:flex;align-items:center;gap:8px;cursor:help;"><span style="background:' + scoreBg + ';color:' + scoreColor + ';border:1px solid ' + scoreColor + '44;padding:3px 10px;border-radius:20px;font-weight:700;font-size:0.9rem;">' + matchScore + '/100</span><span style="font-size:0.7rem;color:var(--text-muted);">&#9432;</span></div></td>'
+                            + '<td style="font-size:0.83rem;">' + escapeHtml(courseOverlap) + '<br><span style="font-size:0.73rem;color:var(--text-muted);">Age: ' + escapeHtml(ageGroupMatch) + '</span></td>'
+                            + '<td style="color:' + loadColor + ';font-weight:600;">' + upskillCount + '<span style="font-size:0.68rem;font-weight:400;color:var(--text-muted);display:block;">courses</span></td>'
+                            + '<td style="color:' + escColor + ';font-weight:600;">' + escapeHtml(escalRisk) + '</td>'
+                            + '<td><button class="btn btn-outline btn-sm view-profile-btn">View Profile</button></td>';
+
+                        tr.querySelector('.view-profile-btn').dataset.teacherName = name;
+                        tr.querySelector('.view-profile-btn').addEventListener('click', function() {
+                            switchPage('teacherProfilePage', this.dataset.teacherName);
+                        });
+                        tbody.appendChild(tr);
+
+                    } catch (rowErr) {
+                        console.error('[openCloneModal] Row ' + idx + ' error:', rowErr.message, match);
+                    }
+                });
+            }
+
+            var modal = document.getElementById('cloneTeacherModal');
+            if (modal) {
+                modal.classList.add('active');
+            }
+        })
+        .withFailureHandler(function(err) {
+            hideLoading();
+            showError(err);
+        })
+        .findSimilarTeachers(teacherName);
+}
+
 
 
 </script>

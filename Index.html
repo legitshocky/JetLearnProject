@@ -107,7 +107,7 @@
         <div class="menu-item" data-page="emailActivities"><i class="fas fa-envelope-open-text"></i><span>Email Activities</span></div>
         <div class="menu-item" data-page="tasks"><i class="fas fa-check-square"></i><span>Tasks</span></div>
         <div class="menu-item" data-page="teachers"><i class="fas fa-chalkboard-teacher"></i><span>Teachers</span></div>
-        <div class="menu-item" data-page="load"><i class="fas fa-balance-scale"></i><span>Teacher Load</span></div>
+        <div class="menu-item" data-page="load"><i class="fas fa-balance-scale"></i><span>Teacher Intelligence</span></div>
         <div class="menu-item" data-page="courses"><i class="fas fa-book"></i><span>Courses</span></div>
         <div class="menu-item" data-page="reports"><i class="fas fa-chart-pie"></i><span>Reports</span></div>
         <div class="menu-item" data-page="health"><i class="fas fa-heartbeat"></i><span>System Health</span></div>
@@ -1020,98 +1020,117 @@
 
       <!-- Teachers Page -->
       <div id="teachersPage" class="page-content" style="display: none;">
-        <div class="header"><h1 class="page-title">Teachers</h1><div class="header-actions"><button class="btn btn-primary" id="addNewTeacherBtn"><i class="fas fa-plus"></i> Add New Teacher</button><button class="btn btn-outline" id="refreshTeachersBtn"><i class="fas fa-sync-alt"></i> Refresh</button></div></div>
-        <div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>CLS Email</th><th>Status</th><th>Join Date</th><th>Active Courses</th><th>Last Activity</th><th>Actions</th></tr></thead><tbody id="teachersTableBody"></tbody></table></div>
+        <div class="header">
+            <h1 class="page-title">Teachers</h1>
+            <div class="header-actions">
+                <select id="mainTeacherStatusFilter" class="form-control form-select" style="width:180px;">
+                    <option value="All">All Statuses</option>
+                    <option value="Active" selected>Active</option>
+                    <option value="Attrited">Attrited</option>
+                    <option value="On Leave">On Leave</option>
+                    <option value="EWS">EWS</option>
+                </select>
+                <button class="btn btn-primary" id="addNewTeacherBtn"><i class="fas fa-plus"></i> Add Teacher</button>
+                <button class="btn btn-outline" id="refreshTeachersBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>CLS Email</th>
+                        <th>Status</th>
+                        <th>Join Date</th>
+                        <th>Active Courses</th>
+                        <th>Last Activity</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="teachersTableBody"></tbody>
+            </table>
+        </div>
       </div>
 
-      <!-- Teacher Profile Page -->
+
+<!-- Teacher Profile Page -->
       <div id="teacherProfilePage" class="page-content" style="display: none;">
         <div class="header">
-          <button class="btn btn-outline" id="backToTeachersBtn"><i class="fas fa-arrow-left"></i> Back to Teachers List</button>
+          <h1 class="page-title">Teacher Profile</h1>
+          <div class="header-actions">
+            <button class="btn btn-outline" id="backToTeachersBtn">
+              <i class="fas fa-arrow-left"></i> Back to Teachers
+            </button>
+          </div>
         </div>
         <div id="teacherProfileContent"></div>
       </div>
 
-<div id="loadPage" class="page-content" style="display: none;">
-          <div class="header">
-            <h1 class="page-title">Teacher Load Dashboard</h1>
-          </div>
 
-          <!-- 1. DROPDOWN SEARCH -->
-          <div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
-            <h2 class="form-title" style="font-size: 1.2rem; margin-bottom: 1rem;">Select Teacher</h2>
-            <div class="form-group" style="display: flex; gap: 1rem; align-items: center;">
-              <div style="flex-grow: 1; max-width: 500px;">
-                <!-- Custom Dropdown Container -->
-                <div class="hs-dropdown-container">
-                    <input type="text" id="hsTeacherSearchInput" class="hs-input-box" placeholder="Select or type to search..." autocomplete="off">
-                    <div id="hsTeacherOptionsList" class="hs-options-list">
-                        <!-- Options will be injected here via JS -->
+<!-- Teacher Intelligence Center Page (Corrected and Renamed) -->
+      <div id="loadPage" class="page-content" style="display: none;">
+          <div class="header">
+            <h1 class="page-title">Teacher Intelligence Center</h1>
+          </div>
+          <div class="page-tabs">
+            <button class="tab-button active" data-tab="loadDashboard">Load Dashboard</button>
+            <button class="tab-button" data-tab="personaMatch">Persona & Replacement Engine</button>
+          </div>
+          <div id="loadDashboardTab" class="tab-content active">
+              <div class="form-container" style="max-width: 100%; margin-bottom: 2rem;">
+                <h2 class="form-title" style="font-size: 1.2rem; margin-bottom: 1rem;">Select Teacher</h2>
+                <div class="form-group" style="display: flex; gap: 1rem; align-items: center;">
+                  <div style="flex-grow: 1; max-width: 500px;">
+                    <div class="hs-dropdown-container">
+                        <input type="text" id="hsTeacherSearchInput" class="hs-input-box" placeholder="Select or type to search..." autocomplete="off">
+                        <div id="hsTeacherOptionsList" class="hs-options-list"></div>
                     </div>
+                  </div>
+                  <button class="btn btn-primary" id="refreshTeacherListBtn"><i class="fas fa-sync-alt"></i></button>
                 </div>
               </div>
-              <button class="btn btn-primary" id="refreshTeacherListBtn">
-                <i class="fas fa-sync-alt"></i>
-              </button>
-            </div>
-            <p class="form-text-muted">Select a teacher to view their active course load, proficiency, and recent activity.</p>
+              <div id="teacherLoadResults" style="display: none;">
+                <div class="dashboard-grid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(4, 1fr);">
+                  <div class="main-metric-card"><h3 class="main-metric-title">Status</h3><p class="main-metric-value" id="loadDisplayStatus" style="font-size: 1.5rem;">-</p></div>
+                  <div class="main-metric-card"><h3 class="main-metric-title">Active Courses</h3><p class="main-metric-value" id="loadDisplayCount">-</p></div>
+                  <div class="main-metric-card"><h3 class="main-metric-title">Active Learners</h3><p class="main-metric-value" id="loadDisplayLearners">-</p><small style="color:#718096; font-size:0.7rem;">HubSpot Active</small></div>
+                  <div class="main-metric-card"><h3 class="main-metric-title">Last Updated</h3><p class="main-metric-value" id="loadDisplayLastActive" style="font-size: 1.2rem;">-</p><small class="text-muted">Based on Audit Log</small></div>
+                </div>
+                <div class="audit-log-container">
+                  <h3 class="dashboard-section-title">Onboarded Courses</h3>
+                  <div class="table-container"><table class="data-table"><thead><tr><th>Course Name</th><th style="width: 200px;">Proficiency</th></tr></thead><tbody id="loadDisplayTableBody"></tbody></table></div>
+                </div>
+              </div>
+              <div id="teacherLoadEmptyState" style="text-align: center; padding: 3rem; color: var(--text-light);">
+                <i class="fas fa-chalkboard-teacher" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+                <p>Please select a teacher from the dropdown above.</p>
+              </div>
           </div>
-
-          <!-- 2. RESULTS DISPLAY (Cards + Table) -->
-          <div id="teacherLoadResults" style="display: none;">
-            
-            <!-- Summary Cards (Updated to 4 Columns) -->
-            <div class="dashboard-grid" style="margin-bottom: 1.5rem; grid-template-columns: repeat(4, 1fr);">
-              <div class="main-metric-card">
-                <h3 class="main-metric-title">Status</h3>
-                <p class="main-metric-value" id="loadDisplayStatus" style="font-size: 1.5rem;">-</p>
+          <div id="personaMatchTab" class="tab-content">
+              <div class="form-container" style="max-width: 100%;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                      <div>
+                        <h2 class="form-title" style="margin: 0 0 4px;">Find Replacement Teacher</h2>
+                        <p id="personaTeacherCountLabel" style="margin:0; font-size:0.85rem; color:var(--text-muted);">Loading teachers...</p>
+                      </div>
+                      <select id="personaStatusFilter" class="form-control form-select" style="width: 200px;" onchange="renderPersonaTable()">
+                          <option value="Active" selected>Active Teachers</option>
+                          <option value="EWS">EWS</option>
+                          <option value="Attrited">Attrited / Inactive</option>
+                          <option value="On Leave">On Leave</option>
+                          <option value="All">All Teachers</option>
+                      </select>
+                  </div>
+                  <div class="table-container">
+                      <table class="data-table">
+                          <thead><tr><th>Teacher Name</th><th>Status</th><th>Active Learners</th><th style="text-align: right;">Action</th></tr></thead>
+                          <tbody id="personaTeacherTableBody"></tbody>
+                      </table>
+                  </div>
               </div>
-              
-              <div class="main-metric-card">
-                <h3 class="main-metric-title">Active Courses</h3>
-                <p class="main-metric-value" id="loadDisplayCount">-</p>
-              </div>
-
-              <!-- NEW CARD -->
-              <div class="main-metric-card">
-                <h3 class="main-metric-title">Active Learners</h3>
-                <p class="main-metric-value" id="loadDisplayLearners">-</p>
-                <small style="color:#718096; font-size:0.7rem;">HubSpot Active</small>
-              </div>
-
-              <div class="main-metric-card">
-                <h3 class="main-metric-title">Last Updated</h3>
-                <p class="main-metric-value" id="loadDisplayLastActive" style="font-size: 1.2rem;">-</p>
-                <small class="text-muted">Based on Audit Log</small>
-              </div>
-            </div>
-
-            <!-- Detailed Table -->
-            <div class="audit-log-container">
-              <h3 class="dashboard-section-title">Onboarded Courses</h3>
-              <div class="table-container">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th>Course Name</th>
-                      <th style="width: 200px;">Proficiency</th>
-                    </tr>
-                  </thead>
-                  <tbody id="loadDisplayTableBody">
-                    <!-- Rows injected by JS -->
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
-          
-          <!-- Empty State -->
-          <div id="teacherLoadEmptyState" style="text-align: center; padding: 3rem; color: var(--text-light);">
-            <i class="fas fa-chalkboard-teacher" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-            <p>Please select a teacher from the dropdown above.</p>
-          </div>
-      </div> <!-- CRITICAL CLOSING TAG FOR LOAD PAGE -->
-
+      </div> 
       <!-- Reports Page -->
       <div id="reportsPage" class="page-content" style="display: none;">
         <div class="header">
@@ -1562,6 +1581,78 @@
     </div>
   </div>
 
+<!-- TEACHER CLONE / REPLACEMENT MODAL -->
+  </div></div>
+  <div class="modal-overlay" id="cloneTeacherModal">
+    <div class="modal" style="max-width:95vw;width:95vw;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-robot" style="color:var(--primary);"></i>
+                AI Replacement Matches:
+                <span id="cloneTargetName" style="font-weight:bold;"></span>
+            </h3>
+            <button class="modal-close" data-dismiss="modal">×</button>
+        </div>
+        <div class="modal-body">
+ 
+            <!-- Target teacher context bar -->
+            <div id="cloneTargetContext" style="background:#f8fafc;border:1px solid #e2e8f0;
+                border-radius:8px;padding:10px 16px;margin-bottom:0.75rem;
+                font-size:0.83rem;color:#475569;display:none;">
+                <strong>Source Teacher:</strong> <span id="cloneTargetCourses"></span>
+                &nbsp;|&nbsp;
+                <strong>Upskilled Courses:</strong> <span id="cloneTargetLearners"></span>
+                &nbsp;|&nbsp;
+                <strong>90-day Escalations:</strong> <span id="cloneTargetEscalations"></span>
+            </div>
+ 
+            <!-- AI analysis summary banner (shown only when AI enrichment succeeds) -->
+            <div id="cloneAISummary" style="display:none;padding:10px 14px;
+                background:#f5f3ff;border-left:3px solid #7c3aed;
+                border-radius:6px;margin-bottom:0.75rem;font-size:0.85rem;">
+            </div>
+ 
+            <!-- Scoring description -->
+            <p class="form-text-muted" style="margin-bottom:1rem;font-size:0.82rem;">
+                Scored across:
+                <strong>Traits (30pts)</strong> +
+                <strong>Age Group (20pts)</strong> +
+                <strong>Course Count (30pts)</strong> +
+                <strong>Stability (20pts)</strong>
+                — re-ranked by AI for best fit
+            </p>
+ 
+            <!-- Results table -->
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Recommended Teacher</th>
+                            <th>AI Score</th>
+                            <th>Courses / Age Match</th>
+                            <th>Upskilled</th>
+                            <th>Escalations (90d)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cloneTeacherTableBody"></tbody>
+                </table>
+            </div>
+ 
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline" data-dismiss="modal">Close</button>
+        </div>
+    </div>
+  </div>
+
+<!-- MODAL FIX -->
+<style>
+.modal-overlay{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;background:rgba(0,0,0,0.5)!important;display:none!important;align-items:center!important;justify-content:center!important;z-index:9999!important;opacity:1!important;visibility:visible!important;transition:none!important;}
+.modal-overlay.active{display:flex!important;}
+.modal{transform:none!important;transition:none!important;}
+</style>
+
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
@@ -1608,4 +1699,3 @@
 
 </body>
 </html>
-  

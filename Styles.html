@@ -1,4 +1,4 @@
-  <style>
+<style>
     :root {
       --primary: #4a3c8a;
       --primary-light: #6b5bae;
@@ -1786,18 +1786,14 @@
       right: 0;
       bottom: 0;
       background-color: rgba(0,0,0,0.5);
-      display: flex;
+      display: none;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
-      opacity: 0;
-      visibility: hidden;
-      transition: var(--transition);
+      z-index: 9999;
     }
 
     .modal-overlay.active {
-      opacity: 1;
-      visibility: visible;
+      display: flex;
     }
 
     .modal {
@@ -1808,8 +1804,6 @@
       max-height: 90vh;
       overflow-y: auto;
       box-shadow: var(--shadow-lg);
-      transform: translateY(20px);
-      transition: var(--transition);
     }
 
     .modal-overlay.active .modal {
@@ -1969,6 +1963,16 @@ body.dark-mode .app-footer {
     font-size: 12px;
     color: #7c98b6;
     margin-top: 2px;
+}
+
+.teacher-filter-select {
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--gray);
+    background: var(--light);
+    color: var(--text);
+    margin-right: 10px;
+    cursor: pointer;
 }
 
   </style>

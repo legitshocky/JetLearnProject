@@ -1550,171 +1550,120 @@ function getMigrationHistoryStats(jlid) {
 }
 
 function getTeacherAttritionReport(teacherName) {
-  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-  const searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
-  const PORTAL_ID = '7729491';
-
-  const requestBody = {
-    filterGroups: [
-      {
-        filters: [
-          { propertyName: "current_teacher", operator: "CONTAINS_TOKEN", value: teacherName },
-          { propertyName: "learner_status", operator: "IN", values: ["Active Learner", "Friendly Learner", "VIP", "Break & Return"] }
-        ]
-      }
-    ],
+  var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+  var PORTAL_ID = '7729491';
+ 
+  // Resolve to canonical name BEFORE sending to HubSpot
+  var resolvedName = resolveTeacherName(teacherName);
+  Logger.log('[getTeacherAttritionReport] "' + teacherName + '" → "' + resolvedName + '"');
+ 
+  var requestBody = {
+    filterGroups: [{
+      filters: [
+        { propertyName: 'current_teacher', operator: 'CONTAINS_TOKEN', value: resolvedName },
+        { propertyName: 'learner_status',  operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }
+      ]
+    }],
     limit: 100,
     properties: [
-      "dealname", "jetlearner_id", "current_course", "module_start_date",
-      "learner_status", "dealstage", "amount", "subscription_tenure",
-      "deal_currency_code", "payment_type", "installment_type", "subscription"
+      'dealname', 'jetlearner_id', 'current_course', 'module_start_date',
+      'learner_status', 'dealstage', 'amount', 'subscription_tenure',
+      'deal_currency_code', 'payment_type', 'installment_type', 'subscription'
     ]
   };
-
+ 
   try {
-    const response = UrlFetchApp.fetch(searchUrl, {
-      method: 'post',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(requestBody),
+    var response = UrlFetchApp.fetch(searchUrl, {
+      method:             'post',
+      headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload:            JSON.stringify(requestBody),
       muteHttpExceptions: true
     });
-
-    const data = JSON.parse(response.getContentText());
-    if (!data.results) return { success: false, message: "No students found." };
-
-    const auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-
-    const students = data.results.map(deal => {
-      const jlid           = deal.properties.jetlearner_id;
-      const amount         = safeParseHubspotNumber(deal.properties.amount);
-      const tenure         = safeParseHubspotNumber(deal.properties.subscription_tenure);
-      const currency       = deal.properties.deal_currency_code || 'EUR';
-      const planName       = (deal.properties.subscription     || '').toLowerCase();
-      const rawPaymentType = (deal.properties.payment_type     || '').toLowerCase();
-      const rawInstType    = (deal.properties.installment_type || '').toLowerCase();
-
-      // DEBUG: Log raw HubSpot payment field values so we can see exactly what comes back
-      Logger.log(`[AttritionReport] JLID: ${jlid} | name: ${deal.properties.dealname} | payment_type: "${deal.properties.payment_type}" | installment_type: "${deal.properties.installment_type}" | tenure: ${tenure} | amount: ${amount} | currency: ${currency}`);
-
-      // Detect installment: check both payment_type AND installment_type fields
-      // casting wide net to catch all HubSpot variants
-      const isInstallment = rawPaymentType.includes('installment')
-                         || rawPaymentType.includes('emi')
-                         || rawPaymentType.includes('recurring')
-                         || rawInstType.includes('installment')
-                         || rawInstType.includes('emi')
-                         || rawInstType.includes('monthly')
-                         || rawInstType.includes('quarterly');
-      const paymentTag = isInstallment ? 'Installment' : 'Upfront';
-
-      // DEBUG: Log what was decided
-      Logger.log(`[AttritionReport]   → isInstallment: ${isInstallment} | paymentTag: ${paymentTag}`);
-
-      // ── EUR conversion ──────────────────────────────────────────────────
-      // getConversionRate returns LOCAL per 1 EUR (e.g. INR≈90, GBP≈0.85)
-      // So: amountEur = amountLocal / rate
-      // Sanity check: if result is implausibly large (>50,000) the rate is
-      // likely inverted — flip it.
-      const rate = getConversionRate(currency) || 1;
-      let amountEur = (currency === 'EUR') ? amount : amount / rate;
-      if (amountEur > 50000) amountEur = amount * rate; // rate was inverted
+ 
+    var data = JSON.parse(response.getContentText());
+    if (!data.results) return { success: false, message: 'No students found.' };
+ 
+    Logger.log('[getTeacherAttritionReport] Found ' + data.results.length + ' learners for "' + resolvedName + '"');
+ 
+    var auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+ 
+    var students = data.results.map(function(deal) {
+      var jlid           = deal.properties.jetlearner_id;
+      var amount         = safeParseHubspotNumber(deal.properties.amount);
+      var tenure         = safeParseHubspotNumber(deal.properties.subscription_tenure);
+      var currency       = deal.properties.deal_currency_code || 'EUR';
+      var planName       = (deal.properties.subscription     || '').toLowerCase();
+      var rawPaymentType = (deal.properties.payment_type     || '').toLowerCase();
+      var rawInstType    = (deal.properties.installment_type || '').toLowerCase();
+ 
+      Logger.log('[AttritionReport] JLID: ' + jlid + ' | ' + deal.properties.dealname + ' | payment_type: "' + deal.properties.payment_type + '" | tenure: ' + tenure + ' | amount: ' + amount + ' | currency: ' + currency);
+ 
+      var isInstallment = rawPaymentType.includes('installment')
+                       || rawPaymentType.includes('emi')
+                       || rawPaymentType.includes('recurring')
+                       || rawInstType.includes('installment')
+                       || rawInstType.includes('emi')
+                       || rawInstType.includes('monthly')
+                       || rawInstType.includes('quarterly');
+      var paymentTag = isInstallment ? 'Installment' : 'Upfront';
+ 
+      var rate = getConversionRate(currency) || 1;
+      var amountEur = (currency === 'EUR') ? amount : amount / rate;
+      if (amountEur > 50000) amountEur = amount * rate;
       amountEur = Math.round(amountEur);
-
-      // DEBUG: Log EUR conversion
-      Logger.log(`[AttritionReport]   → rate: ${rate} | amountEur: ${amountEur}`);
-
-      // ── DEAL VALUE CLASSIFICATION ───────────────────────────────────────
-      // GCSE (10m product)  → always High Value
-      // INSTALLMENT         → per-month EUR: ≥119 High, ≥61 Mid, <61 Low
-      // UPFRONT by bracket  :
-      //   1m          : per-month (≥119 High, ≥61 Mid)
-      //   3m Quarterly: ≥357 High,  ≥183 Mid   (119×3, 61×3)
-      //   6m Half-Yr  : ≥499 High,  ≥300 Mid
-      //   12m Annual  : ≥899 High,  ≥600 Mid
-      //   24m 2-Year  : ≥1400 High, ≥900 Mid
-      //   36m+ 3-Year+: always High
-      //   Odd tenures : per-month fallback
-      // ───────────────────────────────────────────────────────────────────
-
-      let dealValueLabel = "Low Value";
-      let dealValueColor = "#b91c1c";
-      let dealValueBg    = "#fee2e2";
-
-      const setHigh    = () => { dealValueLabel = "High Value"; dealValueColor = "#15803d"; dealValueBg = "#dcfce7"; };
-      const setMid     = () => { dealValueLabel = "Mid Value";  dealValueColor = "#b45309"; dealValueBg = "#fef3c7"; };
-      const setUnknown = () => { dealValueLabel = "Unknown";    dealValueColor = "#4a5568"; dealValueBg = "#e2e8f0"; };
-
-      const applyTier = (highFloor, midFloor) => {
+ 
+      // Deal value classification
+      var dealValueLabel = 'Low Value', dealValueColor = '#b91c1c', dealValueBg = '#fee2e2';
+      var setHigh    = function() { dealValueLabel = 'High Value'; dealValueColor = '#15803d'; dealValueBg = '#dcfce7'; };
+      var setMid     = function() { dealValueLabel = 'Mid Value';  dealValueColor = '#b45309'; dealValueBg = '#fef3c7'; };
+      var setUnknown = function() { dealValueLabel = 'Unknown';    dealValueColor = '#4a5568'; dealValueBg = '#e2e8f0'; };
+ 
+      var applyTier = function(highFloor, midFloor) {
         if      (amountEur >= highFloor) setHigh();
         else if (amountEur >= midFloor)  setMid();
-        // else stays Low Value
       };
-
-      const applyPerMonthTier = () => {
+      var applyPerMonthTier = function() {
         if (tenure <= 0) { setUnknown(); return; }
-        const pmv = amountEur / tenure;
-        Logger.log(`[AttritionReport]   → per-month EUR: ${pmv.toFixed(2)}`);
+        var pmv = amountEur / tenure;
         if      (pmv >= 119) setHigh();
         else if (pmv >= 61)  setMid();
-        // else stays Low Value
       };
-
-      if (amountEur === 0 || tenure === 0) {
-        setUnknown();
-
-      } else if (planName.includes('gcse')) {
-        // GCSE — always High Value regardless of payment type or amount
-        setHigh();
-
-      } else if (isInstallment) {
-        // Installment — pure per-month EUR value
-        applyPerMonthTier();
-
-      } else {
-        // Upfront — tenure bracket
-        if      (tenure >= 36) { setHigh(); }            // 3-Year+ always High
-        else if (tenure >= 24) { applyTier(1400, 900); } // 2-Year
-        else if (tenure >= 12) { applyTier(899,  600); } // Annual
-        else if (tenure >= 6)  { applyTier(499,  300); } // Half-Yearly
-        else if (tenure >= 3)  { applyTier(357,  183); } // Quarterly
-        else if (tenure === 1) { applyPerMonthTier(); }  // Monthly
-        else                   { applyPerMonthTier(); }  // Odd tenure fallback
-      }
-
-      Logger.log(`[AttritionReport]   → FINAL label: ${dealValueLabel}`);
-
-      // ── Audit log: migration history ────────────────────────────────────
-      let recentMoves  = 0;
-      let lastMoveDate = null;
-      let prevTeacher  = "N/A";
-      let moveReason   = "N/A";
-
+ 
+      if (amountEur === 0 || tenure === 0)      setUnknown();
+      else if (planName.includes('gcse'))        setHigh();
+      else if (isInstallment)                    applyPerMonthTier();
+      else if (tenure >= 36)                     setHigh();
+      else if (tenure >= 24)                     applyTier(1400, 900);
+      else if (tenure >= 12)                     applyTier(899,  600);
+      else if (tenure >= 6)                      applyTier(499,  300);
+      else if (tenure >= 3)                      applyTier(357,  183);
+      else                                       applyPerMonthTier();
+ 
+      // Migration history from audit log
+      var recentMoves = 0, lastMoveDate = null, prevTeacher = 'N/A', moveReason = 'N/A';
       if (auditData && auditData.length > 1) {
-        const now            = new Date();
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(now.getMonth() - 3);
-
-        auditData.forEach(row => {
-          if (String(row[2]) === jlid && String(row[1]).includes("Migration")) {
-            const d = parseSheetDate(row[0]);
+        var now = new Date();
+        var threeMonthsAgo = new Date(); threeMonthsAgo.setMonth(now.getMonth() - 3);
+        auditData.forEach(function(row) {
+          if (String(row[2]) === jlid && String(row[1]).includes('Migration')) {
+            var d = parseSheetDate(row[0]);
             if (d && d > threeMonthsAgo) recentMoves++;
             if (d && (!lastMoveDate || d > lastMoveDate)) {
               lastMoveDate = d;
-              prevTeacher  = row[4]  || "Unknown";
-              moveReason   = row[10] || "Unspecified";
+              prevTeacher  = row[4]  || 'Unknown';
+              moveReason   = row[10] || 'Unspecified';
             }
           }
         });
       }
-
+ 
       return {
-        name:    deal.properties.dealname,
-        jlid:    jlid,
-        course:  getCourseLabel(deal.properties.current_course),
-        status:  deal.properties.learner_status,
-        hubspotLink: `https://app.hubspot.com/contacts/${PORTAL_ID}/deal/${deal.id}`,
-
-        // Value fields
+        name:             deal.properties.dealname,
+        jlid:             jlid,
+        course:           getCourseLabel(deal.properties.current_course),
+        status:           deal.properties.learner_status,
+        hubspotLink:      'https://app.hubspot.com/contacts/' + PORTAL_ID + '/deal/' + deal.id,
         dealValueLabel:   dealValueLabel,
         dealValueColor:   dealValueColor,
         dealValueBg:      dealValueBg,
@@ -1723,19 +1672,191 @@ function getTeacherAttritionReport(teacherName) {
         dealCurrency:     currency,
         dealTenureMonths: tenure,
         paymentTag:       paymentTag,
-
-        recentMoves:  recentMoves,
-        lastMoveDate: lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : "No Record",
-        prevTeacher:  prevTeacher,
-        moveReason:   moveReason
+        recentMoves:      recentMoves,
+        lastMoveDate:     lastMoveDate ? lastMoveDate.toLocaleDateString('en-GB') : 'No Record',
+        prevTeacher:      prevTeacher,
+        moveReason:       moveReason
       };
     });
+ 
+    students.sort(function(a, b) { return b.recentMoves - a.recentMoves; });
+    return { success: true, students: students, teacher: resolvedName };
+ 
+  } catch (e) {
+    Logger.log('Error in getTeacherAttritionReport: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
 
-    students.sort((a, b) => b.recentMoves - a.recentMoves);
-    return { success: true, students: students, teacher: teacherName };
+
+
+function getMigrationHistoryStatsByTeacher(teacherName) {
+  var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+ 
+  var resolvedName = resolveTeacherName(teacherName);
+  Logger.log('[getMigrationHistoryStatsByTeacher] "' + teacherName + '" → "' + resolvedName + '"');
+ 
+  var requestBody = {
+    filterGroups: [{
+      filters: [{ propertyName: 'current_teacher__t_', operator: 'EQ', value: resolvedName }]
+    }],
+    properties: ['hs_pipeline_stage', 'createdate'],
+    limit: 100
+  };
+ 
+  try {
+    var response = UrlFetchApp.fetch(searchUrl, {
+      method:             'post',
+      headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload:            JSON.stringify(requestBody),
+      muteHttpExceptions: true
+    });
+    var data = JSON.parse(response.getContentText());
+    return { total: data.total || 0 };
+  } catch (e) {
+    Logger.log('[getMigrationHistoryStatsByTeacher] Error: ' + e.message);
+    return { total: 0 };
+  }
+}
+
+
+function getActiveLearnersPerTeacher() {
+  Logger.log('[HubSpot] getActiveLearnersPerTeacher started');
+
+  const token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  const searchUrl  = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+  const counts     = {};
+  const activeStatuses = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
+
+  let after  = undefined;
+  let page   = 0;
+  const MAX_PAGES = 20;
+
+  try {
+    do {
+      const body = {
+        filterGroups: [{
+          filters: [{
+            propertyName: 'learner_status',
+            operator:     'IN',
+            values:       activeStatuses
+          }]
+        }],
+        properties: ['current_teacher', 'current_course'],
+        limit: 100
+      };
+      if (after) body.after = after;
+
+      const response = UrlFetchApp.fetch(searchUrl, {
+        method:           'post',
+        headers:          { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload:          JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+
+      const data = JSON.parse(response.getContentText());
+      if (!data.results) break;
+
+      data.results.forEach(function(deal) {
+        const rawTeacher = deal.properties.current_teacher || '';
+        const course     = String(deal.properties.current_course || '').toLowerCase();
+        const teacher    = getTeacherLabel(rawTeacher);
+        if (!teacher) return;
+
+        if (!counts[teacher]) counts[teacher] = { total: 0, coding: 0, math: 0 };
+        counts[teacher].total++;
+        if (course.includes('math')) {
+          counts[teacher].math++;
+        } else {
+          counts[teacher].coding++;
+        }
+      });
+
+      after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+      page++;
+
+    } while (after && page < MAX_PAGES);
+
+    Logger.log('[HubSpot] getActiveLearnersPerTeacher done. Teachers found: ' + Object.keys(counts).length);
+    return counts;
 
   } catch (e) {
-    Logger.log("Error in getTeacherAttritionReport: " + e.message);
-    return { success: false, message: e.message };
+    Logger.log('[HubSpot] getActiveLearnersPerTeacher error: ' + e.message);
+    return {};
+  }
+}
+
+function getEscalatedTeachersLast90Days() {
+  var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+  var MIGRATION_PIPELINE_ID = '66161281';
+ 
+  var ESCALATION_REASONS = [
+    'Teacher Performance Issue',
+    'Escalation On Teacher',
+    'Escalation on Teacher'   // handles case variation in HubSpot
+  ];
+ 
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 90);
+  var cutoffMs = cutoff.getTime().toString();
+ 
+  // Single request — no pagination loop — avoids bandwidth quota error.
+  // limit:200 is HubSpot's maximum per request.
+  var requestBody = {
+    filterGroups: [{
+      filters: [
+        { propertyName: 'hs_pipeline', operator: 'EQ',  value: MIGRATION_PIPELINE_ID },
+        { propertyName: 'createdate',  operator: 'GTE', value: cutoffMs }
+      ]
+    }],
+    properties: ['current_teacher__t_', 'reason_of_migration__t_', 'createdate'],
+    limit: 200,
+    sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
+  };
+ 
+  var escalationMap = {};
+ 
+  try {
+    var response = UrlFetchApp.fetch(searchUrl, {
+      method:             'post',
+      headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload:            JSON.stringify(requestBody),
+      muteHttpExceptions: true
+    });
+ 
+    var data = JSON.parse(response.getContentText());
+ 
+    if (!data.results) {
+      Logger.log('[getEscalatedTeachersLast90Days] No results. Response: ' + response.getContentText().substring(0, 200));
+      return {};
+    }
+ 
+    Logger.log('[getEscalatedTeachersLast90Days] Total tickets returned: ' + data.results.length);
+ 
+    data.results.forEach(function(ticket) {
+      var reason = String(ticket.properties.reason_of_migration__t_ || '').trim();
+ 
+      var isEscalation = ESCALATION_REASONS.some(function(code) {
+        return reason.toLowerCase() === code.toLowerCase();
+      });
+      if (!isEscalation) return;
+ 
+      var rawTeacher    = ticket.properties.current_teacher__t_ || '';
+      var teacherLabel  = getTeacherLabel(rawTeacher);
+      var canonicalName = resolveTeacherName(teacherLabel);
+      if (!canonicalName) return;
+ 
+      escalationMap[canonicalName] = (escalationMap[canonicalName] || 0) + 1;
+      Logger.log('[getEscalatedTeachersLast90Days] +1 for "' + canonicalName + '" — reason: ' + reason);
+    });
+ 
+    Logger.log('[getEscalatedTeachersLast90Days] Final map: ' + JSON.stringify(escalationMap));
+    return escalationMap;
+ 
+  } catch (e) {
+    Logger.log('[getEscalatedTeachersLast90Days] Error: ' + e.message);
+    return {}; // Safe fallback — scoring continues with 0 escalations
   }
 }

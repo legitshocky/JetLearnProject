@@ -90,41 +90,51 @@ function getActiveTeachers() {
 }
 
 function getTeacherDetailsForTable() {
-  Logger.log('getTeacherDetailsForTable called');
+  Logger.log('getTeacherDetailsForTable (V2 - Corrected) called');
 
   try {
-    const teacherData = getTeacherData(); 
-
-    if (teacherData.length === 0) { 
-      Logger.log("Teacher Data sheet is empty or only has headers.");
+    // ── Step 1: Get the definitive list of all teachers from the main data sheet. ─
+    // This is more reliable as it's the source of truth for all personnel.
+    const allTeachersFromDataSheet = getTeacherData(); 
+    if (!allTeachersFromDataSheet || allTeachersFromDataSheet.length === 0) {
+      Logger.log('Main Teacher Data sheet is empty. Cannot build table.');
       return [];
     }
 
-    const teacherCourses = getTeacherCourses(); 
+    // ── Step 2: Fetch true active learner counts for all teachers from HubSpot ─
+    const hubspotCounts = getActiveLearnersPerTeacher();
+    Logger.log('Fetched HubSpot active learner counts.');
 
-    return teacherData.map(teacher => {
-      if (!teacher.name) return null;
-
-      const courses = teacherCourses[teacher.name] || [];
-      const activeCoursesCount = courses.filter(c =>
-        c.status === 'Active' && c.progress !== 'Not Onboarded' && c.progress !== '0%'
-      ).length;
-      const completedCoursesCount = courses.filter(c => c.status === 'Completed').length;
-
+    // ── Step 3: Build the final, enriched result array ────────────────────────
+    const finalTeacherDetails = allTeachersFromDataSheet.map(teacher => {
+      const teacherName = teacher.name;
+      
+      // Get the count from the HubSpot data, with a safe fallback.
+      const hsData = hubspotCounts[teacherName] || { total: 0, coding: 0, math: 0 };
+      
       return {
-        name: teacher.name,
-        email: teacher.email,
-        clsEmail: teacher.clsEmail || 'N/A',
-        status: teacher.status,
-        joinDate: teacher.joinDate ? new Date(teacher.joinDate).toLocaleDateString('en-GB') : 'N/A', 
-        activeCourses: activeCoursesCount,
-        completedCourses: completedCoursesCount,
-        lastActivity: getTeacherLastActivity(teacher.name) 
+        name:          teacherName,
+        email:         teacher.email || 'N/A',
+        clsEmail:      teacher.clsEmail || 'N/A',
+        status:        teacher.status || 'Active',
+        joinDate:      teacher.joinDate ? new Date(teacher.joinDate).toLocaleDateString('en-GB') : 'N/A',
+        
+        // Use the live HubSpot data for learner counts
+        activeCourses: hsData.total,
+        activeCoding:  hsData.coding,
+        activeMath:    hsData.math,
+
+        // Get last activity from the audit log
+        lastActivity:  getTeacherLastActivity(teacherName)
       };
-    }).filter(teacher => teacher !== null); 
+    });
+
+    Logger.log(`Successfully built details for ${finalTeacherDetails.length} teachers.`);
+    return finalTeacherDetails;
+
   } catch (error) {
-    Logger.log('Error getting teacher details for table: ' + error.message);
-    return [];
+    Logger.log('FATAL Error in getTeacherDetailsForTable: ' + error.message);
+    return []; // Return an empty array on failure to prevent frontend crashes.
   }
 }
 
@@ -810,5 +820,481 @@ function findClsEmailByManagerName(managerName) {
   } catch (error) {
     Logger.log(`[ERROR] findClsEmailByManagerName failed for managerName "${managerName}": ${error.message}`);
     return null;
+  }
+}
+
+function findSimilarTeachers(targetTeacherName) {
+  try {
+    // ── 1. Resolve canonical name ─────────────────────────────────────────
+    var resolvedTarget = resolveTeacherName(targetTeacherName);
+    Logger.log('[findSimilarTeachers] Input: "' + targetTeacherName + '" → resolved: "' + resolvedTarget + '"');
+
+    // ── 2. Load Persona Mapping sheet ─────────────────────────────────────
+    var personaData = _getCachedSheetData('Teacher Persona Mapping');
+    if (!personaData || personaData.length < 2) {
+      return { success: false, message: 'Persona Mapping sheet not found. Please ensure "Teacher Persona Mapping" sheet exists.' };
+    }
+
+    var headers = personaData[0].map(function(h) { return String(h).trim(); });
+    Logger.log('[findSimilarTeachers] Persona sheet headers: ' + headers.join(' | '));
+
+    var nameIdx = headers.indexOf('Teacher Name');
+    if (nameIdx === -1) return { success: false, message: 'Teacher Name column not found in Persona sheet.' };
+
+    var ageGroupIdx = headers.indexOf('Preferred Age Group');
+    if (ageGroupIdx === -1) ageGroupIdx = headers.indexOf('Age Group');
+
+    // ✅ FIX 1 (Bug 3): Broadened regex so columns like "Teaching Style",
+    //    "Personality Trait", "Subject Expertise", "Key Skill" etc. are all detected.
+    //    Also logs which columns were found so you can verify in the Apps Script log.
+    var traitCols = headers.reduce(function(acc, h, i) {
+      if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) acc.push(i);
+      return acc;
+    }, []);
+    Logger.log('[findSimilarTeachers] Detected trait columns: '
+      + (traitCols.length > 0 ? traitCols.map(function(i) { return headers[i]; }).join(', ') : 'NONE — check column names!'));
+
+    // ── 3. Find target row ────────────────────────────────────────────────
+    var targetRow = null;
+    for (var i = 1; i < personaData.length; i++) {
+      if (normalizeTeacherName(String(personaData[i][nameIdx])) === normalizeTeacherName(resolvedTarget)) {
+        targetRow = personaData[i];
+        break;
+      }
+    }
+
+    // ✅ FIX 2 (Bug 1): If the teacher is missing from the Persona sheet,
+    //    fall back to a scoreless-but-valid result set using all other teachers
+    //    instead of returning success:false (which silently shows nothing).
+    if (!targetRow) {
+      Logger.log('[findSimilarTeachers] WARNING: "' + resolvedTarget + '" not found in Persona Mapping sheet. Running fallback scoring.');
+
+      // Build fallback list from Teacher Courses sheet only (upskill + escalation scoring)
+      var upskillCountMapFallback = {};
+      var tcSheetFallback = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+      if (tcSheetFallback && tcSheetFallback.length > 1) {
+        var COURSE_START_FB = 4;
+        tcSheetFallback.slice(1).forEach(function(row) {
+          var rn = String(row[0] || '').trim();
+          if (!rn || rn.toLowerCase() === 'teacher') return;
+          var cn = resolveTeacherName(rn);
+          var cnt = 0;
+          for (var j = COURSE_START_FB; j < row.length; j++) {
+            var v = String(row[j] || '').trim().toLowerCase();
+            if (v && v !== 'not onboarded') cnt++;
+          }
+          upskillCountMapFallback[cn] = cnt;
+        });
+      }
+
+      var escalationMapFallback = getEscalatedTeachersLast90Days();
+
+      var fallbackResults = personaData.slice(1).map(function(r) {
+        var rn   = String(r[nameIdx] || '').trim();
+        var name = resolveTeacherName(rn);
+        var esc  = escalationMapFallback[name] || escalationMapFallback[rn] || 0;
+        var usk  = upskillCountMapFallback[name] || upskillCountMapFallback[rn] || 0;
+        var escalationScore = Math.max(0, 20 - (esc * 4));
+        var courseScore     = usk > 0 ? 15 : 0;
+        var totalScore      = courseScore + escalationScore;
+
+        var escalationRisk, escalationColor;
+        if      (esc === 0) { escalationRisk = 'No Escalations';              escalationColor = '#15803d'; }
+        else if (esc <= 2)  { escalationRisk = esc + ' Tickets (Low)';        escalationColor = '#d97706'; }
+        else if (esc <= 4)  { escalationRisk = esc + ' Tickets (Medium)';     escalationColor = '#d97706'; }
+        else                { escalationRisk = esc + ' Tickets (High Risk)';  escalationColor = '#b91c1c'; }
+
+        return {
+          name:            name,
+          matchScore:      totalScore,
+          traitScore:      0,
+          ageScore:        0,
+          courseScore:     courseScore,
+          escalationScore: escalationScore,
+          loadScore:       0,
+          courseOverlap:   usk + ' courses upskilled',
+          overlapCount:    usk,
+          activeLearners:  usk,
+          upskillCount:    usk,
+          upskillDiff:     usk,
+          ageGroupMatch:   'N/A',
+          escalations:     esc,
+          escalationRisk:  escalationRisk,
+          escalationColor: escalationColor,
+          stability: { total: esc, risk: esc >= 5 ? 'High' : esc >= 3 ? 'Medium' : 'Stable' }
+        };
+      }).filter(function(r) { return normalizeTeacherName(r.name) !== normalizeTeacherName(resolvedTarget); })
+        .sort(function(a, b) { return b.matchScore - a.matchScore; })
+        .slice(0, 8);
+
+      return {
+        success:       true,
+        data:          fallbackResults,
+        aiSummary:     '⚠ "' + resolvedTarget + '" has no Persona Mapping entry — showing partial results based on course load & escalation history only. Add this teacher to the Persona Mapping sheet for full AI-scored replacements.',
+        aiEnriched:    false,
+        targetContext: {
+          name:           resolvedTarget,
+          courses:        ['No persona data'],
+          activeLearners: 0,
+          upskillCount:   0,
+          ageGroups:      [],
+          escalations:    getEscalatedTeachersLast90Days()[resolvedTarget] || 0
+        }
+      };
+    }
+
+    var targetTraits = traitCols.reduce(function(acc, i) {
+      String(targetRow[i] || '').split(/[,\n]/).forEach(function(t) {
+        var clean = t.trim().toLowerCase();
+        if (clean) acc.push(clean);
+      });
+      return acc;
+    }, []);
+
+    var targetAgeGroups = [];
+    if (ageGroupIdx > -1) {
+      String(targetRow[ageGroupIdx] || '').split(',').forEach(function(a) {
+        var clean = a.trim().toLowerCase();
+        if (clean) targetAgeGroups.push(clean);
+      });
+    }
+
+    Logger.log('[findSimilarTeachers] Target traits: ' + (targetTraits.length ? targetTraits.join(', ') : 'NONE'));
+    Logger.log('[findSimilarTeachers] Target age groups: ' + (targetAgeGroups.length ? targetAgeGroups.join(', ') : 'NONE'));
+
+    // ── 4. Build upskill count map ────────────────────────────────────────
+    var upskillCountMap = {};
+    var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    if (tcSheet && tcSheet.length > 1) {
+      var COURSE_START = 4;
+      tcSheet.slice(1).forEach(function(row) {
+        var rawName = String(row[0] || '').trim();
+        if (!rawName || rawName.toLowerCase() === 'teacher') return;
+        var canonName = resolveTeacherName(rawName);
+        var count = 0;
+        for (var i = COURSE_START; i < row.length; i++) {
+          var val = String(row[i] || '').trim().toLowerCase();
+          if (val && val !== 'not onboarded') count++;
+        }
+        upskillCountMap[canonName] = count;
+      });
+    }
+
+    var targetUpskillCount = upskillCountMap[resolvedTarget] || 0;
+    Logger.log('[findSimilarTeachers] Target upskill count: ' + targetUpskillCount);
+
+    // ── 5. Get HubSpot escalations (last 90 days) ─────────────────────────
+    var escalationMap = getEscalatedTeachersLast90Days();
+    Logger.log('[findSimilarTeachers] Escalation map loaded: ' + JSON.stringify(escalationMap));
+
+    // ── 6. Score all candidates ───────────────────────────────────────────
+    var candidates = personaData.slice(1).filter(function(r) {
+      var rawName = String(r[nameIdx] || '').trim();
+      return rawName && normalizeTeacherName(rawName) !== normalizeTeacherName(resolvedTarget);
+    });
+
+    Logger.log('[findSimilarTeachers] Scoring ' + candidates.length + ' candidates');
+
+    var results = candidates.map(function(r) {
+      var rawName = String(r[nameIdx]).trim();
+      var name    = resolveTeacherName(rawName);
+
+      var candidateTraits = traitCols.reduce(function(acc, i) {
+        String(r[i] || '').split(/[,\n]/).forEach(function(t) {
+          var clean = t.trim().toLowerCase();
+          if (clean) acc.push(clean);
+        });
+        return acc;
+      }, []);
+
+      var candidateAgeGroups = [];
+      if (ageGroupIdx > -1) {
+        String(r[ageGroupIdx] || '').split(',').forEach(function(a) {
+          var clean = a.trim().toLowerCase();
+          if (clean) candidateAgeGroups.push(clean);
+        });
+      }
+
+      var escalations  = escalationMap[name] || escalationMap[rawName] || 0;
+      var upskillCount = upskillCountMap[name] || upskillCountMap[rawName] || 0;
+
+      // Scoring: Traits 30 + Age Group 20 + Upskill Count 30 + Stability 20
+      var traitScore = 0;
+      if (targetTraits.length > 0) {
+        var matched = candidateTraits.filter(function(t) { return targetTraits.indexOf(t) > -1; }).length;
+        traitScore  = Math.round((matched / targetTraits.length) * 30);
+      } else {
+        // ✅ FIX 3 (Bug 3 continued): If no trait columns were detected at all,
+        //    award a neutral partial score (10/30) to all candidates so they
+        //    aren't all penalised to 0 and still get meaningful ranking.
+        traitScore = 10;
+      }
+
+      var ageScore = 0;
+      if (targetAgeGroups.length > 0) {
+        var ageOverlap = candidateAgeGroups.filter(function(a) { return targetAgeGroups.indexOf(a) > -1; }).length;
+        ageScore       = Math.round((ageOverlap / targetAgeGroups.length) * 20);
+      } else {
+        // ✅ FIX: If no age group data exists, award a neutral partial score (10/20)
+        ageScore = 10;
+      }
+
+      var courseScore = 0;
+      if (targetUpskillCount > 0) {
+        var diff = Math.abs(targetUpskillCount - upskillCount);
+        courseScore = Math.max(0, 30 - Math.floor(diff / 5) * 5);
+      } else if (upskillCount > 0) {
+        courseScore = 15;
+      }
+
+      var escalationScore = Math.max(0, 20 - (escalations * 4));
+      var totalScore      = traitScore + ageScore + courseScore + escalationScore;
+
+      var escalationRisk, escalationColor;
+      if      (escalations === 0) { escalationRisk = 'No Escalations';              escalationColor = '#15803d'; }
+      else if (escalations <= 2)  { escalationRisk = escalations + ' Tickets (Low)';        escalationColor = '#d97706'; }
+      else if (escalations <= 4)  { escalationRisk = escalations + ' Tickets (Medium)';     escalationColor = '#d97706'; }
+      else                        { escalationRisk = escalations + ' Tickets (High Risk)';  escalationColor = '#b91c1c'; }
+
+      var upskillDiff  = Math.abs(targetUpskillCount - upskillCount);
+      var courseOverlap = upskillCount + ' courses upskilled'
+        + (upskillDiff === 0 ? ' (exact match)' : ' (diff: ' + upskillDiff + ')');
+
+      var ageGroupMatch = (candidateAgeGroups.length && targetAgeGroups.length)
+        ? (candidateAgeGroups.filter(function(a) { return targetAgeGroups.indexOf(a) > -1; }).join(', ') || 'No overlap')
+        : 'N/A';
+
+      return {
+        name:            name,
+        matchScore:      totalScore,
+        traitScore:      traitScore,
+        ageScore:        ageScore,
+        courseScore:     courseScore,
+        escalationScore: escalationScore,
+        loadScore:       0,
+        courseOverlap:   courseOverlap,
+        overlapCount:    upskillCount,
+        activeLearners:  upskillCount,
+        upskillCount:    upskillCount,
+        upskillDiff:     upskillDiff,
+        ageGroupMatch:   ageGroupMatch,
+        escalations:     escalations,
+        escalationRisk:  escalationRisk,
+        escalationColor: escalationColor,
+        stability: {
+          total: escalations,
+          risk:  escalations >= 5 ? 'High' : escalations >= 3 ? 'Medium' : 'Stable'
+        }
+      };
+    });
+
+    // Sort by score, take top 10 to send to AI (gives AI enough options)
+    var top10 = results
+      .sort(function(a, b) { return b.matchScore - a.matchScore; })
+      .slice(0, 10);
+
+    var targetContext = {
+      name:           resolvedTarget,
+      courses:        [targetUpskillCount + ' courses upskilled'],
+      activeLearners: targetUpskillCount,
+      upskillCount:   targetUpskillCount,
+      ageGroups:      targetAgeGroups,
+      escalations:    escalationMap[resolvedTarget] || 0
+    };
+
+    // ── 7. AI re-ranking — returns top 5 with reasoning ──────────────────
+    Logger.log('[findSimilarTeachers] Sending top 10 to AI for ranking...');
+    var aiResult = rankReplacementTeachersWithAI(resolvedTarget, top10, targetContext);
+
+    if (aiResult.success) {
+      Logger.log('[findSimilarTeachers] AI ranking successful. Returning AI top 5.');
+      return {
+        success:       true,
+        data:          aiResult.data,
+        aiSummary:     aiResult.aiSummary,
+        aiEnriched:    true,
+        targetContext: targetContext
+      };
+    }
+
+    // ── 8. Fallback — return algorithmic top 8 if AI fails ───────────────
+    Logger.log('[findSimilarTeachers] AI ranking failed (' + aiResult.message + '). Falling back to algorithmic top 8.');
+    return {
+      success:       true,
+      data:          top10.slice(0, 8),
+      aiSummary:     '',
+      aiEnriched:    false,
+      targetContext: targetContext
+    };
+
+  } catch (e) {
+    Logger.log('[findSimilarTeachers] Error: ' + e.message + '\nStack: ' + e.stack);
+    return { success: false, message: e.message };
+  }
+}
+
+
+
+function normalizeTeacherName(name) {
+  return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+ 
+// ── Alias map wrapped in a function (required for Google Apps Script) ──
+//  Google Apps Script does NOT allow top-level const/let objects that
+//  reference nothing — they throw "not defined" at runtime.
+//  Wrapping in a function fixes this completely.
+function getTeacherNameAliases() {
+  return {
+    'aditi chuhan'  : 'Aditi Chauhan',
+    'aditi chauhan' : 'Aditi Chauhan',
+    'aditi chauahn' : 'Aditi Chauhan',
+    'aditi chahuan' : 'Aditi Chauhan'
+    // Add more misspellings here as you find them:
+    // 'wrong name' : 'Correct Name',
+  };
+}
+
+ 
+function resolveTeacherName(name) {
+  const aliases = getTeacherNameAliases();
+  const key = normalizeTeacherName(name);
+  return aliases[key] || String(name || '').trim();
+}
+ 
+function namesMatch(a, b) {
+  // Exact normalized match first
+  if (normalizeTeacherName(a) === normalizeTeacherName(b)) return true;
+  // Fuzzy: remove spaces entirely and compare (catches "chuhan" vs "chauhan" won't help,
+  // but at minimum catches casing + spacing issues)
+  return false;
+}
+
+function getTeacherProfileData(teacherName) {
+  try {
+    Logger.log('[getTeacherProfileData] Called for: ' + teacherName);
+
+    // ── 1. Basic info from Teacher Data sheet ─────────────────────────────
+    var allTeachers = getTeacherData();
+    var teacherInfo = null;
+    var nameLower = normalizeTeacherName(teacherName);
+    for (var i = 0; i < allTeachers.length; i++) {
+      if (normalizeTeacherName(allTeachers[i].name) === nameLower) {
+        teacherInfo = allTeachers[i];
+        break;
+      }
+    }
+
+    // ── 2. Course data from Teacher Courses sheet ─────────────────────────
+    var loadData = getTeacherSpecificLoad(teacherName);
+    var courses = (loadData && loadData.success) ? loadData.courses : [];
+
+    // ── 3. Exact course name → category mapping ───────────────────────────
+    var CODING_BEGINNER = [
+      'Introduction to Coding (code.org)',
+      'Introduction to Coding II (code.org)',
+      'Animation with Scratch Jr',
+      'Science Adventures with Sprite Lab',
+      'Tynker Animation Lab',
+      'Minecraft with Tynker',
+      'Building blocks of AI (TM)',
+      'Game Dev and AI with Scratch',
+      'Advanced Scratch',
+      'Advanced Sprite Lab',
+      'Summer Jam for Foundation',
+      'Summer Jam for Pro',
+      'Summer Jam for Advanced'
+    ];
+
+    var ROBOTICS_AI = [
+      'Robotics with Microbit (Jr)',
+      'Programming with Robotics (Microbit)',
+      'Advanced Microbit',
+      'AI with Pictoblox',
+      'Immersive AR and VR Modeling (CoSpaces)',
+      'App It Up',
+      'Advanced Robotics using Makey Makey',
+      'Machine Learning Wizkids',
+      'ARDUINO'
+    ];
+
+    var MINECRAFT_ROBLOX = [
+      'Minecraft Edu',
+      'Advanced Minecraft with AI and Python',
+      'Design with Roblox',
+      'Design Pro with Roblox',
+      'Design Code and create with Roblox',
+      'Unity'
+    ];
+
+    var WEB_JS = [
+      'Web 3.0',
+      'Website Wizardry',
+      'Immersive VR Experiences with Javascript',
+      'Crack JavaScript Gaming',
+      'Advanced Website Engineering'
+    ];
+
+    var PYTHON = [
+      'Python EduBlocks',
+      'Fundamentals of Python with AI',
+      'Python 2.0: Beyond the Basics',
+      'Python Game Developer',
+      'Pro Game Developer in Python',
+      'Build GUI with Python',
+      'Open CV with Python',
+      'Data Structures and Algorithm using Python',
+      'Data Science with Python',
+      'Machine Learning and Artificial Intelligence with Python',
+      'Deep Learning with Python',
+      'SQL',
+      'GCSE Premium CS Pro',
+      'PCEP Certification Prep'
+    ];
+
+    var MATHS = [
+      'Maths Year 1','Maths Year 2','Maths Year 3','Maths Year 4',
+      'Maths Year 5','Maths Year 6','Maths Year 7','Maths Year 8',
+      'Maths UK Revision Yr 2','Maths UK Revision Yr 3','Maths UK Revision Yr 4',
+      'Maths UK Revision Yr 5','Maths UK Revision Yr 6',
+      'Maths UK Year 1','Maths UK Year 2','Maths UK Year 3','Maths UK Year 4',
+      'Maths UK Year 5','Maths UK Year 6'
+    ];
+
+    var coursesByCategory = {};
+
+    courses.forEach(function(c) {
+      var entry = { name: c.course, progress: c.proficiency };
+      var cat;
+      if (CODING_BEGINNER.indexOf(c.course) > -1)   cat = '🎮 Coding & Game Dev';
+      else if (ROBOTICS_AI.indexOf(c.course) > -1)  cat = '🤖 Robotics & AI';
+      else if (MINECRAFT_ROBLOX.indexOf(c.course) > -1) cat = '🌍 Minecraft, Roblox & Unity';
+      else if (WEB_JS.indexOf(c.course) > -1)       cat = '🌐 Web & JavaScript';
+      else if (PYTHON.indexOf(c.course) > -1)        cat = '🐍 Python & Data Science';
+      else if (MATHS.indexOf(c.course) > -1)         cat = '📐 Maths';
+      else                                            cat = '📚 Other';
+
+      if (!coursesByCategory[cat]) coursesByCategory[cat] = [];
+      coursesByCategory[cat].push(entry);
+    });
+
+    return {
+      success: true,
+      profile: {
+        name:              teacherName,
+        email:             teacherInfo ? (teacherInfo.email   || 'N/A') : 'N/A',
+        status:            teacherInfo ? (teacherInfo.status  || 'N/A') : (loadData && loadData.status ? loadData.status : 'N/A'),
+        manager:           teacherInfo ? (teacherInfo.manager || 'N/A') : 'N/A',
+        clsManager:        teacherInfo ? (teacherInfo.clsManagerResponsible || 'N/A') : 'N/A',
+        joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : 'N/A',
+        totalCourses:      courses.length,
+        lastActivity:      loadData ? (loadData.lastActivity || 'N/A') : 'N/A',
+        coursesByCategory: coursesByCategory
+      }
+    };
+
+  } catch (e) {
+    Logger.log('[getTeacherProfileData] Error: ' + e.message);
+    return { success: false, message: e.message };
   }
 }

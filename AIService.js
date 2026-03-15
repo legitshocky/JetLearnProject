@@ -843,3 +843,190 @@ function unsnoozeSuggestion(suggestionId) {
     return { success: false, message: e.message };
   }
 }
+
+function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetContext) {
+  try {
+    Logger.log('[rankReplacementTeachersWithAI] Starting AI ranking for: ' + targetTeacherName);
+
+    var apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
+    if (!apiKey) {
+      Logger.log('[rankReplacementTeachersWithAI] No Gemini API key — skipping AI ranking.');
+      return { success: false, message: 'No Gemini API key set.' };
+    }
+
+    // Compact candidate summaries — only what AI needs, nothing extra
+    var candidateSummaries = candidates.map(function(c, idx) {
+      return {
+        rank:           idx + 1,
+        name:           c.name,
+        score:          c.matchScore,
+        upskillCount:   c.upskillCount    || c.activeLearners || 0,
+        upskillDiff:    c.upskillDiff     || 0,
+        ageGroupMatch:  c.ageGroupMatch   || 'None',
+        escalations:    c.escalations     || 0,
+        escalationRisk: c.escalationRisk  || 'Clean'
+      };
+    });
+
+    var targetUpskillCount = targetContext.upskillCount  || 0;
+    var targetAgeGroups    = (targetContext.ageGroups    || []).join(', ') || 'N/A';
+    var targetEscalations  = targetContext.escalations   || 0;
+    var prompt =
+      'You are a Teacher Ops Manager at JetLearn (kids coding platform).' +
+      ' Pick the TOP 5 replacements for "' + targetTeacherName + '".' +
+      '\n\nTARGET: ' + targetUpskillCount + ' courses, age groups: ' + targetAgeGroups + ', escalations: ' + targetEscalations +
+      '\n\nCANDIDATES:\n' + JSON.stringify(candidateSummaries) +
+      '\n\nPRIORITY ORDER: 1=stability(no escalations) 2=age group match 3=upskill count closeness 4=score' +
+      '\n\nReturn ONLY this JSON (keep all string values under 20 words, no markdown):' +
+      '\n{"summary":"<one short sentence>",' +
+      '"recommendations":[' +
+      '{"rank":1,"name":"<n>","matchScore":<num>,"confidence":"High|Medium|Low",' +
+      '"reason":"<max 15 words citing one number>",' +
+      '"warning":"<empty string or max 10 words>",' +
+      '"caveat":"<max 12 words>"}' +
+      ']}';
+
+    var selectedModel = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
+    var url = GEMINI_BASE_URL + selectedModel + ':generateContent?key=' + apiKey;
+
+    var payload = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature:     0.1,
+        maxOutputTokens: 800
+      }
+    };
+
+    var response = UrlFetchApp.fetch(url, {
+      method:             'post',
+      headers:            { 'Content-Type': 'application/json' },
+      payload:            JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var raw  = response.getContentText();
+    var json = JSON.parse(raw);
+
+    if (json.error) {
+      Logger.log('[rankReplacementTeachersWithAI] Gemini error: ' + json.error.message);
+      return { success: false, message: json.error.message };
+    }
+
+    if (!json.candidates || !json.candidates[0]) {
+      Logger.log('[rankReplacementTeachersWithAI] No candidates in response.');
+      return { success: false, message: 'No response from Gemini.' };
+    }
+
+    var replyText = json.candidates[0].content.parts[0].text;
+    Logger.log('[rankReplacementTeachersWithAI] Response length: ' + replyText.length + ' chars');
+    Logger.log('[rankReplacementTeachersWithAI] Raw (first 400): ' + replyText.substring(0, 400));
+
+    // ── Parse with multiple fallback strategies ───────────────────────────
+    var parsed = null;
+
+    // Strategy 1: standard sanitiser (strips markdown fences)
+    try {
+      var cleanedJson = _sanitiseJsonResponse(replyText);
+      parsed = JSON.parse(cleanedJson);
+      Logger.log('[rankReplacementTeachersWithAI] Strategy 1 (sanitiser) succeeded.');
+    } catch (e1) {
+      Logger.log('[rankReplacementTeachersWithAI] Strategy 1 failed: ' + e1.message);
+    }
+
+    // Strategy 2: find first { and last } in raw text and try parsing that slice
+    if (!parsed) {
+      try {
+        var first = replyText.indexOf('{');
+        var last  = replyText.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+          parsed = JSON.parse(replyText.substring(first, last + 1));
+          Logger.log('[rankReplacementTeachersWithAI] Strategy 2 (slice) succeeded.');
+        }
+      } catch (e2) {
+        Logger.log('[rankReplacementTeachersWithAI] Strategy 2 failed: ' + e2.message);
+      }
+    }
+
+    // Strategy 3: if response was truncated mid-array, try to recover
+    // partial recommendations by extracting complete {...} objects from the array
+    if (!parsed) {
+      try {
+        var summaryMatch = replyText.match(/"summary"\s*:\s*"([^"]+)"/);
+        var summary = summaryMatch ? summaryMatch[1] : 'AI analysis partially available.';
+
+        var recMatches = replyText.match(/\{[^{}]*"rank"\s*:\s*\d+[^{}]*\}/g);
+        var partialRecs = [];
+        if (recMatches) {
+          recMatches.forEach(function(m) {
+            try {
+              var obj = JSON.parse(m);
+              if (obj.name && obj.rank) partialRecs.push(obj);
+            } catch (ignored) {}
+          });
+        }
+
+        if (partialRecs.length > 0) {
+          parsed = { summary: summary, recommendations: partialRecs };
+          Logger.log('[rankReplacementTeachersWithAI] Strategy 3 (partial recovery) got ' + partialRecs.length + ' recs.');
+        }
+      } catch (e3) {
+        Logger.log('[rankReplacementTeachersWithAI] Strategy 3 failed: ' + e3.message);
+      }
+    }
+
+    if (!parsed || !parsed.recommendations || !Array.isArray(parsed.recommendations) || parsed.recommendations.length === 0) {
+      Logger.log('[rankReplacementTeachersWithAI] All parse strategies failed — falling back.');
+      return { success: false, message: 'Could not parse AI response after 3 attempts.' };
+    }
+
+    Logger.log('[rankReplacementTeachersWithAI] Parsed ' + parsed.recommendations.length + ' AI recommendations.');
+
+    // Merge AI reasoning back onto original candidate objects
+    var enriched = parsed.recommendations.map(function(aiRec) {
+      var original = null;
+      for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i].name.toLowerCase() === String(aiRec.name || '').toLowerCase()) {
+          original = candidates[i];
+          break;
+        }
+      }
+      original = original || {};
+
+      return {
+        name:            aiRec.name        || original.name || 'Unknown',
+        matchScore:      aiRec.matchScore  || original.matchScore      || 0,
+        traitScore:      original.traitScore   || 0,
+        ageScore:        original.ageScore     || 0,
+        courseScore:     original.courseScore  || 0,
+        escalationScore: original.escalationScore || 0,
+        loadScore:       0,
+        courseOverlap:   original.courseOverlap || 'N/A',
+        overlapCount:    original.overlapCount  || 0,
+        activeLearners:  original.activeLearners || 0,
+        upskillCount:    original.upskillCount  || 0,
+        upskillDiff:     original.upskillDiff   || 0,
+        ageGroupMatch:   original.ageGroupMatch || 'N/A',
+        escalations:     original.escalations   || 0,
+        escalationRisk:  original.escalationRisk  || 'No Escalations',
+        escalationColor: original.escalationColor || '#15803d',
+        stability:       original.stability || { total: 0, risk: 'Stable' },
+        aiRank:       aiRec.rank       || (parsed.recommendations.indexOf(aiRec) + 1),
+        aiConfidence: aiRec.confidence || 'Medium',
+        aiReason:     aiRec.reason     || '',
+        aiWarning:    aiRec.warning    || '',
+        aiCaveat:     aiRec.caveat     || '',
+        aiEnriched:   true
+      };
+    }).slice(0, 5); // ✅ FIXED: guarantee max 5 results
+
+    return {
+      success:   true,
+      data:      enriched,
+      aiSummary: parsed.summary || ''
+    };
+
+  } catch (e) {
+    Logger.log('[rankReplacementTeachersWithAI] Unexpected error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
