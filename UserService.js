@@ -562,12 +562,11 @@ function sendWelcomeEmail(toEmail, username, tempPassword) {
     </div>
     `;
 
-    MailApp.sendEmail({
+    sendTrackedEmail({
       to: toEmail,
       subject: subject,
       htmlBody: htmlBody,
-      name: CONFIG.EMAIL.FROM_NAME,
-      replyTo: CONFIG.EMAIL.FROM
+      jlid: ''
     });
 
     Logger.log(`Welcome email sent to ${toEmail}`);
