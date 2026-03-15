@@ -47,14 +47,33 @@ const CONFIG = {
 };
 
 const ROLES = {
+  SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   USER: 'User',
   GUEST: 'Guest'
 };
 
 const PERMISSIONS = {
-  [ROLES.ADMIN]: ['view_dashboard', 'send_emails', 'view_audit', 'manage_users', 'view_reports', 'use_persona_tool', 'manage_settings', 'send_generic_emails', 'manage_invoices', 'run_audit_center', 'manage_agentic_audit', 'use_ai_pm'],
-  [ROLES.USER]: ['view_dashboard', 'send_emails', 'view_audit', 'use_persona_tool', 'view_reports', 'send_generic_emails', 'manage_invoices', 'run_audit_center'], 
+  [ROLES.SUPER_ADMIN]: [
+    'view_dashboard', 'send_emails', 'view_audit', 'manage_users',
+    'view_reports', 'use_persona_tool', 'manage_settings',
+    'send_generic_emails', 'manage_invoices', 'run_audit_center',
+    'manage_agentic_audit', 'use_ai_pm',
+    'create_users',        // NEW
+    'send_welcome_email',  // NEW
+    'send_reset_email', // NEW
+  ],
+  [ROLES.ADMIN]: [
+    'view_dashboard', 'send_emails', 'view_audit',
+    'use_persona_tool', 'view_reports', 'send_generic_emails',
+    'manage_invoices', 'run_audit_center', 'manage_settings', 'use_ai_pm'
+    // NOTE: No manage_users, no create_users
+  ],
+  [ROLES.USER]: [
+    'view_dashboard', 'send_emails', 'view_audit',
+    'use_persona_tool', 'view_reports', 'send_generic_emails',
+    'manage_invoices', 'run_audit_center', 'use_ai_pm'
+  ],
   [ROLES.GUEST]: ['view_dashboard']
 };
 
@@ -341,8 +360,25 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "292"; 
+const APP_VERSION = "308"; 
 
 function getAppVersion() {
   return APP_VERSION;
+}
+
+function setupCheckRepliesTrigger() {
+  // Delete existing triggers first to avoid duplicates
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'checkReplies') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Run every 2 hours
+  ScriptApp.newTrigger('checkReplies')
+    .timeBased()
+    .everyHours(2)
+    .create();
+
+  Logger.log('checkReplies trigger set up successfully — runs every 2 hours.');
 }

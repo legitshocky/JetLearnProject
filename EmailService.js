@@ -461,51 +461,79 @@ function logEmail(logData) {
 }
 
 function checkReplies() {
-  Logger.log("Starting reply check job...");
+  Logger.log('Starting reply check job...');
   try {
     const sheet = getOrCreateSheet(CONFIG.SHEETS.EMAIL_LOGS);
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
+    if (data.length < 2) return;
 
-    const statusCol = headers.indexOf('Status');
-    const recipientCol = headers.indexOf('Recipient');
-    const subjectCol = headers.indexOf('Subject');
-    const sentAtCol = headers.indexOf('Sent At');
-    const repliedAtCol = headers.indexOf('Replied At');
+    const headers = data[0];
+    const statusCol      = headers.indexOf('Status');
+    const recipientCol   = headers.indexOf('Recipient');
+    const subjectCol     = headers.indexOf('Subject');
+    const sentAtCol      = headers.indexOf('Sent At');
+    const timestampCol   = headers.indexOf('Timestamp');   // fallback
+    const repliedAtCol   = headers.indexOf('Replied At');
     const replyContentCol = headers.indexOf('Reply Content');
 
-    for (let i = data.length - 1; i > 0; i--) {
+    // Only check last 100 rows to avoid timeout
+    const startRow = Math.max(1, data.length - 100);
+
+    for (let i = data.length - 1; i >= startRow; i--) {
       const row = data[i];
-      const currentStatus = row[statusCol];
+      const currentStatus = String(row[statusCol] || '');
 
-      if (currentStatus === 'Sent' || currentStatus === 'Opened') {
-        const recipient = row[recipientCol];
-        const subject = row[subjectCol];
-        const sentAt = new Date(row[sentAtCol]);
-        if (!recipient || !subject || isNaN(sentAt.getTime())) continue;
+      if (currentStatus !== 'Sent' && currentStatus !== 'Opened') continue;
 
-        const searchQuery = `subject:("${subject}") from:(${recipient}) after:${Utilities.formatDate(sentAt, Session.getScriptTimeZone(), "yyyy/MM/dd")}`;
+      const recipient = String(row[recipientCol] || '').trim();
+      const subject   = String(row[subjectCol]   || '').trim();
+
+      // Try 'Sent At' first, fall back to 'Timestamp'
+      let sentAt = new Date(row[sentAtCol]);
+      if (isNaN(sentAt.getTime())) sentAt = new Date(row[timestampCol]);
+      if (isNaN(sentAt.getTime())) continue;
+
+      if (!recipient || !subject) continue;
+
+      // Only check emails sent in the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      if (sentAt < thirtyDaysAgo) continue;
+
+      try {
+        const dateStr = Utilities.formatDate(sentAt, Session.getScriptTimeZone(), 'yyyy/MM/dd');
+        const searchQuery = `subject:("${subject}") from:(${recipient}) after:${dateStr}`;
         const threads = GmailApp.search(searchQuery, 0, 1);
 
         if (threads.length > 0) {
           const messages = threads[0].getMessages();
           for (const message of messages) {
             const messageDate = message.getDate();
-            if (message.getFrom().includes(recipient) && messageDate > sentAt) {
+            const fromEmail   = message.getFrom();
+
+            if (fromEmail.includes(recipient) && messageDate > sentAt) {
               sheet.getRange(i + 1, statusCol + 1).setValue('Replied');
               sheet.getRange(i + 1, repliedAtCol + 1).setValue(messageDate);
-              sheet.getRange(i + 1, replyContentCol + 1).setValue(message.getPlainBody().substring(0, 500));
-              break; 
+              sheet.getRange(i + 1, replyContentCol + 1).setValue(
+                message.getPlainBody().substring(0, 500)
+              );
+              Logger.log(`Reply detected from ${recipient} for subject: ${subject}`);
+              break;
             }
           }
         }
+      } catch (rowError) {
+        Logger.log(`Skipping row ${i} due to error: ${rowError.message}`);
+        continue;
       }
     }
-    Logger.log("Reply check job finished.");
+
+    Logger.log('Reply check job finished.');
   } catch (error) {
     Logger.log(`Error during reply check job: ${error.message}`);
   }
 }
+
 
 function getEmailActivities(params = {}) {
   Logger.log('getEmailActivities called with params: ' + JSON.stringify(params));

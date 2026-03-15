@@ -419,8 +419,8 @@ function updateAllChartsTheme() {
 
 function setTheme(theme) {
   localStorage.setItem('theme', theme);
-  themeToggle.checked = theme === 'dark';
-  document.body.classList.toggle('dark-mode', theme === 'dark');
+    themeToggle.checked = theme === 'dark';
+    document.body.classList.toggle('dark-mode', theme === 'dark');
   updateAllChartsTheme();
 }
 
@@ -684,7 +684,8 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         teacherProfilePage: () => loadTeacherProfile(context),
         invoicesPage: loadInvoicePage,
         emailActivitiesPage: loadEmailActivitiesPage,
-        aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); }
+        aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); },
+        profilePage: loadProfilePage
     };
 
     if (pageLoaders[pageId]) pageLoaders[pageId]();
@@ -1776,22 +1777,98 @@ tr.innerHTML = `
         contentEl.innerHTML = '';
         google.script.run
             .withSuccessHandler(data => {
+                hideLoading();
                 if(data && data.success) {
                     const profile = data.profile;
+
+                    // ── Header ────────────────────────────────────────────
                     const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
-                    const info = `<div class="teacher-profile-info"><h2>${profile.name}</h2><p><strong>Email:</strong> ${profile.email || 'N/A'}</p><p><strong>Status:</strong> <span class="status-badge ${profile.status === 'Active' ? 'status-success' : 'status-pending'}">${profile.status}</span></p><p><strong>Manager:</strong> ${profile.manager || 'N/A'}</p></div>`;
+                    const info   = `<div class="teacher-profile-info">
+                        <h2>${profile.name}</h2>
+                        <p><strong>Email:</strong> ${profile.email || 'N/A'}</p>
+                        <p><strong>Status:</strong> <span class="status-badge ${profile.status === 'Active' ? 'status-success' : 'status-pending'}">${profile.status}</span></p>
+                        <p><strong>Manager:</strong> ${profile.manager || 'N/A'}</p>
+                        <p><strong>CLS Manager:</strong> ${profile.clsManager || 'N/A'}</p>
+                        <p><strong>Joined:</strong> ${profile.joinDate || 'N/A'}</p>
+                        <p><strong>Total Upskilled Courses:</strong> ${profile.totalCourses}</p>
+                    </div>`;
                     contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
+
+                    // ── Escalation Summary ────────────────────────────────
+                    const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
+                    const escColor = esc.totalCount === 0 ? '#15803d' : esc.totalCount <= 2 ? '#d97706' : '#b91c1c';
+                    const escBg    = esc.totalCount === 0 ? '#f0fdf4'  : esc.totalCount <= 2 ? '#fffbeb'  : '#fef2f2';
+                    const reasonBreakdown = Object.keys(esc.byReason).length > 0
+                        ? Object.entries(esc.byReason).map(([reason, count]) =>
+                            `<span style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:3px 10px;font-size:0.8rem;margin:2px;">${escapeHtml(reason)}: <strong>${count}</strong></span>`
+                          ).join('')
+                        : '<span style="color:#15803d;font-size:0.85rem;">No escalations on record</span>';
+
+                    contentEl.innerHTML += `<div style="background:${escBg};border:1px solid ${escColor}33;border-radius:10px;padding:1rem 1.25rem;margin:1rem 0;">
+                        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                            <div style="text-align:center;min-width:80px;">
+                                <div style="font-size:2rem;font-weight:700;color:${escColor};">${esc.totalCount}</div>
+                                <div style="font-size:0.75rem;color:#64748b;">Total Escalations</div>
+                            </div>
+                            <div style="flex:1;">
+                                <div style="font-size:0.85rem;font-weight:600;color:#334155;margin-bottom:6px;">Breakdown by Reason</div>
+                                ${reasonBreakdown}
+                            </div>
+                            <div style="text-align:right;min-width:130px;">
+                                <div style="font-size:0.75rem;color:#64748b;">Last Escalation</div>
+                                <div style="font-size:0.9rem;font-weight:600;color:${escColor};">${esc.lastEscalationDate || 'Never'}</div>
+                            </div>
+                        </div>
+                    </div>`;
+
+                    // ── Escalation Tickets Table ──────────────────────────
+                    if (esc.tickets && esc.tickets.length > 0) {
+                        const ticketRows = esc.tickets.map(t => {
+                            const sc = t.status === 'Completed' ? '#15803d' : '#d97706';
+                            const sb = t.status === 'Completed' ? '#f0fdf4'  : '#fffbeb';
+                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '—';
+                            return `<tr>
+                                <td style="font-size:0.8rem;color:#64748b;">${escapeHtml(t.ticketId)}</td>
+                                <td style="font-size:0.85rem;font-weight:500;">${escapeHtml(t.reason)}</td>
+                                <td style="font-size:0.82rem;">${escapeHtml(t.triggeredDate)}</td>
+                                <td style="font-size:0.82rem;">${escapeHtml(t.completedDate)}</td>
+                                <td style="text-align:center;">${daysHtml}</td>
+                                <td><span style="background:${sb};color:${sc};border:1px solid ${sc}33;border-radius:4px;padding:2px 8px;font-size:0.78rem;font-weight:600;">${escapeHtml(t.status)}</span></td>
+                                <td style="font-size:0.8rem;color:#64748b;">${escapeHtml(t.learnerUid)}</td>
+                            </tr>`;
+                        }).join('');
+                        contentEl.innerHTML += `<div style="margin:0.5rem 0 1.5rem;">
+                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">📋 Escalation Ticket History</h3>
+                            <div class="table-container"><table class="data-table">
+                                <thead><tr>
+                                    <th>Ticket ID</th><th>Reason</th><th>Triggered</th>
+                                    <th>Completed</th><th>Days to Resolve</th><th>Status</th><th>Learner JLID</th>
+                                </tr></thead>
+                                <tbody>${ticketRows}</tbody>
+                            </table></div>
+                        </div>`;
+                    }
+
+                    // ── Course Categories ─────────────────────────────────
                     const coursesHtml = Object.keys(profile.coursesByCategory).map(category => {
-                        const courses = profile.coursesByCategory[category];
-                        if (courses.length === 0) return '';
-                        const courseCards = courses.map(course => `<div class="course-card"><div class="course-card-title">${course.name}</div><div class="course-card-progress"><i class="fas fa-check-circle" style="color: ${course.progress && (course.progress === '100%' || course.progress.startsWith('9')) ? 'var(--success)' : 'var(--warning)'};"></i><span>${course.progress || 'N/A'} Complete</span></div></div>`).join('');
-                        return `<div class="course-category-container"><h3 class="course-category-title">${category}</h3><div class="course-grid">${courseCards}</div></div>`;
+                        const cats = profile.coursesByCategory[category];
+                        if (cats.length === 0) return '';
+                        const courseCards = cats.map(course =>
+                            `<div class="course-card">
+                                <div class="course-card-title">${escapeHtml(course.name)}</div>
+                                <div class="course-card-progress">
+                                    <i class="fas fa-check-circle" style="color:${course.progress && (course.progress === '100%' || course.progress.startsWith('9')) ? 'var(--success)' : 'var(--warning)'};"></i>
+                                    <span>${escapeHtml(course.progress || 'N/A')} Complete</span>
+                                </div>
+                            </div>`
+                        ).join('');
+                        return `<div class="course-category-container"><h3 class="course-category-title">${escapeHtml(category)}</h3><div class="course-grid">${courseCards}</div></div>`;
                     }).join('');
                     contentEl.innerHTML += coursesHtml;
+
                 } else {
                     showError({ message: (data && data.message) ? data.message : 'Failed to load teacher profile.' });
                 }
-                hideLoading();
             })
             .withFailureHandler(showError)
             .getTeacherProfileData(teacherName);
@@ -3747,23 +3824,30 @@ google.script.run
     }
 
     function loginSuccess(user) {
-      hideLoading();
-      if (user && user.success) {
-        currentUser = user;
-        sessionStorage.setItem('currentUser', JSON.stringify(user));
-        userAvatar.textContent = user.username.substring(0, 2).toUpperCase();
-        userName.textContent = user.username;
-        userRole.textContent = user.role;
-        setupUIForRole();
-        loginPage.style.display = 'none';
-        appContainer.style.display = 'grid';
-        switchPage('dashboardPage');
-        showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
-        startPolling();
-      } else {
+    if (!user || !user.success) {
         showToast('error', 'Login Failed', (user && user.message) ? user.message : 'Invalid credentials');
-      }
+        return;
     }
+    hideLoading();
+    currentUser = user;
+    sessionStorage.setItem('currentUser', JSON.stringify(user));
+    userAvatar.textContent = user.username.substring(0, 2).toUpperCase();
+    userName.textContent = user.username;
+    userRole.textContent = user.role;
+    setupUIForRole();
+    loginPage.style.display = 'none';
+    appContainer.style.display = 'grid';
+    startPolling();
+    startSessionTimer();// ← ADD THIS BLOCK
+    if (user.mustChangePassword) {
+        document.getElementById('forcePasswordModal').classList.add('active');
+        return; // don't show welcome toast yet
+    }
+
+    showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
+    switchPage('dashboardPage');
+}
+
 
 
     function loginFailed(error) {
@@ -3802,7 +3886,7 @@ google.script.run
     }
 
     // --- USER MANAGEMENT (ADMIN) ---
-    function loadUsers() {
+function loadUsers() {
         showLoading('Loading users...');
         google.script.run
             .withSuccessHandler(users => {
@@ -3817,50 +3901,133 @@ google.script.run
                     usersTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No users found.</td></tr>`;
                     return;
                 }
+
+                const isSuperAdmin = currentUser && currentUser.role === 'Super Admin';
+
                 users.forEach(user => {
                     const statusClass = user.isActive ? 'status-success' : 'status-failed';
-                    const tr = `<tr><td>${user.username}</td><td>${user.email}</td><td>${user.role}</td><td>${user.lastLogin ? user.lastLogin : 'Never'}</td><td><span class="status-badge ${statusClass}">${user.isActive ? 'Active' : 'Inactive'}</span></td><td><button class="action-btn edit-user-btn" title="Edit User" data-username="${user.username}"><i class="fas fa-edit"></i></button></td></tr>`;
+
+                    const editBtn = isSuperAdmin
+                        ? `<button class="action-btn edit-user-btn" title="Edit User" data-username="${user.username}"><i class="fas fa-edit"></i></button>`
+                        : '';
+
+                    const resendBtn = isSuperAdmin
+                        ? `<button class="action-btn resend-login-btn" title="Resend Login Email" data-username="${user.username}" style="margin-left:4px;"><i class="fas fa-envelope"></i></button>`
+                        : '';
+
+                    const toggleBtn = isSuperAdmin
+                        ? `<button class="action-btn toggle-status-btn" title="${user.isActive ? 'Deactivate User' : 'Activate User'}" data-username="${user.username}" data-active="${user.isActive}" style="margin-left:4px;color:${user.isActive ? '#e53e3e' : '#38a169'};"><i class="fas fa-${user.isActive ? 'user-slash' : 'user-check'}"></i></button>`
+                        : '';
+
+                    const roleColor = user.role === 'Super Admin' ? 'background:#fef3c7;color:#92400e;'
+                                    : user.role === 'Admin'       ? 'background:#ede9fe;color:#5b21b6;'
+                                    :                               'background:#e0f2fe;color:#0369a1;';
+
+                    const tr = `<tr>
+                        <td>${escapeHtml(user.username)}</td>
+                        <td>${escapeHtml(user.email)}</td>
+                        <td><span style="${roleColor}padding:2px 10px;border-radius:12px;font-size:0.8rem;font-weight:600;">${escapeHtml(user.role)}</span></td>
+                        <td>${user.lastLogin ? user.lastLogin : 'Never'}</td>
+                        <td><span class="status-badge ${statusClass}">${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                        <td>${editBtn}${resendBtn}${toggleBtn}</td>
+                    </tr>`;
                     usersTableBody.innerHTML += tr;
                 });
+
+                // Edit user listeners
                 document.querySelectorAll('.edit-user-btn').forEach(btn => {
                     btn.addEventListener('click', e => {
                         const username = e.target.closest('button').dataset.username;
-                        const userToEdit = users.find(u => u.username === username);
-                        showUserModal(userToEdit);
+                        showUserModal(users.find(u => u.username === username));
                     });
                 });
+
+                // Resend login email listeners
+                document.querySelectorAll('.resend-login-btn').forEach(btn => {
+                    btn.addEventListener('click', e => {
+                        const username = e.target.closest('button').dataset.username;
+                        showConfirm(
+                            'Resend Login Email',
+                            `This will generate a new temporary password for <strong>${username}</strong> and email it to them. Continue?`,
+                            confirmed => {
+                                if (!confirmed) return;
+                                showLoading('Sending login email...');
+                                google.script.run
+                                    .withSuccessHandler(result => {
+                                        hideLoading();
+                                        showToast(result.success ? 'success' : 'error', result.success ? 'Email Sent' : 'Error', result.message);
+                                    })
+                                    .withFailureHandler(showError)
+                                    .resendLoginEmail(username, currentUser);
+                            }
+                        );
+                    });
+                });
+
+                // Toggle active/inactive listeners
+                document.querySelectorAll('.toggle-status-btn').forEach(btn => {
+                    btn.addEventListener('click', e => {
+                        const button = e.target.closest('button');
+                        const username = button.dataset.username;
+                        const isCurrentlyActive = button.dataset.active === 'true';
+                        const action = isCurrentlyActive ? 'Deactivate' : 'Activate';
+                        showConfirm(
+                            `${action} User`,
+                            `Are you sure you want to ${action.toLowerCase()} <strong>${username}</strong>? ${isCurrentlyActive ? 'They will not be able to log in.' : 'They will regain access to the system.'}`,
+                            confirmed => {
+                                if (!confirmed) return;
+                                showLoading(`${action}ing user...`);
+                                google.script.run
+                                    .withSuccessHandler(result => {
+                                        hideLoading();
+                                        showToast(result.success ? 'success' : 'error', result.success ? 'Done' : 'Error', result.message);
+                                        if (result.success) loadUsers();
+                                    })
+                                    .withFailureHandler(showError)
+                                    .toggleUserStatus(username, !isCurrentlyActive, currentUser);
+                            }
+                        );
+                    });
+                });
+
             })
             .withFailureHandler(showError)
             .getActiveUsers();
     }
 
     function showUserModal(user = null) {
-        addUserForm.reset();
-        const modalTitle = document.getElementById('addUserModalTitle');
-        const usernameInput = document.getElementById('newUsername');
-        const passwordInput = document.getElementById('newUserPassword');
-        const statusGroup = document.getElementById('userStatusGroup');
-        const newUserEmailInput = document.getElementById('newUserEmail');
-        const newUserRoleSelect = document.getElementById('newUserRole');
-        if (user) {
-            modalTitle.textContent = 'Edit User';
-            usernameInput.value = user.username;
-            usernameInput.readOnly = true;
-            newUserEmailInput.value = user.email;
-            passwordInput.placeholder = "Leave blank to keep current password";
-            passwordInput.required = false;
-            newUserRoleSelect.value = user.role;
-            statusGroup.style.display = 'block';
-            document.querySelector(`input[name="userStatus"][value="${user.isActive}"]`).checked = true;
-        } else {
-            modalTitle.textContent = 'Add New User';
-            usernameInput.readOnly = false;
-            passwordInput.placeholder = "Enter a strong password";
-            passwordInput.required = true;
-            statusGroup.style.display = 'none';
-        }
-        addUserModal.classList.add('active');
+    addUserForm.reset();
+    const modalTitle = document.getElementById('addUserModalTitle');
+    const usernameInput = document.getElementById('newUsername');
+    const passwordInput = document.getElementById('newUserPassword');
+    const passwordFieldGroup = document.getElementById('passwordFieldGroup'); // ADD THIS
+    const statusGroup = document.getElementById('userStatusGroup');
+    const newUserEmailInput = document.getElementById('newUserEmail');
+    const newUserRoleSelect = document.getElementById('newUserRole');
+
+    if (user) {
+        // EDITING existing user
+        modalTitle.textContent = 'Edit User';
+        usernameInput.value = user.username;
+        usernameInput.readOnly = true;
+        newUserEmailInput.value = user.email;
+        passwordInput.placeholder = 'Leave blank to keep current password';
+        passwordInput.required = false;
+        newUserRoleSelect.value = user.role;
+        statusGroup.style.display = 'block';
+        passwordFieldGroup.style.display = 'block'; // show for editing
+        document.querySelector(`input[name="userStatus"][value="${user.isActive}"]`).checked = true;
+    } else {
+        // ADDING new user — password is auto-generated
+        modalTitle.textContent = 'Add New User';
+        usernameInput.readOnly = false;
+        passwordInput.required = false;
+        statusGroup.style.display = 'none';
+        passwordFieldGroup.style.display = 'none'; // hide — backend generates it
     }
+    addUserModal.classList.add('active');
+}
+
 
     addUserForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -3878,8 +4045,18 @@ google.script.run
             showLoading('Updating user...');
             google.script.run.withSuccessHandler(handleUserSave).withFailureHandler(showError).updateUser(userData, currentUser);
         } else {
-            showLoading('Creating user...');
-            google.script.run.withSuccessHandler(handleUserSave).withFailureHandler(showError).addNewUser(userData);
+            // For new users — backend generates a secure temp password and emails it
+            showLoading('Creating user and sending welcome email...');
+        google.script.run
+            .withSuccessHandler(handleUserSave)
+            .withFailureHandler(showError)
+            .addNewUser({
+                username: userData.username,
+                email: userData.email,
+                role: userData.role
+            }, currentUser);  // ← pass currentUser
+
+
         }
     });
 
@@ -3927,6 +4104,54 @@ google.script.run
         pollIntervalId = null;
       }
     }
+        
+    // =============================================
+    // SESSION TIMEOUT
+    // =============================================
+    const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+    const WARNING_BEFORE_MS  =  2 * 60 * 1000; // warn 2 mins before
+    let sessionTimer = null;
+    let sessionWarningTimer = null;
+
+    function resetSessionTimer() {
+        if (!currentUser) return;
+        clearTimeout(sessionTimer);
+        clearTimeout(sessionWarningTimer);
+
+        sessionWarningTimer = setTimeout(() => {
+            if (!currentUser) return;
+            showToast('warning', 'Session Expiring', 'You will be logged out in 2 minutes due to inactivity.', 10000);
+        }, SESSION_TIMEOUT_MS - WARNING_BEFORE_MS);
+
+        sessionTimer = setTimeout(() => {
+            if (!currentUser) return;
+          currentUser = null;
+          sessionStorage.removeItem('currentUser');
+          stopPolling();
+          stopSessionTimer();
+          appContainer.style.display = 'none';
+            loginPage.style.display = 'flex';
+            switchLoginView('loginView');
+            loginForm.reset();
+            showToast('warning', 'Session Expired', 'You have been logged out due to inactivity.');
+        }, SESSION_TIMEOUT_MS);
+    }
+
+    function startSessionTimer() {
+        ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
+            document.addEventListener(event, resetSessionTimer, { passive: true });
+        });
+        resetSessionTimer();
+    }
+
+    function stopSessionTimer() {
+        clearTimeout(sessionTimer);
+        clearTimeout(sessionWarningTimer);
+        ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
+            document.removeEventListener(event, resetSessionTimer);
+        });
+    }
+
     
 function populateInvoiceFormWithAIPlan(plan) {
     if (plan.aiReasoning) {
@@ -5721,6 +5946,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 + 'border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
                 + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>';
  
+            var safeName = escapeHtml(teacher.name).replace(/'/g, "\\'");
+ 
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td><strong>' + escapeHtml(teacher.name) + '</strong></td>'
@@ -5729,13 +5956,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 + escapeHtml(teacher.status) + '</span></td>'
                 + '<td>' + learnerHtml + '</td>'
                 + '<td style="text-align:right;">'
-                    + '<button class="btn btn-primary btn-sm find-replacement-btn">'
+                    + '<button class="btn btn-primary btn-sm" onclick="openCloneModal(\'' + safeName + '\')">'
                     + '<i class="fas fa-robot"></i> Find Replacement'
                     + '</button></td>';
-            tr.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
-            tr.querySelector('.find-replacement-btn').addEventListener('click', function() {
-                openCloneModal(this.dataset.teacherName);
-            });
             tbody.appendChild(tr);
 
     });
@@ -5755,16 +5978,17 @@ function openCloneModal(teacherName) {
     if (nameEl) nameEl.textContent = teacherName;
     if (ctxEl)  ctxEl.style.display = 'none';
     showLoading('Analysing best replacements with AI...');
-
+ 
     google.script.run
         .withSuccessHandler(function(result) {
             hideLoading();
-
+ 
             if (!result || !result.success) {
                 showToast('error', 'Analysis Failed', result ? result.message : 'Unknown error from server.');
                 return;
             }
-
+ 
+            // ── Target context bar ────────────────────────────────────────
             if (result.targetContext) {
                 var ctx = result.targetContext;
                 if (ctxEl) ctxEl.style.display = 'block';
@@ -5775,85 +5999,143 @@ function openCloneModal(teacherName) {
                 if (learnersEl) learnersEl.textContent = ctx.activeLearners || 0;
                 if (escalEl)    escalEl.textContent    = ctx.escalations || 0;
             }
-
+ 
+            // ── AI Summary banner ─────────────────────────────────────────
             var summaryEl = document.getElementById('cloneAISummary');
             if (summaryEl) {
                 if (result.aiEnriched && result.aiSummary) {
                     summaryEl.style.display = 'block';
-                    summaryEl.innerHTML = '<span style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:10px;font-weight:600;margin-right:8px;">✦ AI Analysis</span>' + escapeHtml(result.aiSummary);
+                    summaryEl.innerHTML =
+                        '<span style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;'
+                        + 'padding:2px 8px;border-radius:10px;font-weight:600;margin-right:8px;">✦ AI Analysis</span>'
+                        + escapeHtml(result.aiSummary);
                 } else {
                     summaryEl.style.display = 'none';
                 }
             }
-
+ 
+            // ── Populate results table ────────────────────────────────────
             var tbody = document.getElementById('cloneTeacherTableBody');
             if (!tbody) return;
             tbody.innerHTML = '';
-
+ 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;">No suitable replacements found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:1.5rem;'
+                    + 'color:var(--text-muted);">No suitable replacements found.</td></tr>';
             } else {
                 result.data.forEach(function(match, idx) {
                     try {
-                        var name          = String(match.name            || 'Unknown');
-                        var matchScore    = Number(match.matchScore)     || 0;
-                        var traitScore    = Number(match.traitScore)     || 0;
-                        var ageScore      = Number(match.ageScore)       || 0;
-                        var courseScore   = Number(match.courseScore)    || 0;
-                        var escalScore    = Number(match.escalationScore)|| 0;
-                        var upskillCount  = Number(match.upskillCount    || match.activeLearners) || 0;
-                        var escalRisk     = String(match.escalationRisk  || 'No Escalations');
-                        var escColor      = String(match.escalationColor || '#15803d');
-                        var courseOverlap = String(match.courseOverlap   || 'N/A');
-                        var ageGroupMatch = String(match.ageGroupMatch   || 'N/A');
-                        var aiEnriched    = Boolean(match.aiEnriched);
-                        var confidence    = String(match.aiConfidence    || '');
-                        var aiReason      = String(match.aiReason        || '');
-                        var aiWarning     = String(match.aiWarning       || '');
-                        var aiCaveat      = String(match.aiCaveat        || '');
-
+                        var name           = String(match.name            || 'Unknown');
+                        var matchScore     = Number(match.matchScore)     || 0;
+                        var traitScore     = Number(match.traitScore)     || 0;
+                        var ageScore       = Number(match.ageScore)       || 0;
+                        var courseScore    = Number(match.courseScore)    || 0;
+                        var escalScore     = Number(match.escalationScore)|| 0;
+                        var upskillCount   = Number(match.upskillCount    || match.activeLearners) || 0;
+                        var escalRisk      = String(match.escalationRisk  || 'No Escalations');
+                        var escColor       = String(match.escalationColor || '#15803d');
+                        var courseOverlap  = String(match.courseOverlap   || 'N/A');
+                        var ageGroupMatch  = String(match.ageGroupMatch   || 'N/A');
+                        var aiEnriched     = Boolean(match.aiEnriched);
+                        var confidence     = String(match.aiConfidence    || '');
+                        var aiReason       = String(match.aiReason        || '');
+                        var aiWarning      = String(match.aiWarning       || '');
+                        var aiCaveat       = String(match.aiCaveat        || '');
+ 
                         var scoreColor = matchScore >= 70 ? '#15803d' : matchScore >= 40 ? '#d97706' : '#b91c1c';
                         var scoreBg    = matchScore >= 70 ? '#f0fdf4' : matchScore >= 40 ? '#fffbeb' : '#fef2f2';
                         var loadColor  = upskillCount > 35 ? '#15803d' : upskillCount >= 20 ? '#d97706' : '#b91c1c';
-
+ 
                         var confidenceHtml = '';
                         if (aiEnriched && confidence) {
-                            var confColor = confidence === 'High' ? '#15803d' : confidence === 'Medium' ? '#b45309' : '#b91c1c';
-                            var confBg    = confidence === 'High' ? '#dcfce7' : confidence === 'Medium' ? '#fef3c7' : '#fee2e2';
-                            confidenceHtml = '<span style="font-size:0.68rem;background:' + confBg + ';color:' + confColor + ';border:1px solid ' + confColor + '44;padding:1px 7px;border-radius:10px;font-weight:600;margin-left:5px;">' + escapeHtml(confidence) + ' Confidence</span>';
+                            var confColor = confidence === 'High'   ? '#15803d'
+                                          : confidence === 'Medium' ? '#b45309' : '#b91c1c';
+                            var confBg    = confidence === 'High'   ? '#dcfce7'
+                                          : confidence === 'Medium' ? '#fef3c7' : '#fee2e2';
+                            confidenceHtml =
+                                '<span style="font-size:0.68rem;background:' + confBg
+                                + ';color:' + confColor
+                                + ';border:1px solid ' + confColor + '44'
+                                + ';padding:1px 7px;border-radius:10px;font-weight:600;margin-left:5px;">'
+                                + escapeHtml(confidence) + ' Confidence</span>';
                         }
-
-                        var rankLabel   = idx === 0 ? '<span style="font-size:0.68rem;background:#fbbf24;color:#78350f;padding:1px 6px;border-radius:4px;margin-left:4px;">Top Pick</span>' : '';
-                        var reasonHtml  = (aiEnriched && aiReason)  ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;font-style:italic;">✦ ' + escapeHtml(aiReason) + '</div>' : '';
-                        var warningHtml = (aiEnriched && aiWarning) ? '<div style="font-size:0.72rem;color:#b91c1c;background:#fee2e2;border-radius:4px;padding:2px 6px;margin-top:3px;display:inline-block;">⚠ ' + escapeHtml(aiWarning) + '</div>' : '';
-                        var caveatHtml  = (aiEnriched && aiCaveat)  ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">💡 ' + escapeHtml(aiCaveat) + '</div>' : '';
-                        var breakdown   = 'Traits:' + traitScore + '/30 | Age:' + ageScore + '/20 | Courses:' + courseScore + '/30 | Stability:' + escalScore + '/20';
-
+ 
+                        var rankLabel = idx === 0
+                            ? '<span style="font-size:0.68rem;background:#fbbf24;color:#78350f;'
+                              + 'padding:1px 6px;border-radius:4px;margin-left:4px;">Top Pick</span>'
+                            : '';
+ 
+                        var reasonHtml  = (aiEnriched && aiReason)
+                            ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;font-style:italic;">'
+                              + '✦ ' + escapeHtml(aiReason) + '</div>' : '';
+ 
+                        var warningHtml = (aiEnriched && aiWarning)
+                            ? '<div style="font-size:0.72rem;color:#b91c1c;background:#fee2e2;'
+                              + 'border-radius:4px;padding:2px 6px;margin-top:3px;display:inline-block;">'
+                              + '⚠ ' + escapeHtml(aiWarning) + '</div>' : '';
+ 
+                        var caveatHtml  = (aiEnriched && aiCaveat)
+                            ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">'
+                              + '💡 ' + escapeHtml(aiCaveat) + '</div>' : '';
+ 
+                        var breakdown = 'Traits:' + traitScore + '/30'
+                            + ' | Age:' + ageScore + '/20'
+                            + ' | Courses:' + courseScore + '/30'
+                            + ' | Stability:' + escalScore + '/20';
+ 
+                        var safeName = name
+                            .replace(/\\/g, '\\\\')
+                            .replace(/'/g, "\\'")
+                            .replace(/"/g, '&quot;');
+ 
                         var tr = document.createElement('tr');
                         tr.innerHTML =
-                            '<td style="min-width:180px;"><strong>' + escapeHtml(name) + '</strong>' + rankLabel + confidenceHtml + reasonHtml + warningHtml + caveatHtml + '</td>'
-                            + '<td><div title="' + escapeHtml(breakdown) + '" style="display:flex;align-items:center;gap:8px;cursor:help;"><span style="background:' + scoreBg + ';color:' + scoreColor + ';border:1px solid ' + scoreColor + '44;padding:3px 10px;border-radius:20px;font-weight:700;font-size:0.9rem;">' + matchScore + '/100</span><span style="font-size:0.7rem;color:var(--text-muted);">&#9432;</span></div></td>'
-                            + '<td style="font-size:0.83rem;">' + escapeHtml(courseOverlap) + '<br><span style="font-size:0.73rem;color:var(--text-muted);">Age: ' + escapeHtml(ageGroupMatch) + '</span></td>'
-                            + '<td style="color:' + loadColor + ';font-weight:600;">' + upskillCount + '<span style="font-size:0.68rem;font-weight:400;color:var(--text-muted);display:block;">courses</span></td>'
-                            + '<td style="color:' + escColor + ';font-weight:600;">' + escapeHtml(escalRisk) + '</td>'
-                            + '<td><button class="btn btn-outline btn-sm view-profile-btn">View Profile</button></td>';
-
-                        tr.querySelector('.view-profile-btn').dataset.teacherName = name;
-                        tr.querySelector('.view-profile-btn').addEventListener('click', function() {
-                            switchPage('teacherProfilePage', this.dataset.teacherName);
-                        });
+                            '<td style="min-width:180px;">'
+                                + '<strong>' + escapeHtml(name) + '</strong>'
+                                + rankLabel + confidenceHtml
+                                + reasonHtml + warningHtml + caveatHtml
+                            + '</td>'
+                            + '<td>'
+                                + '<div title="' + breakdown
+                                + '" style="display:flex;align-items:center;gap:8px;cursor:help;">'
+                                    + '<span style="background:' + scoreBg
+                                    + ';color:' + scoreColor
+                                    + ';border:1px solid ' + scoreColor + '44'
+                                    + ';padding:3px 10px;border-radius:20px;font-weight:700;font-size:0.9rem;">'
+                                    + matchScore + '/100</span>'
+                                    + '<span style="font-size:0.7rem;color:var(--text-muted);">&#9432;</span>'
+                                + '</div>'
+                            + '</td>'
+                            + '<td style="font-size:0.83rem;">'
+                                + escapeHtml(courseOverlap)
+                                + '<br><span style="font-size:0.73rem;color:var(--text-muted);">'
+                                + 'Age: ' + escapeHtml(ageGroupMatch) + '</span>'
+                            + '</td>'
+                            + '<td style="color:' + loadColor + ';font-weight:600;">'
+                                + upskillCount
+                                + '<span style="font-size:0.68rem;font-weight:400;'
+                                + 'color:var(--text-muted);display:block;">courses</span>'
+                            + '</td>'
+                            + '<td style="color:' + escColor + ';font-weight:600;">'
+                                + escapeHtml(escalRisk)
+                            + '</td>'
+                            + '<td>'
+                                + '<button class="btn btn-outline btn-sm" '
+                                + 'onclick="switchPage(\'teacherProfilePage\',\'' + safeName + '\')">'
+                                + 'View Profile</button>'
+                            + '</td>';
+ 
                         tbody.appendChild(tr);
-
+ 
                     } catch (rowErr) {
                         console.error('[openCloneModal] Row ' + idx + ' error:', rowErr.message, match);
                     }
                 });
             }
-
+ 
+            // Open modal — same as every other modal in the app
             var modal = document.getElementById('cloneTeacherModal');
-            if (modal) {
-                modal.classList.add('active');
-            }
+            if (modal) modal.classList.add('active');
         })
         .withFailureHandler(function(err) {
             hideLoading();
@@ -5862,6 +6144,90 @@ function openCloneModal(teacherName) {
         .findSimilarTeachers(teacherName);
 }
 
+document.getElementById('forcePasswordSaveBtn').addEventListener('click', () => {
+    const newPass = document.getElementById('forceNewPassword').value;
+    const confirmPass = document.getElementById('forceConfirmPassword').value;
+    const errorEl = document.getElementById('forcePasswordError');
+
+    if (newPass.length < 6) {
+        errorEl.textContent = 'Password must be at least 6 characters.';
+        return;
+    }
+    if (newPass !== confirmPass) {
+        errorEl.textContent = 'Passwords do not match.';
+        return;
+    }
+
+    showLoading('Saving new password...');
+    google.script.run
+        .withSuccessHandler(result => {
+            hideLoading();
+            if (result && result.success) {
+                document.getElementById('forcePasswordModal').classList.remove('active');
+                showToast('success', 'Password Updated', 'Your password has been changed successfully.');
+                switchPage('dashboardPage');
+            } else {
+                errorEl.textContent = (result && result.message) ? result.message : 'Failed to save password.';
+            }
+        })
+        .withFailureHandler(err => {
+            hideLoading();
+            document.getElementById('forcePasswordError').textContent = err.message;
+        })
+        .updateUser({ username: currentUser.username, password: newPass, isActive: true }, currentUser);
+});
+
+function loadProfilePage() {
+    if (!currentUser) return;
+    document.getElementById('profileUsername').value  = currentUser.username;
+    document.getElementById('profileRole').value      = currentUser.role;
+    document.getElementById('profileLastLogin').value = currentUser.lastLogin || 'N/A';
+
+    // Fetch fresh email from backend
+    google.script.run
+        .withSuccessHandler(profile => {
+            if (profile && profile.email) {
+                document.getElementById('profileEmail').value = profile.email;
+            }
+        })
+        .withFailureHandler(showError)
+        .getUserProfile(currentUser.username);
+}
+
+document.getElementById('saveProfileBtn').addEventListener('click', () => {
+    const newEmail    = document.getElementById('profileEmail').value.trim();
+    const currentPass = document.getElementById('profileCurrentPassword').value;
+    const newPass     = document.getElementById('profileNewPassword').value;
+    const confirmPass = document.getElementById('profileConfirmPassword').value;
+
+    if (newPass && newPass.length < 6) {
+        showToast('error', 'Error', 'Password must be at least 6 characters.'); return;
+    }
+    if (newPass && newPass !== confirmPass) {
+        showToast('error', 'Error', 'Passwords do not match.'); return;
+    }
+
+    showLoading('Saving profile...');
+    google.script.run
+        .withSuccessHandler(result => {
+            hideLoading();
+            if (result && result.success) {
+                showToast('success', 'Saved', 'Profile updated successfully.');
+                document.getElementById('profileCurrentPassword').value = '';
+                document.getElementById('profileNewPassword').value = '';
+                document.getElementById('profileConfirmPassword').value = '';
+            } else {
+                showToast('error', 'Error', result.message || 'Failed to save.');
+            }
+        })
+        .withFailureHandler(showError)
+        .updateOwnProfile({
+            username: currentUser.username,
+            email: newEmail,
+            currentPassword: currentPass,
+            newPassword: newPass
+        });
+});
 
 
 </script>

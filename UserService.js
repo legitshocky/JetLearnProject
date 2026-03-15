@@ -32,14 +32,16 @@ function authenticateUser(username, password) {
 
     updateUserLastLogin(username);
     logUserActivity(username, 'Successful Login', 'User logged in');
+    const mustChange = String(user.mustChangePassword).toLowerCase() === 'true';
 
     Logger.log('Authentication successful for user: ' + username + ', role: ' + user.role);
     return {
-      success: true,
-      role: user.role,
-      username: username,
-      permissions: PERMISSIONS[user.role] || []
-    };
+    success: true,
+    role: user.role,
+    username: username,
+    permissions: PERMISSIONS[user.role] || [],
+    mustChangePassword: user.mustChangePassword === true || String(user.mustChangePassword).toLowerCase() === 'true'
+      };
   } catch (error) {
     Logger.log('Error in authenticateUser: ' + error.message);
     return { success: false, role: ROLES.GUEST, message: 'Authentication error' };
@@ -86,15 +88,17 @@ function getUserProfiles() {
         const key = header.toLowerCase().replace(/\s/g, ''); 
         user[key] = row[i];
       });
-      return {
-        username: user.username,
-        password: user.password,
-        role: user.role,
-        email: user.email,
-        isActive: user.isactive,
-        lastLogin: user.lastlogin,
-        createdDate: user.createddate
-      };
+    return {
+      username: user.username,
+      password: user.password,
+      role: user.role,
+      email: user.email,
+      isActive: user.isactive,
+      lastLogin: user.lastlogin,
+      createdDate: user.createddate,
+      mustChangePassword: user.mustchangepassword || false  // ← ADD THIS
+    };
+
     });
   } catch (error) {
     Logger.log('Error getting user profiles: ' + error.message);
@@ -323,47 +327,6 @@ function getActiveUsers() {
   }
 }
 
-function addNewUser(userData) {
-  Logger.log('addNewUser called for: ' + userData.username);
-
-  try {
-    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-
-    const existingUsers = getUserProfiles(); 
-    if (existingUsers.some(u => u.username.toLowerCase() === userData.username.toLowerCase())) {
-      return { success: false, message: 'Username already exists' };
-    }
-
-    if (!isValidEmail(userData.email)) {
-      return { success: false, message: 'Invalid email address' };
-    }
-
-    if (!Object.values(ROLES).includes(userData.role)) {
-      return { success: false, message: 'Invalid user role' };
-    }
-
-    sheet.appendRow([
-      userData.username,
-      userData.password,
-      userData.role,
-      userData.email,
-      true, 
-      '',   
-      new Date(), 
-      '',   
-      ''    
-    ]);
-
-    logAction('User Added', '', '', '', '', '', 'Success', `New ${userData.role} user added: ${userData.username}`);
-
-    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
-
-    return { success: true, message: 'User added successfully' };
-  } catch (error) {
-    Logger.log('Error adding new user: ' + error.message);
-    return { success: false, message: 'Error adding user: ' + error.message };
-  }
-}
 
 function updateUser(userData, currentUser) {
   Logger.log(`updateUser called for '${userData.username}' by user '${currentUser.username}'`);
@@ -480,3 +443,324 @@ function hasPermission(userRole, permission) {
   return userPermissions.includes(permission);
 }
 
+function addNewUser(userData, actingUser) {
+  try {
+    if (!actingUser || actingUser.role !== 'Super Admin') {
+      return { success: false, message: 'Permission denied. Only Super Admins can create users.' };
+    }
+
+    const validation = validateInput(userData, ['username', 'email', 'role']);
+    if (!validation.isValid) return { success: false, message: validation.message };
+    if (!isValidEmail(userData.email)) return { success: false, message: 'Invalid email address.' };
+
+    const sheet = getOrCreateSheet(CONFIG.SHEETS.USER_PROFILES);
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+
+    const emailColIndex = headers.indexOf('Email');
+    const usernameColIndex = headers.indexOf('Username');
+    for (let i = 1; i < allData.length; i++) {
+      if (String(allData[i][emailColIndex]).toLowerCase() === userData.email.toLowerCase()) {
+        return { success: false, message: 'A user with this email already exists.' };
+      }
+      if (String(allData[i][usernameColIndex]).toLowerCase() === userData.username.toLowerCase()) {
+        return { success: false, message: 'Username is already taken.' };
+      }
+    }
+
+    const tempPassword = generateTempPassword();
+
+    sheet.appendRow([
+      userData.username,  // Username
+      tempPassword,       // Password
+      userData.role,      // Role
+      userData.email,     // Email
+      true,               // IsActive
+      '',                 // LastLogin
+      new Date(),         // CreatedDate
+      '',                 // ResetToken
+      '',                 // TokenExpiry
+      true                // MustChangePassword
+    ]);
+
+    SpreadsheetApp.flush();
+
+    const emailResult = sendWelcomeEmail(userData.email, userData.username, tempPassword);
+
+logAuditAction('User Created', `Super Admin '${actingUser.username}' created new ${userData.role} account for '${userData.username}' (${userData.email})`);
+    Logger.log(`User created: ${userData.username} by ${actingUser.username}`);
+
+    return {
+      success: true,
+      message: `User '${userData.username}' created. Welcome email ${emailResult.success ? 'sent ✓' : 'FAILED — check logs'}.`
+    };
+
+  } catch (e) {
+    logError('addNewUser', e);
+    return { success: false, message: 'Error adding user: ' + e.message };
+  }
+}
+
+
+// =============================================
+// SEND WELCOME EMAIL (Super Admin only)
+// =============================================
+function sendWelcomeEmail(toEmail, username, tempPassword) {
+  try {
+    const platformUrl = 'https://jetlearn-launcher.vercel.app/';
+    const platformLabel = 'JetLearn Operation System';
+    const subject = `Your account is ready`;
+
+    const htmlBody = `
+    <div style="background:#f4f4f0;padding:40px 24px;font-family:Inter,Arial,sans-serif;">
+      <div style="background:#ffffff;border-radius:4px;overflow:hidden;max-width:560px;margin:0 auto;">
+
+        <div style="padding:40px 48px 0;">
+
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:48px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4a3c8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
+            <span style="font-size:15px;font-weight:600;color:#1a1a1a;">JetLearn</span>
+          </div>
+
+          <p style="font-size:26px;font-weight:600;color:#1a1a1a;margin:0 0 12px;letter-spacing:-0.5px;line-height:1.2;">You're in, ${username}.</p>
+          <p style="font-size:15px;color:#6b6b6b;margin:0 0 40px;line-height:1.6;">Your JetLearn Operations account has been created. Use the details below to sign in for the first time.</p>
+
+          <div style="border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;padding:24px 0;margin-bottom:32px;">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Platform</span>
+              <a href="${platformUrl}" style="font-size:14px;color:#4a3c8a;text-decoration:none;font-weight:500;">${platformLabel}</a>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Username</span>
+              <span style="font-size:14px;color:#1a1a1a;font-weight:500;">${username}</span>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Password</span>
+              <code style="font-size:14px;color:#1a1a1a;background:#f6f4ff;padding:4px 12px;border-radius:4px;letter-spacing:1.5px;">${tempPassword}</code>
+            </div>
+
+          </div>
+
+          <a href="${platformUrl}" style="display:block;background:#4a3c8a;color:white;text-decoration:none;font-size:14px;font-weight:500;padding:14px 24px;border-radius:4px;text-align:center;margin-bottom:24px;">Sign in to your account</a>
+
+          <p style="font-size:13px;color:#9a9a9a;margin:0 0 40px;line-height:1.6;">This is a temporary password. Please change it after your first login from Settings.</p>
+
+        </div>
+
+        <div style="background:#fafafa;border-top:1px solid #f0f0f0;padding:24px 48px;">
+          <p style="font-size:12px;color:#b0b0b0;margin:0;line-height:1.7;">
+            Sent by JetLearn Operations System &nbsp;·&nbsp;
+            <a href="mailto:${CONFIG.EMAIL.FROM}" style="color:#b0b0b0;text-decoration:none;">${CONFIG.EMAIL.FROM}</a><br>
+            If you didn't expect this email, you can safely ignore it.
+          </p>
+        </div>
+
+      </div>
+    </div>
+    `;
+
+    MailApp.sendEmail({
+      to: toEmail,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: CONFIG.EMAIL.FROM_NAME,
+      replyTo: CONFIG.EMAIL.FROM
+    });
+
+    Logger.log(`Welcome email sent to ${toEmail}`);
+    return { success: true };
+
+  } catch (e) {
+    logError('sendWelcomeEmail', e);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// =============================================
+// RESEND WELCOME / LOGIN EMAIL (Super Admin only)
+// =============================================
+function resendLoginEmail(targetUsername, actingUser) {
+  try {
+    if (!actingUser || actingUser.role !== 'Super Admin') {
+      return { success: false, message: 'Permission denied.' };
+    }
+
+    const sheet = getOrCreateSheet(CONFIG.SHEETS.USER_PROFILES);
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+
+    const usernameCol = headers.indexOf('Username');
+    const emailCol    = headers.indexOf('Email');
+    const statusCol   = headers.indexOf('IsActive');
+    const passwordCol = headers.indexOf('Password');
+
+    for (let i = 1; i < allData.length; i++) {
+      if (String(allData[i][usernameCol]).toLowerCase() === targetUsername.toLowerCase()) {
+        if (!allData[i][statusCol]) {
+          return { success: false, message: 'Cannot resend email to an inactive user.' };
+        }
+
+        const newTempPass = generateTempPassword();
+        sheet.getRange(i + 1, passwordCol + 1).setValue(newTempPass);
+
+        // Also reset MustChangePassword to true
+        const mustChangeCol = headers.indexOf('MustChangePassword');
+        if (mustChangeCol !== -1) {
+          sheet.getRange(i + 1, mustChangeCol + 1).setValue(true);
+        }
+
+        SpreadsheetApp.flush();
+
+        const emailResult = sendWelcomeEmail(String(allData[i][emailCol]), targetUsername, newTempPass);
+        if (emailResult.success) {
+          logAuditAction('Login Email Resent', `Super Admin '${actingUser.username}' resent login email to '${targetUsername}'`);
+          return { success: true, message: `Login email resent to ${targetUsername}.` };
+        }
+        return { success: false, message: 'Email send failed: ' + emailResult.message };
+      }
+    }
+
+    return { success: false, message: 'User not found.' };
+  } catch (e) {
+    logError('resendLoginEmail', e);
+    return { success: false, message: e.message };
+  }
+}
+
+
+
+// =============================================
+// HELPER: Generate Temporary Password
+// =============================================
+function generateTempPassword() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#$!';
+  let password = '';
+  for (let i = 0; i < 10; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
+
+function getUserProfile(username) {
+  try {
+    const profiles = getUserProfiles();
+    const user = profiles.find(u => u.username === username);
+    if (!user) return null;
+    return { username: user.username, email: user.email, role: user.role, lastLogin: user.lastLogin };
+  } catch (e) {
+    logError('getUserProfile', e);
+    return null;
+  }
+}
+
+function updateOwnProfile(data) {
+  try {
+    const sheet = getOrCreateSheet(CONFIG.SHEETS.USER_PROFILES);
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const usernameCol = headers.indexOf('Username');
+    const passwordCol = headers.indexOf('Password');
+    const emailCol    = headers.indexOf('Email');
+
+    for (let i = 1; i < allData.length; i++) {
+      if (String(allData[i][usernameCol]).toLowerCase() === data.username.toLowerCase()) {
+
+        // Verify current password if changing password
+        if (data.newPassword) {
+          if (String(allData[i][passwordCol]) !== data.currentPassword) {
+            return { success: false, message: 'Current password is incorrect.' };
+          }
+          sheet.getRange(i + 1, passwordCol + 1).setValue(data.newPassword);
+        }
+
+        // Update email
+        if (data.email) {
+          sheet.getRange(i + 1, emailCol + 1).setValue(data.email);
+        }
+
+        SpreadsheetApp.flush();
+        logAuditAction('Profile Updated', `User '${data.username}' updated their own profile`);
+        return { success: true, message: 'Profile updated successfully.' };
+      }
+    }
+    return { success: false, message: 'User not found.' };
+  } catch (e) {
+    logError('updateOwnProfile', e);
+    return { success: false, message: e.message };
+  }
+}
+
+function getEmailLogs() {
+  try {
+    const data = _getCachedSheetData(CONFIG.SHEETS.EMAIL_LOGS);
+    if (data.length <= 1) return [];
+
+    const headers = data[0];
+    return data.slice(1).map(row => {
+      const log = {};
+      headers.forEach((h, i) => { log[h] = row[i]; });
+      return log;
+    }).reverse(); // Most recent first
+  } catch (e) {
+    logError('getEmailLogs', e);
+    return [];
+  }
+}
+
+function logAuditAction(action, notes) {
+  try {
+    const sheet = getOrCreateSheet(CONFIG.SHEETS.AUDIT_LOG);
+    sheet.appendRow([
+      new Date(),   // Timestamp
+      action,       // Action
+      '',           // JLID
+      '',           // Learner
+      '',           // Old Teacher
+      '',           // New Teacher
+      '',           // Course
+      'System',     // Status
+      notes,        // Notes
+      '',           // Session ID
+      '',           // Reason
+      Session.getActiveUser().getEmail() // Intervened By
+    ]);
+    SpreadsheetApp.flush();
+  } catch (e) {
+    Logger.log('logAuditAction failed: ' + e.message);
+  }
+}
+
+function toggleUserStatus(targetUsername, newStatus, actingUser) {
+  try {
+    if (!actingUser || actingUser.role !== 'Super Admin') {
+      return { success: false, message: 'Permission denied.' };
+    }
+
+    const sheet = getOrCreateSheet(CONFIG.SHEETS.USER_PROFILES);
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData[0];
+    const usernameCol = headers.indexOf('Username');
+    const statusCol   = headers.indexOf('IsActive');
+
+    for (let i = 1; i < allData.length; i++) {
+      if (String(allData[i][usernameCol]).toLowerCase() === targetUsername.toLowerCase()) {
+        sheet.getRange(i + 1, statusCol + 1).setValue(newStatus);
+        SpreadsheetApp.flush();
+
+        const action = newStatus ? 'Activated' : 'Deactivated';
+        logAuditAction(`User ${action}`, `${actingUser.username} ${action.toLowerCase()} user '${targetUsername}'`);
+
+        return { success: true, message: `User '${targetUsername}' has been ${action.toLowerCase()}.` };
+      }
+    }
+
+    return { success: false, message: 'User not found.' };
+  } catch (e) {
+    logError('toggleUserStatus', e);
+    return { success: false, message: e.message };
+  }
+}

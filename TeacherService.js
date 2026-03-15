@@ -1189,6 +1189,9 @@ function getTeacherProfileData(teacherName) {
     var loadData = getTeacherSpecificLoad(teacherName);
     var courses = (loadData && loadData.success) ? loadData.courses : [];
 
+    // ── 3. Escalation history from HubSpot ────────────────────────────────
+    var escalationData = getTeacherEscalationHistory(teacherName);
+
     // ── 3. Exact course name → category mapping ───────────────────────────
     var CODING_BEGINNER = [
       'Introduction to Coding (code.org)',
@@ -1289,7 +1292,13 @@ function getTeacherProfileData(teacherName) {
         joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : 'N/A',
         totalCourses:      courses.length,
         lastActivity:      loadData ? (loadData.lastActivity || 'N/A') : 'N/A',
-        coursesByCategory: coursesByCategory
+        coursesByCategory: coursesByCategory,
+        escalation: escalationData && escalationData.success ? {
+          totalCount:         escalationData.totalCount,
+          byReason:           escalationData.byReason,
+          tickets:            escalationData.tickets,
+          lastEscalationDate: escalationData.lastEscalationDate
+        } : { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null }
       }
     };
 
