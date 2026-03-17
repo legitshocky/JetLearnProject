@@ -1554,15 +1554,38 @@ function getTeacherAttritionReport(teacherName) {
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
   var PORTAL_ID = '7729491';
  
-  // Resolve to canonical name BEFORE sending to HubSpot
   var resolvedName = resolveTeacherName(teacherName);
   Logger.log('[getTeacherAttritionReport] "' + teacherName + '" → "' + resolvedName + '"');
+
+  // current_teacher stores a HubSpot internal ID, not a name.
+  // Look up the ID from Teacher HS values sheet first.
+  var hsId = null;
+  try {
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var resolvedLower = resolvedName.trim().toLowerCase();
+    for (var hi = 1; hi < teacherHsData.length; hi++) {
+      var rowName = String(teacherHsData[hi][2] || '').trim().toLowerCase();
+      if (rowName === resolvedLower) {
+        hsId = String(teacherHsData[hi][1] || '').trim();
+        Logger.log('[getTeacherAttritionReport] Found HS ID: "' + hsId + '" for "' + resolvedName + '"');
+        break;
+      }
+    }
+    if (!hsId) Logger.log('[getTeacherAttritionReport] No HS ID for "' + resolvedName + '" — falling back to name');
+  } catch (e) {
+    Logger.log('[getTeacherAttritionReport] HS ID lookup error: ' + e.message);
+  }
+
+  // Use EQ on ID if found, else CONTAINS_TOKEN on name as fallback
+  var teacherFilter = hsId
+    ? { propertyName: 'current_teacher', operator: 'EQ',             value: hsId }
+    : { propertyName: 'current_teacher', operator: 'CONTAINS_TOKEN', value: resolvedName };
  
   var requestBody = {
     filterGroups: [{
       filters: [
-        { propertyName: 'current_teacher', operator: 'CONTAINS_TOKEN', value: resolvedName },
-        { propertyName: 'learner_status',  operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }
+        teacherFilter,
+        { propertyName: 'learner_status', operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }
       ]
     }],
     limit: 100,
@@ -1696,10 +1719,25 @@ function getMigrationHistoryStatsByTeacher(teacherName) {
  
   var resolvedName = resolveTeacherName(teacherName);
   Logger.log('[getMigrationHistoryStatsByTeacher] "' + teacherName + '" → "' + resolvedName + '"');
+
+  // current_teacher__t_ stores HS internal ID — look it up first
+  var hsId = null;
+  try {
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var resolvedLower = resolvedName.trim().toLowerCase();
+    for (var hi = 1; hi < teacherHsData.length; hi++) {
+      if (String(teacherHsData[hi][2] || '').trim().toLowerCase() === resolvedLower) {
+        hsId = String(teacherHsData[hi][1] || '').trim();
+        break;
+      }
+    }
+  } catch(e) { Logger.log('[getMigrationHistoryStatsByTeacher] ID lookup error: ' + e.message); }
+
+  var filterValue = hsId || resolvedName;
  
   var requestBody = {
     filterGroups: [{
-      filters: [{ propertyName: 'current_teacher__t_', operator: 'EQ', value: resolvedName }]
+      filters: [{ propertyName: 'current_teacher__t_', operator: 'EQ', value: filterValue }]
     }],
     properties: ['hs_pipeline_stage', 'createdate'],
     limit: 100
@@ -1764,13 +1802,13 @@ function getActiveLearnersPerTeacher() {
         const teacher    = getTeacherLabel(rawTeacher);
         if (!teacher) return;
 
-        if (!counts[teacher]) counts[teacher] = { total: 0, coding: 0, math: 0 };
-        counts[teacher].total++;
-        if (course.includes('math')) {
-          counts[teacher].math++;
-        } else {
-          counts[teacher].coding++;
-        }
+        const teacherNorm = teacher.trim().toLowerCase().replace(/\s+/g, ' ');
+        [teacher, teacherNorm].forEach(function(key) {
+          if (!counts[key]) counts[key] = { total: 0, coding: 0, math: 0 };
+          counts[key].total++;
+          if (course.includes('math')) { counts[key].math++; }
+          else                         { counts[key].coding++; }
+        });
       });
 
       after = data.paging && data.paging.next ? data.paging.next.after : undefined;
@@ -1791,211 +1829,134 @@ function getEscalatedTeachersLast90Days() {
   var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
   var MIGRATION_PIPELINE_ID = '66161281';
- 
   var ESCALATION_REASONS = [
-    'Teacher Performance Issue',
-    'Escalation On Teacher',
-    'Escalation on Teacher'   // handles case variation in HubSpot
+    'Teacher Performance Issue', 'Escalation On Teacher',
+    'Escalation on Teacher', 'Escalation on Teacher Post Migration'
   ];
- 
-  var cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 90);
-  var cutoffMs = cutoff.getTime().toString();
- 
-  // Single request — no pagination loop — avoids bandwidth quota error.
-  // limit:200 is HubSpot's maximum per request.
-  var requestBody = {
-    filterGroups: [{
-      filters: [
-        { propertyName: 'hs_pipeline', operator: 'EQ',  value: MIGRATION_PIPELINE_ID },
-        { propertyName: 'createdate',  operator: 'GTE', value: cutoffMs }
-      ]
-    }],
-    properties: ['current_teacher__t_', 'reason_of_migration__t_', 'createdate'],
-    limit: 200,
-    sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
-  };
- 
-  var escalationMap = {};
- 
+  var escalationMap = {}, after = undefined, page = 0, MAX_PAGES = 10;
   try {
-    var response = UrlFetchApp.fetch(searchUrl, {
-      method:             'post',
-      headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload:            JSON.stringify(requestBody),
-      muteHttpExceptions: true
-    });
- 
-    var data = JSON.parse(response.getContentText());
- 
-    if (!data.results) {
-      Logger.log('[getEscalatedTeachersLast90Days] No results. Response: ' + response.getContentText().substring(0, 200));
-      return {};
-    }
- 
-    Logger.log('[getEscalatedTeachersLast90Days] Total tickets returned: ' + data.results.length);
- 
-    data.results.forEach(function(ticket) {
-      var reason = String(ticket.properties.reason_of_migration__t_ || '').trim();
- 
-      var isEscalation = ESCALATION_REASONS.some(function(code) {
-        return reason.toLowerCase() === code.toLowerCase();
+    do {
+      var requestBody = {
+        filterGroups: [{ filters: [
+          { propertyName: 'hs_pipeline',             operator: 'EQ', value: MIGRATION_PIPELINE_ID },
+          { propertyName: 'reason_of_migration__t_', operator: 'IN', values: ESCALATION_REASONS }
+        ]}],
+        properties: ['current_teacher__t_', 'reason_of_migration__t_', 'createdate'],
+        limit: 200, sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
+      };
+      if (after) requestBody.after = after;
+      var response = UrlFetchApp.fetch(searchUrl, {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(requestBody), muteHttpExceptions: true
       });
-      if (!isEscalation) return;
- 
-      var rawTeacher    = ticket.properties.current_teacher__t_ || '';
-      var teacherLabel  = getTeacherLabel(rawTeacher);
-      var canonicalName = resolveTeacherName(teacherLabel);
-      if (!canonicalName) return;
- 
-      escalationMap[canonicalName] = (escalationMap[canonicalName] || 0) + 1;
-      Logger.log('[getEscalatedTeachersLast90Days] +1 for "' + canonicalName + '" — reason: ' + reason);
-    });
- 
+      var data = JSON.parse(response.getContentText());
+      if (!data.results) { Logger.log('[getEscalatedTeachersLast90Days] No results page ' + page); break; }
+      Logger.log('[getEscalatedTeachersLast90Days] Page ' + page + ': ' + data.results.length + ' tickets');
+      data.results.forEach(function(ticket) {
+        var rawTeacher    = ticket.properties.current_teacher__t_ || '';
+        var teacherLabel  = getTeacherLabel(rawTeacher);
+        var canonicalName = resolveTeacherName(teacherLabel);
+        if (!canonicalName) return;
+        var normalizedName = canonicalName.trim().toLowerCase().replace(/\s+/g, ' ');
+        escalationMap[canonicalName]  = (escalationMap[canonicalName]  || 0) + 1;
+        escalationMap[normalizedName] = (escalationMap[normalizedName] || 0) + 1;
+        Logger.log('[getEscalatedTeachersLast90Days] +1 "' + canonicalName + '" id:' + rawTeacher);
+      });
+      after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+      page++;
+    } while (after && page < MAX_PAGES);
     Logger.log('[getEscalatedTeachersLast90Days] Final map: ' + JSON.stringify(escalationMap));
     return escalationMap;
- 
   } catch (e) {
     Logger.log('[getEscalatedTeachersLast90Days] Error: ' + e.message);
-    return {}; // Safe fallback — scoring continues with 0 escalations
+    return {};
   }
 }
 
 function getTeacherEscalationHistory(teacherName) {
-  var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
   var MIGRATION_PIPELINE_ID = '66161281';
-
-  var ESCALATION_REASONS = [
-    'Escalation on Teacher',
-    'Escalation On Teacher',
-    'Teacher Performance Issue',
-    'Escalation on Teacher Post Migration'
-  ];
-
-  var resolvedName = resolveTeacherName(teacherName);
-  Logger.log('[getTeacherEscalationHistory] Looking up: "' + teacherName + '" → "' + resolvedName + '"');
-
-  // Search ALL tickets for this teacher in the migration pipeline (no date cutoff)
-  var requestBody = {
-    filterGroups: [{
-      filters: [
-        { propertyName: 'hs_pipeline',        operator: 'EQ', value: MIGRATION_PIPELINE_ID },
-        { propertyName: 'current_teacher__t_', operator: 'EQ', value: resolvedName }
-      ]
-    }],
-    properties: [
-      'current_teacher__t_',
-      'reason_of_migration__t_',
-      'createdate',
-      'hs_lastmodifieddate',
-      'hs_pipeline_stage',
-      'subject',
-      'learner_uid',
-      'hs_ticket_id'
-    ],
-    limit: 200,
-    sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
+  var ESCALATION_REASONS = ['Escalation on Teacher','Escalation On Teacher','Teacher Performance Issue','Escalation on Teacher Post Migration'];
+  var STAGE_LABELS = {
+    '128913747':'Migration Triggered','128913748':'WIP','128913750':'WIP - TP Approval Pending',
+    '128913752':'WIP - CLS Approval Pending','1030980247':'WIP - Rejected by CLS',
+    '133755411':'WIP - Approved by CLS','1065336836':'Execution Pending',
+    '128913749':'WIP - Pr Approval Pending','128913753':'Migration Completed'
   };
+  var resolvedName = resolveTeacherName(teacherName);
+  Logger.log('[getTeacherEscalationHistory] "' + teacherName + '" → "' + resolvedName + '"');
+  var hsId = null;
+  try {
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var resolvedLower = resolvedName.trim().toLowerCase();
+    for (var hi = 1; hi < teacherHsData.length; hi++) {
+      if (String(teacherHsData[hi][2] || '').trim().toLowerCase() === resolvedLower) {
+        hsId = String(teacherHsData[hi][1] || '').trim();
+        Logger.log('[getTeacherEscalationHistory] HS ID: "' + hsId + '"');
+        break;
+      }
+    }
+  } catch(e) { Logger.log('[getTeacherEscalationHistory] ID lookup error: ' + e.message); }
 
+  var teacherFilter = hsId
+    ? { propertyName: 'current_teacher__t_', operator: 'EQ', value: hsId }
+    : { propertyName: 'current_teacher__t_', operator: 'EQ', value: resolvedName };
+
+  var requestBody = {
+    filterGroups: [{ filters: [
+      { propertyName: 'hs_pipeline', operator: 'EQ', value: MIGRATION_PIPELINE_ID },
+      teacherFilter
+    ]}],
+    properties: ['subject','current_teacher__t_','reason_of_migration__t_','createdate',
+                 'migration_completed_date','hs_pipeline_stage','learner_full_name','learner_uid','hs_ticket_id'],
+    limit: 200, sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
+  };
   try {
     var response = UrlFetchApp.fetch(searchUrl, {
-      method:             'post',
-      headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload:            JSON.stringify(requestBody),
-      muteHttpExceptions: true
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(requestBody), muteHttpExceptions: true
     });
-
     var data = JSON.parse(response.getContentText());
-
-    if (!data.results) {
-      Logger.log('[getTeacherEscalationHistory] No results from HubSpot.');
-      return { success: true, totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
-    }
-
-    Logger.log('[getTeacherEscalationHistory] Total tickets for teacher: ' + data.results.length);
-
-    // Filter to escalation reason codes only
-    var escalationTickets = data.results.filter(function(ticket) {
-      var reason = String(ticket.properties.reason_of_migration__t_ || '').trim();
-      return ESCALATION_REASONS.some(function(code) {
-        return reason.toLowerCase() === code.toLowerCase();
-      });
+    if (!data.results) return { success: true, totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
+    Logger.log('[getTeacherEscalationHistory] Total tickets: ' + data.results.length);
+    var escalationTickets = data.results.filter(function(t) {
+      var r = String(t.properties.reason_of_migration__t_ || '').trim();
+      return ESCALATION_REASONS.some(function(c) { return r.toLowerCase() === c.toLowerCase(); });
     });
-
-    Logger.log('[getTeacherEscalationHistory] Escalation tickets found: ' + escalationTickets.length);
-
-    // Build structured ticket list
-    var byReason = {};
-    var tickets = [];
-    var lastEscalationDate = null;
-
+    var byReason = {}, tickets = [], lastEscalationDate = null;
     escalationTickets.forEach(function(ticket) {
-      var props  = ticket.properties;
+      var props = ticket.properties;
       var reason = String(props.reason_of_migration__t_ || '').trim();
-
-      // Triggered date — use root createdAt (more reliable than props.createdate per existing code)
-      var triggeredDate = ticket.createdAt
-        ? new Date(ticket.createdAt)
-        : (props.createdate ? new Date(props.createdate) : null);
-
-      // Completed date — hs_lastmodifieddate is the best proxy for close date
-      // since HubSpot doesn't expose hs_closed_date in search properties reliably
-      var completedDate = props.hs_lastmodifieddate
-        ? new Date(props.hs_lastmodifieddate)
-        : null;
-
-      // Pipeline stage label
-      var stageLabel = String(props.hs_pipeline_stage || '').trim();
-      var isClosed   = stageLabel === 'closed' || stageLabel === '4' || stageLabel === 'Closed';
-
-      // Days to resolve (only if completed)
-      var daysToResolve = null;
-      if (triggeredDate && completedDate && isClosed) {
-        daysToResolve = Math.round((completedDate - triggeredDate) / (1000 * 60 * 60 * 24));
-      }
-
-      // Track last escalation date
-      if (triggeredDate) {
-        if (!lastEscalationDate || triggeredDate > lastEscalationDate) {
-          lastEscalationDate = triggeredDate;
-        }
-      }
-
-      // Count by reason
+      var triggeredDate = ticket.createdAt ? new Date(ticket.createdAt) : (props.createdate ? new Date(props.createdate) : null);
+      var completedDate = props.migration_completed_date ? new Date(props.migration_completed_date) : null;
+      var stageId = String(props.hs_pipeline_stage || '').trim();
+      var stageLabel = STAGE_LABELS[stageId] || ('Stage ' + stageId);
+      var isCompleted = stageLabel === 'Migration Completed';
+      var daysToResolve = (triggeredDate && completedDate && isCompleted)
+        ? Math.round((completedDate - triggeredDate) / 86400000) : null;
+      if (triggeredDate && (!lastEscalationDate || triggeredDate > lastEscalationDate)) lastEscalationDate = triggeredDate;
       byReason[reason] = (byReason[reason] || 0) + 1;
-
       tickets.push({
-        ticketId:       ticket.id || props.hs_ticket_id || 'N/A',
-        reason:         reason,
-        status:         isClosed ? 'Completed' : 'In Progress',
-        pipelineStage:  stageLabel,
-        triggeredDate:  triggeredDate  ? triggeredDate.toLocaleDateString('en-GB')  : 'N/A',
-        completedDate:  (completedDate && isClosed) ? completedDate.toLocaleDateString('en-GB') : 'N/A',
-        daysToResolve:  daysToResolve !== null ? daysToResolve : 'N/A',
-        learnerUid:     props.learner_uid   || 'N/A',
-        subject:        props.subject       || 'N/A'
+        ticketId: ticket.id || props.hs_ticket_id || 'N/A',
+        ticketName: props.subject || 'N/A', learnerName: props.learner_full_name || 'N/A',
+        learnerUid: props.learner_uid || 'N/A', reason: reason, stageId: stageId,
+        status: stageLabel, isCompleted: isCompleted,
+        triggeredDate: triggeredDate ? triggeredDate.toLocaleDateString('en-GB') : 'N/A',
+        completedDate: completedDate ? completedDate.toLocaleDateString('en-GB') : 'N/A',
+        daysToResolve: daysToResolve !== null ? daysToResolve : 'N/A'
       });
     });
-
-    // Sort tickets newest first
-    tickets.sort(function(a, b) {
-      var da = a.triggeredDate !== 'N/A' ? new Date(a.triggeredDate.split('/').reverse().join('-')) : new Date(0);
-      var db = b.triggeredDate !== 'N/A' ? new Date(b.triggeredDate.split('/').reverse().join('-')) : new Date(0);
-      return db - da;
+    tickets.sort(function(a,b) {
+      var da = a.triggeredDate!=='N/A'?new Date(a.triggeredDate.split('/').reverse().join('-')):new Date(0);
+      var db = b.triggeredDate!=='N/A'?new Date(b.triggeredDate.split('/').reverse().join('-')):new Date(0);
+      return db-da;
     });
-
-    return {
-      success:           true,
-      totalCount:        escalationTickets.length,
-      byReason:          byReason,
-      tickets:           tickets,
-      lastEscalationDate: lastEscalationDate
-        ? lastEscalationDate.toLocaleDateString('en-GB')
-        : null
-    };
-
-  } catch (e) {
+    return { success:true, totalCount:escalationTickets.length, byReason:byReason, tickets:tickets,
+             lastEscalationDate: lastEscalationDate ? lastEscalationDate.toLocaleDateString('en-GB') : null };
+  } catch(e) {
     Logger.log('[getTeacherEscalationHistory] Error: ' + e.message);
     return { success: false, message: e.message };
   }

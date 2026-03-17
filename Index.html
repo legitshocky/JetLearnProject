@@ -128,7 +128,7 @@
     <!-- Main Content -->
     <div class="main-content">
       <!-- Dashboard Page -->
-      <div id="dashboardPage" class="page-content">
+      <div id="dashboardPage" class="page-content" style="display:none;">
         <div class="header">
           <h1 class="page-title">Dashboard</h1>
           <div class="header-actions">
@@ -1061,7 +1061,7 @@
           <h1 class="page-title">Teacher Profile</h1>
           <div class="header-actions">
             <button class="btn btn-outline" id="backToTeachersBtn">
-              <i class="fas fa-arrow-left"></i> Back to Teachers
+              <i class="fas fa-arrow-left"></i> Back to Intelligence Center
             </button>
           </div>
         </div>
@@ -1189,10 +1189,10 @@
         </div>
       </div>
 
-<!-- Add this in the sidebar menu, before Settings -->
+<!-- Add this in the sidebar menu, before Settings
 <div class="menu-item" data-page="profile" id="profileMenuItem">
   <i class="fas fa-user-circle"></i><span>My Profile</span>
-</div>
+</div> -->
 
       <!-- Settings Page -->
       <div id="settingsPage" class="page-content" style="display: none;">
@@ -1642,7 +1642,7 @@
                 &nbsp;|&nbsp;
                 <strong>Upskilled Courses:</strong> <span id="cloneTargetLearners"></span>
                 &nbsp;|&nbsp;
-                <strong>90-day Escalations:</strong> <span id="cloneTargetEscalations"></span>
+                <strong>All-time Escalations:</strong> <span id="cloneTargetEscalations"></span>
             </div>
  
             <!-- AI analysis summary banner (shown only when AI enrichment succeeds) -->
@@ -1670,7 +1670,7 @@
                             <th>AI Score</th>
                             <th>Courses / Age Match</th>
                             <th>Upskilled</th>
-                            <th>Escalations (90d)</th>
+                            <th>Escalations (All-time)</th>
                             <th>Action</th>
                         </tr>
                     </thead>

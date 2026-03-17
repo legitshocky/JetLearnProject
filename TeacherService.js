@@ -109,8 +109,16 @@ function getTeacherDetailsForTable() {
     const finalTeacherDetails = allTeachersFromDataSheet.map(teacher => {
       const teacherName = teacher.name;
       
-      // Get the count from the HubSpot data, with a safe fallback.
-      const hsData = hubspotCounts[teacherName] || { total: 0, coding: 0, math: 0 };
+      // Try all name variants: DB exact, DB normalized, HS canonical, HS normalized
+      const teacherNorm  = teacherName.trim().toLowerCase().replace(/\s+/g, ' ');
+      const resolvedName = resolveTeacherName(teacherName);
+      const resolvedNorm = resolvedName.trim().toLowerCase().replace(/\s+/g, ' ');
+      const hsData = hubspotCounts[teacherName]  ||
+                     hubspotCounts[teacherNorm]   ||
+                     hubspotCounts[resolvedName]  ||
+                     hubspotCounts[resolvedNorm]  ||
+                     { total: 0, coding: 0, math: 0 };
+      if (hsData.total === 0) Logger.log('[ZERO] "' + teacherName + '" tried:"' + teacherNorm + '","' + resolvedName + '","' + resolvedNorm + '"');
       
       return {
         name:          teacherName,
@@ -892,7 +900,7 @@ function findSimilarTeachers(targetTeacherName) {
       var fallbackResults = personaData.slice(1).map(function(r) {
         var rn   = String(r[nameIdx] || '').trim();
         var name = resolveTeacherName(rn);
-        var esc  = escalationMapFallback[name] || escalationMapFallback[rn] || 0;
+        var esc  = escalationMapFallback[name] || escalationMapFallback[rn] || escalationMapFallback[normalizeTeacherName(name)] || escalationMapFallback[normalizeTeacherName(rn)] || 0;
         var usk  = upskillCountMapFallback[name] || upskillCountMapFallback[rn] || 0;
         var escalationScore = Math.max(0, 20 - (esc * 4));
         var courseScore     = usk > 0 ? 15 : 0;
@@ -980,7 +988,7 @@ function findSimilarTeachers(targetTeacherName) {
       });
     }
 
-    var targetUpskillCount = upskillCountMap[resolvedTarget] || 0;
+    var targetUpskillCount = upskillCountMap[resolvedTarget] || upskillCountMap[normalizeTeacherName(resolvedTarget)] || 0;
     Logger.log('[findSimilarTeachers] Target upskill count: ' + targetUpskillCount);
 
     // ── 5. Get HubSpot escalations (last 90 days) ─────────────────────────
@@ -1015,8 +1023,8 @@ function findSimilarTeachers(targetTeacherName) {
         });
       }
 
-      var escalations  = escalationMap[name] || escalationMap[rawName] || 0;
-      var upskillCount = upskillCountMap[name] || upskillCountMap[rawName] || 0;
+      var escalations  = escalationMap[name] || escalationMap[rawName] || escalationMap[normalizeTeacherName(name)] || escalationMap[normalizeTeacherName(rawName)] || 0;
+      var upskillCount = upskillCountMap[name] || upskillCountMap[rawName] || upskillCountMap[normalizeTeacherName(name)] || upskillCountMap[normalizeTeacherName(rawName)] || 0;
 
       // Scoring: Traits 30 + Age Group 20 + Upskill Count 30 + Stability 20
       var traitScore = 0;
@@ -1099,7 +1107,7 @@ function findSimilarTeachers(targetTeacherName) {
       activeLearners: targetUpskillCount,
       upskillCount:   targetUpskillCount,
       ageGroups:      targetAgeGroups,
-      escalations:    escalationMap[resolvedTarget] || 0
+      escalations:    escalationMap[resolvedTarget] || escalationMap[normalizeTeacherName(resolvedTarget)] || 0
     };
 
     // ── 7. AI re-ranking — returns top 5 with reasoning ──────────────────
@@ -1146,15 +1154,37 @@ function normalizeTeacherName(name) {
 //  Wrapping in a function fixes this completely.
 function getTeacherNameAliases() {
   return {
-    'aditi chuhan'  : 'Aditi Chauhan',
-    'aditi chauhan' : 'Aditi Chauhan',
-    'aditi chauahn' : 'Aditi Chauhan',
-    'aditi chahuan' : 'Aditi Chauhan'
-    // Add more misspellings here as you find them:
-    // 'wrong name' : 'Correct Name',
+    // ── Casing fixes (DB lowercase vs HS TitleCase) ───────────────────────
+    'aditi chuhan'              : 'Aditi Chauhan',
+    'aditi chauhan'             : 'Aditi Chauhan',
+    'aditi chauahn'             : 'Aditi Chauhan',
+    'aditi chahuan'             : 'Aditi Chauhan',
+
+    // ── DB name → different HS full name ─────────────────────────────────
+    'betty ann'                 : 'Betty Ann',        // HS: Betty Ann (exact match in HS sheet)
+    'florence bogor'            : 'Florence Bogor',   // HS: Florence Bogor (exact match)
+    'ramakant chandla'          : 'Ramakant Chandla', // DB all-caps
+    'xavier kristeen ottilia'   : 'Xavier Kristeen Ottilia',
+
+    // ── DB short name → HS full name ─────────────────────────────────────
+    'aarshi'                    : 'Aarshi Chaturvedi',
+    'anjali'                    : 'Anjali Murali',    // DB "Anjali" = HS "Anjali Murali" (most likely)
+
+    // ── DB spelling → HS spelling ─────────────────────────────────────────
+    'akshay gunani'             : 'Akshay Gurnani',   // DB typo, HS correct
+    'kim jeoffrey cuevas'       : 'Kim Jeoffrey Cuevass', // HS has double s
+    'love sogarwal'             : 'Love Sogarwal',    // normalize casing
+    'lovepreetkaur chadha'      : 'LovepreetKaur Chadha',
+    'sakshi chillar'            : 'Sakshi Badgujjar', // confirm with team
+    'saloni jain'               : 'Saloni Sharma',    // confirm with team
+    'soni'                      : 'Akanksha Soni',    // confirm with team
+    'komal'                     : 'Komal',
+    'sakina jaorawala'          : 'Sakina Jaorawala', // normalize casing
+
+    // ── Add more as you find them from [ZERO] logs ────────────────────────
+    // 'db name lowercase'      : 'Exact HubSpot Display Name',
   };
 }
-
  
 function resolveTeacherName(name) {
   const aliases = getTeacherNameAliases();

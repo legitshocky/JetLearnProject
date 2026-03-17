@@ -4880,7 +4880,7 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     if (processBatchBtn) processBatchBtn.addEventListener('click', processBatchFile);
     if (cancelPersonaBtn) cancelPersonaBtn.addEventListener('click', () => { personaForm.reset(); initDateInputs(); personaResultsContainer.style.display = 'none'; });
     if (subscribeReportBtn) subscribeReportBtn.addEventListener('click', () => { showConfirm('Subscribe to Reports', 'Are you sure?', confirmed => { if (confirmed) { showLoading('Subscribing...'); google.script.run.withSuccessHandler(r => { hideLoading(); showToast(r && r.success ? 'success' : 'error', 'Subscription', (r && r.message) ? r.message : 'Unknown error.'); }).withFailureHandler(showError).subscribeToWeeklyReport(); } }); });
-    if (backToTeachersBtn) backToTeachersBtn.addEventListener('click', () => switchPage('teachersPage'));
+    if (backToTeachersBtn) backToTeachersBtn.addEventListener('click', () => switchPage('loadPage'));
     if (searchHistoryBtn) searchHistoryBtn.addEventListener('click', searchLearnerHistory);
 
     // ==========================================
@@ -5896,7 +5896,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tabContentEl) tabContentEl.classList.add('active');
  
             if (tabButton.dataset.tab === 'personaMatch') {
-                renderPersonaTable();
+                // Always refresh teacher data when switching to Persona tab
+                // so active learner counts are accurate
+                showLoading('Loading teacher data...');
+                google.script.run
+                    .withSuccessHandler(function(teachers) {
+                        hideLoading();
+                        allTeacherDetailsCache = teachers || [];
+                        renderPersonaTable();
+                    })
+                    .withFailureHandler(function(err) {
+                        hideLoading();
+                        renderPersonaTable(); // render with whatever cache we have
+                    })
+                    .getTeacherDetailsForTable();
             }
         });
     });
@@ -5911,8 +5924,18 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
  
         if (!allTeacherDetailsCache || allTeacherDetailsCache.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;">'
-                + 'Teacher data is loading. Please wait or refresh the page.</td></tr>';
+            showLoading('Loading teacher data...');
+            google.script.run
+                .withSuccessHandler(function(teachers) {
+                    hideLoading();
+                    allTeacherDetailsCache = teachers || [];
+                    renderPersonaTable();
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;color:var(--danger);">Failed to load teacher data.</td></tr>';
+                })
+                .getTeacherDetailsForTable();
             return;
         }
  
@@ -5947,8 +5970,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 + 'border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
                 + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>';
  
-            var safeName = escapeHtml(teacher.name).replace(/'/g, "\\'");
- 
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td><strong>' + escapeHtml(teacher.name) + '</strong></td>'
@@ -5956,10 +5977,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 + teacher.status.toLowerCase().replace(/ /g, '-') + '">'
                 + escapeHtml(teacher.status) + '</span></td>'
                 + '<td>' + learnerHtml + '</td>'
-                + '<td style="text-align:right;">'
-                    + '<button class="btn btn-primary btn-sm" onclick="openCloneModal(\'' + safeName + '\')">'
+                + '<td style="text-align:right;display:flex;gap:6px;justify-content:flex-end;">'
+                    + '<button class="btn btn-outline btn-sm view-profile-btn">'
+                    + '<i class="fas fa-user"></i> View Profile'
+                    + '</button>'
+                    + '<button class="btn btn-primary btn-sm find-replacement-btn">'
                     + '<i class="fas fa-robot"></i> Find Replacement'
                     + '</button></td>';
+            tr.querySelector('.view-profile-btn').dataset.teacherName = teacher.name;
+            tr.querySelector('.view-profile-btn').addEventListener('click', function() {
+                switchPage('teacherProfilePage', this.dataset.teacherName);
+            });
+            tr.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
+            tr.querySelector('.find-replacement-btn').addEventListener('click', function() {
+                openCloneModal(this.dataset.teacherName);
+            });
             tbody.appendChild(tr);
 
     });
@@ -6083,12 +6115,13 @@ function openCloneModal(teacherName) {
                             + ' | Age:' + ageScore + '/20'
                             + ' | Courses:' + courseScore + '/30'
                             + ' | Stability:' + escalScore + '/20';
- 
-                        var safeName = name
-                            .replace(/\\/g, '\\\\')
-                            .replace(/'/g, "\\'")
-                            .replace(/"/g, '&quot;');
- 
+
+                        var escalCount = Number(match.escalations) || 0;
+                        var escalHtml  = escalCount === 0
+                            ? '<span style="color:#15803d;font-weight:600;">No Escalations</span>'
+                            : '<span style="font-size:1.1rem;font-weight:700;color:' + escColor + ';">' + escalCount + '</span>'
+                              + '<span style="font-size:0.72rem;color:' + escColor + ';display:block;">' + escapeHtml(escalRisk) + '</span>';
+
                         var tr = document.createElement('tr');
                         tr.innerHTML =
                             '<td style="min-width:180px;">'
@@ -6097,7 +6130,7 @@ function openCloneModal(teacherName) {
                                 + reasonHtml + warningHtml + caveatHtml
                             + '</td>'
                             + '<td>'
-                                + '<div title="' + breakdown
+                                + '<div title="' + escapeHtml(breakdown)
                                 + '" style="display:flex;align-items:center;gap:8px;cursor:help;">'
                                     + '<span style="background:' + scoreBg
                                     + ';color:' + scoreColor
@@ -6117,15 +6150,18 @@ function openCloneModal(teacherName) {
                                 + '<span style="font-size:0.68rem;font-weight:400;'
                                 + 'color:var(--text-muted);display:block;">courses</span>'
                             + '</td>'
-                            + '<td style="color:' + escColor + ';font-weight:600;">'
-                                + escapeHtml(escalRisk)
-                            + '</td>'
+                            + '<td>' + escalHtml + '</td>'
                             + '<td>'
-                                + '<button class="btn btn-outline btn-sm" '
-                                + 'onclick="switchPage(\'teacherProfilePage\',\'' + safeName + '\')">'
-                                + 'View Profile</button>'
+                                + '<button class="btn btn-outline btn-sm view-profile-btn">View Profile</button>'
                             + '</td>';
- 
+
+                        tr.querySelector('.view-profile-btn').dataset.teacherName = name;
+                        tr.querySelector('.view-profile-btn').addEventListener('click', function() {
+                            var modal = document.getElementById('cloneTeacherModal');
+                            if (modal) modal.classList.remove('active');
+                            switchPage('teacherProfilePage', this.dataset.teacherName);
+                        });
+
                         tbody.appendChild(tr);
  
                     } catch (rowErr) {
