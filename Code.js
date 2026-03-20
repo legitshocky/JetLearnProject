@@ -288,7 +288,7 @@ const TIMEZONE_IANA_MAP = {
       courses: courses,
       tpManagers: tpManagers,
       clsManagers: Array.from(clsManagers).sort(),
-      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Manish Singh', 'Molishka Rai', 'Sana Rais', 'Satyam Mehra', 'Sunil Amarnath', 'Uday Kanika', 'Ishita Pahwa'],
+      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Molishka Rai', 'Spreha Jain', 'Satyam Mehra', 'Sunil Amarnath', ],
       invoiceProducts: invoiceProducts,
       timezones: timezones
     };
@@ -360,7 +360,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "317"; 
+const APP_VERSION = "322"; 
 
 function getAppVersion() {
   return APP_VERSION;
@@ -381,4 +381,51 @@ function setupCheckRepliesTrigger() {
     .create();
 
   Logger.log('checkReplies trigger set up successfully — runs every 2 hours.');
+}
+
+// ── AI Teacher Dashboard Insights ────────────────────────────────────────────
+// Called from the frontend AI Dashboard tab — takes a prompt string and
+// returns a JSON array string using the existing Gemini setup in AIService.js
+function getAITeacherInsights(prompt) {
+  Logger.log('[getAITeacherInsights] called, prompt length: ' + prompt.length);
+  try {
+    const apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
+    if (!apiKey) throw new Error('GEMINI_API_KEY not set in Script Properties.');
+
+    const model = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
+    const url   = GEMINI_BASE_URL + model + ':generateContent?key=' + apiKey;
+
+    const response = UrlFetchApp.fetch(url, {
+      method:  'post',
+      headers: { 'Content-Type': 'application/json' },
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature:     0.4,
+          maxOutputTokens: 1024
+        }
+      }),
+      muteHttpExceptions: true
+    });
+
+    const json = JSON.parse(response.getContentText());
+    if (json.error) throw new Error('Gemini error: ' + json.error.message);
+
+    const text = json.candidates[0].content.parts[0].text || '';
+
+    // Strip markdown fences and return raw JSON string
+    const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // Validate it's a JSON array before returning
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) throw new Error('Gemini returned non-array response.');
+
+    Logger.log('[getAITeacherInsights] returned ' + parsed.length + ' insights via ' + model);
+    return clean;
+
+  } catch (e) {
+    Logger.log('[getAITeacherInsights] error: ' + e.message);
+    // Return a single error insight so the frontend still renders gracefully
+    return JSON.stringify([{ type: 'info', text: 'AI analysis unavailable: ' + e.message }]);
+  }
 }

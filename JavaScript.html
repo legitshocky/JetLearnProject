@@ -620,8 +620,21 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     }
 
     function showConfirm(title, message, callback) {
-      confirmTitle.textContent = title;
-      confirmMessage.textContent = message;
+      const isLogout = title.toLowerCase().includes('logout') || title.toLowerCase().includes('sign out');
+      confirmTitle.textContent = isLogout ? 'Sign out?' : title;
+      confirmMessage.textContent = isLogout ? "You'll need to sign back in to access the JetLearn Migration System." : message;
+      confirmModal.setAttribute('data-type', isLogout ? 'logout' : 'action');
+      // Update button labels
+      const okBtn = document.getElementById('confirmOk');
+      if (okBtn) {
+        okBtn.innerHTML = isLogout
+          ? '<i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Sign Out'
+          : '<i class="fas fa-check" style="margin-right:6px;"></i>Confirm';
+      }
+      const iconEl = document.getElementById('confirmIcon');
+      if (iconEl) {
+        iconEl.className = isLogout ? 'fas fa-sign-out-alt' : 'fas fa-exclamation';
+      }
       confirmModal.classList.add('active');
       const okListener = () => { confirmModal.classList.remove('active'); callback(true); cleanup(); };
       const cancelListener = () => { confirmModal.classList.remove('active'); callback(false); cleanup(); };
@@ -3836,6 +3849,8 @@ google.script.run
     userRole.textContent = user.role;
     setupUIForRole();
     loginPage.style.display = 'none';
+    const inactivityMsg = document.getElementById('inactivityMessage');
+    if (inactivityMsg) inactivityMsg.style.display = 'none';
     appContainer.style.display = 'grid';
     startPolling();
     startSessionTimer();// ← ADD THIS BLOCK
@@ -4134,6 +4149,8 @@ function loadUsers() {
             loginPage.style.display = 'flex';
             switchLoginView('loginView');
             loginForm.reset();
+            const inactivityMsg = document.getElementById('inactivityMessage');
+            if (inactivityMsg) inactivityMsg.style.display = 'flex';
             showToast('warning', 'Session Expired', 'You have been logged out due to inactivity.');
         }, SESSION_TIMEOUT_MS);
     }
