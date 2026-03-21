@@ -832,6 +832,25 @@
         grid-column: span 3;
     }
 
+    /* Scrollable recent activities list */
+    #recentActivitiesList {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(99,102,241,0.25) transparent;
+    }
+    #recentActivitiesList::-webkit-scrollbar {
+        width: 4px;
+    }
+    #recentActivitiesList::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    #recentActivitiesList::-webkit-scrollbar-thumb {
+        background: rgba(99,102,241,0.25);
+        border-radius: 99px;
+    }
+    #recentActivitiesList::-webkit-scrollbar-thumb:hover {
+        background: rgba(99,102,241,0.5);
+    }
+
     .activity-item {
       display: flex;
       align-items: center;
@@ -2742,69 +2761,96 @@ body.dark-mode .app-footer a { color: rgba(255,255,255,0.35) !important; }
 
 .hs-input-box {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #cbd6e2;
-    border-radius: 4px;
+    padding: 10px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
     font-size: 14px;
-    color: #33475b;
-    background-color: #f5f8fa;
+    color: var(--color-text-primary, #33475b);
+    background-color: #ffffff;
     cursor: text;
-    transition: all 0.3s;
+    transition: all 0.2s ease;
 }
 
 .hs-input-box:focus {
     background-color: #fff;
-    border-color: #ff7a59; /* HubSpot Orange/JetLearn Accent */
+    border-color: #6366f1;
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 122, 89, 0.2);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
 }
 
 .hs-options-list {
-    display: none; /* Hidden by default */
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    max-height: 250px;
+    display: none;
+    position: fixed;   /* fixed escapes ALL stacking contexts — no z-index fight */
+    min-width: 280px;
+    max-height: 260px;
     overflow-y: auto;
-    background: white;
-    border: 1px solid #cbd6e2;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    z-index: 1000;
-    margin-top: 2px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
+    z-index: 999999;
 }
 
 .hs-options-list.show {
     display: block;
+    animation: fadeInUp 0.15s ease both;
 }
 
 .hs-option {
-    padding: 10px 12px;
+    padding: 9px 14px;
     cursor: pointer;
-    border-bottom: 1px solid #f1f4f8;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.12s ease;
 }
 
-.hs-option:last-child {
-    border-bottom: none;
-}
+.hs-option:first-child { border-radius: 10px 10px 0 0; }
+.hs-option:last-child  { border-bottom: none; border-radius: 0 0 10px 10px; }
 
-.hs-option:hover {
-    background-color: #e5f5f8; /* Light Blue Hover */
+.hs-option:hover, .hs-option.hs-highlighted {
+    background-color: #f0f0ff;
 }
 
 .hs-option-name {
-    font-weight: 500;
-    color: #33475b;
-    font-size: 14px;
+    font-weight: 600;
+    color: #111827;
+    font-size: 13px;
 }
 
 .hs-option-email {
-    font-size: 12px;
-    color: #7c98b6;
-    margin-top: 2px;
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 1px;
 }
+
+/* Dropdown always floats above content */
+.form-container:has(.hs-dropdown-container) {
+    overflow: visible !important;
+}
+
+/* Dark mode */
+body.dark-mode .hs-input-box {
+    background: #252545 !important;
+    border-color: rgba(255,255,255,0.15) !important;
+    color: rgba(255,255,255,0.88) !important;
+}
+body.dark-mode .hs-input-box:focus {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.2) !important;
+}
+body.dark-mode .hs-options-list {
+    background: #1a1a35 !important;
+    border-color: rgba(255,255,255,0.1) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+}
+body.dark-mode .hs-option {
+    border-color: rgba(255,255,255,0.05) !important;
+}
+body.dark-mode .hs-option:hover,
+body.dark-mode .hs-option.hs-highlighted {
+    background: rgba(99,102,241,0.15) !important;
+}
+body.dark-mode .hs-option-name { color: rgba(255,255,255,0.92) !important; }
+body.dark-mode .hs-option-email { color: rgba(255,255,255,0.40) !important; }
 
 .teacher-filter-select {
     padding: 0.5rem;

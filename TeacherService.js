@@ -105,7 +105,35 @@ function getTeacherDetailsForTable() {
     const hubspotCounts = getActiveLearnersPerTeacher();
     Logger.log('Fetched HubSpot active learner counts.');
 
-    // ── Step 3: Build the final, enriched result array ────────────────────────
+    // ── Step 3: Build a Persona sheet manager lookup map ─────────────────────
+    // Persona sheet has plain-text manager names (not emails)
+    const personaManagerMap = {};
+    try {
+      const personaData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
+      if (personaData && personaData.length > 1) {
+        const pHeaders = personaData[1];
+        const pHeaderMap = {};
+        pHeaders.forEach((h, idx) => { if (h) pHeaderMap[String(h).trim()] = idx; });
+        const pNameCol    = pHeaderMap['Teacher Name'];
+        const pManagerCol = pHeaderMap['Manager'];
+        const pClsCol     = pHeaderMap['CLS Manager'];
+        if (pNameCol !== undefined) {
+          for (let r = 2; r < personaData.length; r++) {
+            const pName = String(personaData[r][pNameCol] || '').trim();
+            if (pName) {
+              personaManagerMap[pName.toLowerCase()] = {
+                tpManager:  pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '',
+                clsManager: pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : ''
+              };
+            }
+          }
+        }
+      }
+    } catch(e) {
+      Logger.log('[getTeacherDetailsForTable] Persona map error: ' + e.message);
+    }
+
+    // ── Step 4: Build the final, enriched result array ────────────────────────
     const finalTeacherDetails = allTeachersFromDataSheet.map(teacher => {
       const teacherName = teacher.name;
       
@@ -119,6 +147,9 @@ function getTeacherDetailsForTable() {
                      hubspotCounts[resolvedNorm]  ||
                      { total: 0, coding: 0, math: 0 };
       if (hsData.total === 0) Logger.log('[ZERO] "' + teacherName + '" tried:"' + teacherNorm + '","' + resolvedName + '","' + resolvedNorm + '"');
+
+      // Get manager names from Persona sheet (plain names, not emails)
+      const personaEntry = personaManagerMap[teacherNorm] || personaManagerMap[resolvedNorm] || {};
       
       return {
         name:          teacherName,
@@ -127,10 +158,16 @@ function getTeacherDetailsForTable() {
         status:        teacher.status || 'Active',
         joinDate:      teacher.joinDate ? new Date(teacher.joinDate).toLocaleDateString('en-GB') : 'N/A',
         
-        // Use the live HubSpot data for learner counts
-        activeCourses: hsData.total,
-        activeCoding:  hsData.coding,
-        activeMath:    hsData.math,
+        // Manager fields — from Persona sheet (names) with Teacher Data fallback (may be emails)
+        manager:               personaEntry.tpManager  || teacher.manager               || '',
+        clsManagerResponsible: personaEntry.clsManager || teacher.clsManagerResponsible || '',
+        tpManagerEmail:        teacher.tpManagerEmail  || '',
+
+        // Use live HubSpot data — but only for active/EWS teachers.
+        // Attrited/On Leave teachers may still appear in old HubSpot deals; zero them out.
+        activeCourses: (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.total  : 0),
+        activeCoding:  (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.coding : 0),
+        activeMath:    (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.math   : 0),
 
         // Get last activity from the audit log
         lastActivity:  getTeacherLastActivity(teacherName)
@@ -540,7 +577,7 @@ function getTeacherSpecificLoad(teacherName) {
 
     const headers = sheetData[headerRowIndex];
     
-    // 2. Find specific teacher row
+    // 2. Find specific teacher row in TEACHER_COURSES
     const teacherRow = sheetData.slice(headerRowIndex + 1).find(row => 
         String(row[0]).trim().toLowerCase() === String(teacherName).trim().toLowerCase()
     );
@@ -567,8 +604,60 @@ function getTeacherSpecificLoad(teacherName) {
     // Sort 100% to top
     courseDetails.sort((a, b) => b.proficiency.localeCompare(a.proficiency));
 
-    // 4. Get Last Activity (using your existing helper function)
+    // 4. Get Last Activity
     const lastActivity = getTeacherLastActivity(teacherName);
+
+    // 5. Pull manager fields from Teacher Persona Mapping sheet
+    // Persona sheet headers (row 1): Teacher Name, Manager, CLS Manager
+    // Names are stored as plain text (not emails) — no resolution needed
+    let tpManager = '', tpManagerEmail = '', clsManager = '', clsEmail = '';
+    try {
+      const personaData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
+      if (personaData && personaData.length > 1) {
+        const pHeaders = personaData[1];
+        const pHeaderMap = {};
+        pHeaders.forEach(function(h, idx) { if (h) pHeaderMap[String(h).trim()] = idx; });
+
+        const pNameCol    = pHeaderMap['Teacher Name'];
+        const pManagerCol = pHeaderMap['Manager'];
+        const pClsCol     = pHeaderMap['CLS Manager'];
+
+        if (pNameCol !== undefined) {
+          const nameLower = String(teacherName).trim().toLowerCase();
+          for (let r = 2; r < personaData.length; r++) {
+            const rowName = String(personaData[r][pNameCol] || '').trim().toLowerCase();
+            if (rowName === nameLower) {
+              tpManager  = pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '';
+              clsManager = pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : '';
+              // Emails not stored in Persona sheet — look up from Teacher Data as fallback
+              break;
+            }
+          }
+        }
+      }
+    } catch(e) {
+      Logger.log('[getTeacherSpecificLoad] Persona manager lookup error: ' + e.message);
+    }
+
+    // Fallback: if Persona sheet had no data, try Teacher Data sheet for email-based lookup
+    if (!tpManager && !clsManager) {
+      try {
+        const teacherDataSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+        const nameLower = String(teacherName).trim().toLowerCase();
+        for (let r = 1; r < teacherDataSheet.length; r++) {
+          const rowName = String(teacherDataSheet[r][1] || '').trim().toLowerCase();
+          if (rowName === nameLower) {
+            tpManager      = String(teacherDataSheet[r][6]  || '').trim();
+            clsManager     = String(teacherDataSheet[r][7]  || '').trim();
+            clsEmail       = String(teacherDataSheet[r][9]  || '').trim();
+            tpManagerEmail = String(teacherDataSheet[r][10] || '').trim();
+            break;
+          }
+        }
+      } catch(e) {
+        Logger.log('[getTeacherSpecificLoad] Teacher Data fallback error: ' + e.message);
+      }
+    }
 
     return { 
       success: true, 
@@ -576,7 +665,11 @@ function getTeacherSpecificLoad(teacherName) {
       status: teacherRow[3] || 'Active',
       courses: courseDetails,
       totalLoad: courseDetails.length,
-      lastActivity: lastActivity
+      lastActivity: lastActivity,
+      manager:               tpManager,
+      clsManagerResponsible: clsManager,
+      clsEmail:              clsEmail,
+      tpManagerEmail:        tpManagerEmail
     };
 
   } catch (error) {
@@ -1161,10 +1254,10 @@ function getTeacherNameAliases() {
     'aditi chahuan'             : 'Aditi Chauhan',
 
     // ── DB name → different HS full name ─────────────────────────────────
-    'betty ann'                 : 'Betty Ann',        // HS: Betty Ann (exact match in HS sheet)
-    'florence bogor'            : 'Florence Bogor',   // HS: Florence Bogor (exact match)
+    'betty ann'                 : 'Betty Ann Lijo',        // HS: Betty Ann (exact match in HS sheet)
+    'florence bogor'            : 'Florence',   // HS: Florence Bogor (exact match)
     'ramakant chandla'          : 'Ramakant Chandla', // DB all-caps
-    'xavier kristeen ottilia'   : 'Xavier Kristeen Ottilia',
+    'xavier kristeen ottilia'   : 'Ottilia Kristeen Xavier',
 
     // ── DB short name → HS full name ─────────────────────────────────────
     'aarshi'                    : 'Aarshi Chaturvedi',

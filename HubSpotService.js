@@ -1769,7 +1769,7 @@ function getActiveLearnersPerTeacher() {
 
   let after  = undefined;
   let page   = 0;
-  const MAX_PAGES = 20;
+  const MAX_PAGES = 30;  // increased: 30×100 = 3000 max, covers ~2546 active learners
 
   try {
     do {
@@ -1959,5 +1959,34 @@ function getTeacherEscalationHistory(teacherName) {
   } catch(e) {
     Logger.log('[getTeacherEscalationHistory] Error: ' + e.message);
     return { success: false, message: e.message };
+  }
+}
+// ── Fast accurate total active learner count from HubSpot ──────────────────
+// Uses HubSpot's own total count field — no pagination needed, always accurate
+// regardless of how many learners there are
+function getTotalActiveLearnerCount() {
+  const token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  const searchUrl  = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+  const activeStatuses = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
+  try {
+    const body = {
+      filterGroups: [{ filters: [{ propertyName: 'learner_status', operator: 'IN', values: activeStatuses }] }],
+      properties: ['hs_object_id'],
+      limit: 1  // We only need the total count, not the actual records
+    };
+    const response = UrlFetchApp.fetch(searchUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true
+    });
+    const data = JSON.parse(response.getContentText());
+    if (data.error) throw new Error(data.message || 'HubSpot error');
+    const total = data.total || 0;
+    Logger.log('[getTotalActiveLearnerCount] Total: ' + total);
+    return { success: true, total: total };
+  } catch (e) {
+    Logger.log('[getTotalActiveLearnerCount] error: ' + e.message);
+    return { success: false, total: 0 };
   }
 }

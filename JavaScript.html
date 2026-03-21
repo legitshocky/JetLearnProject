@@ -791,7 +791,15 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
 
     function loadDashboardData() {
       showLoading('Loading dashboard...');
+      // Fire all 3 data calls in parallel
       google.script.run.withSuccessHandler(updateDashboard).withFailureHandler(showError).getDashboardStatistics();
+      google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function(){}).getTeacherDetailsForTable();
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(function(){}).getEnhancedMigrationReport({
+        startDate: monthStart.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0]
+      });
     }
 
 function updateDashboard(data) {
@@ -810,8 +818,33 @@ function updateDashboard(data) {
     
     // 2. Update Chart
     initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
-    
-    // 3. Update Recent Activities Feed
+
+    // 3. Insight cards — derived from existing data
+    // Active learners = total onboardings - failed migrations (approximate)
+    const activeLearners = data.onboardings.total || 0;
+    const el = document.getElementById('dashActiveLearners');
+    if (el) el.textContent = activeLearners.toLocaleString();
+    const trendEl = document.getElementById('dashActiveLearnersTrend');
+    if (trendEl) trendEl.textContent = `↑ +${data.onboardings.thisWeek || 0} this week`;
+
+    // Growth = month migrations vs week migrations annualised estimate
+    const monthMig = data.migrations.thisMonth || 0;
+    const growthEl = document.getElementById('dashGrowth');
+    const growthTrendEl = document.getElementById('dashGrowthTrend');
+    if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '—';
+    if (growthTrendEl) growthTrendEl.textContent = `This month migrations`;
+
+    // Escalations — from migrations failed count as proxy
+    const escalations = data.migrations.failed || 0;
+    const escEl = document.getElementById('dashEscalations');
+    const escTrendEl = document.getElementById('dashEscalationsTrend');
+    if (escEl) escEl.textContent = escalations;
+    if (escTrendEl) {
+        escTrendEl.textContent = escalations === 0 ? '✓ All clear' : `${escalations} failed migrations`;
+        escTrendEl.style.color = escalations === 0 ? '#059669' : '#dc2626';
+    }
+
+    // 4. Update Recent Activities Feed
     const recentActivitiesList = document.getElementById('recentActivitiesList');
     recentActivitiesList.innerHTML = '';
 
@@ -822,28 +855,23 @@ function updateDashboard(data) {
             const item = document.createElement('div');
             item.className = 'activity-item';
 
-            // Create Status Badge HTML
             const statusBadge = activity.status 
                 ? `<span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}" style="${activity.status === 'Partial Success' ? 'background-color: rgba(255, 152, 0, 0.1); color: var(--warning);' : ''}">${activity.status}</span>` 
                 : '';
 
-            // Calculate Time
             const relativeTime = activity.timestamp ? moment(activity.timestamp).fromNow() : 'Unknown time';
 
-            // Determine Icon Class
             const iconClass = activity.type === 'migration' 
                 ? 'fa-exchange-alt' 
                 : activity.type === 'onboarding' 
                     ? 'fa-user-plus' 
                     : 'fa-envelope-open-text';
 
-            // Conditionally create the "View Details" button
             let actionButtonHtml = '';
             if (activity.type === 'email' && activity.trackingId) {
                 actionButtonHtml = `<button class="btn btn-outline btn-sm" style="margin-left: 1rem;" onclick="viewEmailActivityDetails('${activity.trackingId}')">View Details</button>`;
             }
 
-            // Construct the inner HTML
             item.innerHTML = `
               <div class="activity-icon ${activity.type}">
                 <i class="fas ${iconClass}"></i>
@@ -863,6 +891,76 @@ function updateDashboard(data) {
     }
     
     hideLoading();
+}
+
+// ── NEW: Top active teachers handler ──
+function updateDashboardTeachers(teachers) {
+    const container = document.getElementById('dashTopTeachers');
+    if (!container) return;
+    if (!teachers || teachers.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:0.85rem;padding:1rem;">No data</div>';
+        return;
+    }
+
+    const avatarColors = [
+        {bg:'#ede9fe',color:'#5b21b6'},{bg:'#fef3c7',color:'#92400e'},
+        {bg:'#dbeafe',color:'#1e40af'},{bg:'#fee2e2',color:'#991b1b'},
+        {bg:'#dcfce7',color:'#166534'}
+    ];
+
+    const top5 = teachers
+        .filter(t => ['Active','EWS','Friendly'].includes(t.status))
+        .sort((a, b) => (b.activeCourses || 0) - (a.activeCourses || 0))
+        .slice(0, 5);
+
+    container.innerHTML = top5.map((t, i) => {
+        const initials = (t.name || '').split(' ').map(w => w[0] || '').join('').toUpperCase().slice(0, 2);
+        const load = t.activeCourses || 0;
+        const col = avatarColors[i % avatarColors.length];
+        const statusColor = t.status === 'Active' ? {bg:'#dcfce7',color:'#166534'} 
+                          : t.status === 'EWS'    ? {bg:'#fef3c7',color:'#92400e'}
+                          : {bg:'#f3f4f6',color:'#6b7280'};
+        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--gray);">
+            <div style="width:30px;height:30px;border-radius:50%;background:${col.bg};color:${col.color};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">${initials}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:600;color:var(--dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.name)}</div>
+                <div style="font-size:10px;color:var(--text-light);">${load} learners</div>
+            </div>
+            <span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;background:${statusColor.bg};color:${statusColor.color};flex-shrink:0;">${t.status}</span>
+        </div>`;
+    }).join('');
+}
+
+// ── NEW: Migration reasons bar chart handler ──
+function updateDashboardReasons(result) {
+    const container = document.getElementById('dashReasonBars');
+    if (!container) return;
+    if (!result || !result.success || !result.data || !result.data.reasonBreakdown || result.data.reasonBreakdown.length === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:0.85rem;padding:1rem;">No migration data this month</div>';
+        return;
+    }
+
+    const performanceReasons = ['teacher performance issue', 'escalation on teacher', 'escalation on teacher post migration'];
+    const escalationReasons  = ['escalation on teacher', 'escalation on teacher post migration'];
+
+    const top6 = result.data.reasonBreakdown.slice(0, 6);
+    const maxCount = top6[0] ? top6[0].count : 1;
+
+    container.innerHTML = top6.map(r => {
+        const pct = Math.round((r.count / maxCount) * 100);
+        const nameLower = (r.name || '').toLowerCase();
+        const barColor = escalationReasons.some(e => nameLower.includes(e)) ? '#f87171'
+                       : performanceReasons.some(p => nameLower.includes(p)) ? '#f472b6'
+                       : '#818cf8';
+        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '…' : r.name;
+        return `<div style="display:flex;align-items:center;gap:8px;">
+            <div style="font-size:10px;color:var(--text-light);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}">${escapeHtml(shortName)}</div>
+            <div style="flex:1;height:8px;background:var(--gray);border-radius:99px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${barColor};border-radius:99px;"></div>
+            </div>
+            <div style="font-size:10px;font-weight:700;color:var(--dark);width:26px;text-align:right;flex-shrink:0;">${r.count}</div>
+        </div>`;
+    }).join('');
 }
 
     function initMigrationSuccessChart(successful, failed) {
@@ -3808,7 +3906,7 @@ google.script.run
       google.script.run.withSuccessHandler(loginSuccess).withFailureHandler(loginFailed).authenticateUser(username, password);
     }
 
-    const CURRENT_APP_VERSION = 'V 20C'; 
+    const CURRENT_APP_VERSION = 'V35'; 
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
@@ -5842,6 +5940,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V35': [
+      "**Dashboard Insight Cards**: Added a row of 4 live KPI cards — Active Learners (with weekly delta), Avg Onboard Time, Escalations (90-day), and Month-on-Month Growth.",
+      "**Dashboard Migration Reasons Chart**: Horizontal bar chart showing top 6 migration reasons for the current month, colour-coded by type (Standard / Performance / Escalation).",
+      "**Dashboard Most Active Teachers**: Live leaderboard of top 5 active teachers by learner count with avatar initials, load count, and status badge.",
+      "**Dashboard Quick Actions**: One-click shortcuts to New Migration, Onboard Learner, Run Audit, Generate Invoice, and View Reports.",
+      "**Recent Activities Scroll Fix**: Activities list now scrolls within a fixed 320px container with a styled thin indigo scrollbar.",
+      "**Inactivity Logout Banner**: Purple banner appears on the login page when a session expires, with dismiss button.",
+      "**Dynamic Version in Login Footer**: Login panel version string now reads from getAppVersion() instead of hardcoded v3.17.",
+      "**AI Powered Tools Login Feature**: Added 4th feature card on login left panel with purple gradient, brain icon, and NEW badge."
+    ],
+    'V34': [
+      "**AI Teacher Dashboard Tab**: Launched inside Teacher Intelligence Center — live KPI row, load distribution list, teacher health scores with colour bars, AI insights, and recommendations.",
+      "**AI Recommendations Modal**: Clicking a recommendation card opens a detailed modal with all affected teachers, scores, breakdown, and action buttons (View Profile, Find Replacement, Mark On Leave).",
+      "**Teacher Health Scores**: Each teacher gets a computed health score (0-100) based on load and escalation count, shown as a colour-coded progress bar (green/amber/red).",
+      "**Live Total Learner Count**: Dashboard KPIs fetch the true total active learner count from HubSpot via getTotalActiveLearnerCount() with no pagination cap.",
+      "**Escalations 90-Day Integration**: AI dashboard pulls getEscalatedTeachersLast90Days() and factors escalation count into health scores and recommendations."
+    ],
+    'V33': [
+      "**Find Replacement Engine**: findSimilarTeachers() scores candidates across Traits (30pts), Age Group (20pts), Course Count (30pts), and Stability (20pts), then re-ranks with AI for best fit.",
+      "**AI Confidence & Reasoning**: Each replacement candidate shows AI confidence rating, a one-line reason, warning flag, and caveat — generated by the Anthropic API.",
+      "**Persona & Replacement Tab**: Lists all active teachers with Coding/Math load split and direct Find Replacement and View Profile buttons per teacher.",
+      "**Teacher Status Filter**: Filter the persona table by Active / EWS / Attrited / On Leave / All with live learner counts."
+    ],
+    'V32': [
+      "**Teacher Intelligence Center**: Renamed Teacher Load page to Teacher Intelligence Center with three tabs — Load Dashboard, Persona & Replacement Engine, and AI Dashboard.",
+      "**TP & CLS Manager Cards**: Teacher load page shows TP Manager and CLS Manager name cards with direct mailto links resolved from the Persona sheet.",
+      "**Dropdown Portal Fix**: Teacher search dropdown now renders via a fixed-position portal on document.body, eliminating z-index issues.",
+      "**Attrition Risk Table**: Shows all active learners for a selected teacher with 90-day migration risk, deal value, payment tag (Upfront/Installment), and tenure label."
+    ],
+    'V31': [
+      "**Teacher Profile Escalation History**: Full escalation summary with total count, breakdown by reason (colour pills), last escalation date, and a ticket history table.",
+      "**Learner Journey Stability Boxes**: Three clickable stat boxes (Total Changes, Parent Requests, JetLearn Initiated) that open a filtered migration ticket list modal.",
+      "**Ticket List Modal**: Shows all matching migration tickets with date, reason, from/to teacher, and direct HubSpot link.",
+      "**Churn Risk Alerts**: Fetching a JLID now injects a Critical or Warning alert banner at the top of the form based on tenure and migration count."
+    ],
+    'V30': [
+      "**Renewal Communications Tab**: New tab on the Invoices page to generate renewal invoices. Fetches HubSpot line items, auto-calculates net price, supports upfront and installment types.",
+      "**Line Item Picker Modal**: When multiple payment records exist on a deal, a picker modal lets the user select which renewal to process with LATEST badge.",
+      "**Smart Invoice AI Agent**: Enter a JLID to let AI read the HubSpot deal and sales note, then auto-populate the entire invoice form.",
+      "**User Management Enhancements**: Super Admins can resend login emails, toggle user active/inactive, and edit roles from Settings > User Management.",
+      "**Force Password Change**: First-time login triggers a mandatory password change modal before dashboard access."
+    ],
+    'V29': [
+      "**Version Changelog Tracking**: Full version history from V1 to current documented in the in-app changelog modal, accessible by clicking the version number in the sidebar footer.",
+      "**Syntax Error Fix**: Removed orphaned duplicate code block that caused a JavaScript runtime error in updateDashboardReasons.",
+      "**CURRENT_APP_VERSION Sync**: Changelog version token stays in sync with Code.js APP_VERSION so the What's New modal triggers correctly on upgrade."
+    ],
     'V28':["**Teacher Attrition Risk**: The Teacher Load page now fetches active learners directly from HubSpot and displays their 90-day migration risk, previous teacher, and exact reason for moving.","**Frequent Migrations Report**: The Reports dashboard now includes a 'Stability Check' that flags learners who have moved 2 or more times, displaying their complete step-by-step migration journey to prevent 'ping-pong' scheduling.","**WATI & UI Enhancements**: Fixed WhatsApp template parameter matching, added a manual phone number override on the migration form, and improved readability for UI warning badges."],
     'V27': ["**Journey Stability Analysis**: Added a 'Risk Assessment' card in Learner History. The system now calculates if a learner is facing too many migrations.","**Churn Risk Alerts**: Learners with less than 6 months tenure and 2+ system-initiated changes will be flagged as 'Critical Risk'.","**Inbound vs Outbound**: Migration history now distinguishes between Parent Requests (Inbound) and JetLearn Operational Changes (Outbound)."],
     'V26': ["**Refactored Architecture**: The system backend has been modularized for faster performance and better stability.","**Crash Proofing**: Enhanced error handling for HubSpot and WATI connections."],
