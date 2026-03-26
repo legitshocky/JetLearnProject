@@ -1445,6 +1445,192 @@ function fetchHubspotHistory(dealId) {
 
 
 /**
+ * getComprehensiveLearnerHistory(jlid)
+ * Powers the Learner Migration Timeline page.
+ * Returns: learnerProfile, migrationTimeline, auditLogTimeline, journeyAnalysis, aiSummary.
+ */
+function getComprehensiveLearnerHistory(jlid) {
+  try {
+    if (!jlid) return { success: false, message: 'JLID is required.' };
+    Logger.log('[getLearnerTimeline] JLID: ' + jlid);
+
+    var PORTAL_ID          = '7729491';
+    var MIGRATION_PIPELINE = '66161281';
+    var token              = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var headers            = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    var STAGE_LABELS = {
+      '128913747': 'Migration Triggered',
+      '128913748': 'WIP',
+      '128913750': 'WIP - TP Approval Pending',
+      '128913752': 'WIP - CLS Approval Pending',
+      '1030980247': 'WIP - Rejected by CLS',
+      '133755411': 'WIP - Approved by CLS',
+      '1065336836': 'Execution Pending',
+      '128913749': 'WIP - PR Approval Pending',
+      '128913753': 'Migration Completed'
+    };
+    var EXCLUDED_STAGES  = ['133821818', '153457301'];
+    var INBOUND_REASONS  = ['Slot change - Learner request', 'Slot change -Learner request', 'Teacher Affinity', 'Pause Request', 'Special Learning Needs', 'Course Change'];
+    var IGNORE_KEYWORDS  = ['PRM', 'Renewal', 'Feedback', 'Review', 'Kit', 'Laptop', 'Device', 'Tab'];
+
+    // ── 1. Learner profile from HubSpot deal ─────────────────────────────
+    var learnerProfile = { learnerName: jlid, jlid: jlid };
+    var dealId = null;
+    try {
+      var dealResult = fetchHubspotByJlid(jlid);
+      if (dealResult && dealResult.success && dealResult.data) {
+        var d = dealResult.data;
+        dealId = d.dealId || null;
+        learnerProfile = {
+          learnerName:             d.learnerName           || jlid,
+          jlid:                    d.jlid                  || jlid,
+          age:                     d.age                   || 'N/A',
+          course:                  d.course                || 'N/A',
+          currentTeacher:          d.currentTeacher        || 'N/A',
+          currentSubscriptionType: d.paymentType           || 'N/A',
+          startingDate:            d.startingDate          || null,
+          subscriptionStartDate:   d.subscriptionStartDate || null,
+          dealAmount:              d.dealAmount            || 0,
+          currency:                d.currency              || 'EUR',
+          tenure:                  d.subscriptionTenureMonths || 0,
+          jetGuide:                d.jetGuideName          || 'N/A',
+          hubspotLink:             dealId ? 'https://app.hubspot.com/contacts/' + PORTAL_ID + '/deal/' + dealId : null
+        };
+      }
+    } catch(de) { Logger.log('[getLearnerTimeline] Deal fetch error: ' + de.message); }
+
+    // ── 2. Migration tickets for this JLID ───────────────────────────────
+    var migrationTimeline = [];
+    var inboundCount = 0, outboundCount = 0;
+    try {
+      var ticketBody = {
+        filterGroups: [{ filters: [
+          { propertyName: 'learner_uid',  operator: 'EQ', value: jlid },
+          { propertyName: 'hs_pipeline', operator: 'EQ', value: MIGRATION_PIPELINE }
+        ]}],
+        properties: [
+          'subject', 'createdate', 'reason_of_migration__t_',
+          'new_teacher', 'current_teacher__t_', 'hs_pipeline_stage',
+          'migration_completed_date', 'hs_ticket_id', 'migration_intervened_by'
+        ],
+        sorts: [{ propertyName: 'createdate', direction: 'ASCENDING' }],
+        limit: 100
+      };
+      var ticketRes  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+        method: 'post', headers: headers, payload: JSON.stringify(ticketBody), muteHttpExceptions: true
+      });
+      var ticketData = JSON.parse(ticketRes.getContentText());
+      var rawTickets = (ticketData && ticketData.results) ? ticketData.results : [];
+
+      rawTickets.forEach(function(t) {
+        var props   = t.properties || {};
+        var subject = String(props.subject                    || '').trim();
+        var reason  = String(props.reason_of_migration__t_   || '').trim();
+        var stage   = String(props.hs_pipeline_stage         || '').trim();
+
+        if (EXCLUDED_STAGES.indexOf(stage) !== -1) return;
+        if (IGNORE_KEYWORDS.some(function(kw){ return subject.indexOf(kw) !== -1; })) return;
+        if (!reason && subject.indexOf('Migration') === -1) return;
+
+        var isInbound     = INBOUND_REASONS.indexOf(reason) !== -1;
+        var stageLabel    = STAGE_LABELS[stage] || (stage ? 'Stage ' + stage : 'Unknown');
+        var isCompleted   = stageLabel === 'Migration Completed';
+        var triggeredDate = t.createdAt ? new Date(t.createdAt) : (props.createdate ? new Date(props.createdate) : null);
+        var completedDate = props.migration_completed_date ? new Date(props.migration_completed_date) : null;
+        var daysToResolve = (triggeredDate && completedDate && isCompleted)
+          ? Math.round((completedDate - triggeredDate) / 86400000) : null;
+
+        if (isInbound) inboundCount++; else outboundCount++;
+
+        migrationTimeline.push({
+          id:            t.id,
+          ticketId:      props.hs_ticket_id || t.id,
+          hubspotLink:   'https://app.hubspot.com/contacts/' + PORTAL_ID + '/ticket/' + t.id,
+          date:          triggeredDate ? triggeredDate.toISOString() : null,
+          completedDate: completedDate ? completedDate.toISOString() : null,
+          daysToResolve: daysToResolve,
+          subject:       subject || 'Migration',
+          reason:        reason  || 'Unspecified',
+          fromTeacher:   getTeacherLabel(props.current_teacher__t_) || 'Unknown',
+          toTeacher:     getTeacherLabel(props.new_teacher)         || 'Not assigned',
+          stage:         stageLabel,
+          isCompleted:   isCompleted,
+          type:          isInbound ? 'inbound' : 'outbound',
+          intervenedBy:  props.migration_intervened_by || ''
+        });
+      });
+    } catch(te) { Logger.log('[getLearnerTimeline] Ticket fetch error: ' + te.message); }
+
+    // ── 3. Audit log rows for this JLID ──────────────────────────────────
+    var auditLogTimeline = [];
+    try {
+      var auditResult = getAuditLog({ limit: 500 });
+      var auditRows   = (auditResult && auditResult.data) ? auditResult.data : [];
+      auditRows.forEach(function(row) {
+        if (String(row[2] || '').trim() !== jlid) return;
+        var action = String(row[1] || '').trim();
+        if (!action) return;
+        auditLogTimeline.push({
+          timestamp:   row[0]  || null,
+          action:      action,
+          fromTeacher: String(row[4] || '').trim(),
+          toTeacher:   String(row[5] || '').trim(),
+          course:      String(row[6] || '').trim(),
+          status:      String(row[7] || '').trim(),
+          notes:       String(row[8] || '').trim()
+        });
+      });
+      auditLogTimeline.sort(function(a, b){ return new Date(a.timestamp||0) - new Date(b.timestamp||0); });
+    } catch(ae) { Logger.log('[getLearnerTimeline] Audit log error: ' + ae.message); }
+
+    // ── 4. Journey analysis ───────────────────────────────────────────────
+    var total = migrationTimeline.length;
+    var riskLevel, riskMessage;
+    if      (outboundCount >= 3) { riskLevel = 'Critical'; riskMessage = 'Learner has been moved 3+ times by JetLearn. High churn risk — CLS review recommended immediately.'; }
+    else if (outboundCount === 2) { riskLevel = 'High';     riskMessage = 'Two JetLearn-initiated moves on record. Monitor closely and ensure the current teacher is a strong fit.'; }
+    else if (outboundCount === 1) { riskLevel = 'Medium';   riskMessage = 'One JetLearn-initiated move on record. Journey is mostly stable.'; }
+    else if (inboundCount >= 2)   { riskLevel = 'Watch';    riskMessage = 'Parent has requested schedule or teacher changes more than once. Check if the current slot is working well.'; }
+    else                          { riskLevel = 'Stable';   riskMessage = 'No major disruptions detected. Learner journey looks healthy.'; }
+
+    // ── 5. Plain-English summary ──────────────────────────────────────────
+    var aiSummary = learnerProfile.learnerName + ' has no migration history on record.';
+    if (total > 0) {
+      var first = migrationTimeline[0];
+      var last  = migrationTimeline[total - 1];
+      var fd    = first.date ? new Date(first.date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : 'unknown';
+      var ld    = last.date  ? new Date(last.date).toLocaleDateString('en-GB',  {day:'2-digit',month:'short',year:'numeric'}) : 'unknown';
+      aiSummary = learnerProfile.learnerName
+        + ' has had ' + total + ' migration event' + (total > 1 ? 's' : '')
+        + ' (' + inboundCount + ' parent-requested, ' + outboundCount + ' JetLearn-initiated)'
+        + ', first recorded on ' + fd + ' and most recently on ' + ld + '.'
+        + ' Current teacher: ' + learnerProfile.currentTeacher + '.'
+        + ' Overall journey stability: ' + riskLevel + '.';
+    }
+
+    return {
+      success:           true,
+      learnerProfile:    learnerProfile,
+      migrationTimeline: migrationTimeline,
+      auditLogTimeline:  auditLogTimeline,
+      journeyAnalysis:   {
+        totalMigrations: total,
+        inbound:         inboundCount,
+        outbound:        outboundCount,
+        riskLevel:       riskLevel,
+        riskMessage:     riskMessage,
+        ticketDetails:   migrationTimeline
+      },
+      aiSummary: aiSummary
+    };
+
+  } catch(e) {
+    Logger.log('[getLearnerTimeline] FATAL: ' + e.message + '\n' + e.stack);
+    return { success: false, message: e.message };
+  }
+}
+
+/**
  * Fetches ALL migration tickets to analyze churn risk (Inbound vs Outbound).
  */
 /**

@@ -651,7 +651,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     function showToast(type, title, message, duration = 5000) {
       const toast = document.createElement('div');
       toast.className = `toast toast-${type}`;
-      toast.innerHTML = `<div class="toast-icon"><i class="fas ${type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : type === 'warning' ? 'fa-exclamation' : 'fa-info'}"></i></div><div class="toast-content"><div class="toast-title">${title}</div><div class="toast-message">${message}</div></div><button class="toast-close">×</button>`;
+      toast.innerHTML = `<div class="toast-icon"><i class="fas ${type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : type === 'warning' ? 'fa-exclamation' : 'fa-info'}"></i></div><div class="toast-content"><div class="toast-title">${title}</div><div class="toast-message">${message}</div></div><button class="toast-close">x</button>`;
       toastContainer.appendChild(toast);
       const timer = setTimeout(() => toast.remove(), duration);
       toast.querySelector('.toast-close').addEventListener('click', () => { clearTimeout(timer); toast.remove(); });
@@ -715,7 +715,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         userManagementTabBtn.style.display = hasPermission('manage_users') ? 'block' : 'none';
         // NEW: Show Agentic Audit section for admins with the right permission
         agenticAuditContainer.style.display = hasPermission('manage_agentic_audit') ? 'block' : 'none';
-        // AI PM — admin only
+        // AI PM \u2014 admin only
         const aiPmMenuItem = document.getElementById('aiPmMenuItem');
         if (aiPmMenuItem) aiPmMenuItem.style.display = hasPermission('use_ai_pm') ? 'flex' : 'none';
     }
@@ -819,28 +819,28 @@ function updateDashboard(data) {
     // 2. Update Chart
     initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
 
-    // 3. Insight cards — derived from existing data
+    // 3. Insight cards \u2014 derived from existing data
     // Active learners = total onboardings - failed migrations (approximate)
     const activeLearners = data.onboardings.total || 0;
     const el = document.getElementById('dashActiveLearners');
     if (el) el.textContent = activeLearners.toLocaleString();
     const trendEl = document.getElementById('dashActiveLearnersTrend');
-    if (trendEl) trendEl.textContent = `↑ +${data.onboardings.thisWeek || 0} this week`;
+    if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} this week`;
 
     // Growth = month migrations vs week migrations annualised estimate
     const monthMig = data.migrations.thisMonth || 0;
     const growthEl = document.getElementById('dashGrowth');
     const growthTrendEl = document.getElementById('dashGrowthTrend');
-    if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '—';
+    if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '\u2014';
     if (growthTrendEl) growthTrendEl.textContent = `This month migrations`;
 
-    // Escalations — from migrations failed count as proxy
+    // Escalations \u2014 from migrations failed count as proxy
     const escalations = data.migrations.failed || 0;
     const escEl = document.getElementById('dashEscalations');
     const escTrendEl = document.getElementById('dashEscalationsTrend');
     if (escEl) escEl.textContent = escalations;
     if (escTrendEl) {
-        escTrendEl.textContent = escalations === 0 ? '✓ All clear' : `${escalations} failed migrations`;
+        escTrendEl.textContent = escalations === 0 ? '\u2713 All clear' : `${escalations} failed migrations`;
         escTrendEl.style.color = escalations === 0 ? '#059669' : '#dc2626';
     }
 
@@ -893,7 +893,7 @@ function updateDashboard(data) {
     hideLoading();
 }
 
-// ── NEW: Top active teachers handler ──
+// -- NEW: Top active teachers handler --
 function updateDashboardTeachers(teachers) {
     const container = document.getElementById('dashTopTeachers');
     if (!container) return;
@@ -931,7 +931,7 @@ function updateDashboardTeachers(teachers) {
     }).join('');
 }
 
-// ── NEW: Migration reasons bar chart handler ──
+// -- NEW: Migration reasons bar chart handler --
 function updateDashboardReasons(result) {
     const container = document.getElementById('dashReasonBars');
     if (!container) return;
@@ -952,7 +952,7 @@ function updateDashboardReasons(result) {
         const barColor = escalationReasons.some(e => nameLower.includes(e)) ? '#f87171'
                        : performanceReasons.some(p => nameLower.includes(p)) ? '#f472b6'
                        : '#818cf8';
-        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '…' : r.name;
+        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '...' : r.name;
         return `<div style="display:flex;align-items:center;gap:8px;">
             <div style="font-size:10px;color:var(--text-light);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}">${escapeHtml(shortName)}</div>
             <div style="flex:1;height:8px;background:var(--gray);border-radius:99px;overflow:hidden;">
@@ -1823,7 +1823,7 @@ function collectEmailFormData(emailType) {
                 const oldTeacher = String(row[4] || '').trim();
                 const newTeacher = String(row[5] || '').trim();
                 let teachersInfo = 'N/A';
-                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} → ${newTeacher}`;
+                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} -> ${newTeacher}`;
                 else if (newTeacher) teachersInfo = newTeacher;
                 else if (oldTeacher) teachersInfo = oldTeacher;
 tr.innerHTML = `
@@ -1892,7 +1892,7 @@ tr.innerHTML = `
                 if(data && data.success) {
                     const profile = data.profile;
 
-                    // ── Header ────────────────────────────────────────────
+                    // -- Header --------------------------------------------
                     const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
                     const info   = `<div class="teacher-profile-info">
                         <h2>${profile.name}</h2>
@@ -1905,7 +1905,7 @@ tr.innerHTML = `
                     </div>`;
                     contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
 
-                    // ── Escalation Summary ────────────────────────────────
+                    // -- Escalation Summary --------------------------------
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
                     const escColor = esc.totalCount === 0 ? '#15803d' : esc.totalCount <= 2 ? '#d97706' : '#b91c1c';
                     const escBg    = esc.totalCount === 0 ? '#f0fdf4'  : esc.totalCount <= 2 ? '#fffbeb'  : '#fef2f2';
@@ -1932,12 +1932,12 @@ tr.innerHTML = `
                         </div>
                     </div>`;
 
-                    // ── Escalation Tickets Table ──────────────────────────
+                    // -- Escalation Tickets Table --------------------------
                     if (esc.tickets && esc.tickets.length > 0) {
                         const ticketRows = esc.tickets.map(t => {
                             const sc = t.status === 'Completed' ? '#15803d' : '#d97706';
                             const sb = t.status === 'Completed' ? '#f0fdf4'  : '#fffbeb';
-                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '—';
+                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '\u2014';
                             return `<tr>
                                 <td style="font-size:0.8rem;color:#64748b;">${escapeHtml(t.ticketId)}</td>
                                 <td style="font-size:0.85rem;font-weight:500;">${escapeHtml(t.reason)}</td>
@@ -1949,7 +1949,7 @@ tr.innerHTML = `
                             </tr>`;
                         }).join('');
                         contentEl.innerHTML += `<div style="margin:0.5rem 0 1.5rem;">
-                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">📋 Escalation Ticket History</h3>
+                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">\uD83D\uDCCB Escalation Ticket History</h3>
                             <div class="table-container"><table class="data-table">
                                 <thead><tr>
                                     <th>Ticket ID</th><th>Reason</th><th>Triggered</th>
@@ -1960,7 +1960,7 @@ tr.innerHTML = `
                         </div>`;
                     }
 
-                    // ── Course Categories ─────────────────────────────────
+                    // -- Course Categories ---------------------------------
                     const coursesHtml = Object.keys(profile.coursesByCategory).map(category => {
                         const cats = profile.coursesByCategory[category];
                         if (cats.length === 0) return '';
@@ -2134,8 +2134,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Root Cause Analysis
                     <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">📊 Chart</button>
-                        <button onclick="toggleReportView('rootCause', 'table')">📋 Table</button>
+                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">\uD83D\uDCCA Chart</button>
+                        <button onclick="toggleReportView('rootCause', 'table')">\uD83D\uDCCB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="rootCauseChartView">
@@ -2159,8 +2159,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Impact Analysis
                    <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('impact', 'chart')">📊 Chart</button>
-                        <button onclick="toggleReportView('impact', 'table')">📋 Table</button>
+                        <button class="active" onclick="toggleReportView('impact', 'chart')">\uD83D\uDCCA Chart</button>
+                        <button onclick="toggleReportView('impact', 'table')">\uD83D\uDCCB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="impactChartView">
@@ -2518,229 +2518,270 @@ tr.innerHTML = `
     }
 
     function loadHistoryPage() {
-        historyJlidInput.value = '';
-        historyResultsContainer.style.display = 'none';
-        historyProfileLearnerName.textContent = 'N/A';
-        historyProfileJlid.textContent = 'N/A';
-        historyProfileAge.textContent = 'N/A';
-        historyProfileCurrentCourse.textContent = 'N/A';
-        historyProfileCurrentTeacher.textContent = 'N/A';
-        historyProfileSubscriptionType.textContent = 'N/A';
-        historyProfileOnboardingDate.textContent = 'N/A';
-        historyProfileSubscriptionStartDate.textContent = 'N/A';
-        historyAISummary.textContent = 'Generating summary...';
-        historyTimelineBody.innerHTML = '';
+        var inp = document.getElementById('historyJlidInput');
+        if (inp) inp.value = '';
+        var rc = document.getElementById('historyResultsContainer');
+        if (rc) rc.style.display = 'none';
+        var es = document.getElementById('tlEmptyState');
+        if (es) es.style.display = 'block';
+        var spine = document.getElementById('tlSpine');
+        if (spine) Array.from(spine.querySelectorAll('.tl-ev')).forEach(function(el){ el.remove(); });
+        var ab = document.getElementById('tlAuditBody');
+        if (ab) ab.innerHTML = '';
+        _tlAllTickets = [];
     }
 
+    var _tlAllTickets = [];
+
     function searchLearnerHistory() {
-        const jlid = document.getElementById('historyJlidInput').value.trim();
-        if (!jlid) {
-            showToast('error', 'Input Required', 'JLID cannot be empty.');
-            return;
-        }
-        showLoading(`Searching history for ${jlid}...`);
+        var jlid = document.getElementById('historyJlidInput').value.trim();
+        if (!jlid) { showToast('error', 'Input Required', 'Please enter a JLID.'); return; }
+        showLoading('Loading migration timeline for ' + jlid + '...');
+        var rc = document.getElementById('historyResultsContainer');
+        if (rc) rc.style.display = 'none';
+        var es = document.getElementById('tlEmptyState');
+        if (es) es.style.display = 'none';
         google.script.run
             .withSuccessHandler(updateLearnerHistoryDisplay)
-            .withFailureHandler(showError)
+            .withFailureHandler(function(err){ hideLoading(); showError(err); })
             .getComprehensiveLearnerHistory(jlid);
     }
 
+    /* keep openTicketList working for any legacy calls */
     function openTicketList(filterType) {
-    const modal = document.getElementById('ticketListModal');
-    const tbody = document.getElementById('ticketListBody');
-    const title = document.getElementById('ticketListTitle');
-    
-    if (!modal || !tbody) {
-        console.error("Modal elements not found. Ensure Index.html has the modal HTML.");
-        return;
+        var modal = document.getElementById('ticketListModal');
+        var tbody = document.getElementById('ticketListBody');
+        var title = document.getElementById('ticketListTitle');
+        if (!modal || !tbody) return;
+        tbody.innerHTML = '';
+        var filtered = filterType === 'inbound'  ? globalTicketData.filter(function(t){ return t.type && t.type.includes('Inbound');  })
+                     : filterType === 'outbound' ? globalTicketData.filter(function(t){ return t.type && t.type.includes('Outbound'); })
+                     : globalTicketData;
+        if (title) title.textContent = filterType === 'inbound' ? 'Parent Requested Migrations' : filterType === 'outbound' ? 'JetLearn Initiated Migrations' : 'All Migration Tickets';
+        if (!filtered.length) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:15px;color:#666;">No tickets found.</td></tr>';
+        } else {
+            filtered.forEach(function(t) {
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + (t.date ? new Date(t.date).toLocaleDateString() : 'N/A') + '</td>'
+                    + '<td style="font-weight:500;">' + escapeHtml(t.reason || 'Migration') + '</td>'
+                    + '<td>' + escapeHtml(t.from || '-') + '</td>'
+                    + '<td>' + escapeHtml(t.to   || '-') + '</td>'
+                    + '<td><a href="https://app.hubspot.com/contacts/7729491/ticket/' + escapeHtml(t.id) + '" target="_blank" class="btn btn-primary btn-sm" style="font-size:.8rem;padding:4px 10px;"><i class="fas fa-external-link-alt"></i> Open</a></td>';
+                tbody.appendChild(tr);
+            });
+        }
+        modal.classList.add('active');
     }
 
-    tbody.innerHTML = '';
-    
-    // Filter tickets based on which box was clicked
-    let filteredTickets = [];
-    if (filterType === 'inbound') {
-        title.textContent = "Parent Requested Migrations";
-        filteredTickets = globalTicketData.filter(t => t.type.includes('Inbound'));
-    } else if (filterType === 'outbound') {
-        title.textContent = "JetLearn Initiated Migrations";
-        filteredTickets = globalTicketData.filter(t => t.type.includes('Outbound'));
-    } else {
-        title.textContent = "All Migration Pipeline Tickets";
-        filteredTickets = globalTicketData;
+    /* -- helpers -- */
+    function _tlSet(id, val) { var el = document.getElementById(id); if (el) el.textContent = String(val || ''); }
+    function _tlE(s)  { return typeof escapeHtml === 'function' ? escapeHtml(String(s||'')) : String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function _tlD(iso, time) {
+        if (!iso) return '\u2014';
+        try {
+            var opts = time ? {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'} : {day:'2-digit',month:'short',year:'numeric'};
+            return new Date(iso).toLocaleDateString('en-GB', opts);
+        } catch(e){ return iso; }
+    }
+    function _tlInitials(name) {
+        return (name||'').split(' ').filter(Boolean).map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2) || '?';
+    }
+    function _tlRiskStyle(level) {
+        var m = { Critical:{bg:'#fff0f0',border:'#e11d48',color:'#be123c',icon:'fas fa-exclamation-triangle'},
+                  High:    {bg:'#fff7ed',border:'#f97316',color:'#c2410c',icon:'fas fa-exclamation-circle'},
+                  Medium:  {bg:'#fefce8',border:'#eab308',color:'#854d0e',icon:'fas fa-info-circle'},
+                  Watch:   {bg:'#f0f9ff',border:'#0ea5e9',color:'#075985',icon:'fas fa-eye'},
+                  Stable:  {bg:'#f0fdf4',border:'#22c55e',color:'#166534',icon:'fas fa-shield-alt'} };
+        return m[level] || m.Stable;
     }
 
-    if (filteredTickets.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:15px; color:#666;">No tickets found for this category.</td></tr>';
-    } else {
-        filteredTickets.forEach(t => {
-            const dateStr = t.date ? new Date(t.date).toLocaleDateString() : 'N/A';
-            const ticketUrl = `https://app.hubspot.com/contacts/7729491/ticket/${t.id}`;            
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${dateStr}</td>
-                <td style="font-weight:500;">${escapeHtml(t.reason || 'Migration')}</td>
-                <td>${escapeHtml(t.from || '-')}</td>
-                <td>${escapeHtml(t.to || '-')}</td>
-                <td>
-                    <a href="${ticketUrl}" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none; padding: 4px 10px; font-size: 0.8rem;">
-                        <i class="fas fa-external-link-alt"></i> Open
-                    </a>
-                </td>
-            `;
-            tbody.appendChild(tr);
+    function _tlRenderTickets(tickets) {
+        var spine  = document.getElementById('tlSpine');
+        var noTix  = document.getElementById('tlNoTix');
+        var fcount = document.getElementById('tlFcount');
+        var tcount = document.getElementById('tlTixCount');
+        if (!spine) return;
+        Array.from(spine.querySelectorAll('.tl-ev')).forEach(function(el){ el.remove(); });
+
+        if (!tickets || !tickets.length) {
+            if (noTix)  noTix.style.display  = 'block';
+            if (fcount) fcount.textContent   = '0 events';
+            if (tcount) tcount.textContent   = '';
+            return;
+        }
+        if (noTix)  noTix.style.display  = 'none';
+        if (fcount) fcount.textContent   = tickets.length + ' event' + (tickets.length !== 1 ? 's' : '');
+        if (tcount) tcount.textContent   = '\u2014 ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
+
+        tickets.forEach(function(evt) {
+            var isOut   = evt.type === 'outbound';
+            var dotClr  = isOut ? '#e11d48' : '#2196f3';
+            var typeBg  = isOut ? '#fff0f0' : '#eff6ff';
+            var typeTxt = isOut ? '#be123c'  : '#1d4ed8';
+            var typeBrd = isOut ? '#fda4af'  : '#93c5fd';
+            var stageBg = evt.isCompleted ? '#dcfce7' : '#fef3c7';
+            var stageTx = evt.isCompleted ? '#166534' : '#92400e';
+            var stageBd = evt.isCompleted ? '#86efac' : '#fcd34d';
+
+            var fromChip = (evt.fromTeacher && evt.fromTeacher !== 'Unknown')
+                ? '<span class="tl-chip">' + _tlE(evt.fromTeacher) + '</span>'
+                : '<span class="tl-chip" style="opacity:.45;">No prev. teacher</span>';
+            var toChip   = (evt.toTeacher   && evt.toTeacher   !== 'Not assigned')
+                ? '<span class="tl-chip to">' + _tlE(evt.toTeacher) + '</span>'
+                : '<span class="tl-chip" style="opacity:.45;">Not assigned</span>';
+
+            var daysHtml = (evt.daysToResolve !== null && evt.daysToResolve !== undefined)
+                ? '<span class="tl-days" style="background:#f0fdf4;color:#166534;">Resolved in ' + evt.daysToResolve + 'd</span>' : '';
+            var compDate = evt.completedDate
+                ? '<span class="tl-mi"><i class="fas fa-check-circle" style="color:#16a34a;font-size:9px;"></i>Completed ' + _tlD(evt.completedDate) + '</span>' : '';
+            var intv = evt.intervenedBy
+                ? '<span class="tl-mi"><i class="fas fa-users" style="font-size:9px;"></i>' + _tlE(evt.intervenedBy) + '</span>' : '';
+            var hsBtn = evt.hubspotLink
+                ? '<a href="' + _tlE(evt.hubspotLink) + '" target="_blank" class="tl-hsbtn"><i class="fab fa-hubspot"></i> #' + _tlE(evt.ticketId) + '</a>' : '';
+
+            var div = document.createElement('div');
+            div.className = 'tl-ev';
+            div.dataset.type      = evt.type;
+            div.dataset.completed = evt.isCompleted ? '1' : '0';
+            div.innerHTML =
+                '<div class="tl-dot" style="background:' + dotClr + ';box-shadow:0 0 0 3px ' + dotClr + '22;"></div>'
+              + '<div class="tl-card" style="border-left-color:' + dotClr + ';">'
+              +   '<div class="tl-ch">'
+              +     '<div class="tl-ct"><i class="fas fa-exchange-alt" style="font-size:10px;opacity:.4;margin-right:5px;"></i>' + _tlE(evt.reason) + '</div>'
+              +     '<div class="tl-badges">'
+              +       '<span class="tl-badge" style="background:' + typeBg + ';color:' + typeTxt + ';border-color:' + typeBrd + ';">' + (isOut ? 'JetLearn Initiated' : 'Parent Request') + '</span>'
+              +       '<span class="tl-badge" style="background:' + stageBg + ';color:' + stageTx + ';border-color:' + stageBd + ';">' + _tlE(evt.stage) + '</span>'
+              +     '</div>'
+              +   '</div>'
+              +   '<div class="tl-tr">'
+              +     '<span style="font-size:.7rem;color:var(--text-muted,#718096);">From</span>' + fromChip
+              +     '<span class="tl-arr"><i class="fas fa-long-arrow-alt-right"></i></span>'
+              +     '<span style="font-size:.7rem;color:var(--text-muted,#718096);">To</span>' + toChip
+              +   '</div>'
+              +   '<div class="tl-cmeta">'
+              +     '<span class="tl-mi"><i class="fas fa-calendar-alt" style="font-size:9px;"></i>' + _tlD(evt.date) + '</span>'
+              +     compDate + intv
+              +   '</div>'
+              +   '<div class="tl-foot">' + daysHtml + hsBtn + '</div>'
+              + '</div>';
+            spine.appendChild(div);
         });
     }
-    
-    modal.classList.add('active');
-}
+
+    function _tlFilter(f) {
+        document.querySelectorAll('.tl-fb').forEach(function(b){ b.classList.toggle('on', b.dataset.f === f); });
+        var list = _tlAllTickets;
+        if (f === 'outbound')  list = _tlAllTickets.filter(function(t){ return t.type === 'outbound'; });
+        if (f === 'inbound')   list = _tlAllTickets.filter(function(t){ return t.type === 'inbound'; });
+        if (f === 'completed') list = _tlAllTickets.filter(function(t){ return t.isCompleted; });
+        _tlRenderTickets(list);
+    }
+
+    /* wire filter buttons */
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.tl-fb').forEach(function(btn) {
+            btn.addEventListener('click', function(){ _tlFilter(btn.dataset.f); });
+        });
+    });
 
     function updateLearnerHistoryDisplay(result) {
-    hideLoading();
-    
-    const container = document.getElementById('historyResultsContainer');
-    if (!result || result.success === false) {
-        container.style.display = 'none';
-        showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
-        return;
-    }
-    container.style.display = 'block';
-    
-    // 1. Clear previous dynamic cards (Risk Card) to prevent duplicates
-    const existingCard = document.getElementById('journeyStabilityCard');
-    if(existingCard) existingCard.remove();
+        hideLoading();
+        var es = document.getElementById('tlEmptyState');
+        var rc = document.getElementById('historyResultsContainer');
 
-    const learnerProfile = result.learnerProfile || {};
-    const learnerName = learnerProfile.learnerName || learnerProfile.jlid || 'Unknown Learner';
-    
-    // Update Title
-    document.getElementById('historyResultsTitle').textContent = `History for: ${learnerName}`;
-    
-    // --- 2. Render Journey Stability Card (The Clickable Boxes) ---
-    const analysis = result.journeyAnalysis;
-    if (analysis) {
-        // Store data globally so the modal function can access it
-        globalTicketData = analysis.ticketDetails || []; 
+        if (!result || result.success === false) {
+            if (es) es.style.display = 'block';
+            showToast('error', 'History Error', result && result.message ? result.message : 'Could not load learner history.');
+            return;
+        }
+        if (es) es.style.display = 'none';
+        if (rc) rc.style.display = 'block';
 
-        let colorClass = '#4caf50'; // Green
-        let bgClass = '#e8f5e9';
-        
-        if (analysis.riskLevel === 'Critical') { colorClass = '#d32f2f'; bgClass = '#ffebee'; } 
-        else if (analysis.riskLevel === 'High') { colorClass = '#f57c00'; bgClass = '#fff3e0'; } 
-        else if (analysis.riskLevel === 'Medium') { colorClass = '#fbc02d'; bgClass = '#fff9c4'; }
+        var p  = result.learnerProfile  || {};
+        var ja = result.journeyAnalysis || {};
+        var tickets   = result.migrationTimeline || [];
+        var auditRows = result.auditLogTimeline  || [];
 
-        const stabilityCardHtml = `
-            <div id="journeyStabilityCard" class="learner-profile-card" style="border-left: 5px solid ${colorClass}; margin-bottom: 20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3 style="margin:0; color:${colorClass}; border-bottom:none;">Journey Stability: ${analysis.riskLevel}</h3>
-                    <span style="font-size:0.9em; background:${bgClass}; color:${colorClass}; padding:4px 8px; border-radius:4px; font-weight:bold;">
-                        ${analysis.outbound} System Changes
-                    </span>
-                </div>
-                
-                <p style="margin-top:10px; font-weight:500;">${analysis.riskMessage}</p>
-                
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-top:15px; text-align:center;">
-                    
-                    <!-- TOTAL BOX -->
-                    <div onclick="openTicketList('all')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='${colorClass}'; this.style.backgroundColor='var(--secondary)'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#333;">${analysis.totalMigrations}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">Total Changes</div>
-                    </div>
+        /* -- Profile -- */
+        var name = p.learnerName || p.jlid || 'Unknown';
+        var av   = document.getElementById('tlAvatar');
+        if (av) av.textContent = _tlInitials(name);
+        _tlSet('tlName',      name);
+        _tlSet('tlJlid',      p.jlid            || '\u2014');
+        _tlSet('tlCourse',    p.course           || '\u2014');
+        _tlSet('tlTeacher',   p.currentTeacher   || '\u2014');
+        _tlSet('tlAge',       p.age              || '\u2014');
+        _tlSet('tlStartDate', p.startingDate ? _tlD(p.startingDate) : '\u2014');
 
-                    <!-- INBOUND BOX -->
-                    <div onclick="openTicketList('inbound')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='#2196f3'; this.style.backgroundColor='#e3f2fd'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#2196f3;">${analysis.inbound}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">Parent Requests</div>
-                    </div>
+        var hw = document.getElementById('tlHsWrap');
+        var hl = document.getElementById('tlHsLink');
+        if (hw && hl && p.hubspotLink) { hw.style.display = 'inline-flex'; hl.href = p.hubspotLink; }
 
-                    <!-- OUTBOUND BOX -->
-                    <div onclick="openTicketList('outbound')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='#f44336'; this.style.backgroundColor='#ffebee'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#f44336;">${analysis.outbound}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">JetLearn Initiated</div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Insert after title
-        document.getElementById('historyResultsTitle').insertAdjacentHTML('afterend', stabilityCardHtml);
-    }
+        _tlSet('tlTotal',    ja.totalMigrations || 0);
+        _tlSet('tlInbound',  ja.inbound         || 0);
+        _tlSet('tlOutbound', ja.outbound        || 0);
 
-    // --- 3. Render Profile Data ---
-    document.getElementById('historyProfileLearnerName').textContent = learnerProfile.learnerName || 'N/A';
-    document.getElementById('historyProfileJlid').textContent = learnerProfile.jlid || 'N/A';
-    document.getElementById('historyProfileAge').textContent = learnerProfile.age || 'N/A';
-    document.getElementById('historyProfileCurrentCourse').textContent = learnerProfile.course || 'N/A';
-    document.getElementById('historyProfileCurrentTeacher').textContent = learnerProfile.currentTeacher || 'N/A';
-    document.getElementById('historyProfileSubscriptionType').textContent = learnerProfile.currentSubscriptionType || 'N/A';
-    document.getElementById('historyProfileOnboardingDate').textContent = learnerProfile.startingDate ? new Date(learnerProfile.startingDate).toLocaleDateString('en-GB') : 'N/A';
-    document.getElementById('historyProfileSubscriptionStartDate').textContent = learnerProfile.subscriptionStartDate ? new Date(learnerProfile.subscriptionStartDate).toLocaleDateString('en-GB') : 'N/A';
-    
-    document.getElementById('historyAISummary').textContent = result.aiSummary || 'No summary available.';
-    
-    // --- 4. Render Timeline (With Strict Filtering) ---
-    const timelineBody = document.getElementById('historyTimelineBody');
-    timelineBody.innerHTML = '';
-    
-    if (result.auditLogTimeline && result.auditLogTimeline.length > 0) {
-        
-        // STRICT FILTER: Keywords to HIDE from the visual timeline
-        const hiddenKeywords = ["PRM", "Renewal", "Pause", "Leave", "Kit", "Device", "Laptop", "Feedback", "Review"];
-        
-        result.auditLogTimeline.forEach(event => {
-            const desc = event.description || "";
-            
-            // If it's a HubSpot Ticket, apply the strict filter
-            if (event.type === 'hubspot-ticket') {
-                 if (hiddenKeywords.some(kw => desc.includes(kw))) {
-                     return; // Skip rendering this item
-                 }
-                 // Only show if it looks like a migration
-                 if (!desc.includes("Migration") && !desc.includes("Teacher") && !desc.includes("Slot") && !desc.includes("Escalation")) {
-                     // return; // Uncomment this if you want to be ULTRA strict
-                 }
+        /* -- Risk banner -- */
+        var rs   = _tlRiskStyle(ja.riskLevel || 'Stable');
+        var risk = document.getElementById('tlRisk');
+        var rico = document.getElementById('tlRiskIco');
+        if (risk) { risk.style.background = rs.bg; risk.style.borderLeft = '4px solid ' + rs.border; risk.style.color = rs.color; }
+        if (rico) { rico.style.background = rs.bg; rico.style.border = '1px solid ' + rs.border; rico.style.color = rs.color; rico.innerHTML = '<i class="' + rs.icon + '"></i>'; }
+        _tlSet('tlRiskLvl', 'Journey stability: ' + (ja.riskLevel || 'Stable'));
+        _tlSet('tlRiskMsg', ja.riskMessage || '');
+
+        /* -- Summary -- */
+        _tlSet('tlSummary', result.aiSummary || 'No summary available.');
+
+        /* -- Tickets -- */
+        _tlAllTickets = tickets;
+        _tlFilter('all');
+
+        /* -- Audit log -- */
+        var ab = document.getElementById('tlAuditBody');
+        var ac = document.getElementById('tlAuditCount');
+        if (ac) ac.textContent = auditRows.length ? '\u2014 ' + auditRows.length + ' entr' + (auditRows.length === 1 ? 'y' : 'ies') : '';
+        if (ab) {
+            if (!auditRows.length) {
+                ab.innerHTML = '<div class="tl-empty"><i class="fas fa-history"></i><p>No audit log entries found for this learner.</p></div>';
+            } else {
+                ab.innerHTML = auditRows.map(function(row) {
+                    var sTxt   = row.status || '';
+                    var sBadge = sTxt === 'Success' ? '<span class="status-badge status-success" style="font-size:.68rem;">Success</span>'
+                               : sTxt === 'Failed'  ? '<span class="status-badge status-failed"  style="font-size:.68rem;">Failed</span>'
+                               : sTxt               ? '<span class="status-badge status-info"    style="font-size:.68rem;">' + _tlE(sTxt) + '</span>' : '';
+                    var detail = '';
+                    if (row.fromTeacher && row.toTeacher) detail = _tlE(row.fromTeacher) + ' -> ' + _tlE(row.toTeacher);
+                    else if (row.fromTeacher) detail = _tlE(row.fromTeacher);
+                    else if (row.toTeacher)  detail = _tlE(row.toTeacher);
+                    if (row.course) detail += (detail ? ' \u00B7 ' : '') + _tlE(row.course);
+                    if (row.notes && row.notes !== row.action) detail += (detail ? ' \u00B7 ' : '') + _tlE(row.notes);
+                    return '<div class="tl-arow">'
+                        + '<span class="tl-atime">' + _tlD(row.timestamp, true) + '</span>'
+                        + '<span class="tl-aact">' + _tlE(row.action) + (detail ? '<span class="tl-adtl"> \u2014 ' + detail + '</span>' : '') + '</span>'
+                        + '<span class="tl-asta">' + sBadge + '</span>'
+                        + '</div>';
+                }).join('');
             }
+        }
 
-            const eventDiv = document.createElement('div');
-            let iconColor = 'var(--primary)';
-            
-            if (event.type === 'hubspot-ticket') {
-                iconColor = '#e11d48'; 
-                event.type = 'migration'; 
-            } else if (event.type === 'hubspot-note') {
-                iconColor = '#ea580c';
-                event.type = 'note';
-            }
-            
-            eventDiv.className = `timeline-event ${event.type}`;
-            
-            if(event.source === 'HubSpot') {
-                eventDiv.style.borderLeftColor = iconColor;
-                eventDiv.style.backgroundColor = 'rgba(0,0,0,0.02)';
-            }
+        /* keep legacy hidden spans in sync */
+        _tlSet('historyResultsTitle',                 'History for: ' + name);
+        _tlSet('historyProfileLearnerName',            p.learnerName           || '');
+        _tlSet('historyProfileJlid',                   p.jlid                  || '');
+        _tlSet('historyProfileAge',                    p.age                   || '');
+        _tlSet('historyProfileCurrentCourse',          p.course                || '');
+        _tlSet('historyProfileCurrentTeacher',         p.currentTeacher        || '');
+        _tlSet('historyProfileSubscriptionType',       p.currentSubscriptionType || '');
+        _tlSet('historyAISummary',                     result.aiSummary        || '');
 
-            eventDiv.innerHTML = `
-                <div class="timeline-date">${event.timestamp ? new Date(event.timestamp).toLocaleString('en-GB') : 'N/A'}</div>
-                <div class="timeline-description">
-                    ${event.source === 'HubSpot' ? `<i class="fab fa-hubspot" style="margin-right:5px; color:${iconColor}"></i>` : ''} 
-                    ${escapeHtml(desc)}
-                </div>`;
-            timelineBody.appendChild(eventDiv);
+        /* legacy globalTicketData */
+        globalTicketData = tickets.map(function(t) {
+            return { id: t.id, date: t.date, reason: t.reason, from: t.fromTeacher, to: t.toTeacher,
+                     type: t.type === 'inbound' ? 'Inbound (Parent)' : 'Outbound (JetLearn)' };
         });
-    } else {
-        timelineBody.innerHTML = '<p style="text-align: center; color: var(--text-light);">No relevant history found.</p>';
     }
-}
 
     // Invoice Page Functions
     function populateSessionsPerWeekOptions(targetSelect = invoiceSessionsPerWeek) {
@@ -2811,9 +2852,9 @@ tr.innerHTML = `
 
     function getCurrencySymbolClient(currencyCode) {
         switch (currencyCode) {
-            case 'GBP': return '£'; case 'EUR': return '€'; case 'USD': return '$'; case 'INR': return '₹'; case 'JPY': return '¥';
-            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '¥'; case 'SEK': return 'kr';
-            case 'NZD': return 'NZ$'; case 'AED': return 'د.إ'; case 'HKD': 'HK$';
+            case 'GBP': return '\u00A3'; case 'EUR': return '\u20AC'; case 'USD': return '$'; case 'INR': return '\u20B9'; case 'JPY': return '\u00A5';
+            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '\u00A5'; case 'SEK': return 'kr';
+            case 'NZD': return 'NZ$'; case 'AED': return '\u062F.\u0625'; case 'HKD': 'HK$';
             case 'ZAR': return 'R'; case 'SGD': return 'S$'; case 'NOK': return 'kr';
             case 'DKK': return 'kr'; case 'MXN': return 'Mex$'; case 'BRL': return 'R$';
             default: return currencyCode || '';
@@ -3506,7 +3547,7 @@ function loadTeacherSpecificDetails(teacherName) {
     const existing = document.getElementById('attritionRiskSection');
     if (existing) existing.remove();
 
-    // ── CALL 1: Basic Load Stats & Proficiency (Google Sheets) ───────────
+    // -- CALL 1: Basic Load Stats & Proficiency (Google Sheets) -----------
     google.script.run
         .withSuccessHandler(data => {
             if (!data || !data.success) {
@@ -3544,7 +3585,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
             if (resultsContainer) resultsContainer.style.display = 'block';
 
-            // ── CALL 2: Attrition Risk & Active Pool (HubSpot) ───────────
+            // -- CALL 2: Attrition Risk & Active Pool (HubSpot) -----------
             google.script.run
                 .withSuccessHandler(report => {
                     hideLoading();
@@ -3597,7 +3638,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
                     students.forEach(s => {
 
-                        // ── Risk badge & row highlight ──────────────────
+                        // -- Risk badge & row highlight ------------------
                         let rowStyle = '';
                         let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                         if (s.recentMoves >= 2) {
@@ -3607,41 +3648,41 @@ function loadTeacherSpecificDetails(teacherName) {
                             riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
                         }
 
-                        // ── Deal Value badge ────────────────────────────
+                        // -- Deal Value badge ----------------------------
                         const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
                         const dealValueBadge = isUnknown
                             ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
                             : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
 
-                        // ── Amount display ──────────────────────────────
+                        // -- Amount display ------------------------------
                         // Show local currency amount; if non-EUR also show ~EUR equivalent
                         let amountDisplay = '';
                         if (s.dealAmountLocal > 0) {
                             const localStr = s.dealCurrency !== 'EUR'
                                 ? `${escapeHtml(s.dealCurrency)} ${s.dealAmountLocal.toLocaleString()}`
-                                : `€${s.dealAmountLocal.toLocaleString()}`;
+                                : `\u20AC${s.dealAmountLocal.toLocaleString()}`;
                             const eurNote  = (s.dealCurrency !== 'EUR' && s.dealAmountEur > 0)
-                                ? ` <small style="color:#888;">(~€${s.dealAmountEur.toLocaleString()})</small>`
+                                ? ` <small style="color:#888;">(~\u20AC${s.dealAmountEur.toLocaleString()})</small>`
                                 : '';
                             amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
                         }
 
-                        // ── Payment tag: Upfront (green) / Installment (blue) ──
+                        // -- Payment tag: Upfront (green) / Installment (blue) --
                         const paymentTagBadge = s.paymentTag === 'Installment'
                             ? `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd;">Installment</span>`
                             : `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">Upfront</span>`;
 
-                        // ── Tenure label ────────────────────────────────
+                        // -- Tenure label --------------------------------
                         const tenureLabel = s.dealTenureMonths > 0
                             ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
                             : '';
 
-                        // ── Previous teacher ────────────────────────────
+                        // -- Previous teacher ----------------------------
                         const prevTeacherDisplay = (!s.prevTeacher || s.prevTeacher === 'N/A')
                             ? '<span style="color:#aaa;">No Teacher Changes</span>'
                             : escapeHtml(s.prevTeacher);
 
-                        // ── Course (truncated) ──────────────────────────
+                        // -- Course (truncated) --------------------------
                         const courseDisplay = s.course && s.course.length > 35
                             ? s.course.substring(0, 35) + '...'
                             : (s.course || '-');
@@ -3910,11 +3951,11 @@ google.script.run
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
-                <strong>📅 Latest Ticket Logic Fixed</strong><br>
+                <strong>\uD83D\uDCC5 Latest Ticket Logic Fixed</strong><br>
                 Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
             </li>
             <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
-                <strong>🧩 Enhanced Data Mapping</strong><br>
+                <strong>\uD83E\uDDE9 Enhanced Data Mapping</strong><br>
                 Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
             </li>
         </ul>
@@ -3951,7 +3992,7 @@ google.script.run
     if (inactivityMsg) inactivityMsg.style.display = 'none';
     appContainer.style.display = 'grid';
     startPolling();
-    startSessionTimer();// ← ADD THIS BLOCK
+    startSessionTimer();// <- ADD THIS BLOCK
     if (user.mustChangePassword) {
         document.getElementById('forcePasswordModal').classList.add('active');
         return; // don't show welcome toast yet
@@ -4132,12 +4173,12 @@ function loadUsers() {
         passwordFieldGroup.style.display = 'block'; // show for editing
         document.querySelector(`input[name="userStatus"][value="${user.isActive}"]`).checked = true;
     } else {
-        // ADDING new user — password is auto-generated
+        // ADDING new user \u2014 password is auto-generated
         modalTitle.textContent = 'Add New User';
         usernameInput.readOnly = false;
         passwordInput.required = false;
         statusGroup.style.display = 'none';
-        passwordFieldGroup.style.display = 'none'; // hide — backend generates it
+        passwordFieldGroup.style.display = 'none'; // hide \u2014 backend generates it
     }
     addUserModal.classList.add('active');
 }
@@ -4159,7 +4200,7 @@ function loadUsers() {
             showLoading('Updating user...');
             google.script.run.withSuccessHandler(handleUserSave).withFailureHandler(showError).updateUser(userData, currentUser);
         } else {
-            // For new users — backend generates a secure temp password and emails it
+            // For new users \u2014 backend generates a secure temp password and emails it
             showLoading('Creating user and sending welcome email...');
         google.script.run
             .withSuccessHandler(handleUserSave)
@@ -4168,7 +4209,7 @@ function loadUsers() {
                 username: userData.username,
                 email: userData.email,
                 role: userData.role
-            }, currentUser);  // ← pass currentUser
+            }, currentUser);  // <- pass currentUser
 
 
         }
@@ -5941,7 +5982,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
     'V35': [
-      "**Dashboard Insight Cards**: Added a row of 4 live KPI cards — Active Learners (with weekly delta), Avg Onboard Time, Escalations (90-day), and Month-on-Month Growth.",
+      "**Dashboard Insight Cards**: Added a row of 4 live KPI cards \u2014 Active Learners (with weekly delta), Avg Onboard Time, Escalations (90-day), and Month-on-Month Growth.",
       "**Dashboard Migration Reasons Chart**: Horizontal bar chart showing top 6 migration reasons for the current month, colour-coded by type (Standard / Performance / Escalation).",
       "**Dashboard Most Active Teachers**: Live leaderboard of top 5 active teachers by learner count with avatar initials, load count, and status badge.",
       "**Dashboard Quick Actions**: One-click shortcuts to New Migration, Onboard Learner, Run Audit, Generate Invoice, and View Reports.",
@@ -5951,7 +5992,7 @@ document.addEventListener('DOMContentLoaded', () => {
       "**AI Powered Tools Login Feature**: Added 4th feature card on login left panel with purple gradient, brain icon, and NEW badge."
     ],
     'V34': [
-      "**AI Teacher Dashboard Tab**: Launched inside Teacher Intelligence Center — live KPI row, load distribution list, teacher health scores with colour bars, AI insights, and recommendations.",
+      "**AI Teacher Dashboard Tab**: Launched inside Teacher Intelligence Center \u2014 live KPI row, load distribution list, teacher health scores with colour bars, AI insights, and recommendations.",
       "**AI Recommendations Modal**: Clicking a recommendation card opens a detailed modal with all affected teachers, scores, breakdown, and action buttons (View Profile, Find Replacement, Mark On Leave).",
       "**Teacher Health Scores**: Each teacher gets a computed health score (0-100) based on load and escalation count, shown as a colour-coded progress bar (green/amber/red).",
       "**Live Total Learner Count**: Dashboard KPIs fetch the true total active learner count from HubSpot via getTotalActiveLearnerCount() with no pagination cap.",
@@ -5959,12 +6000,12 @@ document.addEventListener('DOMContentLoaded', () => {
     ],
     'V33': [
       "**Find Replacement Engine**: findSimilarTeachers() scores candidates across Traits (30pts), Age Group (20pts), Course Count (30pts), and Stability (20pts), then re-ranks with AI for best fit.",
-      "**AI Confidence & Reasoning**: Each replacement candidate shows AI confidence rating, a one-line reason, warning flag, and caveat — generated by the Anthropic API.",
+      "**AI Confidence & Reasoning**: Each replacement candidate shows AI confidence rating, a one-line reason, warning flag, and caveat \u2014 generated by the Anthropic API.",
       "**Persona & Replacement Tab**: Lists all active teachers with Coding/Math load split and direct Find Replacement and View Profile buttons per teacher.",
       "**Teacher Status Filter**: Filter the persona table by Active / EWS / Attrited / On Leave / All with live learner counts."
     ],
     'V32': [
-      "**Teacher Intelligence Center**: Renamed Teacher Load page to Teacher Intelligence Center with three tabs — Load Dashboard, Persona & Replacement Engine, and AI Dashboard.",
+      "**Teacher Intelligence Center**: Renamed Teacher Load page to Teacher Intelligence Center with three tabs \u2014 Load Dashboard, Persona & Replacement Engine, and AI Dashboard.",
       "**TP & CLS Manager Cards**: Teacher load page shows TP Manager and CLS Manager name cards with direct mailto links resolved from the Persona sheet.",
       "**Dropdown Portal Fix**: Teacher search dropdown now renders via a fixed-position portal on document.body, eliminating z-index issues.",
       "**Attrition Risk Table**: Shows all active learners for a selected teacher with 90-day migration risk, deal value, payment tag (Upfront/Installment), and tenure label."
@@ -6166,7 +6207,7 @@ var filterEl = document.getElementById('personaStatusFilter');
 
 
 
-// ── Global: open Find Replacement modal ──────────────────────────────────────
+// -- Global: open Find Replacement modal --------------------------------------
 function openCloneModal(teacherName) {
     var nameEl = document.getElementById('cloneTargetName');
     var ctxEl  = document.getElementById('cloneTargetContext');
@@ -6183,7 +6224,7 @@ function openCloneModal(teacherName) {
                 return;
             }
  
-            // ── Target context bar ────────────────────────────────────────
+            // -- Target context bar ----------------------------------------
             if (result.targetContext) {
                 var ctx = result.targetContext;
                 if (ctxEl) ctxEl.style.display = 'block';
@@ -6195,21 +6236,21 @@ function openCloneModal(teacherName) {
                 if (escalEl)    escalEl.textContent    = ctx.escalations || 0;
             }
  
-            // ── AI Summary banner ─────────────────────────────────────────
+            // -- AI Summary banner -----------------------------------------
             var summaryEl = document.getElementById('cloneAISummary');
             if (summaryEl) {
                 if (result.aiEnriched && result.aiSummary) {
                     summaryEl.style.display = 'block';
                     summaryEl.innerHTML =
                         '<span style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;'
-                        + 'padding:2px 8px;border-radius:10px;font-weight:600;margin-right:8px;">✦ AI Analysis</span>'
+                        + 'padding:2px 8px;border-radius:10px;font-weight:600;margin-right:8px;">\u2726 AI Analysis</span>'
                         + escapeHtml(result.aiSummary);
                 } else {
                     summaryEl.style.display = 'none';
                 }
             }
  
-            // ── Populate results table ────────────────────────────────────
+            // -- Populate results table ------------------------------------
             var tbody = document.getElementById('cloneTeacherTableBody');
             if (!tbody) return;
             tbody.innerHTML = '';
@@ -6262,16 +6303,16 @@ function openCloneModal(teacherName) {
  
                         var reasonHtml  = (aiEnriched && aiReason)
                             ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;font-style:italic;">'
-                              + '✦ ' + escapeHtml(aiReason) + '</div>' : '';
+                              + '\u2726 ' + escapeHtml(aiReason) + '</div>' : '';
  
                         var warningHtml = (aiEnriched && aiWarning)
                             ? '<div style="font-size:0.72rem;color:#b91c1c;background:#fee2e2;'
                               + 'border-radius:4px;padding:2px 6px;margin-top:3px;display:inline-block;">'
-                              + '⚠ ' + escapeHtml(aiWarning) + '</div>' : '';
+                              + '\u26A0 ' + escapeHtml(aiWarning) + '</div>' : '';
  
                         var caveatHtml  = (aiEnriched && aiCaveat)
                             ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">'
-                              + '💡 ' + escapeHtml(aiCaveat) + '</div>' : '';
+                              + '\uD83D\uDCA1 ' + escapeHtml(aiCaveat) + '</div>' : '';
  
                         var breakdown = 'Traits:' + traitScore + '/30'
                             + ' | Age:' + ageScore + '/20'
@@ -6332,7 +6373,7 @@ function openCloneModal(teacherName) {
                 });
             }
  
-            // Open modal — same as every other modal in the app
+            // Open modal \u2014 same as every other modal in the app
             var modal = document.getElementById('cloneTeacherModal');
             if (modal) modal.classList.add('active');
         })
