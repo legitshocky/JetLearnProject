@@ -46,7 +46,10 @@ function fetchHubspotByJlid(jlid) {
     const response = UrlFetchApp.fetch(hubspotApiUrl, options);
     const responseBody = response.getContentText();
 
-    if (responseBody.trim().startsWith("<")) return { success: false, message: `HubSpot API Error: Connection Failed` };
+    if (response.getResponseCode() !== 200) {
+      Logger.log(`HubSpot API Error (${response.getResponseCode()}): ${responseBody}`);
+      return { success: false, message: `HubSpot API Error (${response.getResponseCode()})` };
+    }
 
     const jsonResponse = JSON.parse(responseBody);
 
@@ -268,6 +271,10 @@ function fetchLatestMigrationTicket(jlid) {
     };
     
     const response = UrlFetchApp.fetch(hubspotApiUrl, options);
+    if (response.getResponseCode() !== 200) {
+      Logger.log(`HubSpot ticket search error (${response.getResponseCode()}): ${response.getContentText()}`);
+      return { found: false, message: `HubSpot API Error (${response.getResponseCode()})` };
+    }
     const data = JSON.parse(response.getContentText());
 
     if (data.results && data.results.length > 0) {
@@ -367,7 +374,10 @@ function fetchHubspotRenewalData(jlid) {
       payload: JSON.stringify(searchPayload),
       muteHttpExceptions: true
     });
-    
+
+    if (searchRes.getResponseCode() !== 200) {
+        return { success: false, message: `HubSpot API Error (${searchRes.getResponseCode()})` };
+    }
     const searchJson = JSON.parse(searchRes.getContentText());
     if (!searchJson.results || searchJson.results.length === 0) {
         return { success: false, message: "No Deal found for this JLID." };
@@ -384,7 +394,8 @@ function fetchHubspotRenewalData(jlid) {
             headers: { 'Authorization': 'Bearer ' + token },
             muteHttpExceptions: true
         });
-        
+
+        if (assocRes.getResponseCode() !== 200) continue;
         const assocJson = JSON.parse(assocRes.getContentText());
         if (assocJson.results && assocJson.results.length > 0) {
             targetDeal = deal;
@@ -418,7 +429,11 @@ function fetchHubspotRenewalData(jlid) {
         payload: JSON.stringify(batchPayload),
         muteHttpExceptions: true
     });
-    
+
+    if (batchRes.getResponseCode() !== 200) {
+        Logger.log(`HubSpot batch line items error (${batchRes.getResponseCode()}): ${batchRes.getContentText()}`);
+        return { success: false, message: `Failed to fetch line items (${batchRes.getResponseCode()})` };
+    }
     const batchJson = JSON.parse(batchRes.getContentText());
     let processedItems = [];
 
@@ -518,11 +533,10 @@ function fetchDealsByOnboardingCompletionDate(fromDate, toDate) {
   };
 
   const response = UrlFetchApp.fetch(hubspotApiUrl, options);
-  const jsonResponse = JSON.parse(response.getContentText());
-
   if (response.getResponseCode() !== 200) {
-    throw new Error(`HubSpot API Error (${response.getResponseCode()}): ${jsonResponse.message || 'Unknown error'}`);
+    throw new Error(`HubSpot API Error (${response.getResponseCode()}): ${response.getContentText()}`);
   }
+  const jsonResponse = JSON.parse(response.getContentText());
   return jsonResponse.results || [];
 }
 
@@ -1259,6 +1273,7 @@ function getBestPhoneNumberForDeal(dealId) {
     };
     
     const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    if (assocRes.getResponseCode() !== 200) return null;
     const assocData = JSON.parse(assocRes.getContentText());
 
     if (!assocData.results || assocData.results.length === 0) {
@@ -1275,14 +1290,15 @@ function getBestPhoneNumberForDeal(dealId) {
       properties: ["mobilephone", "phone", "hs_whatsapp_phone_number"],
       inputs: contactIds
     };
-    
+
     const contactsRes = UrlFetchApp.fetch(contactsUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(contactsPayload),
       muteHttpExceptions: true
     });
-    
+
+    if (contactsRes.getResponseCode() !== 200) return null;
     const contactsData = JSON.parse(contactsRes.getContentText());
 
     // 3. Logic to find the BEST number
@@ -1327,6 +1343,7 @@ function getPhoneNumbersForDeal(dealId) {
     const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/contacts`;
     const assocOptions = { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true };
     const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    if (assocRes.getResponseCode() !== 200) return { best: null, all: [] };
     const assocData = JSON.parse(assocRes.getContentText());
 
     if (!assocData.results || assocData.results.length === 0) return { best: null, all: [] };
@@ -1339,14 +1356,15 @@ function getPhoneNumbersForDeal(dealId) {
       properties: ["mobilephone", "phone", "hs_whatsapp_phone_number"],
       inputs: contactIds
     };
-    
+
     const contactsRes = UrlFetchApp.fetch(contactsUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(contactsPayload),
       muteHttpExceptions: true
     });
-    
+
+    if (contactsRes.getResponseCode() !== 200) return { best: null, all: [] };
     const contactsData = JSON.parse(contactsRes.getContentText());
     
     // 3. Collect ALL numbers and pick the BEST one
@@ -1391,6 +1409,7 @@ function fetchHubspotHistory(dealId) {
     // 1. Fetch Associated TICKETS
     const ticketUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/tickets`;
     const ticketRes = UrlFetchApp.fetch(ticketUrl, { headers: headers, muteHttpExceptions: true });
+    if (ticketRes.getResponseCode() !== 200) return [];
     const ticketAssoc = JSON.parse(ticketRes.getContentText()).results || [];
 
     if (ticketAssoc.length > 0) {
@@ -1404,7 +1423,8 @@ function fetchHubspotHistory(dealId) {
         payload: JSON.stringify(batchBody),
         muteHttpExceptions: true
       });
-      
+
+      if (detailsRes.getResponseCode() !== 200) return [];
       const tickets = JSON.parse(detailsRes.getContentText()).results || [];
       
       // --- FILTERING LOGIC ---

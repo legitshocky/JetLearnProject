@@ -31,7 +31,16 @@ function _callGemini(contents, model, maxTokens) {
   });
 
   const raw  = response.getContentText();
-  const json = JSON.parse(raw);
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Gemini API Error (' + response.getResponseCode() + '): ' + raw.substring(0, 200));
+  }
+
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch (parseErr) {
+    throw new Error('Gemini returned non-JSON response: ' + raw.substring(0, 200));
+  }
 
   if (json.error) throw new Error('Gemini API Error: ' + json.error.message);
 
@@ -650,7 +659,16 @@ function sendAIChat(history, model, settings, parts) {
     });
 
     const raw  = response.getContentText();
-    const json = JSON.parse(raw);
+    if (response.getResponseCode() !== 200) {
+      throw new Error('Gemini API Error (' + response.getResponseCode() + '): ' + raw.substring(0, 200));
+    }
+
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch (parseErr) {
+      throw new Error('Gemini returned non-JSON response: ' + raw.substring(0, 200));
+    }
 
     if (json.error) throw new Error('Gemini API Error: ' + json.error.message);
 
@@ -905,7 +923,18 @@ function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetCont
     });
 
     var raw  = response.getContentText();
-    var json = JSON.parse(raw);
+    if (response.getResponseCode() !== 200) {
+      Logger.log('[rankReplacementTeachersWithAI] Gemini API error (' + response.getResponseCode() + '): ' + raw.substring(0, 200));
+      return { success: false, message: 'Gemini API Error (' + response.getResponseCode() + ')' };
+    }
+
+    var json;
+    try {
+      json = JSON.parse(raw);
+    } catch (parseErr) {
+      Logger.log('[rankReplacementTeachersWithAI] Non-JSON response: ' + raw.substring(0, 200));
+      return { success: false, message: 'Gemini returned non-JSON response.' };
+    }
 
     if (json.error) {
       Logger.log('[rankReplacementTeachersWithAI] Gemini error: ' + json.error.message);

@@ -67,8 +67,14 @@ function getInvoiceProductsData() {
 function getLiveExchangeRates() {
   Logger.log('Fetching live exchange rates from API.');
   try {
-    const response = UrlFetchApp.fetch(CONFIG.EXCHANGE_RATE_API_URL, {
-      muteHttpExceptions: true 
+    const API_KEY = PropertiesService.getScriptProperties().getProperty('EXCHANGERATE_API_KEY');
+    if (!API_KEY) {
+      Logger.log('ExchangeRate API Key not found in Script Properties.');
+      return {};
+    }
+    const apiUrl = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/EUR`;
+    const response = UrlFetchApp.fetch(apiUrl, {
+      muteHttpExceptions: true
     });
 
     const responseCode = response.getResponseCode();

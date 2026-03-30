@@ -919,6 +919,36 @@ function testEmailConfiguration() {
   }
 }
 
+function _parseCsvRow(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && i + 1 < line.length && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
 function processBatchUpload(csvContent) {
   Logger.log('processBatchUpload called');
 
@@ -927,7 +957,7 @@ function processBatchUpload(csvContent) {
     return { total: 0, success: 0, failed: 0, results: [], message: 'CSV is empty or has only headers.' };
   }
 
-  const headers = lines[0].split(',').map(h => h.trim());
+  const headers = _parseCsvRow(lines[0]).map(h => h.trim());
   const requiredHeaders = ['jlid', 'learnerName', 'oldTeacher', 'newTeacher', 'course', 'reason', 'clsManager', 'jetGuide', 'startDate', 'day', 'time'];
 
   const missingHeaders = requiredHeaders.filter(rh => !headers.includes(rh));
@@ -939,9 +969,9 @@ function processBatchUpload(csvContent) {
   const migrationsToProcess = [];
 
   for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === '') continue; 
+    if (lines[i].trim() === '') continue;
 
-    const row = lines[i].split(',');
+    const row = _parseCsvRow(lines[i]);
     const migration = {};
     headers.forEach((header, index) => {
       migration[header] = row[index] ? row[index].trim() : '';
