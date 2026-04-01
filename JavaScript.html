@@ -57,6 +57,7 @@ let globalTimezones = []; // Will be populated from the server
 let globalTicketData = [];
 let globalTeacherDataList = [];
 let allTeacherDetailsCache = [];
+let sparklineCharts = {};
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
 let isParentInvoiceEndDateManuallySet = false;
@@ -790,91 +791,143 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
 
 
     function loadDashboardData() {
-      showLoading('Loading dashboard...');
-      // Fire all 3 data calls in parallel
-      google.script.run.withSuccessHandler(updateDashboard).withFailureHandler(showError).getDashboardStatistics();
-      google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function(){}).getTeacherDetailsForTable();
-      const today = new Date();
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(function(){}).getEnhancedMigrationReport({
-        startDate: monthStart.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0]
-      });
+    showLoading('Loading Command Center...');
+    // This single call will now fetch all data for the new dashboard sections
+    google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(showError).getNewDashboardData();
+    
+    // These can run in parallel to populate their specific sections
+    google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(showError).getTeacherDetailsForTable();
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(showError).getEnhancedMigrationReport({
+      startDate: monthStart.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0]
+    });
+    // This call now specifically updates the "Recent Activities" section
+    google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(showError).getDashboardStatistics();
+}
+
+
+function renderSparkline(canvasId, data, isPositiveGood) {
+    const ctx = document.getElementById(canvasId)?.getContext('2d');
+    if (!ctx) return;
+
+    if (sparklineCharts[canvasId]) {
+        sparklineCharts[canvasId].destroy();
     }
 
-function updateDashboard(data) {
-    // 1. Update Statistics Cards
-    document.getElementById('totalOnboardings').textContent = (data.activeLearners || data.onboardings.total).toLocaleString();
-    document.getElementById('todayOnboardings').textContent = data.onboardings.today;
-    document.getElementById('weekOnboardings').textContent = data.onboardings.thisWeek;
-    document.getElementById('monthOnboardings').textContent = data.onboardings.thisMonth;
-    
-    document.getElementById('totalMigrations').textContent = data.migrations.total;
-    document.getElementById('todayMigrations').textContent = data.migrations.today;
-    document.getElementById('weekMigrations').textContent = data.migrations.thisWeek;
-    document.getElementById('monthMigrations').textContent = data.migrations.thisMonth;
-    
-    document.getElementById('migrationSuccessRate').textContent = `${data.migrations.successRate}%`;
-    
-    // 2. Update Chart
-    initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
+    const trendColor = data[data.length - 1] >= data[0]
+        ? (isPositiveGood ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)')
+        : (isPositiveGood ? 'rgb(239, 68, 68)' : 'rgb(16, 185, 129)');
 
-    // 3. Insight cards \u2014 real HubSpot total, audit log for weekly trend
-    const activeLearners = data.activeLearners || data.onboardings.total || 0;
-    const el = document.getElementById('dashActiveLearners');
-    if (el) el.textContent = activeLearners.toLocaleString();
-    const trendEl = document.getElementById('dashActiveLearnersTrend');
-    if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} new this week`;
+    sparklineCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.map((_, i) => i),
+            datasets: [{
+                data: data,
+                borderColor: trendColor,
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.4,
+                fill: true,
+                backgroundColor: trendColor.replace('rgb', 'rgba').replace(')', ', 0.1)')
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false } }
+        }
+    });
+}
 
-    // Growth = month migrations vs week migrations annualised estimate
-    const monthMig = data.migrations.thisMonth || 0;
-    const growthEl = document.getElementById('dashGrowth');
-    const growthTrendEl = document.getElementById('dashGrowthTrend');
-    if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '\u2014';
-    if (growthTrendEl) growthTrendEl.textContent = `This month migrations`;
 
-    // Escalations \u2014 from migrations failed count as proxy
-    const escalations = data.migrations.failed || 0;
-    const escEl = document.getElementById('dashEscalations');
-    const escTrendEl = document.getElementById('dashEscalationsTrend');
-    if (escEl) escEl.textContent = escalations;
-    if (escTrendEl) {
-        escTrendEl.textContent = escalations === 0 ? '\u2713 All clear' : `${escalations} failed migrations`;
-        escTrendEl.style.color = escalations === 0 ? '#059669' : '#dc2626';
+// Add this NEW master function to update the new dashboard
+function updateNewDashboard(response) {
+    hideLoading();
+    if (!response || !response.success) {
+        showToast('error', 'Dashboard Error', 'Could not load AI dashboard data.');
+        return;
     }
+    const data = response.data;
 
-    // 4. Update Recent Activities Feed
+    // 1. AI Briefing
+    document.getElementById('aiBriefingText').textContent = data.briefing;
+
+    // 2. KPIs & Sparklines
+    document.getElementById('kpiActiveLearnersValue').textContent = data.kpiData.activeLearners.value.toLocaleString();
+    renderSparkline('kpiActiveLearnersSparkline', data.kpiData.activeLearners.trend, true);
+    const alTrend = document.getElementById('kpiActiveLearnersFooter');
+    alTrend.textContent = `${data.kpiData.activeLearners.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.activeLearners.change)} this week`;
+    alTrend.className = `kpi-footer ${data.kpiData.activeLearners.change >= 0 ? 'positive' : 'negative'}`;
+
+    document.getElementById('kpiMigrationsValue').textContent = data.kpiData.migrations.value;
+    renderSparkline('kpiMigrationsSparkline', data.kpiData.migrations.trend, false);
+    const mTrend = document.getElementById('kpiMigrationsFooter');
+    mTrend.textContent = `${data.kpiData.migrations.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.migrations.change)}% vs last 30d`;
+    mTrend.className = `kpi-footer ${data.kpiData.migrations.change >= 0 ? 'negative' : 'positive'}`;
+    
+    document.getElementById('kpiRevenueValue').textContent = `€${Math.round(data.kpiData.revenue.value).toLocaleString()}`;
+    renderSparkline('kpiRevenueSparkline', data.kpiData.revenue.trend, true);
+    const rTrend = document.getElementById('kpiRevenueFooter');
+    rTrend.textContent = `${data.kpiData.revenue.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.revenue.change)}% vs last month`;
+    rTrend.className = `kpi-footer ${data.kpiData.revenue.change >= 0 ? 'positive' : 'negative'}`;
+
+    document.getElementById('kpiSuccessRateValue').textContent = `${data.kpiData.successRate.value}%`;
+    renderSparkline('kpiSuccessRateSparkline', data.kpiData.successRate.trend, true);
+    const srTrend = document.getElementById('kpiSuccessRateFooter');
+    srTrend.textContent = `${data.kpiData.successRate.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.successRate.change)} pts vs last 30d`;
+    srTrend.className = `kpi-footer ${data.kpiData.successRate.change >= 0 ? 'positive' : 'negative'}`;
+
+    // 3. AI Action Center
+    const actionCenter = document.getElementById('aiActionCenter');
+    actionCenter.innerHTML = '';
+    if (data.actionCards && data.actionCards.length > 0) {
+        data.actionCards.forEach(card => {
+            const cardEl = document.createElement('div');
+            cardEl.className = `action-card ${card.type}`;
+            cardEl.onclick = () => switchPage(`${card.action}Page`);
+            cardEl.innerHTML = `
+                <div class="action-card-icon"><i class="fas ${card.icon}"></i></div>
+                <div>
+                    <div class="action-card-title">${card.title}</div>
+                    <div class="action-card-subtitle">${card.subtitle}</div>
+                </div>
+            `;
+            actionCenter.appendChild(cardEl);
+        });
+    } else {
+        actionCenter.innerHTML = `<div class="ai-empty-state" style="grid-column: 1 / -1;"><i class="fas fa-check-circle"></i><p>No high-priority actions today. Great work!</p></div>`;
+    }
+}
+
+
+
+function updateRecentActivities(data) {
     const recentActivitiesList = document.getElementById('recentActivitiesList');
+    if (!recentActivitiesList) return;
+    
     recentActivitiesList.innerHTML = '';
 
     if (!data.recentActivities || data.recentActivities.length === 0) {
-        recentActivitiesList.innerHTML = `<p style="text-align:center; color: var(--text-light);">No recent activities to show.</p>`;
+        recentActivitiesList.innerHTML = `<div class="ai-empty-state" style="padding: 1rem;"><i class="fas fa-inbox"></i><p>No recent activities.</p></div>`;
     } else {
         data.recentActivities.forEach(activity => {
             const item = document.createElement('div');
             item.className = 'activity-item';
 
             const statusBadge = activity.status 
-                ? `<span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}" style="${activity.status === 'Partial Success' ? 'background-color: rgba(255, 152, 0, 0.1); color: var(--warning);' : ''}">${activity.status}</span>` 
+                ? `<span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}">${activity.status}</span>` 
                 : '';
 
             const relativeTime = activity.timestamp ? moment(activity.timestamp).fromNow() : 'Unknown time';
-
-            const iconClass = activity.type === 'migration' 
-                ? 'fa-exchange-alt' 
-                : activity.type === 'onboarding' 
-                    ? 'fa-user-plus' 
-                    : 'fa-envelope-open-text';
-
-            let actionButtonHtml = '';
-            if (activity.type === 'email' && activity.trackingId) {
-                actionButtonHtml = `<button class="btn btn-outline btn-sm" style="margin-left: 1rem;" onclick="viewEmailActivityDetails('${activity.trackingId}')">View Details</button>`;
-            }
+            const iconClass = activity.type === 'migration' ? 'fa-exchange-alt' : activity.type === 'onboarding' ? 'fa-user-plus' : 'fa-envelope-open-text';
+            let actionButtonHtml = activity.type === 'email' && activity.trackingId ? `<button class="btn btn-outline btn-sm" style="margin-left: 1rem;" onclick="viewEmailActivityDetails('${activity.trackingId}')">View Details</button>` : '';
 
             item.innerHTML = `
-              <div class="activity-icon ${activity.type}">
-                <i class="fas ${iconClass}"></i>
-              </div>
+              <div class="activity-icon ${activity.type}"><i class="fas ${iconClass}"></i></div>
               <div class="activity-details">
                 <div class="activity-title">${activity.title} ${statusBadge}</div>
                 <div class="activity-description">${activity.description}</div>
@@ -884,13 +937,102 @@ function updateDashboard(data) {
                 ${actionButtonHtml}
               </div>
             `;
-
             recentActivitiesList.appendChild(item);
         });
     }
-    
-    hideLoading();
 }
+
+
+
+// function updateDashboard(data) {
+//     // 1. Update Statistics Cards
+//     document.getElementById('totalOnboardings').textContent = (data.activeLearners || data.onboardings.total).toLocaleString();
+//     document.getElementById('todayOnboardings').textContent = data.onboardings.today;
+//     document.getElementById('weekOnboardings').textContent = data.onboardings.thisWeek;
+//     document.getElementById('monthOnboardings').textContent = data.onboardings.thisMonth;
+    
+//     document.getElementById('totalMigrations').textContent = data.migrations.total;
+//     document.getElementById('todayMigrations').textContent = data.migrations.today;
+//     document.getElementById('weekMigrations').textContent = data.migrations.thisWeek;
+//     document.getElementById('monthMigrations').textContent = data.migrations.thisMonth;
+    
+//     document.getElementById('migrationSuccessRate').textContent = `${data.migrations.successRate}%`;
+    
+//     // 2. Update Chart
+//     initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
+
+//     // 3. Insight cards \u2014 real HubSpot total, audit log for weekly trend
+//     const activeLearners = data.activeLearners || data.onboardings.total || 0;
+//     const el = document.getElementById('dashActiveLearners');
+//     if (el) el.textContent = activeLearners.toLocaleString();
+//     const trendEl = document.getElementById('dashActiveLearnersTrend');
+//     if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} new this week`;
+
+//     // Growth = month migrations vs week migrations annualised estimate
+//     const monthMig = data.migrations.thisMonth || 0;
+//     const growthEl = document.getElementById('dashGrowth');
+//     const growthTrendEl = document.getElementById('dashGrowthTrend');
+//     if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '\u2014';
+//     if (growthTrendEl) growthTrendEl.textContent = `This month migrations`;
+
+//     // Escalations \u2014 from migrations failed count as proxy
+//     const escalations = data.migrations.failed || 0;
+//     const escEl = document.getElementById('dashEscalations');
+//     const escTrendEl = document.getElementById('dashEscalationsTrend');
+//     if (escEl) escEl.textContent = escalations;
+//     if (escTrendEl) {
+//         escTrendEl.textContent = escalations === 0 ? '\u2713 All clear' : `${escalations} failed migrations`;
+//         escTrendEl.style.color = escalations === 0 ? '#059669' : '#dc2626';
+//     }
+
+//     // 4. Update Recent Activities Feed
+//     const recentActivitiesList = document.getElementById('recentActivitiesList');
+//     recentActivitiesList.innerHTML = '';
+
+//     if (!data.recentActivities || data.recentActivities.length === 0) {
+//         recentActivitiesList.innerHTML = `<p style="text-align:center; color: var(--text-light);">No recent activities to show.</p>`;
+//     } else {
+//         data.recentActivities.forEach(activity => {
+//             const item = document.createElement('div');
+//             item.className = 'activity-item';
+
+//             const statusBadge = activity.status 
+//                 ? `<span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}" style="${activity.status === 'Partial Success' ? 'background-color: rgba(255, 152, 0, 0.1); color: var(--warning);' : ''}">${activity.status}</span>` 
+//                 : '';
+
+//             const relativeTime = activity.timestamp ? moment(activity.timestamp).fromNow() : 'Unknown time';
+
+//             const iconClass = activity.type === 'migration' 
+//                 ? 'fa-exchange-alt' 
+//                 : activity.type === 'onboarding' 
+//                     ? 'fa-user-plus' 
+//                     : 'fa-envelope-open-text';
+
+//             let actionButtonHtml = '';
+//             if (activity.type === 'email' && activity.trackingId) {
+//                 actionButtonHtml = `<button class="btn btn-outline btn-sm" style="margin-left: 1rem;" onclick="viewEmailActivityDetails('${activity.trackingId}')">View Details</button>`;
+//             }
+
+//             item.innerHTML = `
+//               <div class="activity-icon ${activity.type}">
+//                 <i class="fas ${iconClass}"></i>
+//               </div>
+//               <div class="activity-details">
+//                 <div class="activity-title">${activity.title} ${statusBadge}</div>
+//                 <div class="activity-description">${activity.description}</div>
+//               </div>
+//               <div style="display: flex; align-items: center; margin-left: auto;">
+//                 <div class="activity-time">${relativeTime}</div>
+//                 ${actionButtonHtml}
+//               </div>
+//             `;
+
+//             recentActivitiesList.appendChild(item);
+//         });
+//     }
+    
+//     hideLoading();
+// }
 
 // \u2500\u2500 NEW: Top active teachers handler \u2500\u2500
 function updateDashboardTeachers(teachers) {
@@ -4517,9 +4659,16 @@ function loadUsers() {
       pollIntervalId = setInterval(() => {
         if (!currentUser) { stopPolling(); return; }
         const activePage = document.querySelector('.page-content[style*="block"]');
-        if (!activePage || activePage.id !== 'dashboardPage') return;
+        
+        // --- FIX: Add this safety check ---
+        // Only run the refresh logic if the dashboard is the active page.
+        if (!activePage || activePage.id !== 'dashboardPage') {
+            return; // Do nothing if we are not on the dashboard
+        }
+        // ------------------------------------
+
         google.script.run.withSuccessHandler(data => {
-                updateDashboard(data);
+                updateDashboard(data); // This call is now safe
                 const refreshIcon = refreshDashboardBtn.querySelector('i');
                 refreshIcon.classList.add('fa-spin');
                 setTimeout(() => refreshIcon.classList.remove('fa-spin'), 1000);
@@ -4527,12 +4676,9 @@ function loadUsers() {
       }, 30000);
     }
 
-    function stopPolling() {
-      if (pollIntervalId) {
-        clearInterval(pollIntervalId);
-        pollIntervalId = null;
-      }
-    }
+
+    function stopPolling() { if (pollIntervalId) {
+
         
     // =============================================
     // SESSION TIMEOUT
