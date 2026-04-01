@@ -3650,7 +3650,9 @@ function collectInvoiceFormData() {
         onboardingParentPartialPayment, onboardingParentCurrency,
         document.getElementById('onboardingParentCustomCurrencyCode'),
         document.getElementById('onboardingParentCustomCurrencyRate'),
-        document.getElementById('onboardingParentCustomCurrencyExtraDiscountPercentage')
+        document.getElementById('onboardingParentCustomCurrencyExtraDiscountPercentage'),
+        document.getElementById('onboardingParentNumberOfInstallments') // <-- ADD THIS LINE
+
     ];
 
     parentOnboardingCalcFields.forEach(el => {
