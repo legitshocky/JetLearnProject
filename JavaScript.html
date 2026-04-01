@@ -6461,19 +6461,6 @@ function addOptionIfNotExists(selectElement, value) {
     }
 }
 
-// 3. Attach the New Listener
-if(fetchMigrationDataBtn) {
-    // Remove previous listeners to be safe (by cloning and replacing)
-    const newBtn = fetchMigrationDataBtn.cloneNode(true);
-    fetchMigrationDataBtn.parentNode.replaceChild(newBtn, fetchMigrationDataBtn);
-    
-    // Add the new specific listener
-    newBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        fetchMigrationSpecificData();
-    });
-}
-
 // Helper to copy text from an input field
 function copyToClipboard(elementId) {
     const copyText = document.getElementById(elementId);
