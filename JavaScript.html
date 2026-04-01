@@ -3164,8 +3164,9 @@ tr.innerHTML = `
         amountPaidDisplay.value = '';
         balanceDueDisplay.value = '';
         return;
+
     }
-    const pricingDetails = calculateInvoicePricingClient(formData);
+const pricingDetails = calculateInvoicePricingClient(formData);
     const sym = pricingDetails.currencySymbol;
     const customPaid = parseFloat(formData.customPaidAmount) || 0;
     console.log('[INV] paymentType:', formData.paymentType, '| numInstallments:', formData.numberOfInstallments, '| finalTotal:', pricingDetails.finalTotal, '| customPaid:', customPaid);
@@ -3186,14 +3187,19 @@ tr.innerHTML = `
 
     const balanceCard = document.getElementById('balanceDueCard');
     const balanceDot  = document.getElementById('balanceDueDot');
+    
+    // Also apply color to the input text with !important
+    totalPayableDisplay.style.setProperty('color', 'var(--primary)', 'important');
+    amountPaidDisplay.style.setProperty('color', 'var(--success)', 'important');
+
     if (balanceDue <= 0) {
       if (balanceCard) { balanceCard.style.background = '#f0fdf4'; balanceCard.style.borderColor = '#bbf7d0'; }
-      if (balanceDot)  balanceDot.style.background = '#16a34a';
-      balanceDueDisplay.style.color = '#15803d';
+      if (balanceDot)  balanceDot.style.background = 'var(--success)';
+      balanceDueDisplay.style.setProperty('color', 'var(--success)', 'important');
     } else {
       if (balanceCard) { balanceCard.style.background = '#fef2f2'; balanceCard.style.borderColor = '#fecaca'; }
-      if (balanceDot)  balanceDot.style.background = '#dc2626';
-      balanceDueDisplay.style.color = '#b91c1c';
+      if (balanceDot)  balanceDot.style.background = 'var(--danger)';
+      balanceDueDisplay.style.setProperty('color', 'var(--danger)', 'important');
     }
 }
 
@@ -3548,10 +3554,14 @@ function collectInvoiceFormData() {
 
     function calculateAndDisplayParentOnboardingTotal() {
         const formData = collectParentOnboardingFormDataForCalc();
+        const totalPayableEl = document.getElementById('onboardingParentTotalPayableDisplay');
+        const amountPaidEl = document.getElementById('onboardingParentAmountPaidDisplay');
+        const balanceDueEl = document.getElementById('onboardingParentBalanceDueDisplay');
+
         if (!formData.planName || !formData.currency || !formData.subscriptionTenure) {
-            document.getElementById('onboardingParentTotalPayableDisplay').value = '';
-            document.getElementById('onboardingParentAmountPaidDisplay').value = '';
-            document.getElementById('onboardingParentBalanceDueDisplay').value = '';
+            if(totalPayableEl) totalPayableEl.value = '';
+            if(amountPaidEl) amountPaidEl.value = '';
+            if(balanceDueEl) balanceDueEl.value = '';
             return;
         }
 
@@ -3574,9 +3584,9 @@ function collectInvoiceFormData() {
 
         const balanceDue = pricingDetails.finalTotal - amountPaid;
 
-        onboardingParentTotalPayableDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
-        onboardingParentAmountPaidDisplay.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
-        onboardingParentBalanceDueDisplay.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
+        if(totalPayableEl) totalPayableEl.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
+        if(amountPaidEl) amountPaidEl.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
+        if(balanceDueEl) balanceDueEl.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
         
         // Update label
         const amountPaidLabel = document.getElementById('onboardingParentAmountPaidLabel');
@@ -3584,16 +3594,18 @@ function collectInvoiceFormData() {
             amountPaidLabel.textContent = isInstallment ? 'Amount Paid / Installment' : 'Amount Paid';
         }
 
-        // Update balance due color
-        const balanceDueEl = document.getElementById('onboardingParentBalanceDueDisplay');
+        // Force set colors
+        if(totalPayableEl) totalPayableEl.style.setProperty('color', 'var(--primary)', 'important');
+        if(amountPaidEl) amountPaidEl.style.setProperty('color', 'var(--success)', 'important');
         if (balanceDueEl) {
-            if (balanceDue <= 0) {
-                balanceDueEl.style.color = 'var(--success)';
+            if (balanceDue > 0) {
+                balanceDueEl.style.setProperty('color', 'var(--danger)', 'important');
             } else {
-                balanceDueEl.style.color = 'var(--danger)';
+                balanceDueEl.style.setProperty('color', 'var(--success)', 'important');
             }
         }
     }
+
 
 
     function updateParentOnboardingPlanDetails() {
