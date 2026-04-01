@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/legit/JetLearnProject/**)",
+      "Bash(node -e \":*)"
+    ]
+  }
+}

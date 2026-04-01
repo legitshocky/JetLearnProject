@@ -3419,12 +3419,10 @@ tr.innerHTML = `
         amountPaidDisplay.value = '';
         balanceDueDisplay.value = '';
         return;
-
     }
-const pricingDetails = calculateInvoicePricingClient(formData);
+    const pricingDetails = calculateInvoicePricingClient(formData);
     const sym = pricingDetails.currencySymbol;
     const customPaid = parseFloat(formData.customPaidAmount) || 0;
-    console.log('[INV] paymentType:', formData.paymentType, '| numInstallments:', formData.numberOfInstallments, '| finalTotal:', pricingDetails.finalTotal, '| customPaid:', customPaid);
     let amountPaid;
     if (customPaid > 0) {
         amountPaid = customPaid;
@@ -3442,8 +3440,7 @@ const pricingDetails = calculateInvoicePricingClient(formData);
 
     const balanceCard = document.getElementById('balanceDueCard');
     const balanceDot  = document.getElementById('balanceDueDot');
-    
-    // Also apply color to the input text with !important
+
     totalPayableDisplay.style.setProperty('color', 'var(--primary)', 'important');
     amountPaidDisplay.style.setProperty('color', 'var(--success)', 'important');
 
