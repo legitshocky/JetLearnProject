@@ -2953,10 +2953,12 @@ tr.innerHTML = `
         return;
     }
     const pricingDetails = calculateInvoicePricingClient(formData);
+    const amountPaid = parseFloat(formData.customPaidAmount) || (pricingDetails.amountPaid || 0);
+    const balanceDue = pricingDetails.finalTotal - amountPaid;
 
     totalPayableDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
-    amountPaidDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.amountPaid.toFixed(2)}`;
-    balanceDueDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.balanceDue.toFixed(2)}`;
+    amountPaidDisplay.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
+    balanceDueDisplay.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
 }
 
 
