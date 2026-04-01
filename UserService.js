@@ -6,47 +6,48 @@ function authenticateUser(username, password) {
   Logger.log('authenticateUser called for username: ' + username);
 
   if (!username || !password) {
-    Logger.log('Missing credentials');
     return { success: false, role: ROLES.GUEST, message: 'Missing credentials' };
   }
 
   try {
-    const userProfiles = getUserProfiles(); 
+    const userProfiles = getUserProfiles();
     const user = userProfiles.find(u => u.username === username);
 
     if (!user) {
-      Logger.log('User not found: ' + username);
       return { success: false, role: ROLES.GUEST, message: 'Invalid credentials' };
     }
 
     if (user.password !== password) {
-      Logger.log('Invalid password for user: ' + username);
       logUserActivity(username, 'Failed Login', 'Invalid credentials');
       return { success: false, role: ROLES.GUEST, message: 'Invalid credentials' };
     }
 
     if (!user.isActive) {
-      Logger.log('Inactive user attempted login: ' + username);
       return { success: false, role: ROLES.GUEST, message: 'Account inactive' };
     }
 
-    updateUserLastLogin(username);
-    logUserActivity(username, 'Successful Login', 'User logged in');
-    const mustChange = String(user.mustChangePassword).toLowerCase() === 'true';
+    // ✅ Build response FIRST, then do slow writes after
+    const response = {
+      success: true,
+      role: user.role,
+      username: username,
+      permissions: PERMISSIONS[user.role] || [],
+      mustChangePassword: user.mustChangePassword === true || 
+                          String(user.mustChangePassword).toLowerCase() === 'true'
+    };
 
-    Logger.log('Authentication successful for user: ' + username + ', role: ' + user.role);
-    return {
-    success: true,
-    role: user.role,
-    username: username,
-    permissions: PERMISSIONS[user.role] || [],
-    mustChangePassword: user.mustChangePassword === true || String(user.mustChangePassword).toLowerCase() === 'true'
-      };
+    // ✅ Do sheet writes AFTER preparing response (still sync but ordered for clarity)
+    try { updateUserLastLogin(username); } catch(e) { Logger.log('LastLogin update failed: ' + e.message); }
+    try { logUserActivity(username, 'Successful Login', 'User logged in'); } catch(e) {}
+
+    return response;
+
   } catch (error) {
     Logger.log('Error in authenticateUser: ' + error.message);
     return { success: false, role: ROLES.GUEST, message: 'Authentication error' };
   }
 }
+
 
 function verifyUserSession(username) {
   Logger.log('verifyUserSession called for: ' + username);
@@ -74,37 +75,47 @@ function verifyUserSession(username) {
 
 function getUserProfiles() {
   try {
+    // ✅ Check Apps Script cache first (60 second cache)
+    const cache = CacheService.getScriptCache();
+    const cached = cache.get('userProfiles');
+    if (cached) return JSON.parse(cached);
+
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
 
-    if (sheetData.length <= 1) { 
-      createDefaultUsers(); 
+    if (sheetData.length <= 1) {
+      createDefaultUsers();
       return getUserProfiles();
     }
 
     const headers = sheetData[0];
-    return sheetData.slice(1).map(row => {
+    const profiles = sheetData.slice(1).map(row => {
       const user = {};
       headers.forEach((header, i) => {
-        const key = header.toLowerCase().replace(/\s/g, ''); 
+        const key = header.toLowerCase().replace(/\s/g, '');
         user[key] = row[i];
       });
-    return {
-      username: user.username,
-      password: user.password,
-      role: user.role,
-      email: user.email,
-      isActive: user.isactive,
-      lastLogin: user.lastlogin,
-      createdDate: user.createddate,
-      mustChangePassword: user.mustchangepassword || false  // \u2190 ADD THIS
-    };
-
+      return {
+        username: user.username,
+        password: user.password,
+        role: user.role,
+        email: user.email,
+        isActive: user.isactive,
+        lastLogin: user.lastlogin,
+        createdDate: user.createddate,
+        mustChangePassword: user.mustchangepassword || false
+      };
     });
+
+    // ✅ Cache for 60 seconds
+    try { cache.put('userProfiles', JSON.stringify(profiles), 60); } catch(e) {}
+
+    return profiles;
   } catch (error) {
     Logger.log('Error getting user profiles: ' + error.message);
     return [];
   }
 }
+
 
 function createDefaultUsers() {
   try {

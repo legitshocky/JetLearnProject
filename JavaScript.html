@@ -793,7 +793,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     function loadDashboardData() {
     showLoading('Loading Command Center...');
     // This single call will now fetch all data for the new dashboard sections
-    google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(showError).getNewDashboardData();
+    google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(e => { hideLoading(); showError(e); }).getNewDashboardData();
     
     // These can run in parallel to populate their specific sections
     google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(showError).getTeacherDetailsForTable();
@@ -1933,6 +1933,7 @@ function collectEmailFormData(emailType) {
     }
 
     function updateAuditLog(result) {
+        hideLoading();
         const auditLogBody = document.getElementById('auditLogBody');
         const startItemSpan = document.getElementById('startItem');
         const endItemSpan = document.getElementById('endItem');
@@ -2005,6 +2006,7 @@ tr.innerHTML = `
     }
 
     function updateTeachersTable(teachers) {
+        hideLoading(); 
         teachersTableBody.innerHTML = '';
         teachers.forEach(teacher => {
             const tr = document.createElement('tr');
@@ -4668,7 +4670,7 @@ function loadUsers() {
         // ------------------------------------
 
         google.script.run.withSuccessHandler(data => {
-                updateDashboard(data); // This call is now safe
+                updateNewDashboard(data); // This call is now safe
                 const refreshIcon = refreshDashboardBtn.querySelector('i');
                 refreshIcon.classList.add('fa-spin');
                 setTimeout(() => refreshIcon.classList.remove('fa-spin'), 1000);
@@ -4677,9 +4679,15 @@ function loadUsers() {
     }
 
 
-    function stopPolling() { if (pollIntervalId) {
+    function stopPolling() {
+        if (pollIntervalId) {
+            clearInterval(pollIntervalId);
+            pollIntervalId = null;
+        }
+    }
 
-        
+
+     
     // =============================================
     // SESSION TIMEOUT
     // =============================================
@@ -6888,6 +6896,5 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
             newPassword: newPass
         });
 });
-
 
 </script>

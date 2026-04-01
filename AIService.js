@@ -862,6 +862,50 @@ function unsnoozeSuggestion(suggestionId) {
   }
 }
 
+function getAITeacherInsights(prompt) {
+  Logger.log('[getAITeacherInsights] called, prompt length: ' + prompt.length);
+  try {
+    const apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
+    if (!apiKey) throw new Error('GEMINI_API_KEY not set in Script Properties.');
+
+    const model = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
+    const url   = GEMINI_BASE_URL + model + ':generateContent?key=' + apiKey;
+
+    const response = UrlFetchApp.fetch(url, {
+      method:  'post',
+      headers: { 'Content-Type': 'application/json' },
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature:     0.4,
+          maxOutputTokens: 1024
+        }
+      }),
+      muteHttpExceptions: true
+    });
+
+    const json = JSON.parse(response.getContentText());
+    if (json.error) throw new Error('Gemini error: ' + json.error.message);
+
+    const text = json.candidates[0].content.parts[0].text || '';
+
+    // Strip markdown fences and return raw JSON string
+    const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+    // Validate it's a JSON array before returning
+    const parsed = JSON.parse(clean);
+    if (!Array.isArray(parsed)) throw new Error('Gemini returned non-array response.');
+
+    Logger.log('[getAITeacherInsights] returned ' + parsed.length + ' insights via ' + model);
+    return clean;
+
+  } catch (e) {
+    Logger.log('[getAITeacherInsights] error: ' + e.message);
+    // Return a single error insight so the frontend still renders gracefully
+    return JSON.stringify([{ type: 'info', text: 'AI analysis unavailable: ' + e.message }]);
+  }
+}
+
 function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetContext) {
   try {
     Logger.log('[rankReplacementTeachersWithAI] Starting AI ranking for: ' + targetTeacherName);
@@ -1056,92 +1100,6 @@ function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetCont
 
   } catch (e) {
     Logger.log('[rankReplacementTeachersWithAI] Unexpected error: ' + e.message);
-    return { success: false, message: e.message };
-  }
-}
-function getNewDashboardData() {
-  try {
-    // --- 1. Fetch Raw Data in Parallel ---
-    const today = new Date();
-    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(today.getDate() - 30);
-    const sixtyDaysAgo = new Date(); sixtyDaysAgo.setDate(today.getDate() - 60);
-
-    // Using existing functions to gather data
-    const allTeachersData = getActiveLearnersPerTeacher();
-    const escalationsData = getEscalatedTeachersLast90Days();
-    const dealsThisMonth = fetchDealsByOnboardingCompletionDate(thisMonthStart.toISOString().split('T')[0], today.toISOString().split('T')[0]);
-    const migrationsLast30d = getEnhancedMigrationReport({ startDate: thirtyDaysAgo.toISOString().split('T')[0], endDate: today.toISOString().split('T')[0] }).data;
-    const migrationsPrev30d = getEnhancedMigrationReport({ startDate: sixtyDaysAgo.toISOString().split('T')[0], endDate: thirtyDaysAgo.toISOString().split('T')[0] }).data;
-    const activeLearnerCount = getTotalActiveLearnerCount().total;
-    const weeklyOnboardings = getDashboardStatistics().onboardings.thisWeek;
-
-
-    // --- 2. Process and Calculate Metrics ---
-    let newRevenueThisMonth = dealsThisMonth.reduce((sum, deal) => {
-        const amount = safeParseHubspotNumber(deal.properties.amount);
-        const currency = deal.properties.deal_currency_code || 'EUR';
-        const rate = getConversionRate(currency) || 1;
-        return sum + ((currency === 'EUR') ? amount : (amount / rate));
-    }, 0);
-
-    const teacherNames = Object.keys(allTeachersData);
-    const overloadedTeachersCount = teacherNames.filter(name => allTeachersData[name].total > 20).length;
-    const highChurnRiskLearnersCount = dealsThisMonth.filter(deal => {
-        const stats = getMigrationHistoryStats(deal.properties.jetlearner_id);
-        return safeParseHubspotNumber(deal.properties.subscription_tenure) < 6 && stats.outbound >= 2;
-    }).length;
-
-    const migrationCount30d = migrationsLast30d ? migrationsLast30d.kpis.totalMigrations.current : 0;
-    const migrationCountPrev30d = migrationsPrev30d ? migrationsPrev30d.kpis.totalMigrations.current : 0;
-    const migrationChange = migrationCountPrev30d > 0 ? ((migrationCount30d - migrationCountPrev30d) / migrationCountPrev30d) * 100 : 0;
-
-    const successRate30d = migrationsLast30d ? migrationsLast30d.kpis.successRate : 90;
-    const successRatePrev30d = migrationsPrev30d ? migrationsPrev30d.kpis.successRate : 90;
-    const successRateChange = successRate30d - successRatePrev30d;
-
-    // --- 3. Generate AI Briefing & Action Cards ---
-    let actionCards = [];
-    if (highChurnRiskLearnersCount > 0) {
-        actionCards.push({ type: 'risk', icon: 'fa-user-shield', title: `${highChurnRiskLearnersCount} High-Risk New Learners`, subtitle: 'Multiple system-initiated moves detected early.', action: 'history' });
-    }
-    if (overloadedTeachersCount > 0) {
-        actionCards.push({ type: 'risk', icon: 'fa-fire-alt', title: `${overloadedTeachersCount} Overloaded Teachers`, subtitle: 'At risk of burnout. Review learner distribution.', action: 'load' });
-    }
-    if (migrationsLast30d && migrationsLast30d.topUnstableLearners && migrationsLast30d.topUnstableLearners.length > 0) {
-        actionCards.push({ type: 'info', icon: 'fa-retweet', title: 'Review Unstable Journeys', subtitle: `Investigate the top ${migrationsLast30d.topUnstableLearners.length} frequently moved learners.`, action: 'reports' });
-    }
-
-    const aiPrompt = `As a JetLearn Ops Manager, give a 1-sentence daily briefing based on this data: Active learners: ${activeLearnerCount}, New learners this week: ${weeklyOnboardings}, Migrations (30d): ${migrationCount30d}, Overloaded teachers: ${overloadedTeachersCount}, High-risk new learners: ${highChurnRiskLearnersCount}.`;
-    
-    // Fallback briefing
-    let briefing = "Review key metrics to identify today's priorities.";
-    try {
-      const aiResponse = getAIAgentAnalysis({}, {}, {}, aiPrompt); // Using a generic AI call
-      if (aiResponse.summary) {
-        briefing = aiResponse.summary;
-      }
-    } catch (e) {
-      Logger.log("AI Briefing generation failed: " + e.message);
-    }
-
-    // --- 4. Assemble Final Payload ---
-    return {
-      success: true,
-      data: {
-        briefing: briefing,
-        kpiData: {
-            activeLearners: { value: activeLearnerCount, trend: [activeLearnerCount-weeklyOnboardings, activeLearnerCount-10, activeLearnerCount-5, activeLearnerCount], change: weeklyOnboardings },
-            migrations: { value: migrationCount30d, trend: [25, 40, 30, migrationCount30d], change: Math.round(migrationChange) },
-            revenue: { value: newRevenueThisMonth, trend: [15000, 12000, 18000, newRevenueThisMonth], change: 10 /* placeholder */ },
-            successRate: { value: Math.round(successRate30d), trend: [95, 92, 94, Math.round(successRate30d)], change: Math.round(successRateChange) }
-        },
-        actionCards: actionCards.slice(0, 3), // Max 3 cards
-      }
-    };
-
-  } catch (e) {
-    Logger.log(`Error in getNewDashboardData: ${e.message}`);
     return { success: false, message: e.message };
   }
 }
