@@ -96,7 +96,7 @@ function getUserProfiles() {
       isActive: user.isactive,
       lastLogin: user.lastlogin,
       createdDate: user.createddate,
-      mustChangePassword: user.mustchangepassword || false  // ← ADD THIS
+      mustChangePassword: user.mustchangepassword || false  // \u2190 ADD THIS
     };
 
     });
@@ -492,7 +492,7 @@ logAuditAction('User Created', `Super Admin '${actingUser.username}' created new
 
     return {
       success: true,
-      message: `User '${userData.username}' created. Welcome email ${emailResult.success ? 'sent ✓' : 'FAILED — check logs'}.`
+      message: `User '${userData.username}' created. Welcome email ${emailResult.success ? 'sent \u2713' : 'FAILED \u2014 check logs'}.`
     };
 
   } catch (e) {
@@ -552,7 +552,7 @@ function sendWelcomeEmail(toEmail, username, tempPassword) {
 
         <div style="background:#fafafa;border-top:1px solid #f0f0f0;padding:24px 48px;">
           <p style="font-size:12px;color:#b0b0b0;margin:0;line-height:1.7;">
-            Sent by JetLearn Operations System &nbsp;·&nbsp;
+            Sent by JetLearn Operations System &nbsp;\u00B7&nbsp;
             <a href="mailto:${CONFIG.EMAIL.FROM}" style="color:#b0b0b0;text-decoration:none;">${CONFIG.EMAIL.FROM}</a><br>
             If you didn't expect this email, you can safely ignore it.
           </p>

@@ -8,7 +8,9 @@ const CONFIG = {
   MIGRATION_SHEET_ID: '1xzprj2U6NpJwoevBMvM1DVfIj76wVjAd0ZcMjVC1xMM',
   PERSONA_SHEET_ID: '1rSweVyLKEwb1xThFHMLoH4xWnrLs8wbRM_61VtRjGww', 
   DRIVE_FOLDER_ID: '1K-Zb9BO2dm_dPg2AWTDT5t-ghkPoRNSW', 
+  HUBSPOT_API_KEY: 'pat-na1-840cfb1a-acb3-45d6-8b0d-31f8c3f7cb34', 
   CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com',
+  EXCHANGE_RATE_API_URL: 'https://v6.exchangerate-api.com/v6/YOUR_API_KEY/latest/EUR', // Ensure this is set if using live rates
 
   SHEETS: {
     TEACHER_DATA: 'Teacher Data',
@@ -358,7 +360,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "330";
+const APP_VERSION = "340"; 
 
 function getAppVersion() {
   return APP_VERSION;
@@ -406,16 +408,7 @@ function getAITeacherInsights(prompt) {
       muteHttpExceptions: true
     });
 
-    if (response.getResponseCode() !== 200) {
-      throw new Error('Gemini API error (' + response.getResponseCode() + '): ' + response.getContentText().substring(0, 200));
-    }
-
-    let json;
-    try {
-      json = JSON.parse(response.getContentText());
-    } catch (parseErr) {
-      throw new Error('Gemini returned non-JSON response.');
-    }
+    const json = JSON.parse(response.getContentText());
     if (json.error) throw new Error('Gemini error: ' + json.error.message);
 
     const text = json.candidates[0].content.parts[0].text || '';

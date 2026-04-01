@@ -651,7 +651,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     function showToast(type, title, message, duration = 5000) {
       const toast = document.createElement('div');
       toast.className = `toast toast-${type}`;
-      toast.innerHTML = `<div class="toast-icon"><i class="fas ${type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : type === 'warning' ? 'fa-exclamation' : 'fa-info'}"></i></div><div class="toast-content"><div class="toast-title">${title}</div><div class="toast-message">${message}</div></div><button class="toast-close">x</button>`;
+      toast.innerHTML = `<div class="toast-icon"><i class="fas ${type === 'success' ? 'fa-check' : type === 'error' ? 'fa-times' : type === 'warning' ? 'fa-exclamation' : 'fa-info'}"></i></div><div class="toast-content"><div class="toast-title">${title}</div><div class="toast-message">${message}</div></div><button class="toast-close">\u00D7</button>`;
       toastContainer.appendChild(toast);
       const timer = setTimeout(() => toast.remove(), duration);
       toast.querySelector('.toast-close').addEventListener('click', () => { clearTimeout(timer); toast.remove(); });
@@ -804,7 +804,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
 
 function updateDashboard(data) {
     // 1. Update Statistics Cards
-    document.getElementById('totalOnboardings').textContent = data.onboardings.total;
+    document.getElementById('totalOnboardings').textContent = (data.activeLearners || data.onboardings.total).toLocaleString();
     document.getElementById('todayOnboardings').textContent = data.onboardings.today;
     document.getElementById('weekOnboardings').textContent = data.onboardings.thisWeek;
     document.getElementById('monthOnboardings').textContent = data.onboardings.thisMonth;
@@ -819,13 +819,12 @@ function updateDashboard(data) {
     // 2. Update Chart
     initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
 
-    // 3. Insight cards \u2014 derived from existing data
-    // Active learners = total onboardings - failed migrations (approximate)
-    const activeLearners = data.onboardings.total || 0;
+    // 3. Insight cards \u2014 real HubSpot total, audit log for weekly trend
+    const activeLearners = data.activeLearners || data.onboardings.total || 0;
     const el = document.getElementById('dashActiveLearners');
     if (el) el.textContent = activeLearners.toLocaleString();
     const trendEl = document.getElementById('dashActiveLearnersTrend');
-    if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} this week`;
+    if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} new this week`;
 
     // Growth = month migrations vs week migrations annualised estimate
     const monthMig = data.migrations.thisMonth || 0;
@@ -893,7 +892,7 @@ function updateDashboard(data) {
     hideLoading();
 }
 
-// -- NEW: Top active teachers handler --
+// \u2500\u2500 NEW: Top active teachers handler \u2500\u2500
 function updateDashboardTeachers(teachers) {
     const container = document.getElementById('dashTopTeachers');
     if (!container) return;
@@ -931,7 +930,7 @@ function updateDashboardTeachers(teachers) {
     }).join('');
 }
 
-// -- NEW: Migration reasons bar chart handler --
+// \u2500\u2500 NEW: Migration reasons bar chart handler \u2500\u2500
 function updateDashboardReasons(result) {
     const container = document.getElementById('dashReasonBars');
     if (!container) return;
@@ -952,7 +951,7 @@ function updateDashboardReasons(result) {
         const barColor = escalationReasons.some(e => nameLower.includes(e)) ? '#f87171'
                        : performanceReasons.some(p => nameLower.includes(p)) ? '#f472b6'
                        : '#818cf8';
-        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '...' : r.name;
+        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '\u2026' : r.name;
         return `<div style="display:flex;align-items:center;gap:8px;">
             <div style="font-size:10px;color:var(--text-light);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}">${escapeHtml(shortName)}</div>
             <div style="flex:1;height:8px;background:var(--gray);border-radius:99px;overflow:hidden;">
@@ -1823,7 +1822,7 @@ function collectEmailFormData(emailType) {
                 const oldTeacher = String(row[4] || '').trim();
                 const newTeacher = String(row[5] || '').trim();
                 let teachersInfo = 'N/A';
-                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} -> ${newTeacher}`;
+                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} \u2192 ${newTeacher}`;
                 else if (newTeacher) teachersInfo = newTeacher;
                 else if (oldTeacher) teachersInfo = oldTeacher;
 tr.innerHTML = `
@@ -1892,7 +1891,7 @@ tr.innerHTML = `
                 if(data && data.success) {
                     const profile = data.profile;
 
-                    // -- Header --------------------------------------------
+                    // \u2500\u2500 Header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                     const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
                     const info   = `<div class="teacher-profile-info">
                         <h2>${profile.name}</h2>
@@ -1905,7 +1904,7 @@ tr.innerHTML = `
                     </div>`;
                     contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
 
-                    // -- Escalation Summary --------------------------------
+                    // \u2500\u2500 Escalation Summary \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
                     const escColor = esc.totalCount === 0 ? '#15803d' : esc.totalCount <= 2 ? '#d97706' : '#b91c1c';
                     const escBg    = esc.totalCount === 0 ? '#f0fdf4'  : esc.totalCount <= 2 ? '#fffbeb'  : '#fef2f2';
@@ -1932,7 +1931,7 @@ tr.innerHTML = `
                         </div>
                     </div>`;
 
-                    // -- Escalation Tickets Table --------------------------
+                    // \u2500\u2500 Escalation Tickets Table \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                     if (esc.tickets && esc.tickets.length > 0) {
                         const ticketRows = esc.tickets.map(t => {
                             const sc = t.status === 'Completed' ? '#15803d' : '#d97706';
@@ -1949,7 +1948,7 @@ tr.innerHTML = `
                             </tr>`;
                         }).join('');
                         contentEl.innerHTML += `<div style="margin:0.5rem 0 1.5rem;">
-                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">\uD83D\uDCCB Escalation Ticket History</h3>
+                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">\u1F4CB Escalation Ticket History</h3>
                             <div class="table-container"><table class="data-table">
                                 <thead><tr>
                                     <th>Ticket ID</th><th>Reason</th><th>Triggered</th>
@@ -1960,7 +1959,7 @@ tr.innerHTML = `
                         </div>`;
                     }
 
-                    // -- Course Categories ---------------------------------
+                    // \u2500\u2500 Course Categories \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                     const coursesHtml = Object.keys(profile.coursesByCategory).map(category => {
                         const cats = profile.coursesByCategory[category];
                         if (cats.length === 0) return '';
@@ -2134,8 +2133,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Root Cause Analysis
                     <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">\uD83D\uDCCA Chart</button>
-                        <button onclick="toggleReportView('rootCause', 'table')">\uD83D\uDCCB Table</button>
+                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">\u1F4CA Chart</button>
+                        <button onclick="toggleReportView('rootCause', 'table')">\u1F4CB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="rootCauseChartView">
@@ -2159,8 +2158,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Impact Analysis
                    <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('impact', 'chart')">\uD83D\uDCCA Chart</button>
-                        <button onclick="toggleReportView('impact', 'table')">\uD83D\uDCCB Table</button>
+                        <button class="active" onclick="toggleReportView('impact', 'chart')">\u1F4CA Chart</button>
+                        <button onclick="toggleReportView('impact', 'table')">\u1F4CB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="impactChartView">
@@ -2518,270 +2517,484 @@ tr.innerHTML = `
     }
 
     function loadHistoryPage() {
-        var inp = document.getElementById('historyJlidInput');
-        if (inp) inp.value = '';
-        var rc = document.getElementById('historyResultsContainer');
-        if (rc) rc.style.display = 'none';
-        var es = document.getElementById('tlEmptyState');
-        if (es) es.style.display = 'block';
-        var spine = document.getElementById('tlSpine');
-        if (spine) Array.from(spine.querySelectorAll('.tl-ev')).forEach(function(el){ el.remove(); });
-        var ab = document.getElementById('tlAuditBody');
-        if (ab) ab.innerHTML = '';
+        historyJlidInput.value = '';
+        historyResultsContainer.style.display = 'none';
+        const historyEmptyState = document.getElementById('historyEmptyState');
+        if (historyEmptyState) historyEmptyState.style.display = 'block';
+        const tlSpine = document.getElementById('tlSpine');
+        if (tlSpine) Array.from(tlSpine.querySelectorAll('.tl-event')).forEach(function(el){ el.remove(); });
+        const tlAuditBody = document.getElementById('tlAuditBody');
+        if (tlAuditBody) tlAuditBody.innerHTML = '';
         _tlAllTickets = [];
     }
 
-    var _tlAllTickets = [];
-
     function searchLearnerHistory() {
-        var jlid = document.getElementById('historyJlidInput').value.trim();
+        const jlid = document.getElementById('historyJlidInput').value.trim();
         if (!jlid) { showToast('error', 'Input Required', 'Please enter a JLID.'); return; }
-        showLoading('Loading migration timeline for ' + jlid + '...');
-        var rc = document.getElementById('historyResultsContainer');
-        if (rc) rc.style.display = 'none';
-        var es = document.getElementById('tlEmptyState');
+        showLoading('Loading migration timeline for ' + jlid + '\u2026');
+        document.getElementById('historyResultsContainer').style.display = 'none';
+        const es = document.getElementById('historyEmptyState');
         if (es) es.style.display = 'none';
         google.script.run
             .withSuccessHandler(updateLearnerHistoryDisplay)
-            .withFailureHandler(function(err){ hideLoading(); showError(err); })
+            .withFailureHandler(showError)
             .getComprehensiveLearnerHistory(jlid);
     }
 
-    /* keep openTicketList working for any legacy calls */
-    function openTicketList(filterType) {
-        var modal = document.getElementById('ticketListModal');
-        var tbody = document.getElementById('ticketListBody');
-        var title = document.getElementById('ticketListTitle');
-        if (!modal || !tbody) return;
-        tbody.innerHTML = '';
-        var filtered = filterType === 'inbound'  ? globalTicketData.filter(function(t){ return t.type && t.type.includes('Inbound');  })
-                     : filterType === 'outbound' ? globalTicketData.filter(function(t){ return t.type && t.type.includes('Outbound'); })
-                     : globalTicketData;
-        if (title) title.textContent = filterType === 'inbound' ? 'Parent Requested Migrations' : filterType === 'outbound' ? 'JetLearn Initiated Migrations' : 'All Migration Tickets';
-        if (!filtered.length) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:15px;color:#666;">No tickets found.</td></tr>';
-        } else {
-            filtered.forEach(function(t) {
-                var tr = document.createElement('tr');
-                tr.innerHTML = '<td>' + (t.date ? new Date(t.date).toLocaleDateString() : 'N/A') + '</td>'
-                    + '<td style="font-weight:500;">' + escapeHtml(t.reason || 'Migration') + '</td>'
-                    + '<td>' + escapeHtml(t.from || '-') + '</td>'
-                    + '<td>' + escapeHtml(t.to   || '-') + '</td>'
-                    + '<td><a href="https://app.hubspot.com/contacts/7729491/ticket/' + escapeHtml(t.id) + '" target="_blank" class="btn btn-primary btn-sm" style="font-size:.8rem;padding:4px 10px;"><i class="fas fa-external-link-alt"></i> Open</a></td>';
-                tbody.appendChild(tr);
-            });
-        }
-        modal.classList.add('active');
+    /* \u2500\u2500 colour helpers \u2500\u2500 */
+    function _tlRiskColors(level) {
+        const map = {
+            Critical: { bg:'#fff0f0', border:'#e11d48', icon:'#e11d48', dot:'#e11d48' },
+            High:     { bg:'#fff7ed', border:'#f97316', icon:'#f97316', dot:'#f97316' },
+            Medium:   { bg:'#fefce8', border:'#eab308', icon:'#eab308', dot:'#eab308' },
+            Watch:    { bg:'#f0f9ff', border:'#0ea5e9', icon:'#0ea5e9', dot:'#0ea5e9' },
+            Stable:   { bg:'#f0fdf4', border:'#22c55e', icon:'#22c55e', dot:'#22c55e' }
+        };
+        return map[level] || map.Stable;
     }
-
-    /* -- helpers -- */
-    function _tlSet(id, val) { var el = document.getElementById(id); if (el) el.textContent = String(val || ''); }
-    function _tlE(s)  { return typeof escapeHtml === 'function' ? escapeHtml(String(s||'')) : String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-    function _tlD(iso, time) {
+    function _tlReasonColor(type) {
+        return type === 'outbound'
+            ? { bg:'#fff0f0', text:'#be123c', border:'#fda4af' }
+            : { bg:'#eff6ff', text:'#1d4ed8', border:'#93c5fd' };
+    }
+    function _tlStageColor(stage) {
+        if (!stage) return '#9ca3af';
+        if (stage.includes('Completed'))  return '#16a34a';
+        if (stage.includes('Rejected') || stage.includes('Cancelled')) return '#dc2626';
+        if (stage.includes('Pending') || stage.includes('Execution')) return '#d97706';
+        return '#6366f1';
+    }
+    function _initials(name) {
+        return (name || '').split(' ').filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+    }
+    function _e(s) { return escapeHtml ? escapeHtml(String(s || '')) : String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function _fmtDate(iso) {
+        if (!iso) return 'Unknown date';
+        try { return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); } catch(e) { return iso; }
+    }
+    function _fmtDateTime(iso) {
         if (!iso) return '\u2014';
-        try {
-            var opts = time ? {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'} : {day:'2-digit',month:'short',year:'numeric'};
-            return new Date(iso).toLocaleDateString('en-GB', opts);
-        } catch(e){ return iso; }
-    }
-    function _tlInitials(name) {
-        return (name||'').split(' ').filter(Boolean).map(function(w){ return w[0]; }).join('').toUpperCase().slice(0,2) || '?';
-    }
-    function _tlRiskStyle(level) {
-        var m = { Critical:{bg:'#fff0f0',border:'#e11d48',color:'#be123c',icon:'fas fa-exclamation-triangle'},
-                  High:    {bg:'#fff7ed',border:'#f97316',color:'#c2410c',icon:'fas fa-exclamation-circle'},
-                  Medium:  {bg:'#fefce8',border:'#eab308',color:'#854d0e',icon:'fas fa-info-circle'},
-                  Watch:   {bg:'#f0f9ff',border:'#0ea5e9',color:'#075985',icon:'fas fa-eye'},
-                  Stable:  {bg:'#f0fdf4',border:'#22c55e',color:'#166534',icon:'fas fa-shield-alt'} };
-        return m[level] || m.Stable;
+        try { return new Date(iso).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); } catch(e) { return iso; }
     }
 
-    function _tlRenderTickets(tickets) {
-        var spine  = document.getElementById('tlSpine');
-        var noTix  = document.getElementById('tlNoTix');
-        var fcount = document.getElementById('tlFcount');
-        var tcount = document.getElementById('tlTixCount');
+    /* \u2500\u2500 global store for filter \u2500\u2500 */
+    var _tlAllTickets = [];
+
+    function _renderTickets(tickets) {
+        const spine = document.getElementById('tlSpine');
+        const noTix = document.getElementById('tlNoTickets');
         if (!spine) return;
-        Array.from(spine.querySelectorAll('.tl-ev')).forEach(function(el){ el.remove(); });
 
-        if (!tickets || !tickets.length) {
-            if (noTix)  noTix.style.display  = 'block';
-            if (fcount) fcount.textContent   = '0 events';
-            if (tcount) tcount.textContent   = '';
+        /* remove old events but keep the noTickets placeholder */
+        Array.from(spine.querySelectorAll('.tl-event')).forEach(el => el.remove());
+
+        if (!tickets || tickets.length === 0) {
+            if (noTix) noTix.style.display = 'block';
+            document.getElementById('tlFilterCount').textContent = '0 events';
+            document.getElementById('tlTicketCount').textContent = '';
             return;
         }
-        if (noTix)  noTix.style.display  = 'none';
-        if (fcount) fcount.textContent   = tickets.length + ' event' + (tickets.length !== 1 ? 's' : '');
-        if (tcount) tcount.textContent   = '\u2014 ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
+        if (noTix) noTix.style.display = 'none';
+        document.getElementById('tlFilterCount').textContent = tickets.length + ' event' + (tickets.length !== 1 ? 's' : '');
+        document.getElementById('tlTicketCount').textContent = '\u2014 ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
 
-        tickets.forEach(function(evt) {
-            var isOut   = evt.type === 'outbound';
-            var dotClr  = isOut ? '#e11d48' : '#2196f3';
-            var typeBg  = isOut ? '#fff0f0' : '#eff6ff';
-            var typeTxt = isOut ? '#be123c'  : '#1d4ed8';
-            var typeBrd = isOut ? '#fda4af'  : '#93c5fd';
-            var stageBg = evt.isCompleted ? '#dcfce7' : '#fef3c7';
-            var stageTx = evt.isCompleted ? '#166534' : '#92400e';
-            var stageBd = evt.isCompleted ? '#86efac' : '#fcd34d';
+        tickets.forEach(function(evt, idx) {
+            const rc  = _tlReasonColor(evt.type);
+            const sc  = _tlStageColor(evt.stage);
+            const dot = evt.type === 'outbound' ? '#e11d48' : '#2196f3';
 
-            var fromChip = (evt.fromTeacher && evt.fromTeacher !== 'Unknown')
-                ? '<span class="tl-chip">' + _tlE(evt.fromTeacher) + '</span>'
-                : '<span class="tl-chip" style="opacity:.45;">No prev. teacher</span>';
-            var toChip   = (evt.toTeacher   && evt.toTeacher   !== 'Not assigned')
-                ? '<span class="tl-chip to">' + _tlE(evt.toTeacher) + '</span>'
-                : '<span class="tl-chip" style="opacity:.45;">Not assigned</span>';
+            const eventDiv = document.createElement('div');
+            eventDiv.className = 'tl-event';
+            eventDiv.dataset.type = evt.type;
+            eventDiv.dataset.completed = evt.isCompleted ? 'true' : 'false';
 
-            var daysHtml = (evt.daysToResolve !== null && evt.daysToResolve !== undefined)
-                ? '<span class="tl-days" style="background:#f0fdf4;color:#166534;">Resolved in ' + evt.daysToResolve + 'd</span>' : '';
-            var compDate = evt.completedDate
-                ? '<span class="tl-mi"><i class="fas fa-check-circle" style="color:#16a34a;font-size:9px;"></i>Completed ' + _tlD(evt.completedDate) + '</span>' : '';
-            var intv = evt.intervenedBy
-                ? '<span class="tl-mi"><i class="fas fa-users" style="font-size:9px;"></i>' + _tlE(evt.intervenedBy) + '</span>' : '';
-            var hsBtn = evt.hubspotLink
-                ? '<a href="' + _tlE(evt.hubspotLink) + '" target="_blank" class="tl-hsbtn"><i class="fab fa-hubspot"></i> #' + _tlE(evt.ticketId) + '</a>' : '';
+            const completedBadge = evt.isCompleted
+                ? '<span class="tl-badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;">Completed</span>'
+                : '<span class="tl-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">' + _e(evt.stage) + '</span>';
 
-            var div = document.createElement('div');
-            div.className = 'tl-ev';
-            div.dataset.type      = evt.type;
-            div.dataset.completed = evt.isCompleted ? '1' : '0';
-            div.innerHTML =
-                '<div class="tl-dot" style="background:' + dotClr + ';box-shadow:0 0 0 3px ' + dotClr + '22;"></div>'
-              + '<div class="tl-card" style="border-left-color:' + dotClr + ';">'
-              +   '<div class="tl-ch">'
-              +     '<div class="tl-ct"><i class="fas fa-exchange-alt" style="font-size:10px;opacity:.4;margin-right:5px;"></i>' + _tlE(evt.reason) + '</div>'
-              +     '<div class="tl-badges">'
-              +       '<span class="tl-badge" style="background:' + typeBg + ';color:' + typeTxt + ';border-color:' + typeBrd + ';">' + (isOut ? 'JetLearn Initiated' : 'Parent Request') + '</span>'
-              +       '<span class="tl-badge" style="background:' + stageBg + ';color:' + stageTx + ';border-color:' + stageBd + ';">' + _tlE(evt.stage) + '</span>'
-              +     '</div>'
-              +   '</div>'
-              +   '<div class="tl-tr">'
-              +     '<span style="font-size:.7rem;color:var(--text-muted,#718096);">From</span>' + fromChip
-              +     '<span class="tl-arr"><i class="fas fa-long-arrow-alt-right"></i></span>'
-              +     '<span style="font-size:.7rem;color:var(--text-muted,#718096);">To</span>' + toChip
-              +   '</div>'
-              +   '<div class="tl-cmeta">'
-              +     '<span class="tl-mi"><i class="fas fa-calendar-alt" style="font-size:9px;"></i>' + _tlD(evt.date) + '</span>'
-              +     compDate + intv
-              +   '</div>'
-              +   '<div class="tl-foot">' + daysHtml + hsBtn + '</div>'
-              + '</div>';
-            spine.appendChild(div);
+            const typeBadge = evt.type === 'outbound'
+                ? '<span class="tl-badge" style="background:' + rc.bg + ';color:' + rc.text + ';border:1px solid ' + rc.border + ';">JetLearn Initiated</span>'
+                : '<span class="tl-badge" style="background:' + rc.bg + ';color:' + rc.text + ';border:1px solid ' + rc.border + ';">Parent Request</span>';
+
+            const fromChip = evt.fromTeacher && evt.fromTeacher !== 'Unknown'
+                ? '<span class="tl-teacher-chip">' + _e(evt.fromTeacher) + '</span>'
+                : '<span class="tl-teacher-chip" style="opacity:0.5;">No prev. teacher</span>';
+
+            const toChip = evt.toTeacher && evt.toTeacher !== 'Not assigned'
+                ? '<span class="tl-teacher-chip" style="background:#ede9fe;color:#4c1d95;">' + _e(evt.toTeacher) + '</span>'
+                : '<span class="tl-teacher-chip" style="opacity:0.5;">Not assigned</span>';
+
+            const daysHtml = (evt.daysToResolve !== null && evt.daysToResolve !== undefined)
+                ? '<span class="tl-days-badge" style="background:#f0fdf4;color:#166534;">Resolved in ' + evt.daysToResolve + ' day' + (evt.daysToResolve !== 1 ? 's' : '') + '</span>'
+                : '';
+
+            const completedDateHtml = evt.completedDate
+                ? '<span class="tl-meta-item"><i class="fas fa-check-circle" style="color:#16a34a;font-size:10px;"></i>Completed ' + _fmtDate(evt.completedDate) + '</span>'
+                : '';
+
+            const intervenedHtml = evt.intervenedBy
+                ? '<span class="tl-meta-item"><i class="fas fa-users" style="font-size:10px;"></i>' + _e(evt.intervenedBy) + '</span>'
+                : '';
+
+            const hsBtn = evt.hubspotLink
+                ? '<a href="' + _e(evt.hubspotLink) + '" target="_blank" class="tl-hs-btn"><i class="fab fa-hubspot"></i> Ticket #' + _e(evt.ticketId) + '</a>'
+                : '';
+
+            eventDiv.innerHTML =
+                '<div class="tl-dot" style="background:' + dot + ';box-shadow:0 0 0 2px ' + dot + '33;"></div>'
+                + '<div class="tl-card" style="border-left-color:' + dot + ';">'
+                +   '<div class="tl-card-head">'
+                +     '<div class="tl-card-title"><i class="fas fa-exchange-alt" style="font-size:11px;opacity:0.5;margin-right:5px;"></i>' + _e(evt.reason) + '</div>'
+                +     '<div class="tl-card-badges">' + typeBadge + completedBadge + '</div>'
+                +   '</div>'
+                +   '<div class="tl-teacher-row">'
+                +     '<div class="tl-teacher"><span style="font-size:0.72rem;color:var(--text-muted,#718096);">From</span>' + fromChip + '</div>'
+                +     '<span class="tl-arrow"><i class="fas fa-long-arrow-alt-right"></i></span>'
+                +     '<div class="tl-teacher"><span style="font-size:0.72rem;color:var(--text-muted,#718096);">To</span>' + toChip + '</div>'
+                +   '</div>'
+                +   '<div class="tl-card-meta">'
+                +     '<span class="tl-meta-item"><i class="fas fa-calendar-alt" style="font-size:10px;"></i>' + _fmtDate(evt.date) + '</span>'
+                +     completedDateHtml + intervenedHtml
+                +   '</div>'
+                +   '<div class="tl-card-footer">'
+                +     daysHtml + hsBtn
+                +   '</div>'
+                + '</div>';
+
+            spine.appendChild(eventDiv);
         });
     }
 
-    function _tlFilter(f) {
-        document.querySelectorAll('.tl-fb').forEach(function(b){ b.classList.toggle('on', b.dataset.f === f); });
-        var list = _tlAllTickets;
-        if (f === 'outbound')  list = _tlAllTickets.filter(function(t){ return t.type === 'outbound'; });
-        if (f === 'inbound')   list = _tlAllTickets.filter(function(t){ return t.type === 'inbound'; });
-        if (f === 'completed') list = _tlAllTickets.filter(function(t){ return t.isCompleted; });
-        _tlRenderTickets(list);
+    function _applyTlFilter(filter) {
+        /* update active button */
+        document.querySelectorAll('.tl-filter-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.filter === filter);
+        });
+        let filtered = _tlAllTickets;
+        if (filter === 'outbound')  filtered = _tlAllTickets.filter(function(t){ return t.type === 'outbound'; });
+        if (filter === 'inbound')   filtered = _tlAllTickets.filter(function(t){ return t.type === 'inbound'; });
+        if (filter === 'completed') filtered = _tlAllTickets.filter(function(t){ return t.isCompleted; });
+        _renderTickets(filtered);
     }
 
-    /* wire filter buttons */
+    /* wire filter buttons once */
     document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.tl-fb').forEach(function(btn) {
-            btn.addEventListener('click', function(){ _tlFilter(btn.dataset.f); });
+        document.querySelectorAll('.tl-filter-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() { _applyTlFilter(btn.dataset.filter); });
         });
     });
 
     function updateLearnerHistoryDisplay(result) {
         hideLoading();
-        var es = document.getElementById('tlEmptyState');
-        var rc = document.getElementById('historyResultsContainer');
+        const empty = document.getElementById('historyEmptyState');
+        const container = document.getElementById('historyResultsContainer');
 
         if (!result || result.success === false) {
-            if (es) es.style.display = 'block';
-            showToast('error', 'History Error', result && result.message ? result.message : 'Could not load learner history.');
+            if (empty) empty.style.display = 'block';
+            showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
             return;
         }
-        if (es) es.style.display = 'none';
-        if (rc) rc.style.display = 'block';
 
-        var p  = result.learnerProfile  || {};
-        var ja = result.journeyAnalysis || {};
-        var tickets   = result.migrationTimeline || [];
-        var auditRows = result.auditLogTimeline  || [];
+        if (empty) empty.style.display = 'none';
+        container.style.display = 'block';
 
-        /* -- Profile -- */
-        var name = p.learnerName || p.jlid || 'Unknown';
-        var av   = document.getElementById('tlAvatar');
-        if (av) av.textContent = _tlInitials(name);
-        _tlSet('tlName',      name);
-        _tlSet('tlJlid',      p.jlid            || '\u2014');
-        _tlSet('tlCourse',    p.course           || '\u2014');
-        _tlSet('tlTeacher',   p.currentTeacher   || '\u2014');
-        _tlSet('tlAge',       p.age              || '\u2014');
-        _tlSet('tlStartDate', p.startingDate ? _tlD(p.startingDate) : '\u2014');
+        const p  = result.learnerProfile  || {};
+        const ja = result.journeyAnalysis || {};
+        const tickets = result.migrationTimeline || [];
+        const auditRows = result.auditLogTimeline || [];
 
-        var hw = document.getElementById('tlHsWrap');
-        var hl = document.getElementById('tlHsLink');
-        if (hw && hl && p.hubspotLink) { hw.style.display = 'inline-flex'; hl.href = p.hubspotLink; }
+        /* \u2500\u2500 Profile card \u2500\u2500 */
+        const name = p.learnerName || p.jlid || 'Unknown';
+        const av   = document.getElementById('tlAvatar');
+        if (av) av.textContent = _initials(name);
+        _setText('tlName',        name);
+        _setText('tlJlid',        p.jlid              || '\u2014');
+        _setText('tlCourse',      p.course            || '\u2014');
+        _setText('tlTeacher',     p.currentTeacher    || '\u2014');
+        _setText('tlAge',         p.age               || '\u2014');
+        _setText('tlStartDate',   p.startingDate      ? new Date(p.startingDate).toLocaleDateString('en-GB') : '\u2014');
+        _setText('tlAmount',      p.dealAmount > 0    ? (p.currency || 'EUR') + ' ' + p.dealAmount.toLocaleString() : '\u2014');
+        _setText('tlPaymentType', p.currentSubscriptionType || '\u2014');
+        _setText('tlTenure',      p.tenure > 0        ? p.tenure : '\u2014');
+        _setText('tlJetGuide',    p.jetGuide          || '\u2014');
+        const hlWrap = document.getElementById('tlHsLinkWrap');
+        const hlEl   = document.getElementById('tlHsLink');
+        if (hlWrap && hlEl && p.hubspotLink) {
+            hlWrap.style.display = 'inline-flex';
+            hlEl.href = p.hubspotLink;
+        }
 
-        _tlSet('tlTotal',    ja.totalMigrations || 0);
-        _tlSet('tlInbound',  ja.inbound         || 0);
-        _tlSet('tlOutbound', ja.outbound        || 0);
+        /* stats */
+        _setText('tlStatTotal',    ja.totalMigrations || 0);
+        _setText('tlStatInbound',  ja.inbound         || 0);
+        _setText('tlStatOutbound', ja.outbound        || 0);
 
-        /* -- Risk banner -- */
-        var rs   = _tlRiskStyle(ja.riskLevel || 'Stable');
-        var risk = document.getElementById('tlRisk');
-        var rico = document.getElementById('tlRiskIco');
-        if (risk) { risk.style.background = rs.bg; risk.style.borderLeft = '4px solid ' + rs.border; risk.style.color = rs.color; }
-        if (rico) { rico.style.background = rs.bg; rico.style.border = '1px solid ' + rs.border; rico.style.color = rs.color; rico.innerHTML = '<i class="' + rs.icon + '"></i>'; }
-        _tlSet('tlRiskLvl', 'Journey stability: ' + (ja.riskLevel || 'Stable'));
-        _tlSet('tlRiskMsg', ja.riskMessage || '');
+        /* \u2500\u2500 Risk banner \u2500\u2500 */
+        const rc  = _tlRiskColors(ja.riskLevel || 'Stable');
+        const banner = document.getElementById('tlRiskBanner');
+        const rIcon  = document.getElementById('tlRiskIcon');
+        if (banner) { banner.style.background = rc.bg; banner.style.borderLeft = '4px solid ' + rc.border; banner.style.color = rc.icon; }
+        if (rIcon)  { rIcon.style.background = rc.bg; rIcon.style.border = '1px solid ' + rc.border; rIcon.style.color = rc.icon; }
+        const iconMap = { Critical:'fas fa-exclamation-triangle', High:'fas fa-exclamation-circle', Medium:'fas fa-info-circle', Watch:'fas fa-eye', Stable:'fas fa-shield-alt' };
+        if (rIcon) rIcon.innerHTML = '<i class="' + (iconMap[ja.riskLevel] || 'fas fa-shield-alt') + '"></i>';
+        _setText('tlRiskLevel', 'Journey stability: ' + (ja.riskLevel || 'Stable'));
+        _setText('tlRiskMsg',   ja.riskMessage || '');
 
-        /* -- Summary -- */
-        _tlSet('tlSummary', result.aiSummary || 'No summary available.');
+        /* \u2500\u2500 Summary \u2500\u2500 */
+        _setText('tlSummary', result.aiSummary || 'No summary available.');
 
-        /* -- Tickets -- */
+        /* \u2500\u2500 Tickets \u2500\u2500 */
         _tlAllTickets = tickets;
-        _tlFilter('all');
+        _applyTlFilter('all');
 
-        /* -- Audit log -- */
-        var ab = document.getElementById('tlAuditBody');
-        var ac = document.getElementById('tlAuditCount');
-        if (ac) ac.textContent = auditRows.length ? '\u2014 ' + auditRows.length + ' entr' + (auditRows.length === 1 ? 'y' : 'ies') : '';
-        if (ab) {
-            if (!auditRows.length) {
-                ab.innerHTML = '<div class="tl-empty"><i class="fas fa-history"></i><p>No audit log entries found for this learner.</p></div>';
+        /* \u2500\u2500 Audit log \u2500\u2500 */
+        const auditBody = document.getElementById('tlAuditBody');
+        const auditCount = document.getElementById('tlAuditCount');
+        if (auditCount) auditCount.textContent = auditRows.length ? '\u2014 ' + auditRows.length + ' entries' : '';
+        if (auditBody) {
+            if (auditRows.length === 0) {
+                auditBody.innerHTML = '<div class="tl-empty"><i class="fas fa-history"></i><p>No audit log entries found for this learner.</p></div>';
             } else {
-                ab.innerHTML = auditRows.map(function(row) {
-                    var sTxt   = row.status || '';
-                    var sBadge = sTxt === 'Success' ? '<span class="status-badge status-success" style="font-size:.68rem;">Success</span>'
-                               : sTxt === 'Failed'  ? '<span class="status-badge status-failed"  style="font-size:.68rem;">Failed</span>'
-                               : sTxt               ? '<span class="status-badge status-info"    style="font-size:.68rem;">' + _tlE(sTxt) + '</span>' : '';
-                    var detail = '';
-                    if (row.fromTeacher && row.toTeacher) detail = _tlE(row.fromTeacher) + ' -> ' + _tlE(row.toTeacher);
-                    else if (row.fromTeacher) detail = _tlE(row.fromTeacher);
-                    else if (row.toTeacher)  detail = _tlE(row.toTeacher);
-                    if (row.course) detail += (detail ? ' \u00B7 ' : '') + _tlE(row.course);
-                    if (row.notes && row.notes !== row.action) detail += (detail ? ' \u00B7 ' : '') + _tlE(row.notes);
-                    return '<div class="tl-arow">'
-                        + '<span class="tl-atime">' + _tlD(row.timestamp, true) + '</span>'
-                        + '<span class="tl-aact">' + _tlE(row.action) + (detail ? '<span class="tl-adtl"> \u2014 ' + detail + '</span>' : '') + '</span>'
-                        + '<span class="tl-asta">' + sBadge + '</span>'
+                auditBody.innerHTML = auditRows.map(function(row) {
+                    const sTxt = row.status || '';
+                    const sBadge = sTxt === 'Success'
+                        ? '<span class="status-badge status-success" style="font-size:0.7rem;">Success</span>'
+                        : sTxt === 'Failed'
+                        ? '<span class="status-badge status-failed" style="font-size:0.7rem;">Failed</span>'
+                        : sTxt ? '<span class="status-badge status-info" style="font-size:0.7rem;">' + _e(sTxt) + '</span>' : '';
+
+                    let detail = '';
+                    if (row.fromTeacher && row.toTeacher) detail = _e(row.fromTeacher) + ' \u2192 ' + _e(row.toTeacher);
+                    else if (row.fromTeacher) detail = _e(row.fromTeacher);
+                    else if (row.toTeacher)  detail = _e(row.toTeacher);
+                    if (row.course) detail += (detail ? ' \u00B7 ' : '') + _e(row.course);
+                    if (row.notes)  detail += (detail ? ' \u00B7 ' : '') + _e(row.notes);
+
+                    return '<div class="tl-audit-item">'
+                        + '<span class="tl-audit-time">' + _fmtDateTime(row.timestamp) + '</span>'
+                        + '<span class="tl-audit-action">' + _e(row.action) + (detail ? '<span class="tl-audit-detail">\u2014 ' + detail + '</span>' : '') + '</span>'
+                        + '<span class="tl-audit-status">' + sBadge + '</span>'
                         + '</div>';
                 }).join('');
             }
         }
 
         /* keep legacy hidden spans in sync */
-        _tlSet('historyResultsTitle',                 'History for: ' + name);
-        _tlSet('historyProfileLearnerName',            p.learnerName           || '');
-        _tlSet('historyProfileJlid',                   p.jlid                  || '');
-        _tlSet('historyProfileAge',                    p.age                   || '');
-        _tlSet('historyProfileCurrentCourse',          p.course                || '');
-        _tlSet('historyProfileCurrentTeacher',         p.currentTeacher        || '');
-        _tlSet('historyProfileSubscriptionType',       p.currentSubscriptionType || '');
-        _tlSet('historyAISummary',                     result.aiSummary        || '');
+        _setText('historyResultsTitle', 'History for: ' + name);
+        _setText('historyProfileLearnerName', p.learnerName  || '');
+        _setText('historyProfileJlid',        p.jlid         || '');
+        _setText('historyProfileAge',         p.age          || '');
+        _setText('historyProfileCurrentCourse',   p.course        || '');
+        _setText('historyProfileCurrentTeacher',  p.currentTeacher || '');
+        _setText('historyProfileSubscriptionType', p.currentSubscriptionType || '');
+        _setText('historyAISummary', result.aiSummary || '');
 
-        /* legacy globalTicketData */
-        globalTicketData = tickets.map(function(t) {
-            return { id: t.id, date: t.date, reason: t.reason, from: t.fromTeacher, to: t.toTeacher,
-                     type: t.type === 'inbound' ? 'Inbound (Parent)' : 'Outbound (JetLearn)' };
+        /* legacy globalTicketData for any remaining openTicketList refs */
+        globalTicketData = (ja.ticketDetails || []).map(function(t) {
+            return { id: t.id, date: t.date, reason: t.reason, from: t.fromTeacher, to: t.toTeacher, type: t.type.includes('inbound') ? 'Inbound (Parent)' : 'Outbound (JetLearn)' };
+        });
+
+        function _setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+    }
+
+    function _setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+    function openTicketList(filterType) {
+    const modal = document.getElementById('ticketListModal');
+    const tbody = document.getElementById('ticketListBody');
+    const title = document.getElementById('ticketListTitle');
+    
+    if (!modal || !tbody) {
+        console.error("Modal elements not found. Ensure Index.html has the modal HTML.");
+        return;
+    }
+
+    tbody.innerHTML = '';
+    
+    // Filter tickets based on which box was clicked
+    let filteredTickets = [];
+    if (filterType === 'inbound') {
+        title.textContent = "Parent Requested Migrations";
+        filteredTickets = globalTicketData.filter(t => t.type.includes('Inbound'));
+    } else if (filterType === 'outbound') {
+        title.textContent = "JetLearn Initiated Migrations";
+        filteredTickets = globalTicketData.filter(t => t.type.includes('Outbound'));
+    } else {
+        title.textContent = "All Migration Pipeline Tickets";
+        filteredTickets = globalTicketData;
+    }
+
+    if (filteredTickets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:15px; color:#666;">No tickets found for this category.</td></tr>';
+    } else {
+        filteredTickets.forEach(t => {
+            const dateStr = t.date ? new Date(t.date).toLocaleDateString() : 'N/A';
+            const ticketUrl = `https://app.hubspot.com/contacts/7729491/ticket/${t.id}`;            
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td style="font-weight:500;">${escapeHtml(t.reason || 'Migration')}</td>
+                <td>${escapeHtml(t.from || '-')}</td>
+                <td>${escapeHtml(t.to || '-')}</td>
+                <td>
+                    <a href="${ticketUrl}" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none; padding: 4px 10px; font-size: 0.8rem;">
+                        <i class="fas fa-external-link-alt"></i> Open
+                    </a>
+                </td>
+            `;
+            tbody.appendChild(tr);
         });
     }
+    
+    modal.classList.add('active');
+}
+
+    function updateLearnerHistoryDisplay(result) {
+    hideLoading();
+    
+    const container = document.getElementById('historyResultsContainer');
+    if (!result || result.success === false) {
+        container.style.display = 'none';
+        showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
+        return;
+    }
+    container.style.display = 'block';
+    
+    // 1. Clear previous dynamic cards (Risk Card) to prevent duplicates
+    const existingCard = document.getElementById('journeyStabilityCard');
+    if(existingCard) existingCard.remove();
+
+    const learnerProfile = result.learnerProfile || {};
+    const learnerName = learnerProfile.learnerName || learnerProfile.jlid || 'Unknown Learner';
+    
+    // Update Title
+    document.getElementById('historyResultsTitle').textContent = `History for: ${learnerName}`;
+    
+    // --- 2. Render Journey Stability Card (The Clickable Boxes) ---
+    const analysis = result.journeyAnalysis;
+    if (analysis) {
+        // Store data globally so the modal function can access it
+        globalTicketData = analysis.ticketDetails || []; 
+
+        let colorClass = '#4caf50'; // Green
+        let bgClass = '#e8f5e9';
+        
+        if (analysis.riskLevel === 'Critical') { colorClass = '#d32f2f'; bgClass = '#ffebee'; } 
+        else if (analysis.riskLevel === 'High') { colorClass = '#f57c00'; bgClass = '#fff3e0'; } 
+        else if (analysis.riskLevel === 'Medium') { colorClass = '#fbc02d'; bgClass = '#fff9c4'; }
+
+        const stabilityCardHtml = `
+            <div id="journeyStabilityCard" class="learner-profile-card" style="border-left: 5px solid ${colorClass}; margin-bottom: 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h3 style="margin:0; color:${colorClass}; border-bottom:none;">Journey Stability: ${analysis.riskLevel}</h3>
+                    <span style="font-size:0.9em; background:${bgClass}; color:${colorClass}; padding:4px 8px; border-radius:4px; font-weight:bold;">
+                        ${analysis.outbound} System Changes
+                    </span>
+                </div>
+                
+                <p style="margin-top:10px; font-weight:500;">${analysis.riskMessage}</p>
+                
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-top:15px; text-align:center;">
+                    
+                    <!-- TOTAL BOX -->
+                    <div onclick="openTicketList('all')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='${colorClass}'; this.style.backgroundColor='var(--secondary)'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#333;">${analysis.totalMigrations}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">Total Changes</div>
+                    </div>
+
+                    <!-- INBOUND BOX -->
+                    <div onclick="openTicketList('inbound')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='#2196f3'; this.style.backgroundColor='#e3f2fd'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#2196f3;">${analysis.inbound}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">Parent Requests</div>
+                    </div>
+
+                    <!-- OUTBOUND BOX -->
+                    <div onclick="openTicketList('outbound')" 
+                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
+                         onmouseover="this.style.borderColor='#f44336'; this.style.backgroundColor='#ffebee'"
+                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
+                        <div style="font-size:1.8em; font-weight:bold; color:#f44336;">${analysis.outbound}</div>
+                        <div style="font-size:0.85em; color:#666; font-weight:500;">JetLearn Initiated</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Insert after title
+        document.getElementById('historyResultsTitle').insertAdjacentHTML('afterend', stabilityCardHtml);
+    }
+
+    // --- 3. Render Profile Data ---
+    document.getElementById('historyProfileLearnerName').textContent = learnerProfile.learnerName || 'N/A';
+    document.getElementById('historyProfileJlid').textContent = learnerProfile.jlid || 'N/A';
+    document.getElementById('historyProfileAge').textContent = learnerProfile.age || 'N/A';
+    document.getElementById('historyProfileCurrentCourse').textContent = learnerProfile.course || 'N/A';
+    document.getElementById('historyProfileCurrentTeacher').textContent = learnerProfile.currentTeacher || 'N/A';
+    document.getElementById('historyProfileSubscriptionType').textContent = learnerProfile.currentSubscriptionType || 'N/A';
+    document.getElementById('historyProfileOnboardingDate').textContent = learnerProfile.startingDate ? new Date(learnerProfile.startingDate).toLocaleDateString('en-GB') : 'N/A';
+    document.getElementById('historyProfileSubscriptionStartDate').textContent = learnerProfile.subscriptionStartDate ? new Date(learnerProfile.subscriptionStartDate).toLocaleDateString('en-GB') : 'N/A';
+    
+    document.getElementById('historyAISummary').textContent = result.aiSummary || 'No summary available.';
+    
+    // --- 4. Render Timeline (With Strict Filtering) ---
+    const timelineBody = document.getElementById('historyTimelineBody');
+    timelineBody.innerHTML = '';
+    
+    if (result.auditLogTimeline && result.auditLogTimeline.length > 0) {
+        
+        // STRICT FILTER: Keywords to HIDE from the visual timeline
+        const hiddenKeywords = ["PRM", "Renewal", "Pause", "Leave", "Kit", "Device", "Laptop", "Feedback", "Review"];
+        
+        result.auditLogTimeline.forEach(event => {
+            const desc = event.description || "";
+            
+            // If it's a HubSpot Ticket, apply the strict filter
+            if (event.type === 'hubspot-ticket') {
+                 if (hiddenKeywords.some(kw => desc.includes(kw))) {
+                     return; // Skip rendering this item
+                 }
+                 // Only show if it looks like a migration
+                 if (!desc.includes("Migration") && !desc.includes("Teacher") && !desc.includes("Slot") && !desc.includes("Escalation")) {
+                     // return; // Uncomment this if you want to be ULTRA strict
+                 }
+            }
+
+            const eventDiv = document.createElement('div');
+            let iconColor = 'var(--primary)';
+            
+            if (event.type === 'hubspot-ticket') {
+                iconColor = '#e11d48'; 
+                event.type = 'migration'; 
+            } else if (event.type === 'hubspot-note') {
+                iconColor = '#ea580c';
+                event.type = 'note';
+            }
+            
+            eventDiv.className = `timeline-event ${event.type}`;
+            
+            if(event.source === 'HubSpot') {
+                eventDiv.style.borderLeftColor = iconColor;
+                eventDiv.style.backgroundColor = 'rgba(0,0,0,0.02)';
+            }
+
+            eventDiv.innerHTML = `
+                <div class="timeline-date">${event.timestamp ? new Date(event.timestamp).toLocaleString('en-GB') : 'N/A'}</div>
+                <div class="timeline-description">
+                    ${event.source === 'HubSpot' ? `<i class="fab fa-hubspot" style="margin-right:5px; color:${iconColor}"></i>` : ''} 
+                    ${escapeHtml(desc)}
+                </div>`;
+            timelineBody.appendChild(eventDiv);
+        });
+    } else {
+        timelineBody.innerHTML = '<p style="text-align: center; color: var(--text-light);">No relevant history found.</p>';
+    }
+}
 
     // Invoice Page Functions
     function populateSessionsPerWeekOptions(targetSelect = invoiceSessionsPerWeek) {
@@ -2953,12 +3166,35 @@ tr.innerHTML = `
         return;
     }
     const pricingDetails = calculateInvoicePricingClient(formData);
-    const amountPaid = parseFloat(formData.customPaidAmount) || (pricingDetails.amountPaid || 0);
-    const balanceDue = pricingDetails.finalTotal - amountPaid;
+    const sym = pricingDetails.currencySymbol;
+    const customPaid = parseFloat(formData.customPaidAmount) || 0;
+    console.log('[INV] paymentType:', formData.paymentType, '| numInstallments:', formData.numberOfInstallments, '| finalTotal:', pricingDetails.finalTotal, '| customPaid:', customPaid);
+    let amountPaid;
+    if (customPaid > 0) {
+        amountPaid = customPaid;
+    } else if (formData.paymentType === 'Installment') {
+        const n = parseInt(formData.numberOfInstallments || '1');
+        amountPaid = n > 0 ? pricingDetails.finalTotal / n : pricingDetails.finalTotal;
+    } else {
+        amountPaid = pricingDetails.finalTotal;
+    }
+    const balanceDue = Math.max(0, pricingDetails.finalTotal - amountPaid);
 
-    totalPayableDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
-    amountPaidDisplay.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
-    balanceDueDisplay.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
+    totalPayableDisplay.value = `${sym}${pricingDetails.finalTotal.toFixed(2)}`;
+    amountPaidDisplay.value   = `${sym}${amountPaid.toFixed(2)}`;
+    balanceDueDisplay.value   = `${sym}${balanceDue.toFixed(2)}`;
+
+    const balanceCard = document.getElementById('balanceDueCard');
+    const balanceDot  = document.getElementById('balanceDueDot');
+    if (balanceDue <= 0) {
+      if (balanceCard) { balanceCard.style.background = '#f0fdf4'; balanceCard.style.borderColor = '#bbf7d0'; }
+      if (balanceDot)  balanceDot.style.background = '#16a34a';
+      balanceDueDisplay.style.color = '#15803d';
+    } else {
+      if (balanceCard) { balanceCard.style.background = '#fef2f2'; balanceCard.style.borderColor = '#fecaca'; }
+      if (balanceDot)  balanceDot.style.background = '#dc2626';
+      balanceDueDisplay.style.color = '#b91c1c';
+    }
 }
 
 
@@ -3320,13 +3556,20 @@ function collectInvoiceFormData() {
         }
 
         const pricingDetails = calculateInvoicePricingClient(formData);
-        const isUpfront = document.getElementById('onboardingParentPaymentUpfront').checked;
+        const isInstallment = document.getElementById('onboardingParentPaymentInstallment').checked;
+        const numInstallments = parseInt(document.getElementById('onboardingParentNumberOfInstallments').value) || 1;
         
         let amountPaid = parseFloat(formData.customPaidAmount) || 0;
         
-        // If Upfront is selected, the amount paid automatically becomes the total payable amount.
-        if (isUpfront) {
-            amountPaid = pricingDetails.finalTotal;
+        // If partial payment is not entered, calculate based on payment type
+        if (amountPaid === 0) {
+            if (isInstallment && numInstallments > 0) {
+                // This is the first installment amount
+                amountPaid = pricingDetails.finalTotal / numInstallments;
+            } else {
+                // Upfront, so amount paid is the full amount
+                amountPaid = pricingDetails.finalTotal;
+            }
         }
 
         const balanceDue = pricingDetails.finalTotal - amountPaid;
@@ -3334,7 +3577,24 @@ function collectInvoiceFormData() {
         onboardingParentTotalPayableDisplay.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
         onboardingParentAmountPaidDisplay.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
         onboardingParentBalanceDueDisplay.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
+        
+        // Update label
+        const amountPaidLabel = document.getElementById('onboardingParentAmountPaidLabel');
+        if (amountPaidLabel) {
+            amountPaidLabel.textContent = isInstallment ? 'Amount Paid / Installment' : 'Amount Paid';
+        }
+
+        // Update balance due color
+        const balanceDueEl = document.getElementById('onboardingParentBalanceDueDisplay');
+        if (balanceDueEl) {
+            if (balanceDue <= 0) {
+                balanceDueEl.style.color = 'var(--success)';
+            } else {
+                balanceDueEl.style.color = 'var(--danger)';
+            }
+        }
     }
+
 
     function updateParentOnboardingPlanDetails() {
         const planName = onboardingParentPlanName.value;
@@ -3547,7 +3807,7 @@ function loadTeacherSpecificDetails(teacherName) {
     const existing = document.getElementById('attritionRiskSection');
     if (existing) existing.remove();
 
-    // -- CALL 1: Basic Load Stats & Proficiency (Google Sheets) -----------
+    // \u2500\u2500 CALL 1: Basic Load Stats & Proficiency (Google Sheets) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     google.script.run
         .withSuccessHandler(data => {
             if (!data || !data.success) {
@@ -3585,7 +3845,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
             if (resultsContainer) resultsContainer.style.display = 'block';
 
-            // -- CALL 2: Attrition Risk & Active Pool (HubSpot) -----------
+            // \u2500\u2500 CALL 2: Attrition Risk & Active Pool (HubSpot) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
             google.script.run
                 .withSuccessHandler(report => {
                     hideLoading();
@@ -3638,7 +3898,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
                     students.forEach(s => {
 
-                        // -- Risk badge & row highlight ------------------
+                        // \u2500\u2500 Risk badge & row highlight \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         let rowStyle = '';
                         let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                         if (s.recentMoves >= 2) {
@@ -3648,13 +3908,13 @@ function loadTeacherSpecificDetails(teacherName) {
                             riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
                         }
 
-                        // -- Deal Value badge ----------------------------
+                        // \u2500\u2500 Deal Value badge \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
                         const dealValueBadge = isUnknown
                             ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
                             : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
 
-                        // -- Amount display ------------------------------
+                        // \u2500\u2500 Amount display \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         // Show local currency amount; if non-EUR also show ~EUR equivalent
                         let amountDisplay = '';
                         if (s.dealAmountLocal > 0) {
@@ -3667,22 +3927,22 @@ function loadTeacherSpecificDetails(teacherName) {
                             amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
                         }
 
-                        // -- Payment tag: Upfront (green) / Installment (blue) --
+                        // \u2500\u2500 Payment tag: Upfront (green) / Installment (blue) \u2500\u2500
                         const paymentTagBadge = s.paymentTag === 'Installment'
                             ? `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd;">Installment</span>`
                             : `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">Upfront</span>`;
 
-                        // -- Tenure label --------------------------------
+                        // \u2500\u2500 Tenure label \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         const tenureLabel = s.dealTenureMonths > 0
                             ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
                             : '';
 
-                        // -- Previous teacher ----------------------------
+                        // \u2500\u2500 Previous teacher \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         const prevTeacherDisplay = (!s.prevTeacher || s.prevTeacher === 'N/A')
                             ? '<span style="color:#aaa;">No Teacher Changes</span>'
                             : escapeHtml(s.prevTeacher);
 
-                        // -- Course (truncated) --------------------------
+                        // \u2500\u2500 Course (truncated) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                         const courseDisplay = s.course && s.course.length > 35
                             ? s.course.substring(0, 35) + '...'
                             : (s.course || '-');
@@ -3951,11 +4211,11 @@ google.script.run
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
-                <strong>\uD83D\uDCC5 Latest Ticket Logic Fixed</strong><br>
+                <strong>\u1F4C5 Latest Ticket Logic Fixed</strong><br>
                 Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
             </li>
             <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
-                <strong>\uD83E\uDDE9 Enhanced Data Mapping</strong><br>
+                <strong>\u1F9E9 Enhanced Data Mapping</strong><br>
                 Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
             </li>
         </ul>
@@ -3992,7 +4252,7 @@ google.script.run
     if (inactivityMsg) inactivityMsg.style.display = 'none';
     appContainer.style.display = 'grid';
     startPolling();
-    startSessionTimer();// <- ADD THIS BLOCK
+    startSessionTimer();// \u2190 ADD THIS BLOCK
     if (user.mustChangePassword) {
         document.getElementById('forcePasswordModal').classList.add('active');
         return; // don't show welcome toast yet
@@ -4209,7 +4469,7 @@ function loadUsers() {
                 username: userData.username,
                 email: userData.email,
                 role: userData.role
-            }, currentUser);  // <- pass currentUser
+            }, currentUser);  // \u2190 pass currentUser
 
 
         }
@@ -6207,7 +6467,7 @@ var filterEl = document.getElementById('personaStatusFilter');
 
 
 
-// -- Global: open Find Replacement modal --------------------------------------
+// \u2500\u2500 Global: open Find Replacement modal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function openCloneModal(teacherName) {
     var nameEl = document.getElementById('cloneTargetName');
     var ctxEl  = document.getElementById('cloneTargetContext');
@@ -6224,7 +6484,7 @@ function openCloneModal(teacherName) {
                 return;
             }
  
-            // -- Target context bar ----------------------------------------
+            // \u2500\u2500 Target context bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
             if (result.targetContext) {
                 var ctx = result.targetContext;
                 if (ctxEl) ctxEl.style.display = 'block';
@@ -6236,7 +6496,7 @@ function openCloneModal(teacherName) {
                 if (escalEl)    escalEl.textContent    = ctx.escalations || 0;
             }
  
-            // -- AI Summary banner -----------------------------------------
+            // \u2500\u2500 AI Summary banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
             var summaryEl = document.getElementById('cloneAISummary');
             if (summaryEl) {
                 if (result.aiEnriched && result.aiSummary) {
@@ -6250,7 +6510,7 @@ function openCloneModal(teacherName) {
                 }
             }
  
-            // -- Populate results table ------------------------------------
+            // \u2500\u2500 Populate results table \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
             var tbody = document.getElementById('cloneTeacherTableBody');
             if (!tbody) return;
             tbody.innerHTML = '';
@@ -6312,7 +6572,7 @@ function openCloneModal(teacherName) {
  
                         var caveatHtml  = (aiEnriched && aiCaveat)
                             ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">'
-                              + '\uD83D\uDCA1 ' + escapeHtml(aiCaveat) + '</div>' : '';
+                              + '\u1F4A1 ' + escapeHtml(aiCaveat) + '</div>' : '';
  
                         var breakdown = 'Traits:' + traitScore + '/30'
                             + ' | Age:' + ageScore + '/20'

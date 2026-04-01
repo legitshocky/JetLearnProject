@@ -93,7 +93,7 @@ function getTeacherDetailsForTable() {
   Logger.log('getTeacherDetailsForTable (V2 - Corrected) called');
 
   try {
-    // ── Step 1: Get the definitive list of all teachers from the main data sheet. ─
+    // \u2500\u2500 Step 1: Get the definitive list of all teachers from the main data sheet. \u2500
     // This is more reliable as it's the source of truth for all personnel.
     const allTeachersFromDataSheet = getTeacherData(); 
     if (!allTeachersFromDataSheet || allTeachersFromDataSheet.length === 0) {
@@ -101,11 +101,11 @@ function getTeacherDetailsForTable() {
       return [];
     }
 
-    // ── Step 2: Fetch true active learner counts for all teachers from HubSpot ─
+    // \u2500\u2500 Step 2: Fetch true active learner counts for all teachers from HubSpot \u2500
     const hubspotCounts = getActiveLearnersPerTeacher();
     Logger.log('Fetched HubSpot active learner counts.');
 
-    // ── Step 3: Build a Persona sheet manager lookup map ─────────────────────
+    // \u2500\u2500 Step 3: Build a Persona sheet manager lookup map \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // Persona sheet has plain-text manager names (not emails)
     const personaManagerMap = {};
     try {
@@ -133,7 +133,7 @@ function getTeacherDetailsForTable() {
       Logger.log('[getTeacherDetailsForTable] Persona map error: ' + e.message);
     }
 
-    // ── Step 4: Build the final, enriched result array ────────────────────────
+    // \u2500\u2500 Step 4: Build the final, enriched result array \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     const finalTeacherDetails = allTeachersFromDataSheet.map(teacher => {
       const teacherName = teacher.name;
       
@@ -158,12 +158,12 @@ function getTeacherDetailsForTable() {
         status:        teacher.status || 'Active',
         joinDate:      teacher.joinDate ? new Date(teacher.joinDate).toLocaleDateString('en-GB') : 'N/A',
         
-        // Manager fields — from Persona sheet (names) with Teacher Data fallback (may be emails)
+        // Manager fields \u2014 from Persona sheet (names) with Teacher Data fallback (may be emails)
         manager:               personaEntry.tpManager  || teacher.manager               || '',
         clsManagerResponsible: personaEntry.clsManager || teacher.clsManagerResponsible || '',
         tpManagerEmail:        teacher.tpManagerEmail  || '',
 
-        // Use live HubSpot data — but only for active/EWS teachers.
+        // Use live HubSpot data \u2014 but only for active/EWS teachers.
         // Attrited/On Leave teachers may still appear in old HubSpot deals; zero them out.
         activeCourses: (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.total  : 0),
         activeCoding:  (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.coding : 0),
@@ -609,7 +609,7 @@ function getTeacherSpecificLoad(teacherName) {
 
     // 5. Pull manager fields from Teacher Persona Mapping sheet
     // Persona sheet headers (row 1): Teacher Name, Manager, CLS Manager
-    // Names are stored as plain text (not emails) — no resolution needed
+    // Names are stored as plain text (not emails) \u2014 no resolution needed
     let tpManager = '', tpManagerEmail = '', clsManager = '', clsEmail = '';
     try {
       const personaData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
@@ -629,7 +629,7 @@ function getTeacherSpecificLoad(teacherName) {
             if (rowName === nameLower) {
               tpManager  = pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '';
               clsManager = pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : '';
-              // Emails not stored in Persona sheet — look up from Teacher Data as fallback
+              // Emails not stored in Persona sheet \u2014 look up from Teacher Data as fallback
               break;
             }
           }
@@ -759,7 +759,7 @@ function searchMatchingTeachers(requestData) {
       const traitMatchesCount = targetTraits.length - traitMissing.length;
       const ageOrYearMatch = isMathCourse ? String(row[ageOrYearCol_Math] || 'N/A').trim() : String(row[ageOrYearCol_Tech] || 'N/A').trim();
       
-      let slotMatch = '❌';
+      let slotMatch = '\u274C';
       let alternateSlots = [];
       const slotHeaderKey = Object.keys(headerMap).find(h => {
         try {
@@ -767,7 +767,7 @@ function searchMatchingTeachers(requestData) {
         } catch (e) { return false; }
       });
       const availability = slotHeaderKey ? String(row[headerMap[slotHeaderKey]] || '').trim() : "Date Column Not Found";
-      if (availability.includes(requestedSlot)) slotMatch = '✔️';
+      if (availability.includes(requestedSlot)) slotMatch = '\u2714\uFE0F';
 
       const formatDateForAltSlot = date => date.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
       for (let d = 0; d < 3; d++) {
@@ -797,7 +797,7 @@ function searchMatchingTeachers(requestData) {
     }
 
     output.sort((a, b) => {
-      if (a.slotMatch !== b.slotMatch) return a.slotMatch === '✔️' ? -1 : 1;
+      if (a.slotMatch !== b.slotMatch) return a.slotMatch === '\u2714\uFE0F' ? -1 : 1;
       if (a._currentCourseProgressOrder !== b._currentCourseProgressOrder) return a._currentCourseProgressOrder - b._currentCourseProgressOrder;
       return b._traitMatchesCount - a._traitMatchesCount;
     });
@@ -926,11 +926,11 @@ function findClsEmailByManagerName(managerName) {
 
 function findSimilarTeachers(targetTeacherName) {
   try {
-    // ── 1. Resolve canonical name ─────────────────────────────────────────
+    // \u2500\u2500 1. Resolve canonical name \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var resolvedTarget = resolveTeacherName(targetTeacherName);
-    Logger.log('[findSimilarTeachers] Input: "' + targetTeacherName + '" → resolved: "' + resolvedTarget + '"');
+    Logger.log('[findSimilarTeachers] Input: "' + targetTeacherName + '" \u2192 resolved: "' + resolvedTarget + '"');
 
-    // ── 2. Load Persona Mapping sheet ─────────────────────────────────────
+    // \u2500\u2500 2. Load Persona Mapping sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var personaData = _getCachedSheetData('Teacher Persona Mapping');
     if (!personaData || personaData.length < 2) {
       return { success: false, message: 'Persona Mapping sheet not found. Please ensure "Teacher Persona Mapping" sheet exists.' };
@@ -945,7 +945,7 @@ function findSimilarTeachers(targetTeacherName) {
     var ageGroupIdx = headers.indexOf('Preferred Age Group');
     if (ageGroupIdx === -1) ageGroupIdx = headers.indexOf('Age Group');
 
-    // ✅ FIX 1 (Bug 3): Broadened regex so columns like "Teaching Style",
+    // \u2705 FIX 1 (Bug 3): Broadened regex so columns like "Teaching Style",
     //    "Personality Trait", "Subject Expertise", "Key Skill" etc. are all detected.
     //    Also logs which columns were found so you can verify in the Apps Script log.
     var traitCols = headers.reduce(function(acc, h, i) {
@@ -953,9 +953,9 @@ function findSimilarTeachers(targetTeacherName) {
       return acc;
     }, []);
     Logger.log('[findSimilarTeachers] Detected trait columns: '
-      + (traitCols.length > 0 ? traitCols.map(function(i) { return headers[i]; }).join(', ') : 'NONE — check column names!'));
+      + (traitCols.length > 0 ? traitCols.map(function(i) { return headers[i]; }).join(', ') : 'NONE \u2014 check column names!'));
 
-    // ── 3. Find target row ────────────────────────────────────────────────
+    // \u2500\u2500 3. Find target row \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var targetRow = null;
     for (var i = 1; i < personaData.length; i++) {
       if (normalizeTeacherName(String(personaData[i][nameIdx])) === normalizeTeacherName(resolvedTarget)) {
@@ -964,7 +964,7 @@ function findSimilarTeachers(targetTeacherName) {
       }
     }
 
-    // ✅ FIX 2 (Bug 1): If the teacher is missing from the Persona sheet,
+    // \u2705 FIX 2 (Bug 1): If the teacher is missing from the Persona sheet,
     //    fall back to a scoreless-but-valid result set using all other teachers
     //    instead of returning success:false (which silently shows nothing).
     if (!targetRow) {
@@ -1031,7 +1031,7 @@ function findSimilarTeachers(targetTeacherName) {
       return {
         success:       true,
         data:          fallbackResults,
-        aiSummary:     '⚠ "' + resolvedTarget + '" has no Persona Mapping entry — showing partial results based on course load & escalation history only. Add this teacher to the Persona Mapping sheet for full AI-scored replacements.',
+        aiSummary:     '\u26A0 "' + resolvedTarget + '" has no Persona Mapping entry \u2014 showing partial results based on course load & escalation history only. Add this teacher to the Persona Mapping sheet for full AI-scored replacements.',
         aiEnriched:    false,
         targetContext: {
           name:           resolvedTarget,
@@ -1063,7 +1063,7 @@ function findSimilarTeachers(targetTeacherName) {
     Logger.log('[findSimilarTeachers] Target traits: ' + (targetTraits.length ? targetTraits.join(', ') : 'NONE'));
     Logger.log('[findSimilarTeachers] Target age groups: ' + (targetAgeGroups.length ? targetAgeGroups.join(', ') : 'NONE'));
 
-    // ── 4. Build upskill count map ────────────────────────────────────────
+    // \u2500\u2500 4. Build upskill count map \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var upskillCountMap = {};
     var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
     if (tcSheet && tcSheet.length > 1) {
@@ -1084,11 +1084,11 @@ function findSimilarTeachers(targetTeacherName) {
     var targetUpskillCount = upskillCountMap[resolvedTarget] || upskillCountMap[normalizeTeacherName(resolvedTarget)] || 0;
     Logger.log('[findSimilarTeachers] Target upskill count: ' + targetUpskillCount);
 
-    // ── 5. Get HubSpot escalations (last 90 days) ─────────────────────────
+    // \u2500\u2500 5. Get HubSpot escalations (last 90 days) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var escalationMap = getEscalatedTeachersLast90Days();
     Logger.log('[findSimilarTeachers] Escalation map loaded: ' + JSON.stringify(escalationMap));
 
-    // ── 6. Score all candidates ───────────────────────────────────────────
+    // \u2500\u2500 6. Score all candidates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var candidates = personaData.slice(1).filter(function(r) {
       var rawName = String(r[nameIdx] || '').trim();
       return rawName && normalizeTeacherName(rawName) !== normalizeTeacherName(resolvedTarget);
@@ -1125,7 +1125,7 @@ function findSimilarTeachers(targetTeacherName) {
         var matched = candidateTraits.filter(function(t) { return targetTraits.indexOf(t) > -1; }).length;
         traitScore  = Math.round((matched / targetTraits.length) * 30);
       } else {
-        // ✅ FIX 3 (Bug 3 continued): If no trait columns were detected at all,
+        // \u2705 FIX 3 (Bug 3 continued): If no trait columns were detected at all,
         //    award a neutral partial score (10/30) to all candidates so they
         //    aren't all penalised to 0 and still get meaningful ranking.
         traitScore = 10;
@@ -1136,7 +1136,7 @@ function findSimilarTeachers(targetTeacherName) {
         var ageOverlap = candidateAgeGroups.filter(function(a) { return targetAgeGroups.indexOf(a) > -1; }).length;
         ageScore       = Math.round((ageOverlap / targetAgeGroups.length) * 20);
       } else {
-        // ✅ FIX: If no age group data exists, award a neutral partial score (10/20)
+        // \u2705 FIX: If no age group data exists, award a neutral partial score (10/20)
         ageScore = 10;
       }
 
@@ -1203,7 +1203,7 @@ function findSimilarTeachers(targetTeacherName) {
       escalations:    escalationMap[resolvedTarget] || escalationMap[normalizeTeacherName(resolvedTarget)] || 0
     };
 
-    // ── 7. AI re-ranking — returns top 5 with reasoning ──────────────────
+    // \u2500\u2500 7. AI re-ranking \u2014 returns top 5 with reasoning \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     Logger.log('[findSimilarTeachers] Sending top 10 to AI for ranking...');
     var aiResult = rankReplacementTeachersWithAI(resolvedTarget, top10, targetContext);
 
@@ -1218,7 +1218,7 @@ function findSimilarTeachers(targetTeacherName) {
       };
     }
 
-    // ── 8. Fallback — return algorithmic top 8 if AI fails ───────────────
+    // \u2500\u2500 8. Fallback \u2014 return algorithmic top 8 if AI fails \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     Logger.log('[findSimilarTeachers] AI ranking failed (' + aiResult.message + '). Falling back to algorithmic top 8.');
     return {
       success:       true,
@@ -1241,29 +1241,29 @@ function normalizeTeacherName(name) {
 }
 
  
-// ── Alias map wrapped in a function (required for Google Apps Script) ──
+// \u2500\u2500 Alias map wrapped in a function (required for Google Apps Script) \u2500\u2500
 //  Google Apps Script does NOT allow top-level const/let objects that
-//  reference nothing — they throw "not defined" at runtime.
+//  reference nothing \u2014 they throw "not defined" at runtime.
 //  Wrapping in a function fixes this completely.
 function getTeacherNameAliases() {
   return {
-    // ── Casing fixes (DB lowercase vs HS TitleCase) ───────────────────────
+    // \u2500\u2500 Casing fixes (DB lowercase vs HS TitleCase) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     'aditi chuhan'              : 'Aditi Chauhan',
     'aditi chauhan'             : 'Aditi Chauhan',
     'aditi chauahn'             : 'Aditi Chauhan',
     'aditi chahuan'             : 'Aditi Chauhan',
 
-    // ── DB name → different HS full name ─────────────────────────────────
+    // \u2500\u2500 DB name \u2192 different HS full name \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     'betty ann'                 : 'Betty Ann Lijo',        // HS: Betty Ann (exact match in HS sheet)
     'florence bogor'            : 'Florence',   // HS: Florence Bogor (exact match)
     'ramakant chandla'          : 'Ramakant Chandla', // DB all-caps
     'xavier kristeen ottilia'   : 'Ottilia Kristeen Xavier',
 
-    // ── DB short name → HS full name ─────────────────────────────────────
+    // \u2500\u2500 DB short name \u2192 HS full name \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     'aarshi'                    : 'Aarshi Chaturvedi',
     'anjali'                    : 'Anjali Murali',    // DB "Anjali" = HS "Anjali Murali" (most likely)
 
-    // ── DB spelling → HS spelling ─────────────────────────────────────────
+    // \u2500\u2500 DB spelling \u2192 HS spelling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     'akshay gunani'             : 'Akshay Gurnani',   // DB typo, HS correct
     'kim jeoffrey cuevas'       : 'Kim Jeoffrey Cuevass', // HS has double s
     'love sogarwal'             : 'Love Sogarwal',    // normalize casing
@@ -1274,7 +1274,7 @@ function getTeacherNameAliases() {
     'komal'                     : 'Komal',
     'sakina jaorawala'          : 'Sakina Jaorawala', // normalize casing
 
-    // ── Add more as you find them from [ZERO] logs ────────────────────────
+    // \u2500\u2500 Add more as you find them from [ZERO] logs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // 'db name lowercase'      : 'Exact HubSpot Display Name',
   };
 }
@@ -1297,7 +1297,7 @@ function getTeacherProfileData(teacherName) {
   try {
     Logger.log('[getTeacherProfileData] Called for: ' + teacherName);
 
-    // ── 1. Basic info from Teacher Data sheet ─────────────────────────────
+    // \u2500\u2500 1. Basic info from Teacher Data sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var allTeachers = getTeacherData();
     var teacherInfo = null;
     var nameLower = normalizeTeacherName(teacherName);
@@ -1308,14 +1308,14 @@ function getTeacherProfileData(teacherName) {
       }
     }
 
-    // ── 2. Course data from Teacher Courses sheet ─────────────────────────
+    // \u2500\u2500 2. Course data from Teacher Courses sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var loadData = getTeacherSpecificLoad(teacherName);
     var courses = (loadData && loadData.success) ? loadData.courses : [];
 
-    // ── 3. Escalation history from HubSpot ────────────────────────────────
+    // \u2500\u2500 3. Escalation history from HubSpot \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var escalationData = getTeacherEscalationHistory(teacherName);
 
-    // ── 3. Exact course name → category mapping ───────────────────────────
+    // \u2500\u2500 3. Exact course name \u2192 category mapping \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var CODING_BEGINNER = [
       'Introduction to Coding (code.org)',
       'Introduction to Coding II (code.org)',
@@ -1392,13 +1392,13 @@ function getTeacherProfileData(teacherName) {
     courses.forEach(function(c) {
       var entry = { name: c.course, progress: c.proficiency };
       var cat;
-      if (CODING_BEGINNER.indexOf(c.course) > -1)   cat = '🎮 Coding & Game Dev';
-      else if (ROBOTICS_AI.indexOf(c.course) > -1)  cat = '🤖 Robotics & AI';
-      else if (MINECRAFT_ROBLOX.indexOf(c.course) > -1) cat = '🌍 Minecraft, Roblox & Unity';
-      else if (WEB_JS.indexOf(c.course) > -1)       cat = '🌐 Web & JavaScript';
-      else if (PYTHON.indexOf(c.course) > -1)        cat = '🐍 Python & Data Science';
-      else if (MATHS.indexOf(c.course) > -1)         cat = '📐 Maths';
-      else                                            cat = '📚 Other';
+      if (CODING_BEGINNER.indexOf(c.course) > -1)   cat = '\u1F3AE Coding & Game Dev';
+      else if (ROBOTICS_AI.indexOf(c.course) > -1)  cat = '\u1F916 Robotics & AI';
+      else if (MINECRAFT_ROBLOX.indexOf(c.course) > -1) cat = '\u1F30D Minecraft, Roblox & Unity';
+      else if (WEB_JS.indexOf(c.course) > -1)       cat = '\u1F310 Web & JavaScript';
+      else if (PYTHON.indexOf(c.course) > -1)        cat = '\u1F40D Python & Data Science';
+      else if (MATHS.indexOf(c.course) > -1)         cat = '\u1F4D0 Maths';
+      else                                            cat = '\u1F4DA Other';
 
       if (!coursesByCategory[cat]) coursesByCategory[cat] = [];
       coursesByCategory[cat].push(entry);

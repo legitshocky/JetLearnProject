@@ -16,12 +16,14 @@ function calculateDashboardStats() {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     
     let combinedActivities =[];
+    const seenOnboardJlids = new Set(); // deduplicate by JLID
 
     auditData.forEach(row => {
         const timestamp = parseSheetDate(row[0]);
         if (!timestamp || isNaN(timestamp.getTime())) return;
 
         const action = String(row[1]);
+        const jlid   = String(row[2] || '').trim().toUpperCase();
         const status = String(row[7]);
         const learner = row[3];
         const newTeacher = row[5];
@@ -48,10 +50,13 @@ function calculateDashboardStats() {
         } 
         else if (isOnboarding) {
           if (status === 'Success' || status === 'Partial Success') {
-            stats.onboardings.total++;
-            if (timestamp >= today) stats.onboardings.today++;
-            if (timestamp >= thisWeekStart) stats.onboardings.thisWeek++;
-            if (timestamp >= thisMonthStart) stats.onboardings.thisMonth++;
+            if (!jlid || !seenOnboardJlids.has(jlid)) {
+              if (jlid) seenOnboardJlids.add(jlid);
+              stats.onboardings.total++;
+              if (timestamp >= today) stats.onboardings.today++;
+              if (timestamp >= thisWeekStart) stats.onboardings.thisWeek++;
+              if (timestamp >= thisMonthStart) stats.onboardings.thisMonth++;
+            }
           }
           combinedActivities.push({
             timestamp: timestamp,
@@ -119,6 +124,41 @@ function calculateDashboardStats() {
   }
 }
 
+
+// ── Public function called by the frontend ───────────────────────────────────
+// activeLearners  = real HubSpot total (deals with active status)
+// onboardings.today/thisWeek/thisMonth = audit log new-onboarding events
+// These are intentionally separate: total is a live snapshot, cadence tracks new additions
+function getDashboardStatistics() {
+  const stats = calculateDashboardStats();
+
+  try {
+    const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token) throw new Error('HUBSPOT_API_KEY not set');
+
+    const body = {
+      filterGroups: [{ filters: [{ propertyName: 'learner_status', operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }] }],
+      properties: ['hs_object_id'],
+      limit: 1
+    };
+    const response = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true
+    });
+    const data = JSON.parse(response.getContentText());
+    if (data.error || data.status === 'error') throw new Error(data.message || 'HubSpot error');
+    const hsTotal = data.total || 0;
+    Logger.log('[getDashboardStatistics] HubSpot active total: ' + hsTotal);
+    stats.activeLearners = hsTotal > 0 ? hsTotal : stats.onboardings.total;
+  } catch (e) {
+    Logger.log('[getDashboardStatistics] HubSpot call failed: ' + e.message);
+    stats.activeLearners = stats.onboardings.total;
+  }
+
+  return stats;
+}
 
 function getMigrationTrends(days = 30) {
   try {
@@ -218,9 +258,9 @@ function getEnhancedMigrationReport(params) {
             return { success: true, message: "Missing columns.", data: null };
         }
 
-        const toDate = new Date(params.toDate);
+        const toDate = new Date(params.toDate || params.endDate);
         toDate.setHours(23, 59, 59, 999);
-        const fromDate = new Date(params.fromDate);
+        const fromDate = new Date(params.fromDate || params.startDate);
         fromDate.setHours(0, 0, 0, 0);
 
         const periodDuration = toDate.getTime() - fromDate.getTime();
@@ -782,5 +822,3 @@ function getDoubleMigrationReport(params) {
     return[];
   }
 }
-
-

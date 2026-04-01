@@ -652,10 +652,10 @@
                   </div>
               </div>
 
-                <div class="form-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--gray); padding-top: 1.5rem; grid-template-columns: repeat(3, 1fr);">
-                  <div class="form-group"><label class="form-label">Total Payable</label><input type="text" id="onboardingParentTotalPayableDisplay" class="form-control" readonly style="font-weight: bold; color: var(--primary);"></div>
-                  <div class="form-group"><label class="form-label">Amount Paid</label><input type="text" id="onboardingParentAmountPaidDisplay" class="form-control" readonly style="font-weight: bold; color: var(--success);"></div>
-                  <div class="form-group"><label class="form-label">Balance Due</label><input type="text" id="onboardingParentBalanceDueDisplay" class="form-control" readonly style="font-weight: bold; color: var(--danger);"></div>
+                  <div class="form-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--gray); padding-top: 1.5rem; grid-template-columns: repeat(3, 1fr);">
+                  <div class="form-group"><label class="form-label">Total Payable</label><input type="text" id="onboardingParentTotalPayableDisplay" class="form-control" readonly style="font-weight: bold; color: var(--primary) !important;"></div>
+                  <div class="form-group"><label id="onboardingParentAmountPaidLabel" class="form-label">Amount Paid</label><input type="text" id="onboardingParentAmountPaidDisplay" class="form-control" readonly style="font-weight: bold; color: var(--success) !important;"></div>
+                  <div class="form-group"><label class="form-label">Balance Due</label><input type="text" id="onboardingParentBalanceDueDisplay" class="form-control" readonly style="font-weight: bold; color: var(--danger) !important;"></div>
                 </div>
 
 
@@ -857,160 +857,182 @@
       </div>
 
       <!-- Learner History Page -->
-      <div id="historyPage" class="page-content" style="display:none;">
+      <div id="historyPage" class="page-content" style="display: none;">
+
         <style>
-          #historyPage { font-family: 'Inter', sans-serif; }
-          .tl-wrap { max-width: 940px; margin: 0 auto; padding-bottom: 3rem; }
-          .tl-searchbar { display: flex; gap: 10px; margin-bottom: 1.75rem; }
-          .tl-searchbar input { flex: 1; }
-          /* Profile */
-          .tl-profile { background: var(--bg-card,#fff); border: 1px solid var(--border-color,#e8eaf0); border-radius: 14px; padding: 1.2rem 1.5rem; display: flex; gap: 1.2rem; align-items: flex-start; margin-bottom: 1.1rem; flex-wrap: wrap; }
-          .tl-avatar { width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: #fff; flex-shrink: 0; }
-          .tl-pinfo { flex: 1; min-width: 180px; }
-          .tl-pname { font-size: 1.1rem; font-weight: 700; color: var(--text-primary,#1a202c); margin-bottom: 4px; }
-          .tl-pmeta { font-size: 0.78rem; color: var(--text-muted,#718096); display: flex; flex-wrap: wrap; gap: 10px; }
-          .tl-pmeta span { display: flex; align-items: center; gap: 4px; }
-          .tl-pstats { display: flex; gap: 10px; flex-wrap: wrap; }
-          .tl-stat { background: var(--bg-secondary,#f7f8fc); border-radius: 10px; padding: 9px 15px; text-align: center; min-width: 76px; }
-          .tl-sval { font-size: 1.25rem; font-weight: 700; color: var(--text-primary,#1a202c); line-height: 1; }
-          .tl-slbl { font-size: 0.68rem; color: var(--text-muted,#718096); margin-top: 3px; }
+          /* ── Timeline page styles ── */
+          .tl-page { max-width: 960px; margin: 0 auto; padding-bottom: 3rem; }
+
+          .tl-search-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 1.75rem; }
+          .tl-search-bar input { flex: 1; }
+
+          /* Profile header card */
+          .tl-profile { background: var(--bg-card, #fff); border: 1px solid var(--border-color, #e8eaf0); border-radius: 14px; padding: 1.25rem 1.5rem; display: flex; gap: 1.25rem; align-items: flex-start; margin-bottom: 1.25rem; flex-wrap: wrap; }
+          .tl-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 1.15rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+          .tl-profile-info { flex: 1; min-width: 200px; }
+          .tl-profile-name { font-size: 1.15rem; font-weight: 700; color: var(--text-primary, #1a202c); margin-bottom: 3px; }
+          .tl-profile-meta { font-size: 0.8rem; color: var(--text-muted, #718096); display: flex; flex-wrap: wrap; gap: 10px; }
+          .tl-profile-meta span { display: flex; align-items: center; gap: 4px; }
+          .tl-profile-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+          .tl-stat { background: var(--bg-secondary, #f7f8fc); border-radius: 10px; padding: 10px 16px; text-align: center; min-width: 80px; }
+          .tl-stat-val { font-size: 1.3rem; font-weight: 700; color: var(--text-primary, #1a202c); line-height: 1; }
+          .tl-stat-lbl { font-size: 0.7rem; color: var(--text-muted, #718096); margin-top: 3px; }
+
           /* Risk banner */
-          .tl-risk { border-radius: 10px; padding: 11px 15px; display: flex; align-items: center; gap: 12px; margin-bottom: 1.1rem; font-size: 0.85rem; }
-          .tl-risk-ico { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.9rem; }
-          /* Summary */
-          .tl-summary { background: var(--bg-secondary,#f7f8fc); border-left: 3.5px solid #6366f1; border-radius: 0 8px 8px 0; padding: 11px 15px; font-size: 0.83rem; color: var(--text-secondary,#4a5568); line-height: 1.65; margin-bottom: 1.3rem; }
-          /* Filter bar */
-          .tl-filterbar { display: flex; gap: 7px; margin-bottom: 1.3rem; flex-wrap: wrap; align-items: center; }
-          .tl-fb { padding: 5px 13px; border-radius: 99px; border: 1px solid var(--border-color,#e2e8f0); background: transparent; font-size: 0.75rem; font-weight: 600; cursor: pointer; color: var(--text-muted,#718096); }
-          .tl-fb.on { background: #6366f1; color: #fff; border-color: #6366f1; }
-          .tl-fb:hover:not(.on) { border-color: #6366f1; color: #6366f1; }
-          .tl-fcount { font-size: 0.75rem; color: var(--text-muted,#718096); margin-left: auto; }
-          /* Spine */
-          .tl-section-hd { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted,#718096); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 8px; }
-          .tl-section-hd::after { content:''; flex:1; height:1px; background:var(--border-color,#e2e8f0); }
-          .tl-spine { position: relative; padding-left: 34px; }
-          .tl-spine::before { content:''; position:absolute; left:10px; top:0; bottom:0; width:2px; background:var(--border-color,#e2e8f0); border-radius:2px; }
-          .tl-ev { position: relative; margin-bottom: 1rem; }
-          .tl-dot { position:absolute; left:-27px; top:15px; width:13px; height:13px; border-radius:50%; border:2.5px solid #fff; }
-          .tl-card { background:var(--bg-card,#fff); border:1px solid var(--border-color,#e8eaf0); border-radius:11px; padding:.95rem 1.1rem; border-left:3.5px solid transparent; }
-          .tl-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.07); }
-          .tl-ch { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:7px; flex-wrap:wrap; }
-          .tl-ct { font-size:.88rem; font-weight:700; color:var(--text-primary,#1a202c); flex:1; }
-          .tl-badges { display:flex; gap:5px; flex-wrap:wrap; flex-shrink:0; }
-          .tl-badge { font-size:.68rem; font-weight:700; padding:2px 8px; border-radius:99px; border:1px solid transparent; }
-          .tl-tr { display:flex; align-items:center; gap:7px; margin-bottom:7px; flex-wrap:wrap; }
-          .tl-chip { background:var(--bg-secondary,#f7f8fc); border-radius:6px; padding:3px 9px; font-size:.76rem; font-weight:600; color:var(--text-primary,#1a202c); }
-          .tl-chip.to { background:#ede9fe; color:#4c1d95; }
-          .tl-arr { color:var(--text-muted,#a0aec0); font-size:.85rem; }
-          .tl-cmeta { display:flex; gap:10px; flex-wrap:wrap; }
-          .tl-mi { font-size:.72rem; color:var(--text-muted,#718096); display:flex; align-items:center; gap:3px; }
-          .tl-foot { margin-top:7px; padding-top:7px; border-top:1px solid var(--border-light,#f1f3f7); display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
-          .tl-days { font-size:.7rem; padding:2px 8px; border-radius:5px; font-weight:700; }
-          .tl-hsbtn { font-size:.7rem; padding:2px 9px; border-radius:5px; border:1px solid #ff7a59; color:#ff7a59; background:transparent; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:4px; }
-          .tl-hsbtn:hover { background:#fff5f3; }
-          /* Audit */
-          .tl-audit-section { margin-top:1.75rem; }
-          .tl-arow { display:flex; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-light,#f3f4f6); font-size:.76rem; }
-          .tl-atime { color:var(--text-muted,#a0aec0); min-width:130px; flex-shrink:0; }
-          .tl-aact { color:var(--text-primary,#1a202c); font-weight:600; }
-          .tl-adtl { color:var(--text-muted,#718096); margin-left:4px; font-weight:400; }
-          .tl-asta { margin-left:auto; flex-shrink:0; }
-          /* Empty */
-          .tl-empty { text-align:center; padding:2.5rem 1rem; color:var(--text-muted,#718096); }
-          .tl-empty i { font-size:2.2rem; margin-bottom:.65rem; opacity:.25; display:block; }
-          .tl-empty p { font-size:.87rem; margin:0; }
+          .tl-risk-banner { border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; font-size: 0.87rem; font-weight: 500; }
+          .tl-risk-banner .tl-risk-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem; }
+
+          /* Filter tabs */
+          .tl-filters { display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+          .tl-filter-btn { padding: 5px 14px; border-radius: 99px; border: 1px solid var(--border-color, #e2e8f0); background: transparent; font-size: 0.78rem; font-weight: 500; cursor: pointer; color: var(--text-muted, #718096); transition: all 0.15s; }
+          .tl-filter-btn.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+          .tl-filter-btn:hover:not(.active) { border-color: #6366f1; color: #6366f1; }
+          .tl-filter-count { font-size: 0.78rem; color: var(--text-muted,#718096); margin-left: auto; }
+
+          /* Timeline spine */
+          .tl-spine { position: relative; padding-left: 36px; }
+          .tl-spine::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--border-color, #e2e8f0); border-radius: 2px; }
+
+          /* Event card */
+          .tl-event { position: relative; margin-bottom: 1.1rem; }
+          .tl-dot { position: absolute; left: -29px; top: 14px; width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 2px var(--border-color,#e2e8f0); flex-shrink: 0; }
+          .tl-card { background: var(--bg-card, #fff); border: 1px solid var(--border-color, #e8eaf0); border-radius: 12px; padding: 1rem 1.1rem; border-left: 3.5px solid transparent; transition: box-shadow 0.15s; }
+          .tl-card:hover { box-shadow: 0 3px 14px rgba(0,0,0,0.07); }
+
+          .tl-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+          .tl-card-title { font-size: 0.9rem; font-weight: 700; color: var(--text-primary, #1a202c); flex: 1; min-width: 0; }
+          .tl-card-badges { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+          .tl-badge { font-size: 0.7rem; font-weight: 600; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }
+
+          .tl-teacher-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+          .tl-teacher { display: flex; align-items: center; gap: 5px; font-size: 0.82rem; }
+          .tl-teacher-chip { background: var(--bg-secondary,#f7f8fc); border-radius: 6px; padding: 3px 9px; font-size: 0.78rem; font-weight: 600; color: var(--text-primary,#1a202c); }
+          .tl-arrow { color: var(--text-muted,#a0aec0); font-size: 0.9rem; }
+          .tl-card-meta { display: flex; gap: 12px; flex-wrap: wrap; }
+          .tl-meta-item { font-size: 0.75rem; color: var(--text-muted,#718096); display: flex; align-items: center; gap: 4px; }
+
+          .tl-card-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-light, #f1f3f7); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+          .tl-days-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 5px; font-weight: 600; }
+
+          /* Audit section */
+          .tl-audit-section { margin-top: 1.75rem; }
+          .tl-section-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted,#718096); margin-bottom: 0.75rem; display: flex; align-items: center; gap: 8px; }
+          .tl-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border-color,#e2e8f0); }
+
+          /* Audit item (compact) */
+          .tl-audit-item { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border-light,#f3f4f6); font-size: 0.78rem; }
+          .tl-audit-time { color: var(--text-muted,#a0aec0); min-width: 130px; flex-shrink: 0; }
+          .tl-audit-action { color: var(--text-primary,#1a202c); font-weight: 500; }
+          .tl-audit-detail { color: var(--text-muted,#718096); margin-left: 4px; }
+          .tl-audit-status { margin-left: auto; flex-shrink: 0; }
+
+          /* Empty / loading */
+          .tl-empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted,#718096); }
+          .tl-empty i { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.3; display: block; }
+          .tl-empty p { font-size: 0.9rem; margin: 0; }
+
+          .tl-summary-box { background: var(--bg-secondary,#f7f8fc); border-radius: 10px; padding: 12px 16px; font-size: 0.83rem; color: var(--text-secondary,#4a5568); line-height: 1.6; margin-bottom: 1.25rem; border-left: 3.5px solid #6366f1; }
+
+          /* HubSpot link button */
+          .tl-hs-btn { font-size: 0.72rem; padding: 3px 9px; border-radius: 5px; border: 1px solid #ff7a59; color: #ff7a59; background: transparent; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+          .tl-hs-btn:hover { background: #fff5f3; }
         </style>
 
-        <div class="header"><h1 class="page-title">Learner Migration Timeline</h1></div>
-        <div class="tl-wrap">
+        <div class="header">
+          <h1 class="page-title">Learner Migration Timeline</h1>
+        </div>
 
-          <div class="tl-searchbar">
+        <div class="tl-page">
+          <!-- Search bar -->
+          <div class="tl-search-bar">
             <input type="text" id="historyJlidInput" class="form-control" placeholder="Enter JLID (e.g. JL317039I1527C) and press Search…" autocomplete="off">
             <button class="btn btn-primary" id="searchHistoryBtn" style="white-space:nowrap;"><i class="fas fa-search"></i> Search</button>
           </div>
 
-          <div id="tlEmptyState" class="tl-empty">
+          <!-- Empty state (default) -->
+          <div id="historyEmptyState" class="tl-empty">
             <i class="fas fa-route"></i>
-            <p>Enter a learner's JLID to view their complete migration timeline.</p>
+            <p>Enter a learner's JLID to view their full migration timeline.</p>
           </div>
 
+          <!-- Results — hidden until data loads -->
           <div id="historyResultsContainer" style="display:none;">
 
-            <!-- Profile card -->
-            <div class="tl-profile">
-              <div class="tl-avatar" id="tlAvatar">?</div>
-              <div class="tl-pinfo">
-                <div class="tl-pname" id="tlName">—</div>
-                <div class="tl-pmeta">
-                  <span><i class="fas fa-id-badge" style="font-size:10px;"></i><span id="tlJlid">—</span></span>
-                  <span><i class="fas fa-book" style="font-size:10px;"></i><span id="tlCourse">—</span></span>
-                  <span><i class="fas fa-chalkboard-teacher" style="font-size:10px;"></i><span id="tlTeacher">—</span></span>
-                  <span><i class="fas fa-birthday-cake" style="font-size:10px;"></i>Age <span id="tlAge">—</span></span>
-                  <span><i class="fas fa-calendar-alt" style="font-size:10px;"></i>Started <span id="tlStartDate">—</span></span>
-                  <span id="tlHsWrap" style="display:none;"><a id="tlHsLink" href="#" target="_blank" class="tl-hsbtn"><i class="fab fa-hubspot"></i> HubSpot deal</a></span>
+            <!-- Profile header -->
+            <div class="tl-profile" id="tlProfileCard">
+              <div class="tl-avatar" id="tlAvatar">—</div>
+              <div class="tl-profile-info">
+                <div class="tl-profile-name" id="tlName">—</div>
+                <div class="tl-profile-meta">
+                  <span><i class="fas fa-id-badge" style="font-size:11px;"></i> <span id="tlJlid">—</span></span>
+                  <span><i class="fas fa-book" style="font-size:11px;"></i> <span id="tlCourse">—</span></span>
+                  <span><i class="fas fa-chalkboard-teacher" style="font-size:11px;"></i> <span id="tlTeacher">—</span></span>
+                  <span><i class="fas fa-user-friends" style="font-size:11px;"></i> Age <span id="tlAge">—</span></span>
+                  <span id="tlHsLinkWrap" style="display:none;"><a id="tlHsLink" href="#" target="_blank" class="tl-hs-btn"><i class="fab fa-hubspot"></i> HubSpot</a></span>
                 </div>
               </div>
-              <div class="tl-pstats">
-                <div class="tl-stat"><div class="tl-sval" id="tlTotal">0</div><div class="tl-slbl">Total moves</div></div>
-                <div class="tl-stat"><div class="tl-sval" style="color:#2196f3;" id="tlInbound">0</div><div class="tl-slbl">Parent req.</div></div>
-                <div class="tl-stat"><div class="tl-sval" style="color:#e11d48;" id="tlOutbound">0</div><div class="tl-slbl">JL initiated</div></div>
+              <div class="tl-profile-stats">
+                <div class="tl-stat"><div class="tl-stat-val" id="tlStatTotal">0</div><div class="tl-stat-lbl">Total moves</div></div>
+                <div class="tl-stat"><div class="tl-stat-val" style="color:#2196f3;" id="tlStatInbound">0</div><div class="tl-stat-lbl">Parent req.</div></div>
+                <div class="tl-stat"><div class="tl-stat-val" style="color:#e11d48;" id="tlStatOutbound">0</div><div class="tl-stat-lbl">JL initiated</div></div>
               </div>
             </div>
 
             <!-- Risk banner -->
-            <div class="tl-risk" id="tlRisk">
-              <div class="tl-risk-ico" id="tlRiskIco"><i class="fas fa-shield-alt"></i></div>
+            <div class="tl-risk-banner" id="tlRiskBanner">
+              <div class="tl-risk-icon" id="tlRiskIcon"><i class="fas fa-shield-alt"></i></div>
               <div>
-                <div style="font-weight:700;margin-bottom:2px;" id="tlRiskLvl">—</div>
-                <div style="font-size:.8rem;opacity:.85;" id="tlRiskMsg">—</div>
+                <div style="font-weight:700; margin-bottom:2px;" id="tlRiskLevel">—</div>
+                <div style="font-weight:400; font-size:0.82rem; opacity:0.85;" id="tlRiskMsg">—</div>
               </div>
             </div>
 
-            <!-- Summary -->
-            <div class="tl-summary" id="tlSummary">—</div>
+            <!-- AI Summary -->
+            <div class="tl-summary-box" id="tlSummary">Loading summary…</div>
 
-            <!-- Filter bar -->
-            <div class="tl-filterbar">
-              <button class="tl-fb on" data-f="all">All</button>
-              <button class="tl-fb" data-f="outbound">JetLearn Initiated</button>
-              <button class="tl-fb" data-f="inbound">Parent Requested</button>
-              <button class="tl-fb" data-f="completed">Completed only</button>
-              <span class="tl-fcount" id="tlFcount"></span>
+            <!-- Migration timeline filters -->
+            <div class="tl-filters" id="tlFilters">
+              <button class="tl-filter-btn active" data-filter="all">All</button>
+              <button class="tl-filter-btn" data-filter="outbound">JetLearn Initiated</button>
+              <button class="tl-filter-btn" data-filter="inbound">Parent Requested</button>
+              <button class="tl-filter-btn" data-filter="completed">Completed only</button>
+              <span class="tl-filter-count" id="tlFilterCount"></span>
             </div>
 
-            <!-- Timeline -->
-            <div class="tl-section-hd">Migration tickets <span id="tlTixCount" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.9em;"></span></div>
+            <!-- Visual timeline spine -->
+            <div class="tl-section-label">Migration tickets <span id="tlTicketCount" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.85em;"></span></div>
             <div class="tl-spine" id="tlSpine">
-              <div class="tl-empty" id="tlNoTix">
+              <div class="tl-empty" id="tlNoTickets" style="display:none;">
                 <i class="fas fa-ticket-alt"></i>
                 <p>No migration tickets found for this learner.</p>
               </div>
             </div>
 
-            <!-- Audit log -->
+            <!-- Audit log section -->
             <div class="tl-audit-section">
-              <div class="tl-section-hd">Audit log <span id="tlAuditCount" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:.9em;"></span></div>
+              <div class="tl-section-label">Audit log <span id="tlAuditCount" style="font-weight:400;text-transform:none;letter-spacing:0;font-size:0.85em;"></span></div>
               <div id="tlAuditBody">
                 <div class="tl-empty"><i class="fas fa-history"></i><p>No audit entries found.</p></div>
               </div>
             </div>
 
           </div><!-- /historyResultsContainer -->
-        </div><!-- /tl-wrap -->
+        </div><!-- /tl-page -->
 
-        <!-- Keep legacy IDs so existing JS references don't break -->
-        <span id="historyResultsTitle"                style="display:none;"></span>
-        <span id="historyProfileLearnerName"          style="display:none;"></span>
-        <span id="historyProfileJlid"                 style="display:none;"></span>
-        <span id="historyProfileAge"                  style="display:none;"></span>
+        <!-- keep legacy IDs so existing JS references don't break -->
+        <span id="historyResultsTitle"       style="display:none;"></span>
+        <span id="historyProfileLearnerName" style="display:none;"></span>
+        <span id="historyProfileJlid"        style="display:none;"></span>
+        <span id="historyProfileAge"         style="display:none;"></span>
         <span id="historyProfileCurrentCourse"        style="display:none;"></span>
         <span id="historyProfileCurrentTeacher"       style="display:none;"></span>
         <span id="historyProfileSubscriptionType"     style="display:none;"></span>
         <span id="historyProfileOnboardingDate"       style="display:none;"></span>
         <span id="historyProfileSubscriptionStartDate" style="display:none;"></span>
-        <span id="historyAISummary"                   style="display:none;"></span>
-        <div  id="historyTimelineBody"                style="display:none;"></div>
-      </div>
+        <span id="historyAISummary"          style="display:none;"></span>
+        <div  id="historyTimelineBody"       style="display:none;"></div>
+
+      </div><!-- /historyPage -->
 
 <!-- Invoices Page & Renewal Communication -->
       <div id="invoicesPage" class="page-content" style="display: none;">
@@ -1124,10 +1146,31 @@
                   </div>
               </div>
               
-              <div class="form-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--gray); padding-top: 1.5rem; grid-template-columns: repeat(3, 1fr);">
-                <div class="form-group"><label class="form-label">Total Payable</label><input type="text" id="totalPayableDisplay" class="form-control" readonly style="font-weight: bold; color: var(--primary);"></div>
-                <div class="form-group"><label class="form-label">Amount Paid</label><input type="text" id="amountPaidDisplay" class="form-control" readonly style="font-weight: bold; color: var(--success);"></div>
-                <div class="form-group"><label class="form-label">Balance Due</label><input type="text" id="balanceDueDisplay" class="form-control" readonly style="font-weight: bold; color: var(--danger);"></div>
+              <div style="margin-top:1.5rem;border-top:1px solid var(--gray);padding-top:1.5rem;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+                <!-- Total Payable — blue -->
+                <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:1rem 1.25rem;">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <div style="width:10px;height:10px;border-radius:50%;background:#2563eb;flex-shrink:0;"></div>
+                    <span style="font-size:11px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.04em;">Total Payable</span>
+                  </div>
+                  <input type="text" id="totalPayableDisplay" readonly style="background:transparent;border:none;outline:none;width:100%;font-size:1.35rem;font-weight:800;color:#1d4ed8;padding:0;">
+                </div>
+                <!-- Amount Paid — green -->
+                <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;padding:1rem 1.25rem;">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <div style="width:10px;height:10px;border-radius:50%;background:#16a34a;flex-shrink:0;"></div>
+                    <span style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.04em;">Amount Paid</span>
+                  </div>
+                  <input type="text" id="amountPaidDisplay" readonly style="background:transparent;border:none;outline:none;width:100%;font-size:1.35rem;font-weight:800;color:#15803d;padding:0;">
+                </div>
+                <!-- Balance Due — red -->
+                <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:1rem 1.25rem;" id="balanceDueCard">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <div style="width:10px;height:10px;border-radius:50%;background:#dc2626;flex-shrink:0;" id="balanceDueDot"></div>
+                    <span style="font-size:11px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.04em;">Balance Due</span>
+                  </div>
+                  <input type="text" id="balanceDueDisplay" readonly style="background:transparent;border:none;outline:none;width:100%;font-size:1.35rem;font-weight:800;color:#b91c1c;padding:0;">
+                </div>
               </div>
 
               <div class="form-actions">
@@ -2229,7 +2272,7 @@
     google.script.run
       .withSuccessHandler(serverVersion => {
         if (serverVersion && CLIENT_VERSION && serverVersion !== CLIENT_VERSION) {
-          // Show a non-disruptive update banner \u2014 no hard reload
+          // Show a non-disruptive update banner — no hard reload
           if (!document.getElementById('versionUpdateBanner')) {
             const banner = document.createElement('div');
             banner.id = 'versionUpdateBanner';
@@ -2248,7 +2291,7 @@
   // Check version on load
   checkVersion();
 
-  // Check every 10 minutes \u2014 non-disruptive banner only, never auto-reload
+  // Check every 10 minutes — non-disruptive banner only, never auto-reload
   setInterval(checkVersion, 600000);
 </script>
 
@@ -2265,7 +2308,7 @@
     var origList = document.getElementById('hsTeacherOptionsList');
     if (!input || !origList || _portalList) return;
 
-    // Clone the list to body \u2014 it will be the real rendered dropdown from now on
+    // Clone the list to body — it will be the real rendered dropdown from now on
     _portalList = origList.cloneNode(true);
     _portalList.id = 'hsTeacherOptionsPortal';
     _portalList.style.cssText = [
@@ -2410,7 +2453,7 @@
         teacher.clsEmail              || ''    // CLS email (for mailto link)
       );
     } else {
-      // Cache not ready \u2014 show loading, it will update when backend responds
+      // Cache not ready — show loading, it will update when backend responds
       window._setManagerCards('Loading…', '', 'Loading…', '');
     }
   }
@@ -2434,11 +2477,11 @@
   };
 
   function _resolveManagerName(emailOrName) {
-    if (!emailOrName || emailOrName === '\u2014' || emailOrName === 'N/A') return '\u2014';
+    if (!emailOrName || emailOrName === '—' || emailOrName === 'N/A') return '—';
     var lower = emailOrName.toLowerCase().trim();
-    // If it looks like an email, resolve from map (return '\u2014' if unknown, never show raw email in name field)
-    if (lower.includes('@')) return _managerNames[lower] || '\u2014';
-    // Already a name \u2014 return as-is
+    // If it looks like an email, resolve from map (return '—' if unknown, never show raw email in name field)
+    if (lower.includes('@')) return _managerNames[lower] || '—';
+    // Already a name — return as-is
     return emailOrName;
   }
 
@@ -2449,13 +2492,13 @@
     var clsEl   = document.getElementById('loadDisplayCLSManager');
     var clsMail = document.getElementById('loadDisplayCLSEmail');
 
-    // The sheet stores emails in manager columns \u2014 resolve to human names
+    // The sheet stores emails in manager columns — resolve to human names
     // Priority: resolve tpName (may be email), fallback to resolving tpEmail
     var resolvedTP  = _resolveManagerName(tpName);
-    if (resolvedTP === '\u2014') resolvedTP = _resolveManagerName(tpEmail);
+    if (resolvedTP === '—') resolvedTP = _resolveManagerName(tpEmail);
 
     var resolvedCLS = _resolveManagerName(clsName);
-    if (resolvedCLS === '\u2014') resolvedCLS = _resolveManagerName(clsEmail);
+    if (resolvedCLS === '—') resolvedCLS = _resolveManagerName(clsEmail);
 
     // Collect the actual email for the mailto link (whichever field has @)
     var resolvedTPEmail  = (tpEmail  && tpEmail.includes('@'))  ? tpEmail  : (tpName  && tpName.includes('@')  ? tpName  : '');
@@ -2673,7 +2716,7 @@
     var esc      = r.escalations || {};
     var isDark   = document.body.classList.contains('dark-mode');
 
-    // Colours \u2014 hardcoded to avoid CSS variable resolution failures in GAS iframe
+    // Colours — hardcoded to avoid CSS variable resolution failures in GAS iframe
     var BG        = isDark ? '#1a1a35' : '#ffffff';
     var BG2       = isDark ? '#252548' : '#f8f9ff';
     var BORDER    = isDark ? 'rgba(255,255,255,0.08)' : '#e9eaf0';
@@ -2797,7 +2840,7 @@
     });
   };
 
-  /* ─── Action handler \u2014 routes to existing app functions ─── */
+  /* ─── Action handler — routes to existing app functions ─── */
   window.handleRecoAction = function(action, teacherName) {
     document.getElementById('recoDetailModal').remove();
 
@@ -2805,7 +2848,7 @@
       if (typeof switchPage === 'function') switchPage('teacherProfilePage', teacherName);
 
     } else if (action === 'Find Replacement') {
-      // Call openCloneModal directly \u2014 it already handles findSimilarTeachers + shows results
+      // Call openCloneModal directly — it already handles findSimilarTeachers + shows results
       if (typeof openCloneModal === 'function') {
         openCloneModal(teacherName);
       } else {
@@ -2841,9 +2884,9 @@
     var esc     = active.filter(function(t){return((escalations||{})[t.name]||0)>0;});
     var prompt  = 'JetLearn AI analyst. Analyse this live teacher data and give 6 concise actionable insights:\n'
       +'Active teachers: '+active.length+'\nTotal learners: '+totalL+'\nAvg load: '+avg
-      +'\nOverloaded (>20): '+over.length+' \u2014 '+over.slice(0,5).map(function(t){return t.name+'('+getLoadT(t)+')';}).join(', ')
-      +'\nUnderutilised (<5): '+under.length+' \u2014 '+under.slice(0,5).map(function(t){return t.name+'('+getLoadT(t)+')';}).join(', ')
-      +'\nEscalations (90d): '+esc.length+' \u2014 '+esc.slice(0,5).map(function(t){return t.name+'('+((escalations||{})[t.name]||0)+')';}).join(', ')
+      +'\nOverloaded (>20): '+over.length+' — '+over.slice(0,5).map(function(t){return t.name+'('+getLoadT(t)+')';}).join(', ')
+      +'\nUnderutilised (<5): '+under.length+' — '+under.slice(0,5).map(function(t){return t.name+'('+getLoadT(t)+')';}).join(', ')
+      +'\nEscalations (90d): '+esc.length+' — '+esc.slice(0,5).map(function(t){return t.name+'('+((escalations||{})[t.name]||0)+')';}).join(', ')
       +'\n\nReturn ONLY JSON array: [{"type":"good|warning|risk|info","text":"..."}]\nNo markdown, no preamble. Be specific with names and numbers.';
     try {
       var raw = await new Promise(function(resolve, reject) {
@@ -2880,7 +2923,7 @@
       if(e) e.innerHTML='<div class="ai-empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading...</p></div>';
     });
     ['aiTabKpiTeachers','aiTabKpiLearners','aiTabKpiOverloaded','aiTabKpiUnderload','aiTabKpiAvg'].forEach(function(id){
-      var e=document.getElementById(id); if(e) e.textContent='\u2014';
+      var e=document.getElementById(id); if(e) e.textContent='—';
     });
 
     // Use existing allTeacherDetailsCache immediately if populated
@@ -2920,7 +2963,7 @@
 
   /* ─── wire up ─── */
   document.addEventListener('DOMContentLoaded', function() {
-    // Tab click \u2014 load data on first open
+    // Tab click — load data on first open
     var tabBtn = document.getElementById('aiDashboardTabBtn');
     if (tabBtn) {
       tabBtn.addEventListener('click', function() {
@@ -2969,8 +3012,8 @@
   var loadChartInstance = null;
 
   /* ═══════════════════════════════════════════════════
-     DATA LOADING \u2014 real google.script.run calls
-     IMPORTANT: Never calls showLoading() \u2014 uses inline
+     DATA LOADING — real google.script.run calls
+     IMPORTANT: Never calls showLoading() — uses inline
      states only so the page never goes blank
   ═══════════════════════════════════════════════════ */
   function loadAllData(forceRefresh, onComplete) {
@@ -2994,7 +3037,7 @@
       return;
     }
 
-    // Show inline spinner only inside the cards \u2014 NOT showLoading()
+    // Show inline spinner only inside the cards — NOT showLoading()
     showInlineLoading();
 
     var pending = 3;
@@ -3006,7 +3049,7 @@
       }
     }
 
-    // 1. Teacher details (slow \u2014 HubSpot calls)
+    // 1. Teacher details (slow — HubSpot calls)
     google.script.run
       .withSuccessHandler(function(data) {
         _cache.teachers = (data || []).filter(function(t) { return t.name && t.name.trim(); });
@@ -3085,7 +3128,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     INLINE LOADING \u2014 never touches showLoading modal
+     INLINE LOADING — never touches showLoading modal
   ═══════════════════════════════════════════════════ */
   function showInlineLoading() {
     var spinner = '<div class="ai-empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading live data from HubSpot...</p></div>';
@@ -3126,7 +3169,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     HEALTH LIST \u2014 with escalation badges & migration flow
+     HEALTH LIST — with escalation badges & migration flow
   ═══════════════════════════════════════════════════ */
   function renderHealthList(teachers, filter) {
     var list  = document.getElementById('aiHealthList');
@@ -3170,7 +3213,7 @@
         + '<div class="ai-health-avatar">'+getInitials(r.t.name)+'</div>'
         + '<div style="flex:1;min-width:0;">'
         +   '<div class="ai-health-name" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">'+r.t.name+esc+tags+migNote+'</div>'
-        +   '<div class="ai-health-learners">'+r.load+' learners · last: '+(r.t.lastActivity||'\u2014')+'</div>'
+        +   '<div class="ai-health-learners">'+r.load+' learners · last: '+(r.t.lastActivity||'—')+'</div>'
         + '</div>'
         + '<div class="ai-health-bar-wrap"><div class="ai-health-bar '+c.bar+'" style="width:'+r.h+'%"></div></div>'
         + '<div class="ai-health-score '+c.text+'">'+r.h+'</div>'
@@ -3179,7 +3222,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     LOAD TABLE \u2014 compact ranked list, no chart
+     LOAD TABLE — compact ranked list, no chart
   ═══════════════════════════════════════════════════ */
   function renderLoadChart(teachers) { renderLoadTable(teachers); }  // alias
 
@@ -3236,7 +3279,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     RECOMMENDATIONS \u2014 data-driven, not generic
+     RECOMMENDATIONS — data-driven, not generic
   ═══════════════════════════════════════════════════ */
   function renderRecommendations(teachers) {
     var list = document.getElementById('aiRecoList');
@@ -3293,7 +3336,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     AI INSIGHTS \u2014 calls Anthropic API with REAL data
+     AI INSIGHTS — calls Anthropic API with REAL data
   ═══════════════════════════════════════════════════ */
   async function generateInsights(teachers) {
     var out = document.getElementById('aiInsightsOutput');
@@ -3321,9 +3364,9 @@
       + '- Active teachers: '+active.length+'\n'
       + '- Total active learners: '+totalL+'\n'
       + '- Average load: '+avg+' learners/teacher\n'
-      + '- Overloaded (>20): '+overloaded.length+' \u2014 '+top5Over+'\n'
-      + '- Underutilised (<5): '+underload.length+' \u2014 '+top5Under+'\n'
-      + '- Escalations (90d): '+escalated.length+' \u2014 '+escList
+      + '- Overloaded (>20): '+overloaded.length+' — '+top5Over+'\n'
+      + '- Underutilised (<5): '+underload.length+' — '+top5Under+'\n'
+      + '- Escalations (90d): '+escalated.length+' — '+escList
       + migSummary+'\n\n'
       + 'Return ONLY a JSON array of 6 objects: [{"type":"good|warning|risk|info","text":"..."}]\n'
       + 'No markdown, no preamble. Be specific with names and numbers from the data.';
@@ -3362,7 +3405,7 @@
   }
 
   /* ═══════════════════════════════════════════════════
-     WIRE UP EVENTS \u2014 standalone page removed, tab version handles all events
+     WIRE UP EVENTS — standalone page removed, tab version handles all events
   ═══════════════════════════════════════════════════ */
   /* expose cache globally so the Teacher Intelligence tab can share it */
   window._aiDashCache = _cache;
