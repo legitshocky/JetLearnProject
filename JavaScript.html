@@ -792,17 +792,20 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
 
     function loadDashboardData() {
     showLoading('Loading Command Center...');
-    // This single call will now fetch all data for the new dashboard sections
+    // Primary dashboard data — KPIs, briefing, action cards
     google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(e => { hideLoading(); showError(e); }).getNewDashboardData();
-    
-    // These can run in parallel to populate their specific sections
-    google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(showError).getTeacherDetailsForTable();
+
+    // Migration reasons bar chart for this calendar month
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(showError).getEnhancedMigrationReport({
       startDate: monthStart.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     });
+    // Teacher details are expensive (HubSpot per-teacher calls) — load lazily after main data
+    setTimeout(function() {
+      google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function() {}).getTeacherDetailsForTable();
+    }, 4000);
     // This call now specifically updates the "Recent Activities" section
     google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(showError).getDashboardStatistics();
 }
@@ -2594,7 +2597,7 @@ tr.innerHTML = `
             // Populate learner context panel
             document.getElementById('pcLearnerName').textContent    = data.learnerName    || '—';
             document.getElementById('pcJlid').textContent           = data.jlid           || jlid;
-            document.getElementById('pcCurrentTeacher').textContent = data.currentTeacher || '—';
+            document.getElementById('pcCurrentTeacher').value = data.currentTeacher || '';
             document.getElementById('pcCurrentCourse').textContent  = data.course         || '—';
             document.getElementById('pcLearnerAge').textContent     = data.age            || '—';
             ctxPanel.style.display = 'block';
@@ -2617,7 +2620,7 @@ tr.innerHTML = `
         clearBtn.style.display = 'none';
         document.getElementById('pcLearnerName').textContent    = '—';
         document.getElementById('pcJlid').textContent           = '—';
-        document.getElementById('pcCurrentTeacher').textContent = '—';
+        document.getElementById('pcCurrentTeacher').value = '';
         document.getElementById('pcCurrentCourse').textContent  = '—';
         document.getElementById('pcLearnerAge').textContent     = '—';
         document.getElementById('pcAuditBadge').style.display   = 'none';
