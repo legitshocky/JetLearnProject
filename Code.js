@@ -6,7 +6,8 @@
 // =============================================
 const CONFIG = {
   MIGRATION_SHEET_ID: '1xzprj2U6NpJwoevBMvM1DVfIj76wVjAd0ZcMjVC1xMM',
-  PERSONA_SHEET_ID: '1rSweVyLKEwb1xThFHMLoH4xWnrLs8wbRM_61VtRjGww', 
+  PERSONA_SHEET_ID: '1rSweVyLKEwb1xThFHMLoH4xWnrLs8wbRM_61VtRjGww',
+  AUDIT_SHEET_ID:   '1iNrejNX3HA01UqYEch94HuKLQCffSPofB8KbD4D9sI4',
   DRIVE_FOLDER_ID: '1K-Zb9BO2dm_dPg2AWTDT5t-ghkPoRNSW', 
   HUBSPOT_API_KEY: 'pat-na1-840cfb1a-acb3-45d6-8b0d-31f8c3f7cb34', 
   CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com',

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "clasp push (deploy once)",
+      "runtimeExecutable": "clasp",
+      "runtimeArgs": ["push"],
+      "port": null
+    },
+    {
+      "name": "clasp push --watch (auto-deploy on save)",
+      "runtimeExecutable": "clasp",
+      "runtimeArgs": ["push", "--watch"],
+      "port": null
+    }
+  ]
+}

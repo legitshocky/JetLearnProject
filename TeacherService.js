@@ -117,13 +117,15 @@ function getTeacherDetailsForTable() {
         const pNameCol    = pHeaderMap['Teacher Name'];
         const pManagerCol = pHeaderMap['Manager'];
         const pClsCol     = pHeaderMap['CLS Manager'];
+        const pHiddenCol  = pHeaderMap['Hidden In Search'];
         if (pNameCol !== undefined) {
           for (let r = 2; r < personaData.length; r++) {
             const pName = String(personaData[r][pNameCol] || '').trim();
             if (pName) {
               personaManagerMap[pName.toLowerCase()] = {
-                tpManager:  pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '',
-                clsManager: pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : ''
+                tpManager:      pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '',
+                clsManager:     pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : '',
+                hiddenInSearch: pHiddenCol  !== undefined ? String(personaData[r][pHiddenCol]  || '').trim() : ''
               };
             }
           }
@@ -165,9 +167,10 @@ function getTeacherDetailsForTable() {
 
         // Use live HubSpot data \u2014 but only for active/EWS teachers.
         // Attrited/On Leave teachers may still appear in old HubSpot deals; zero them out.
-        activeCourses: (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.total  : 0),
-        activeCoding:  (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.coding : 0),
-        activeMath:    (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.math   : 0),
+        activeCourses:  (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.total  : 0),
+        activeCoding:   (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.coding : 0),
+        activeMath:     (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.math   : 0),
+        hiddenInSearch: personaEntry.hiddenInSearch || '',
 
         // Get last activity from the audit log
         lastActivity:  getTeacherLastActivity(teacherName)
@@ -693,6 +696,15 @@ function searchMatchingTeachers(requestData) {
     const requestedSlot = requestData.requestedSlot;
     const currentCourse = requestData.currentCourse;
 
+    // Load audit scores (last 45 days) and availability map
+    var auditScoreMap = {};
+    try { auditScoreMap = _buildAuditScoreMapDays(45); } catch(ae) { Logger.log('[searchMatchingTeachers] Audit map error: ' + ae.message); }
+    Logger.log('[searchMatchingTeachers] Audit map: ' + Object.keys(auditScoreMap).length + ' teachers');
+
+    var availabilityMap = {};
+    try { availabilityMap = _getTeacherAvailabilityMap(requestedDate); } catch(ave) { Logger.log('[searchMatchingTeachers] Avail map error: ' + ave.message); }
+    Logger.log('[searchMatchingTeachers] Availability map: ' + Object.keys(availabilityMap).length + ' teachers');
+
     const futureCourses = [
       requestData.futureCourse1,
       requestData.futureCourse2,
@@ -759,48 +771,56 @@ function searchMatchingTeachers(requestData) {
       const traitMatchesCount = targetTraits.length - traitMissing.length;
       const ageOrYearMatch = isMathCourse ? String(row[ageOrYearCol_Math] || 'N/A').trim() : String(row[ageOrYearCol_Tech] || 'N/A').trim();
       
+      // Slot matching: primary = availability map from Migration Teacher tab in audit sheet
+      const teacherNormKey = normalizeTeacherName(teacherName);
+      const availableSlots = availabilityMap[teacherNormKey] || availabilityMap[normalizeTeacherName(resolveTeacherName(teacherName))] || null;
       let slotMatch = '\u274C';
       let alternateSlots = [];
-      const slotHeaderKey = Object.keys(headerMap).find(h => {
-        try {
-          return !isNaN(new Date(h).getTime()) && new Date(h).toISOString().split('T')[0] === requestedDateStr;
-        } catch (e) { return false; }
-      });
-      const availability = slotHeaderKey ? String(row[headerMap[slotHeaderKey]] || '').trim() : "Date Column Not Found";
-      if (availability.includes(requestedSlot)) slotMatch = '\u2714\uFE0F';
-
-      const formatDateForAltSlot = date => date.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
-      for (let d = 0; d < 3; d++) {
-        const thisDate = new Date(requestedDateObj);
-        thisDate.setDate(requestedDateObj.getDate() + d);
-        const formattedDateForHeader = thisDate.toISOString().split('T')[0];
-        const currentDayHeaderKey = Object.keys(headerMap).find(h => {
-          try {
-            return !isNaN(new Date(h).getTime()) && new Date(h).toISOString().split('T')[0] === formattedDateForHeader;
-          } catch (e) { return false; }
+      if (availableSlots !== null) {
+        if (availableSlots.some(s => s === requestedSlot)) slotMatch = '\u2714\uFE0F';
+        alternateSlots = availableSlots; // all available slots for that day
+      } else {
+        // Fallback: date columns in persona sheet
+        const slotHeaderKey = Object.keys(headerMap).find(h => {
+          try { return !isNaN(new Date(h).getTime()) && new Date(h).toISOString().split('T')[0] === requestedDateStr; }
+          catch (e) { return false; }
         });
-        if (currentDayHeaderKey !== undefined) {
-          const slotVal = String(row[headerMap[currentDayHeaderKey]] || '').trim();
-          if (slotVal && !["No Slots", "No Slots Available"].includes(slotVal)) {
-            const slotList = slotVal.split(',').map(s => s.trim()).filter(Boolean);
-            if (slotList.length > 0) alternateSlots.push(`${formatDateForAltSlot(thisDate)}: ${slotList.join(', ')}`);
-          }
+        const avail = slotHeaderKey ? String(row[headerMap[slotHeaderKey]] || '').trim() : '';
+        if (avail && avail.includes(requestedSlot)) slotMatch = '\u2714\uFE0F';
+        if (avail && avail !== 'No Slots' && avail !== 'No Slots Available') {
+          alternateSlots = avail.split(',').map(s => s.trim()).filter(Boolean);
         }
       }
-      
+
+      // Audit score — last 45 days of audit data. Class score /80 → 0-20 pts. Red flags lower rank.
+      const auditEntry    = auditScoreMap[teacherNormKey] || auditScoreMap[normalizeTeacherName(resolveTeacherName(teacherName))] || null;
+      const avgClassScore = auditEntry ? auditEntry.avgScore    : null;
+      const redFlagCount  = auditEntry ? (auditEntry.redFlags   || 0) : 0;
+      const auditCount45  = auditEntry ? (auditEntry.auditCount || 0) : 0;
+      const auditBonus    = avgClassScore != null ? Math.round((avgClassScore / 80) * 20) : 10;
+      const auditPenalty  = Math.min(redFlagCount * 3, 15);
+      const auditScore    = Math.max(0, auditBonus - auditPenalty);
+      const auditGrade    = avgClassScore == null ? '-' : avgClassScore >= 65 ? 'A' : avgClassScore >= 50 ? 'B' : avgClassScore >= 35 ? 'C' : 'D';
+
+      // Combined ranking score: slot match (40) + audit (20) + course progress (20) + traits (20)
+      const slotPoints  = slotMatch === '\u2714\uFE0F' ? 40 : 0;
+      const coursePoints = Math.max(0, 20 - progressOrder.indexOf(currentCourseProgress));
+      const traitPoints  = targetTraits && targetTraits.length > 0 ? Math.round((traitMatchesCount / targetTraits.length) * 20) : 10;
+      const rankScore    = slotPoints + auditScore + coursePoints + traitPoints;
+
       output.push({
-        teacherName, ageYear: ageOrYearMatch, slotMatch, alternateSlots: alternateSlots.join('<br>'),
+        teacherName, ageYear: ageOrYearMatch, slotMatch,
+        alternateSlots: alternateSlots.join(', '),
         currentCourseProgress, futureCourse1Progress: futureCourseStatuses[0] || 'N/A',
         futureCourse2Progress: futureCourseStatuses[1] || 'N/A', futureCourse3Progress: futureCourseStatuses[2] || 'N/A',
-        traitsMissing, _traitMatchesCount: traitMatchesCount, _currentCourseProgressOrder: progressOrder.indexOf(currentCourseProgress)
+        traitsMissing,
+        avgClassScore: avgClassScore != null ? avgClassScore + '/80' : 'No data',
+        auditGrade, redFlagCount, auditCount45,
+        _rankScore: rankScore, _traitMatchesCount: traitMatchesCount, _currentCourseProgressOrder: progressOrder.indexOf(currentCourseProgress)
       });
     }
 
-    output.sort((a, b) => {
-      if (a.slotMatch !== b.slotMatch) return a.slotMatch === '\u2714\uFE0F' ? -1 : 1;
-      if (a._currentCourseProgressOrder !== b._currentCourseProgressOrder) return a._currentCourseProgressOrder - b._currentCourseProgressOrder;
-      return b._traitMatchesCount - a._traitMatchesCount;
-    });
+    output.sort((a, b) => b._rankScore - a._rankScore);
 
     Logger.log('Found ' + output.length + ' matching teachers');
     return { success: true, results: output };
@@ -1088,10 +1108,21 @@ function findSimilarTeachers(targetTeacherName) {
     var escalationMap = getEscalatedTeachersLast90Days();
     Logger.log('[findSimilarTeachers] Escalation map loaded: ' + JSON.stringify(escalationMap));
 
+    // Build audit score map once for all candidates
+    var auditMap = {};
+    try { auditMap = _buildAuditScoreMap(); } catch(ae) { Logger.log('[findSimilarTeachers] Audit map error: ' + ae.message); }
+    Logger.log('[findSimilarTeachers] Audit map loaded for ' + Object.keys(auditMap).length + ' teachers.');
+
+    // Detect Hidden In Search column index
+    var hiddenIdx = headers.indexOf('Hidden In Search');
+
     // \u2500\u2500 6. Score all candidates \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var candidates = personaData.slice(1).filter(function(r) {
       var rawName = String(r[nameIdx] || '').trim();
-      return rawName && normalizeTeacherName(rawName) !== normalizeTeacherName(resolvedTarget);
+      if (!rawName || normalizeTeacherName(rawName) === normalizeTeacherName(resolvedTarget)) return false;
+      // Exclude teachers hidden from search results
+      if (hiddenIdx > -1 && String(r[hiddenIdx] || '').trim().toLowerCase() === 'yes') return false;
+      return true;
     });
 
     Logger.log('[findSimilarTeachers] Scoring ' + candidates.length + ' candidates');
@@ -1149,7 +1180,17 @@ function findSimilarTeachers(targetTeacherName) {
       }
 
       var escalationScore = Math.max(0, 20 - (escalations * 4));
-      var totalScore      = traitScore + ageScore + courseScore + escalationScore;
+
+      // Audit score: class score out of 80 → 0-20pts. Red flags lower rank (not disqualify).
+      var auditKey      = normalizeTeacherName(name);
+      var auditData     = auditMap[auditKey] || auditMap[normalizeTeacherName(rawName)] || null;
+      var auditBonus    = auditData && auditData.avgScore != null ? Math.round((auditData.avgScore / 80) * 20) : 10;
+      var redFlagPenalty = auditData ? Math.min(auditData.redFlags * 3, 15) : 0;
+      var auditScore    = Math.max(0, auditBonus - redFlagPenalty);
+      var avgClassScore = auditData ? auditData.avgScore : null;
+      var redFlagCount  = auditData ? auditData.redFlags : 0;
+
+      var totalScore    = traitScore + ageScore + courseScore + escalationScore + auditScore;
 
       var escalationRisk, escalationColor;
       if      (escalations === 0) { escalationRisk = 'No Escalations';              escalationColor = '#15803d'; }
@@ -1182,6 +1223,9 @@ function findSimilarTeachers(targetTeacherName) {
         escalations:     escalations,
         escalationRisk:  escalationRisk,
         escalationColor: escalationColor,
+        auditScore:    auditScore,
+        avgClassScore: avgClassScore,
+        redFlagCount:  redFlagCount,
         stability: {
           total: escalations,
           risk:  escalations >= 5 ? 'High' : escalations >= 3 ? 'Medium' : 'Stable'
@@ -1429,4 +1473,253 @@ function getTeacherProfileData(teacherName) {
     Logger.log('[getTeacherProfileData] Error: ' + e.message);
     return { success: false, message: e.message };
   }
+}
+
+
+// ── Audit Intelligence ────────────────────────────────────────────────────────
+
+/**
+ * Reads all 4 audit tabs from the audit spreadsheet and returns averaged
+ * class score and red-flag count for the given teacher.
+ * Class Score is out of 80 (already weighted on the sheet).
+ * Red flags lower rank but do NOT disqualify.
+ */
+function getTeacherAuditData(teacherName) {
+  try {
+    var normalized = normalizeTeacherName(teacherName);
+    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var auditTabs = ["Coding Audit'26", "Math Audit'26", "GCSE Audit'26"];
+    var scores = [], redFlagTotal = 0, auditRows = [];
+
+    auditTabs.forEach(function(tabName) {
+      var sheet = ss.getSheetByName(tabName);
+      if (!sheet) return;
+      var data = sheet.getDataRange().getValues();
+      if (data.length < 2) return;
+      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var teacherIdx = headers.indexOf('Teacher');
+      var scoreIdx   = headers.indexOf('Class Score');
+      var rfIdx      = headers.indexOf('Red Flags');
+      if (teacherIdx === -1 || scoreIdx === -1) return;
+
+      for (var i = 1; i < data.length; i++) {
+        var rowTeacher = normalizeTeacherName(String(data[i][teacherIdx] || ''));
+        if (!rowTeacher || rowTeacher !== normalized) continue;
+        var score = parseFloat(data[i][scoreIdx]) || 0;
+        if (score > 0) scores.push(score);
+        if (rfIdx > -1) {
+          var rf = String(data[i][rfIdx] || '').trim();
+          if (rf && rf.toLowerCase() !== '' && rf.toLowerCase() !== 'none' && rf.toLowerCase() !== 'no' && rf !== '-') {
+            redFlagTotal++;
+          }
+        }
+        auditRows.push({ tab: tabName, score: score, redFlags: rfIdx > -1 ? String(data[i][rfIdx] || '').trim() : '' });
+      }
+    });
+
+    var avgScore = scores.length > 0
+      ? Math.round(scores.reduce(function(a, b) { return a + b; }, 0) / scores.length * 10) / 10
+      : null;
+
+    return {
+      success:    true,
+      hasData:    scores.length > 0,
+      avgScore:   avgScore,
+      redFlags:   redFlagTotal,
+      auditCount: auditRows.length,
+      auditRows:  auditRows
+    };
+  } catch (e) {
+    Logger.log('[getTeacherAuditData] Error for "' + teacherName + '": ' + e.message);
+    return { success: false, hasData: false, avgScore: null, redFlags: 0, auditCount: 0, auditRows: [] };
+  }
+}
+
+/**
+ * Builds a map of { normalizedTeacherName: { avgScore, redFlags } }
+ * by reading all 4 audit tabs once — used inside findSimilarTeachers.
+ */
+function _buildAuditScoreMap() {
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var auditTabs = ["Coding Audit'26", "Math Audit'26", "GCSE Audit'26"];
+
+    auditTabs.forEach(function(tabName) {
+      var sheet = ss.getSheetByName(tabName);
+      if (!sheet) return;
+      var data = sheet.getDataRange().getValues();
+      if (data.length < 2) return;
+      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var teacherIdx = headers.indexOf('Teacher');
+      var scoreIdx   = headers.indexOf('Class Score');
+      var rfIdx      = headers.indexOf('Red Flags');
+      if (teacherIdx === -1 || scoreIdx === -1) return;
+
+      for (var i = 1; i < data.length; i++) {
+        var rawTeacher = String(data[i][teacherIdx] || '').trim();
+        if (!rawTeacher) continue;
+        var key   = normalizeTeacherName(rawTeacher);
+        var score = parseFloat(data[i][scoreIdx]) || 0;
+        if (score <= 0) continue;
+        if (!map[key]) map[key] = { scores: [], redFlags: 0 };
+        map[key].scores.push(score);
+        if (rfIdx > -1) {
+          var rf = String(data[i][rfIdx] || '').trim();
+          if (rf && rf.toLowerCase() !== 'none' && rf.toLowerCase() !== 'no' && rf !== '-' && rf !== '') {
+            map[key].redFlags++;
+          }
+        }
+      }
+    });
+
+    // Collapse scores array to avgScore
+    Object.keys(map).forEach(function(k) {
+      var s = map[k].scores;
+      map[k].avgScore = s.length > 0
+        ? Math.round(s.reduce(function(a, b) { return a + b; }, 0) / s.length * 10) / 10
+        : null;
+      delete map[k].scores;
+    });
+  } catch (e) {
+    Logger.log('[_buildAuditScoreMap] Error: ' + e.message);
+  }
+  return map;
+}
+
+/**
+ * Toggle teacher visibility in search results.
+ * Stores "Hidden In Search" = "Yes" (or blank) in the Persona sheet.
+ */
+function setTeacherVisibility(teacherName, isHidden) {
+  return updateTeacherPersona({
+    'Teacher Name':     teacherName,
+    'Hidden In Search': isHidden ? 'Yes' : ''
+  });
+}
+
+/**
+ * Reads the "Migration Teacher" tab from AUDIT_SHEET_ID.
+ * Returns a map: { normalizedTeacherName: [available time slot strings] }
+ * for the specific requested date column.
+ * Date columns are formatted like "Fri, 3-Apr-26", "Sat, 4-Apr-26".
+ */
+function _getTeacherAvailabilityMap(requestedDateStr) {
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var sheet = ss.getSheetByName('Migration Teacher');
+    if (!sheet) {
+      Logger.log('[_getTeacherAvailabilityMap] Migration Teacher tab not found in audit sheet');
+      return map;
+    }
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return map;
+
+    var headers = data[0].map(function(h) { return String(h).trim(); });
+    var teacherIdx = 0; // Column A = Teacher
+
+    // Find the column matching requestedDateStr (ISO format yyyy-MM-dd)
+    var requestedDate = new Date(requestedDateStr);
+    var targetColIdx = -1;
+    for (var ci = 0; ci < headers.length; ci++) {
+      var h = headers[ci];
+      if (!h || h === 'Teacher' || h === 'Calendar ID') continue;
+      try {
+        // Headers are like "Fri, 3-Apr-26" — try parsing
+        var parsed = new Date(h);
+        if (!isNaN(parsed.getTime())) {
+          var parsedISO = Utilities.formatDate(parsed, 'UTC', 'yyyy-MM-dd');
+          if (parsedISO === requestedDateStr) { targetColIdx = ci; break; }
+        }
+      } catch(e) {}
+    }
+
+    Logger.log('[_getTeacherAvailabilityMap] Date col for ' + requestedDateStr + ': ' + targetColIdx + ' (' + (targetColIdx > -1 ? headers[targetColIdx] : 'not found') + ')');
+
+    for (var ri = 1; ri < data.length; ri++) {
+      var teacherName = String(data[ri][teacherIdx] || '').trim();
+      if (!teacherName) continue;
+      var key = normalizeTeacherName(teacherName);
+      var slots = [];
+      if (targetColIdx > -1) {
+        var cell = String(data[ri][targetColIdx] || '').trim();
+        if (cell && cell !== 'No Slots' && cell !== 'No Slots Available') {
+          slots = cell.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        }
+      }
+      map[key] = slots;
+    }
+  } catch (e) {
+    Logger.log('[_getTeacherAvailabilityMap] Error: ' + e.message);
+  }
+  return map;
+}
+
+/**
+ * Builds audit score map using only rows within the last N days.
+ * Uses date column (searches for "Date", "Audit Date", "Class Date" header).
+ * Falls back to all rows if no date column found.
+ */
+function _buildAuditScoreMapDays(days) {
+  var map = {};
+  var cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var auditTabs = ["Coding Audit'26", "Math Audit'26", "GCSE Audit'26"];
+
+    auditTabs.forEach(function(tabName) {
+      var sheet = ss.getSheetByName(tabName);
+      if (!sheet) return;
+      var data = sheet.getDataRange().getValues();
+      if (data.length < 2) return;
+      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var teacherIdx = headers.indexOf('Teacher');
+      var scoreIdx   = headers.indexOf('Class Score');
+      var rfIdx      = headers.indexOf('Red Flags');
+      // Find date column
+      var dateIdx = -1;
+      ['Date', 'Audit Date', 'Class Date', 'Session Date', 'Observation Date'].forEach(function(n) {
+        if (dateIdx === -1 && headers.indexOf(n) > -1) dateIdx = headers.indexOf(n);
+      });
+      if (teacherIdx === -1 || scoreIdx === -1) return;
+
+      for (var i = 1; i < data.length; i++) {
+        // Date filter
+        if (dateIdx > -1) {
+          var rowDate = data[i][dateIdx];
+          if (rowDate) {
+            var d = new Date(rowDate);
+            if (!isNaN(d.getTime()) && d < cutoff) continue;
+          }
+        }
+        var rawTeacher = String(data[i][teacherIdx] || '').trim();
+        if (!rawTeacher) continue;
+        var key   = normalizeTeacherName(rawTeacher);
+        var score = parseFloat(data[i][scoreIdx]) || 0;
+        if (score <= 0) continue;
+        if (!map[key]) map[key] = { scores: [], redFlags: 0 };
+        map[key].scores.push(score);
+        if (rfIdx > -1) {
+          var rf = String(data[i][rfIdx] || '').trim();
+          if (rf && rf.toLowerCase() !== 'none' && rf.toLowerCase() !== 'no' && rf !== '-' && rf !== '') {
+            map[key].redFlags++;
+          }
+        }
+      }
+    });
+
+    Object.keys(map).forEach(function(k) {
+      var s = map[k].scores;
+      map[k].avgScore = s.length > 0
+        ? Math.round(s.reduce(function(a, b) { return a + b; }, 0) / s.length * 10) / 10
+        : null;
+      map[k].auditCount = s.length;
+      delete map[k].scores;
+    });
+  } catch (e) {
+    Logger.log('[_buildAuditScoreMapDays] Error: ' + e.message);
+  }
+  return map;
 }

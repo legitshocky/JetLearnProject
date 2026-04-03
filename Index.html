@@ -1714,31 +1714,175 @@
         </div>
       </div>
 
-  <!-- Teacher Persona Tool Page -->
-      <div id="personaPage" class="page-content" style="display: none;">
-        <div class="header"><h1 class="page-title">Teacher Persona Tool</h1><div class="header-actions"><button class="btn btn-primary" id="refreshPersona"><i class="fas fa-sync-alt"></i> Refresh</button></div></div>
-        <div class="form-container">
-          <h2 class="form-title">Find Matching Teachers</h2>
-          <form id="personaForm">
-            <div class="form-grid">
-              <div class="form-group"><label for="requestedDate" class="form-label">Requested Date</label><input type="date" id="requestedDate" class="form-control" required></div>
-              <div class="form-group"><label for="requestedSlot" class="form-label">Requested Time Slot (CET)</label><select id="requestedSlot" class="form-control form-select" required><option value="" disabled selected>Select time slot</option></select></div>
-              <div class="form-group"><label for="currentCourse" class="form-label">Course to be migrated on</label><select id="currentCourse" class="form-control form-select" required><option value="" disabled selected>Select course</option></select></div>
-              <div class="form-group"><label for="learnerAge" class="form-label">Learner's Age</label><input type="text" id="learnerAge" class="form-control" placeholder="e.g., 10-12"></div>
-              <div class="form-group"><label for="futureCourse1" class="form-label">Future Course 1</label><select id="futureCourse1" class="form-control form-select"><option value="" selected>None</option></select></div>
-              <div class="form-group"><label for="futureCourse2" class="form-label">Future Course 2</label><select id="futureCourse2" class="form-control form-select"><option value="" selected>None</option></select></div>
-              <div class="form-group"><label for="futureCourse3" class="form-label">Future Course 3</label><select id="futureCourse3" class="form-control form-select"><option value="" selected>None</option></select></div>
-              <div class="form-group full-width"><label for="mathTraits" class="form-label">Math Traits (comma-separated)</label><input type="text" id="mathTraits" class="form-control" placeholder="e.g., Logical Thinking, Problem Solving"></div>
-              <div class="form-group full-width"><label for="techTraits" class="form-label">Tech Traits (comma-separated)</label><input type="text" id="techTraits" class="form-control" placeholder="e.g., Python, AI, Web Development"></div>
-            </div>
-            <div class="form-actions"><button type="button" class="btn btn-outline" id="cancelPersona">Cancel</button><button type="submit" class="btn btn-primary" id="submitPersona"><i class="fas fa-search"></i> Search</button></div>
-          </form>
-        </div>
-        <div class="audit-log-container" id="personaResultsContainer" style="display: none; margin-top: 2rem;">
-          <div class="audit-header"><h2 class="chart-title">Matching Teachers</h2><div class="pagination-info" id="personaResultsCount">0 matches found</div></div>
-          <div class="table-container"><table class="audit-table persona-results-table"><thead><tr><th>Teacher</th><th>Age/Year</th><th>Slot Match</th><th>Alternate Slots</th><th id="currentCourseHeader">Current Course</th><th>Future Course 1</th><th>Future Course 2</th><th>Future Course 3</th><th>Traits Missing</th></tr></thead><tbody id="personaResultsBody"></tbody></table></div>
+  <!-- Teacher Intelligence Center -->
+  <div id="personaPage" class="page-content" style="display:none;">
+
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1 class="page-title">Teacher Intelligence Center</h1>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">AI-powered teacher recommendations · Audit ranking · Availability matching</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" id="refreshPersona"><i class="fas fa-sync-alt"></i> Refresh</button>
+      </div>
+    </div>
+
+    <!-- Section 1: Learner Context via JLID -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:1.25rem 1.5rem;margin-bottom:1.25rem;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+        <i class="fas fa-user-graduate" style="color:var(--primary);font-size:1rem;"></i>
+        <span style="font-weight:600;font-size:0.95rem;color:#1e293b;">Learner Context</span>
+        <span style="font-size:0.75rem;color:var(--text-muted);margin-left:4px;">Optional — fetch JLID to pre-fill course &amp; teacher info</span>
+      </div>
+      <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="personaJlidInput" class="form-control" placeholder="Enter JLID (e.g. JL1234)" style="max-width:220px;">
+        <button class="btn btn-outline btn-sm" id="personaFetchBtn" type="button">
+          <i class="fas fa-download"></i> Fetch Learner
+        </button>
+        <button class="btn btn-sm" id="personaClearBtn" type="button" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;display:none;">
+          <i class="fas fa-times"></i> Clear
+        </button>
+      </div>
+
+      <!-- Learner context card (shown after fetch) -->
+      <div id="personaLearnerContext" style="display:none;margin-top:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.9rem 1.1rem;">
+        <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:flex-start;">
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Learner</div>
+            <div style="font-weight:700;color:#1e293b;" id="pcLearnerName">—</div>
+            <div style="font-size:0.78rem;color:#64748b;" id="pcJlid">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Current Teacher</div>
+            <div style="font-weight:600;color:#1e293b;" id="pcCurrentTeacher">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Current Course</div>
+            <div style="font-weight:600;color:#1e293b;" id="pcCurrentCourse">—</div>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Learner Age</div>
+            <div style="font-weight:600;color:#1e293b;" id="pcLearnerAge">—</div>
+          </div>
+          <div id="pcAuditBadge" style="display:none;margin-left:auto;">
+            <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">Current Teacher Audit</div>
+            <div id="pcAuditContent" style="font-size:0.9rem;font-weight:700;"></div>
+          </div>
         </div>
       </div>
+    </div>
+
+    <!-- Section 2: Filters + Search -->
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:1.25rem 1.5rem;margin-bottom:1.25rem;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+        <i class="fas fa-sliders-h" style="color:var(--primary);font-size:1rem;"></i>
+        <span style="font-weight:600;font-size:0.95rem;color:#1e293b;">Search Filters</span>
+      </div>
+      <form id="personaForm">
+        <!-- Row 1: Date + Slot + Course + Age -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:1rem;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="requestedDate">Requested Date</label>
+            <input type="date" id="requestedDate" class="form-control" required>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="requestedSlot">Time Slot (CET)</label>
+            <select id="requestedSlot" class="form-control form-select" required>
+              <option value="" disabled selected>Select slot</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="currentCourse">Course to migrate</label>
+            <select id="currentCourse" class="form-control form-select" required>
+              <option value="" disabled selected>Select course</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="learnerAge">Learner's Age</label>
+            <input type="text" id="learnerAge" class="form-control" placeholder="e.g., 10-12">
+          </div>
+        </div>
+
+        <!-- Row 2: Future courses -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="futureCourse1">Future Course 1</label>
+            <select id="futureCourse1" class="form-control form-select"><option value="" selected>None</option></select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="futureCourse2">Future Course 2</label>
+            <select id="futureCourse2" class="form-control form-select"><option value="" selected>None</option></select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" for="futureCourse3">Future Course 3</label>
+            <select id="futureCourse3" class="form-control form-select"><option value="" selected>None</option></select>
+          </div>
+        </div>
+
+        <!-- Hidden trait inputs kept for backend compatibility -->
+        <input type="hidden" id="mathTraits" value="">
+        <input type="hidden" id="techTraits" value="">
+
+        <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+          <button type="button" class="btn btn-outline" id="cancelPersona">
+            <i class="fas fa-times"></i> Clear
+          </button>
+          <button type="submit" class="btn btn-primary" id="submitPersona">
+            <i class="fas fa-robot"></i> Find Best Match
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Section 3: Results -->
+    <div id="personaResultsContainer" style="display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <i class="fas fa-list-ol" style="color:var(--primary);"></i>
+          <span style="font-weight:700;font-size:1rem;color:#1e293b;">AI Ranked Recommendations</span>
+          <span id="personaResultsCount" style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;padding:2px 10px;border-radius:10px;font-weight:600;">0 matches</span>
+        </div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">
+          Ranked by: Slot availability · Audit score (45d) · Course readiness · Trait match
+        </div>
+      </div>
+
+      <!-- Ranking legend -->
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;font-size:0.74rem;color:#64748b;">
+        <span><span style="color:#15803d;font-weight:700;">A</span> ≥65/80 &nbsp;
+              <span style="color:#1d4ed8;font-weight:700;">B</span> 50–64 &nbsp;
+              <span style="color:#d97706;font-weight:700;">C</span> 35–49 &nbsp;
+              <span style="color:#b91c1c;font-weight:700;">D</span> &lt;35 &nbsp;
+              <span style="color:#6b7280;">—</span> No audit data (45d)
+        </span>
+        <span>⚑ = Red flag from audit</span>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table" style="font-size:0.83rem;">
+          <thead>
+            <tr>
+              <th style="width:28px;">#</th>
+              <th>Teacher</th>
+              <th>Age/Year</th>
+              <th>Slot</th>
+              <th>Available Slots (day)</th>
+              <th id="currentCourseHeader">Current Course</th>
+              <th>Future 1</th>
+              <th>Future 2</th>
+              <th>Future 3</th>
+              <th>Audit (45d)</th>
+              <th>Flags</th>
+              <th>Traits Gap</th>
+            </tr>
+          </thead>
+          <tbody id="personaResultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
       
       <!-- AI PM Page -->
       <?!= include('AI'); ?>
@@ -2115,10 +2259,11 @@
                 <strong>Traits (30pts)</strong> +
                 <strong>Age Group (20pts)</strong> +
                 <strong>Course Count (30pts)</strong> +
-                <strong>Stability (20pts)</strong>
+                <strong>Stability (20pts)</strong> +
+                <strong>Audit (20pts)</strong>
                 — re-ranked by AI for best fit
             </p>
- 
+
             <!-- Results table -->
             <div class="table-container">
                 <table class="data-table">
@@ -2129,6 +2274,7 @@
                             <th>Courses / Age Match</th>
                             <th>Upskilled</th>
                             <th>Escalations (All-time)</th>
+                            <th>Audit Score</th>
                             <th>Action</th>
                         </tr>
                     </thead>

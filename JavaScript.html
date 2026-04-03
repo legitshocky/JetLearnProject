@@ -2553,59 +2553,169 @@ tr.innerHTML = `
       }).withFailureHandler(showError).getSystemHealth();
     }
 
+    // ── Teacher Intelligence Center ───────────────────────────────────────────
+
     function loadPersonaTool() {
-      showLoading('Loading persona tool...');
       initDateInputs();
-      populateSelect(requestedSlotSelect, generateTimeSlotsForPersona(), false, "Select time slot");
-      google.script.run.withSuccessHandler(courses => {
+      populateSelect(requestedSlotSelect, generateTimeSlotsForPersona(), false, 'Select slot');
+      personaResultsContainer.style.display = 'none';
+      google.script.run
+        .withSuccessHandler(function(courses) {
           if (courses) {
-            populateSelect(currentCourseSelect, courses, false, "Select course");
+            populateSelect(currentCourseSelect, courses, false, 'Select course');
             populateSelect(futureCourse1Select, courses, true);
             populateSelect(futureCourse2Select, courses, true);
             populateSelect(futureCourse3Select, courses, true);
-          } else {
-            showToast('error', 'Data Error', 'Failed to load course names for Persona Tool.');
           }
-          hideLoading();
-      }).withFailureHandler(showError).getCourseNames();
-      personaResultsContainer.style.display = 'none';
+        })
+        .withFailureHandler(showError)
+        .getCourseNames();
     }
 
-    personaForm.addEventListener('submit', e => {
+    // JLID Fetch — pre-fill course, teacher, age from HubSpot
+    (function() {
+      const fetchBtn = document.getElementById('personaFetchBtn');
+      const clearBtn = document.getElementById('personaClearBtn');
+      const ctxPanel = document.getElementById('personaLearnerContext');
+
+      if (fetchBtn) fetchBtn.addEventListener('click', function() {
+        const jlid = document.getElementById('personaJlidInput').value.trim();
+        if (!jlid) { showToast('error', 'Input Required', 'Enter a JLID first.'); return; }
+        fetchBtn.disabled = true;
+        fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching…';
+        google.script.run
+          .withSuccessHandler(function(data) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = '<i class="fas fa-download"></i> Fetch Learner';
+            if (!data || data.error) {
+              showToast('error', 'Not Found', data ? data.error : 'No data returned.'); return;
+            }
+            // Populate learner context panel
+            document.getElementById('pcLearnerName').textContent  = data.learnerName   || '—';
+            document.getElementById('pcJlid').textContent         = data.jlid          || jlid;
+            document.getElementById('pcCurrentTeacher').textContent = data.currentTeacher || '—';
+            document.getElementById('pcCurrentCourse').textContent  = data.course        || '—';
+            document.getElementById('pcLearnerAge').textContent    = data.age            || '—';
+            ctxPanel.style.display = 'block';
+            clearBtn.style.display = 'inline-flex';
+            // Pre-fill filters
+            if (data.course)   setSelectValue(currentCourseSelect, data.course);
+            if (data.age)      document.getElementById('learnerAge').value = data.age;
+          })
+          .withFailureHandler(function(err) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = '<i class="fas fa-download"></i> Fetch Learner';
+            showError(err);
+          })
+          .fetchHubspotByJlid(jlid);
+      });
+
+      if (clearBtn) clearBtn.addEventListener('click', function() {
+        document.getElementById('personaJlidInput').value = '';
+        ctxPanel.style.display = 'none';
+        clearBtn.style.display = 'none';
+        document.getElementById('pcLearnerName').textContent    = '—';
+        document.getElementById('pcJlid').textContent           = '—';
+        document.getElementById('pcCurrentTeacher').textContent = '—';
+        document.getElementById('pcCurrentCourse').textContent  = '—';
+        document.getElementById('pcLearnerAge').textContent     = '—';
+        document.getElementById('pcAuditBadge').style.display   = 'none';
+      });
+    })();
+
+    // Search submit
+    personaForm.addEventListener('submit', function(e) {
       e.preventDefault();
       const data = {
-        requestedDate: document.getElementById('requestedDate').value,
-        requestedSlot: requestedSlotSelect.value,
-        currentCourse: currentCourseSelect.value,
-        learnerAge: document.getElementById('learnerAge').value.trim(),
-        mathTraits: document.getElementById('mathTraits').value.trim(),
-        techTraits: document.getElementById('techTraits').value.trim(),
-        futureCourse1: futureCourse1Select.value,
-        futureCourse2: futureCourse2Select.value,
-        futureCourse3: futureCourse3Select.value
+        requestedDate:  document.getElementById('requestedDate').value,
+        requestedSlot:  requestedSlotSelect.value,
+        currentCourse:  currentCourseSelect.value,
+        learnerAge:     document.getElementById('learnerAge').value.trim(),
+        mathTraits:     '',
+        techTraits:     '',
+        futureCourse1:  futureCourse1Select.value,
+        futureCourse2:  futureCourse2Select.value,
+        futureCourse3:  futureCourse3Select.value
       };
-      if (!data.requestedDate || !data.requestedSlot || !data.currentCourse) { showToast('error', 'Validation Error', 'Date, Time Slot, and Course are required.'); return; }
-      showLoading('Searching teachers...');
-      currentCourseHeader.textContent = `Current Course: ${data.currentCourse}`;
-      google.script.run.withSuccessHandler(updatePersonaResults).withFailureHandler(showError).searchMatchingTeachers(data);
+      if (!data.requestedDate || !data.requestedSlot || !data.currentCourse) {
+        showToast('error', 'Validation Error', 'Date, Time Slot, and Course are required.');
+        return;
+      }
+      showLoading('Finding best matches…');
+      const hdr = document.getElementById('currentCourseHeader');
+      if (hdr) hdr.textContent = data.currentCourse;
+      google.script.run
+        .withSuccessHandler(updatePersonaResults)
+        .withFailureHandler(function(err) { hideLoading(); showError(err); })
+        .searchMatchingTeachers(data);
     });
 
     function updatePersonaResults(result) {
       hideLoading();
-      if (!result || !result.success) { showToast('error', 'Search Failed', (result && result.message) ? result.message : 'Unknown error during search.'); return; }
-      personaResults = result.results;
-      personaResultsCount.textContent = `${personaResults.length} matches found`;
+      if (!result || !result.success) {
+        showToast('error', 'Search Failed', (result && result.message) ? result.message : 'Unknown error.');
+        return;
+      }
+      personaResults = result.results || [];
+      const count = personaResults.length;
+      const countEl = document.getElementById('personaResultsCount');
+      if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
       personaResultsBody.innerHTML = '';
-      if (personaResults.length === 0) {
-        personaResultsBody.innerHTML = '<tr><td colspan="9" style="text-align: center;">No matching teachers found.</td></tr>';
+
+      if (count === 0) {
+        personaResultsBody.innerHTML =
+          '<tr><td colspan="12" style="text-align:center;padding:2rem;color:var(--text-muted);">'
+          + 'No teachers match all criteria. Try a different date or course.</td></tr>';
       } else {
-        personaResults.forEach(teacher => {
+        personaResults.forEach(function(teacher, idx) {
+          const gradeColor = teacher.auditGrade === 'A' ? '#15803d'
+            : teacher.auditGrade === 'B' ? '#1d4ed8'
+            : teacher.auditGrade === 'C' ? '#d97706'
+            : teacher.auditGrade === 'D' ? '#b91c1c' : '#6b7280';
+
+          const auditHtml = teacher.avgClassScore && teacher.avgClassScore !== 'No data'
+            ? '<span style="font-weight:700;color:' + gradeColor + ';">' + escapeHtml(teacher.auditGrade) + '</span>'
+              + ' <span style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.avgClassScore) + '</span>'
+              + '<div style="font-size:0.65rem;color:#94a3b8;">' + (teacher.auditCount45 || 0) + ' sessions</div>'
+            : '<span style="color:#94a3b8;font-size:0.78rem;">No data</span>';
+
+          const rfHtml = (teacher.redFlagCount || 0) > 0
+            ? '<span style="color:#b91c1c;font-weight:600;">&#9872; ' + teacher.redFlagCount + '</span>'
+            : '<span style="color:#15803d;">—</span>';
+
+          const slotStyle = teacher.slotMatch === '\u2714\uFE0F'
+            ? 'font-size:1.1rem;' : 'font-size:1.1rem;opacity:0.4;';
+
+          const rankBadge = idx === 0
+            ? '<span style="font-size:0.65rem;background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:3px;margin-left:4px;">Top Pick</span>'
+            : '';
+
+          const progressStyle = function(v) {
+            if (!v || v === 'N/A' || v === 'Not Onboarded') return 'color:#94a3b8;';
+            const pct = parseInt(v);
+            return isNaN(pct) ? 'color:#94a3b8;' : pct >= 80 ? 'color:#15803d;font-weight:600;' : pct >= 50 ? 'color:#d97706;' : 'color:#b91c1c;';
+          };
+
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${teacher.teacherName}</td><td>${teacher.ageYear}</td><td>${teacher.slotMatch}</td><td>${teacher.alternateSlots}</td><td>${teacher.currentCourseProgress}</td><td>${teacher.futureCourse1Progress}</td><td>${teacher.futureCourse2Progress}</td><td>${teacher.futureCourse3Progress}</td><td>${teacher.traitsMissing.join(', ') || 'None'}</td>`;
+          tr.innerHTML =
+            '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
+            + '<td><strong>' + escapeHtml(teacher.teacherName) + '</strong>' + rankBadge + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.ageYear || '') + '</div></td>'
+            + '<td style="display:none;">' + escapeHtml(teacher.ageYear || '') + '</td>'
+            + '<td style="' + slotStyle + 'text-align:center;">' + teacher.slotMatch + '</td>'
+            + '<td style="font-size:0.75rem;color:#475569;max-width:140px;">' + escapeHtml(teacher.alternateSlots || 'No slots') + '</td>'
+            + '<td><span style="font-size:0.82rem;' + progressStyle(teacher.currentCourseProgress) + '">' + escapeHtml(teacher.currentCourseProgress || 'N/A') + '</span></td>'
+            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse1Progress) + '">' + escapeHtml(teacher.futureCourse1Progress || '—') + '</td>'
+            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse2Progress) + '">' + escapeHtml(teacher.futureCourse2Progress || '—') + '</td>'
+            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse3Progress) + '">' + escapeHtml(teacher.futureCourse3Progress || '—') + '</td>'
+            + '<td>' + auditHtml + '</td>'
+            + '<td>' + rfHtml + '</td>'
+            + '<td style="font-size:0.75rem;color:' + (teacher.traitsMissing && teacher.traitsMissing.length ? '#b91c1c' : '#15803d') + ';">'
+              + escapeHtml(teacher.traitsMissing && teacher.traitsMissing.length ? teacher.traitsMissing.join(', ') : 'None') + '</td>';
           personaResultsBody.appendChild(tr);
         });
       }
       personaResultsContainer.style.display = 'block';
+      personaResultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function loadBatchPage() {
@@ -6601,9 +6711,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 + 'border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
                 + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>';
  
+            var isHidden = teacher.hiddenInSearch === 'Yes' || teacher.hiddenInSearch === true;
             var tr = document.createElement('tr');
+            if (isHidden) tr.style.opacity = '0.55';
             tr.innerHTML =
-                '<td><strong>' + escapeHtml(teacher.name) + '</strong></td>'
+                '<td><strong>' + escapeHtml(teacher.name) + '</strong>'
+                + (isHidden ? ' <span style="font-size:0.68rem;background:#fee2e2;color:#b91c1c;'
+                    + 'border-radius:4px;padding:1px 6px;margin-left:4px;">Hidden</span>' : '')
+                + '</td>'
                 + '<td><span class="status-badge status-'
                 + teacher.status.toLowerCase().replace(/ /g, '-') + '">'
                 + escapeHtml(teacher.status) + '</span></td>'
@@ -6614,7 +6729,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     + '</button>'
                     + '<button class="btn btn-primary btn-sm find-replacement-btn">'
                     + '<i class="fas fa-robot"></i> Find Replacement'
-                    + '</button></td>';
+                    + '</button>'
+                    + '<button class="btn btn-sm toggle-visibility-btn" style="'
+                    + (isHidden
+                        ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;'
+                        : 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;')
+                    + '">'
+                    + (isHidden ? '<i class="fas fa-eye"></i> Show' : '<i class="fas fa-eye-slash"></i> Hide')
+                    + '</button>'
+                + '</td>';
             tr.querySelector('.view-profile-btn').dataset.teacherName = teacher.name;
             tr.querySelector('.view-profile-btn').addEventListener('click', function() {
                 switchPage('teacherProfilePage', this.dataset.teacherName);
@@ -6622,6 +6745,33 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
             tr.querySelector('.find-replacement-btn').addEventListener('click', function() {
                 openCloneModal(this.dataset.teacherName);
+            });
+            tr.querySelector('.toggle-visibility-btn').dataset.teacherName = teacher.name;
+            tr.querySelector('.toggle-visibility-btn').dataset.hidden = isHidden ? 'Yes' : '';
+            tr.querySelector('.toggle-visibility-btn').addEventListener('click', function() {
+                var btn = this;
+                var tName = btn.dataset.teacherName;
+                var nowHidden = btn.dataset.hidden === 'Yes';
+                var makeHidden = !nowHidden;
+                btn.disabled = true;
+                btn.textContent = 'Saving…';
+                google.script.run
+                    .withSuccessHandler(function(res) {
+                        if (res && res.success) {
+                            allTeacherDetailsCache = null; // force reload
+                            renderPersonaTable();
+                            showToast('success', 'Visibility Updated',
+                                tName + (makeHidden ? ' hidden from search.' : ' visible in search.'));
+                        } else {
+                            showToast('error', 'Error', (res && res.message) || 'Could not update visibility.');
+                            btn.disabled = false;
+                        }
+                    })
+                    .withFailureHandler(function(err) {
+                        showToast('error', 'Error', err.message || 'Server error.');
+                        btn.disabled = false;
+                    })
+                    .setTeacherVisibility(tName, makeHidden);
             });
             tbody.appendChild(tr);
 
@@ -6742,10 +6892,23 @@ function openCloneModal(teacherName) {
                             ? '<div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">'
                               + '\u1F4A1 ' + escapeHtml(aiCaveat) + '</div>' : '';
  
+                        var auditScoreVal  = Number(match.auditScore)    || 0;
+                        var avgClassScore  = match.avgClassScore != null ? Number(match.avgClassScore).toFixed(1) : null;
+                        var redFlagCount   = Number(match.redFlagCount)  || 0;
+
+                        var auditLabel = avgClassScore != null
+                            ? avgClassScore + '/80'
+                            + (redFlagCount > 0 ? ' ⚑' + redFlagCount : '')
+                            : 'No data';
+                        var auditColor = avgClassScore == null ? '#6b7280'
+                            : Number(avgClassScore) >= 60 ? '#15803d'
+                            : Number(avgClassScore) >= 40 ? '#d97706' : '#b91c1c';
+
                         var breakdown = 'Traits:' + traitScore + '/30'
                             + ' | Age:' + ageScore + '/20'
                             + ' | Courses:' + courseScore + '/30'
-                            + ' | Stability:' + escalScore + '/20';
+                            + ' | Stability:' + escalScore + '/20'
+                            + ' | Audit:' + auditScoreVal + '/20';
 
                         var escalCount = Number(match.escalations) || 0;
                         var escalHtml  = escalCount === 0
@@ -6767,7 +6930,7 @@ function openCloneModal(teacherName) {
                                     + ';color:' + scoreColor
                                     + ';border:1px solid ' + scoreColor + '44'
                                     + ';padding:3px 10px;border-radius:20px;font-weight:700;font-size:0.9rem;">'
-                                    + matchScore + '/100</span>'
+                                    + matchScore + '/120</span>'
                                     + '<span style="font-size:0.7rem;color:var(--text-muted);">&#9432;</span>'
                                 + '</div>'
                             + '</td>'
@@ -6782,6 +6945,13 @@ function openCloneModal(teacherName) {
                                 + 'color:var(--text-muted);display:block;">courses</span>'
                             + '</td>'
                             + '<td>' + escalHtml + '</td>'
+                            + '<td style="font-size:0.83rem;color:' + auditColor + ';font-weight:600;">'
+                                + auditLabel
+                                + (redFlagCount > 0
+                                    ? '<span style="font-size:0.68rem;color:#b91c1c;display:block;font-weight:400;">'
+                                      + redFlagCount + ' red flag' + (redFlagCount > 1 ? 's' : '') + '</span>'
+                                    : '')
+                            + '</td>'
                             + '<td>'
                                 + '<button class="btn btn-outline btn-sm view-profile-btn">View Profile</button>'
                             + '</td>';
