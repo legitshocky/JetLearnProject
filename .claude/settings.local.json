@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Read(//c/Users/legit/JetLearnProject/**)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(grep -v \"^[0-9]*:const \\\\|^[0-9]*://\\\\|^[0-9]*:  //\")",
+      "Bash(awk 'NR>=2680 && NR<=2690' \"C:/Users/legit/JetLearnProject/JavaScript.html\")",
+      "Bash(awk 'NR>=2820 && NR<=2840' \"C:/Users/legit/JetLearnProject/JavaScript.html\")",
+      "Bash(awk 'NR>=2995 && NR<=2999' \"C:/Users/legit/JetLearnProject/JavaScript.html\")",
+      "Bash(awk 'NR>=2955 && NR<=2999' \"C:/Users/legit/JetLearnProject/JavaScript.html\")",
+      "WebFetch(domain:docs.google.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
