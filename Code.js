@@ -118,7 +118,7 @@ function doGet(e) {
       const previousMonthReportData = generateMonthlyReport(previousMonth, previousMonthYear, perspectiveParam);
       reportData.previousMonth = previousMonthReportData;
       
-      const aiInsights = getAIGeneratedInsights(reportData, previousMonthReportData, perspectiveParam);
+      const aiInsights = getAIGeneratedInsights(reportData, previousMonthReportData);
       reportData.aiInsights = aiInsights;
       
       const template = HtmlService.createTemplateFromFile('Report');

@@ -730,11 +730,14 @@ function searchMatchingTeachers(requestData) {
     const ageOrYearCol_Math = headerMap['Math Age/Year (preferred)'] || headerMap['Age/Year'];
     const ageOrYearCol_Tech = headerMap['Tech Age/Year (preferred)'] || headerMap['Age/Year'];
     const traitColsStart = headerMap['Trait 1'];
-    const traitColsEnd = headerMap['Trait 9'];
+    const traitColsEnd   = headerMap['Trait 9'];
+    const hasTraitCols   = (traitColsStart !== undefined && traitColsEnd !== undefined);
 
-    if ([teacherNameCol, teacherStatusCol, traitColsStart, traitColsEnd].includes(undefined)) {
-      throw new Error("Missing required persona sheet columns (e.g., 'Teacher Name', 'Status', 'Trait 1').");
+    if (teacherNameCol === undefined) {
+      throw new Error("Persona sheet is missing the required 'Teacher Name' column.");
     }
+    // Status column is optional — if absent, treat all rows as Active
+    const hasStatusCol = (teacherStatusCol !== undefined);
 
     const progressOrder = ["100%", "91-99%", "81-90%", "71-80%", "61-70%", "51-60%", "41-50%", "31-40%", "21-30%", "11-20%", "1-10%", "0%", "Not Onboarded", "N/A"];
     const requestedDateObj = new Date(requestedDate);
@@ -742,8 +745,10 @@ function searchMatchingTeachers(requestData) {
 
     for (let i = 2; i < mainData.length; i++) {
       const row = mainData[i];
-      const teacherStatus = String(row[teacherStatusCol] || '').trim();
-      if (teacherStatus !== "Active") continue;
+      if (hasStatusCol) {
+        const teacherStatus = String(row[teacherStatusCol] || '').trim();
+        if (teacherStatus !== "Active") continue;
+      }
       const teacherName = String(row[teacherNameCol] || '').trim();
       if (!teacherName) continue;
 
@@ -762,13 +767,17 @@ function searchMatchingTeachers(requestData) {
         return fcColIndex !== undefined ? String(row[fcColIndex] || "N/A").trim() : "N/A";
       });
 
-      const teacherTraitRaw = row.slice(traitColsStart, traitColsEnd + 1);
-      const teacherTraits = normalize(teacherTraitRaw.flatMap(cell => String(cell).split(/\n|,/)));
-      const normalizedTeacherTraits = new Set(teacherTraits.map(t => t.toLowerCase()));
+      let traitMissing = [];
+      let traitMatchesCount = 0;
       const isMathCourse = currentCourse && currentCourse.toLowerCase().includes("math");
       const targetTraits = isMathCourse ? mathTraits.map(t => t.toLowerCase()) : techTraits.map(t => t.toLowerCase());
-      const traitMissing = targetTraits.filter(t => !normalizedTeacherTraits.has(t));
-      const traitMatchesCount = targetTraits.length - traitMissing.length;
+      if (hasTraitCols && targetTraits.length > 0) {
+        const teacherTraitRaw = row.slice(traitColsStart, traitColsEnd + 1);
+        const teacherTraits = normalize(teacherTraitRaw.flatMap(cell => String(cell).split(/\n|,/)));
+        const normalizedTeacherTraits = new Set(teacherTraits.map(t => t.toLowerCase()));
+        traitMissing = targetTraits.filter(t => !normalizedTeacherTraits.has(t));
+        traitMatchesCount = targetTraits.length - traitMissing.length;
+      }
       const ageOrYearMatch = isMathCourse ? String(row[ageOrYearCol_Math] || 'N/A').trim() : String(row[ageOrYearCol_Tech] || 'N/A').trim();
       
       // Slot matching: primary = availability map from Migration Teacher tab in audit sheet
@@ -813,7 +822,7 @@ function searchMatchingTeachers(requestData) {
         alternateSlots: alternateSlots.join(', '),
         currentCourseProgress, futureCourse1Progress: futureCourseStatuses[0] || 'N/A',
         futureCourse2Progress: futureCourseStatuses[1] || 'N/A', futureCourse3Progress: futureCourseStatuses[2] || 'N/A',
-        traitsMissing,
+        traitsMissing: traitMissing,
         avgClassScore: avgClassScore != null ? avgClassScore + '/80' : 'No data',
         auditGrade, redFlagCount, auditCount45,
         _rankScore: rankScore, _traitMatchesCount: traitMatchesCount, _currentCourseProgressOrder: progressOrder.indexOf(currentCourseProgress)

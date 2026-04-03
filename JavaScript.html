@@ -2584,23 +2584,24 @@ tr.innerHTML = `
         fetchBtn.disabled = true;
         fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching…';
         google.script.run
-          .withSuccessHandler(function(data) {
+          .withSuccessHandler(function(resp) {
             fetchBtn.disabled = false;
             fetchBtn.innerHTML = '<i class="fas fa-download"></i> Fetch Learner';
-            if (!data || data.error) {
-              showToast('error', 'Not Found', data ? data.error : 'No data returned.'); return;
+            if (!resp || !resp.success) {
+              showToast('error', 'Not Found', (resp && resp.message) ? resp.message : 'No data returned.'); return;
             }
+            const data = resp.data;
             // Populate learner context panel
-            document.getElementById('pcLearnerName').textContent  = data.learnerName   || '—';
-            document.getElementById('pcJlid').textContent         = data.jlid          || jlid;
+            document.getElementById('pcLearnerName').textContent    = data.learnerName    || '—';
+            document.getElementById('pcJlid').textContent           = data.jlid           || jlid;
             document.getElementById('pcCurrentTeacher').textContent = data.currentTeacher || '—';
-            document.getElementById('pcCurrentCourse').textContent  = data.course        || '—';
-            document.getElementById('pcLearnerAge').textContent    = data.age            || '—';
+            document.getElementById('pcCurrentCourse').textContent  = data.course         || '—';
+            document.getElementById('pcLearnerAge').textContent     = data.age            || '—';
             ctxPanel.style.display = 'block';
             clearBtn.style.display = 'inline-flex';
             // Pre-fill filters
-            if (data.course)   setSelectValue(currentCourseSelect, data.course);
-            if (data.age)      document.getElementById('learnerAge').value = data.age;
+            if (data.course) setSelectValue(currentCourseSelect, data.course);
+            if (data.age)    document.getElementById('learnerAge').value = data.age;
           })
           .withFailureHandler(function(err) {
             fetchBtn.disabled = false;
@@ -5577,6 +5578,134 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     if (backToTeachersBtn) backToTeachersBtn.addEventListener('click', () => switchPage('loadPage'));
     if (searchHistoryBtn) searchHistoryBtn.addEventListener('click', searchLearnerHistory);
 
+    // ── Migration Intelligence: trigger when JLID + new teacher both filled ──
+    (function() {
+      var mipDebounce = null;
+
+      function triggerMigrationIntelligence() {
+        var jlid        = jlidInput ? jlidInput.value.trim() : '';
+        var newTeacher  = newTeacherSelect ? newTeacherSelect.value.trim() : '';
+        var panel       = document.getElementById('migrationIntelPanel');
+        if (!panel) return;
+        if (!jlid || !newTeacher) { panel.style.display = 'none'; return; }
+
+        clearTimeout(mipDebounce);
+        mipDebounce = setTimeout(function() {
+          panel.style.display = 'block';
+          // Show loading state
+          document.getElementById('migrationAlertBanners').innerHTML =
+            '<div style="padding:0.6rem 1rem;background:#f1f5f9;border-radius:6px;color:#64748b;font-size:0.83rem;">'
+            + '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Analysing teacher history…</div>';
+          ['mip_count30','mip_count60','mip_count90','mip_total','mip_lastDate','mip_lastReason','mip_riskBadge'].forEach(function(id) {
+            var el = document.getElementById(id); if (el) el.textContent = '…';
+          });
+          var histEl = document.getElementById('mip_teacherHistoryContent');
+          if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading…</span>';
+
+          google.script.run
+            .withSuccessHandler(renderMigrationIntelPanel)
+            .withFailureHandler(function(err) {
+              document.getElementById('migrationAlertBanners').innerHTML =
+                '<div style="padding:0.6rem 1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;font-size:0.83rem;">'
+                + '<i class="fas fa-times-circle" style="margin-right:6px;"></i>Intelligence check failed: ' + escapeHtml(String(err)) + '</div>';
+            })
+            .checkNewTeacherForLearner(jlid, newTeacher);
+        }, 600);
+      }
+
+      if (newTeacherSelect) newTeacherSelect.addEventListener('change', triggerMigrationIntelligence);
+      if (jlidInput)        jlidInput.addEventListener('change',        triggerMigrationIntelligence);
+    })();
+
+    function renderMigrationIntelPanel(result) {
+      var panel = document.getElementById('migrationIntelPanel');
+      if (!panel) return;
+      panel.style.display = 'block';
+
+      var bannerContainer = document.getElementById('migrationAlertBanners');
+      bannerContainer.innerHTML = '';
+
+      if (!result || !result.success) {
+        bannerContainer.innerHTML =
+          '<div style="padding:0.6rem 1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;font-size:0.83rem;">'
+          + '<i class="fas fa-exclamation-circle" style="margin-right:6px;"></i>'
+          + escapeHtml((result && result.message) ? result.message : 'Could not retrieve intelligence.') + '</div>';
+        return;
+      }
+
+      // Alert banners
+      var levelStyles = {
+        danger:  { bg:'#fef2f2', border:'#fca5a5', color:'#b91c1c', icon:'fas fa-exclamation-triangle' },
+        warning: { bg:'#fffbeb', border:'#fcd34d', color:'#92400e', icon:'fas fa-exclamation-circle' },
+        info:    { bg:'#eff6ff', border:'#93c5fd', color:'#1e40af', icon:'fas fa-info-circle' },
+        success: { bg:'#f0fdf4', border:'#86efac', color:'#15803d', icon:'fas fa-heart' }
+      };
+
+      if (result.alerts && result.alerts.length > 0) {
+        result.alerts.forEach(function(alert) {
+          var s = levelStyles[alert.level] || levelStyles.info;
+          var iconClass = alert.icon ? 'fas fa-' + alert.icon : s.icon;
+          bannerContainer.innerHTML +=
+            '<div style="padding:0.65rem 1rem;background:' + s.bg + ';border:1px solid ' + s.border + ';border-radius:6px;color:' + s.color + ';font-size:0.84rem;">'
+            + '<i class="' + iconClass + '" style="margin-right:7px;"></i>' + escapeHtml(alert.message) + '</div>';
+        });
+      } else {
+        bannerContainer.innerHTML =
+          '<div style="padding:0.65rem 1rem;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;color:#15803d;font-size:0.84rem;">'
+          + '<i class="fas fa-check-circle" style="margin-right:7px;"></i>No alerts — this looks like a safe migration.</div>';
+      }
+
+      // Frequency counts
+      var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      set('mip_count30', result.migrationCount30d != null ? result.migrationCount30d : '—');
+      set('mip_count60', result.migrationCount60d != null ? result.migrationCount60d : '—');
+      set('mip_count90', result.migrationCount90d != null ? result.migrationCount90d : '—');
+      set('mip_total',   result.totalMigrations   != null ? result.totalMigrations   : '—');
+
+      // Last migration
+      var lastDate = result.lastMigrationDate
+        ? new Date(result.lastMigrationDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
+        : '—';
+      set('mip_lastDate',   lastDate);
+      set('mip_lastReason', result.lastMigrationReason || '—');
+
+      // Risk badge
+      var riskEl = document.getElementById('mip_riskBadge');
+      if (riskEl) {
+        var risk = (result.riskLevel || 'Unknown').toLowerCase();
+        var riskColor = risk === 'high' ? '#b91c1c' : risk === 'medium' ? '#d97706' : '#15803d';
+        riskEl.innerHTML = '<span style="font-size:0.78rem;font-weight:700;padding:2px 8px;border-radius:4px;background:' + riskColor + ';color:#fff;">'
+          + escapeHtml(result.riskLevel || 'Unknown') + '</span>';
+      }
+
+      // Teacher history card
+      var histEl = document.getElementById('mip_teacherHistoryContent');
+      if (histEl) {
+        if (!result.wasEverAssigned) {
+          histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">No prior relationship — first time with this teacher.</span>';
+        } else {
+          var html = '<div style="font-size:0.82rem;">';
+          if (result.isAffinityCase) {
+            html += '<div style="margin-bottom:6px;color:#15803d;font-weight:600;"><i class="fas fa-heart" style="margin-right:5px;"></i>Teacher Affinity Case</div>';
+          }
+          if (result.escalationCount > 0) {
+            html += '<div style="margin-bottom:6px;color:#b91c1c;font-weight:600;">'
+              + '<i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>'
+              + result.escalationCount + ' escalation event(s) on record</div>';
+          }
+          html += '<div style="margin-bottom:4px;color:#475569;font-weight:600;">Assignment Periods:</div>';
+          (result.assignmentPeriods || []).forEach(function(p) {
+            html += '<div style="margin-bottom:3px;padding:4px 8px;background:#f8fafc;border-radius:4px;border-left:3px solid #6366f1;">'
+              + escapeHtml(p.fromFormatted) + ' → ' + escapeHtml(p.toFormatted);
+            if (p.departureReason) html += ' <span style="color:#94a3b8;font-size:0.75rem;">(' + escapeHtml(p.departureReason) + ')</span>';
+            html += '</div>';
+          });
+          html += '</div>';
+          histEl.innerHTML = html;
+        }
+      }
+    }
+
     // ==========================================
     // 12. INVOICE PAGE LISTENERS
     // ==========================================
@@ -6157,14 +6286,6 @@ function fetchMigrationSpecificData() {
             })
             .withFailureHandler(showError)
             .fetchMigrationHybridData(jlid);
-    }
-
-    // C. Attach Fetch Listener
-    if (fetchMigrationDataBtn) {
-        fetchMigrationDataBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            fetchMigrationSpecificData();
-        });
     }
 
     function getMigrationFormData() {

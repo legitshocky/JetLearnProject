@@ -405,7 +405,7 @@ function validateInvoiceData(formData) {
           targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase(); 
           finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
             ? parseFloat(formData.customCurrencyRate)
-            : getConversionRate('EUR', targetCurrencyCode);
+            : getConversionRate(targetCurrencyCode);
 
           if (finalConversionRateFromEUR <= 0) {
               errors.push(`Invalid conversion rate from EUR to ${targetCurrencyCode}.`);
@@ -414,12 +414,12 @@ function validateInvoiceData(formData) {
               errors.push('Custom currency discount percentage must be between 0 and 100.');
           }
       } else {
-          finalConversionRateFromEUR = getConversionRate('EUR', targetCurrencyCode);
+          finalConversionRateFromEUR = getConversionRate(targetCurrencyCode);
       }
 
       const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
       const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1'); 
-      const userSelectedTenureMonths = parseInt(formData.subscriptionTenureMonths || '0');
+      const userSelectedTenureMonths = parseInt(formData.subscriptionTenure || formData.subscriptionTenureMonths || '0');
 
       const monthlyRateEUR = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;
       let effectiveBasePrice = monthlyRateEUR * userSelectedTenureMonths;

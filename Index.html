@@ -507,6 +507,60 @@
               </div>
             </form>
           </div> <!-- ADD THIS: Closes form-container -->
+        <!-- Migration Intelligence Panel — shown when JLID + new teacher are selected -->
+        <div id="migrationIntelPanel" style="display:none;margin:1.25rem 0 0.5rem;max-width:950px;">
+
+          <!-- Alert banners -->
+          <div id="migrationAlertBanners" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.75rem;"></div>
+
+          <!-- Intelligence cards row -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+
+            <!-- Card: Migration frequency -->
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.25rem;">
+              <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:0.6rem;font-weight:600;">
+                <i class="fas fa-exchange-alt" style="margin-right:5px;color:#6366f1;"></i>Migration Frequency
+              </div>
+              <div style="display:flex;gap:1.5rem;">
+                <div style="text-align:center;">
+                  <div id="mip_count30" style="font-size:1.6rem;font-weight:800;color:#1e293b;">—</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;">Last 30d</div>
+                </div>
+                <div style="text-align:center;">
+                  <div id="mip_count60" style="font-size:1.6rem;font-weight:800;color:#1e293b;">—</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;">Last 60d</div>
+                </div>
+                <div style="text-align:center;">
+                  <div id="mip_count90" style="font-size:1.6rem;font-weight:800;color:#1e293b;">—</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;">Last 90d</div>
+                </div>
+                <div style="text-align:center;">
+                  <div id="mip_total" style="font-size:1.6rem;font-weight:800;color:#1e293b;">—</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;">All-time</div>
+                </div>
+              </div>
+              <div style="margin-top:0.6rem;font-size:0.75rem;color:#64748b;">
+                Last migration: <strong id="mip_lastDate">—</strong>
+                <span id="mip_lastReason" style="margin-left:6px;font-style:italic;color:#94a3b8;"></span>
+              </div>
+              <div style="margin-top:3px;font-size:0.75rem;">
+                Risk: <span id="mip_riskBadge" style="font-weight:600;"></span>
+              </div>
+            </div>
+
+            <!-- Card: Teacher history for this learner -->
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.25rem;">
+              <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:0.6rem;font-weight:600;">
+                <i class="fas fa-user-clock" style="margin-right:5px;color:#6366f1;"></i>New Teacher — Learner History
+              </div>
+              <div id="mip_teacherHistoryContent">
+                <span style="color:#94a3b8;font-size:0.82rem;">Loading…</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         </div>   <!-- ADD THIS: Closes migrationTab -->
 
 
@@ -1566,7 +1620,7 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">All Courses</h3>
-            <button class="btn btn-primary" id="addCourseBtn">
+            <button class="btn btn-primary" id="addNewCourseBtn">
               <i class="fas fa-plus"></i> Add Course
             </button>
           </div>
@@ -1793,7 +1847,7 @@
             </select>
           </div>
           <div class="form-group" style="margin:0;">
-            <label class="form-label" for="currentCourse">Course to migrate</label>
+            <label class="form-label" for="currentCourse">Current Course</label>
             <select id="currentCourse" class="form-control form-select" required>
               <option value="" disabled selected>Select course</option>
             </select>

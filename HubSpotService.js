@@ -1749,6 +1749,154 @@ function getMigrationHistoryStats(jlid) {
   }
 }
 
+/**
+ * Intelligence check for the migration page.
+ * Called when a JLID + new teacher are selected.
+ * Returns migration frequency alerts, teacher-learner history,
+ * escalation events, and affinity detection.
+ */
+function checkNewTeacherForLearner(jlid, newTeacherName) {
+  try {
+    var resolvedNew   = resolveTeacherName(newTeacherName);
+    var normalizedNew = normalizeTeacherName(resolvedNew);
+
+    // Reuse getComprehensiveLearnerHistory — fetches HubSpot tickets with full teacher names
+    var timeline = getComprehensiveLearnerHistory(jlid);
+    if (!timeline || !timeline.success) {
+      return { success: false, message: timeline ? timeline.message : 'Timeline fetch failed' };
+    }
+
+    var migrations = timeline.migrationTimeline || [];
+    var now = new Date();
+
+    // ── 1. Migration frequency counts ────────────────────────────────────────
+    var count30 = 0, count60 = 0, count90 = 0;
+    migrations.forEach(function(m) {
+      if (!m.date) return;
+      var days = (now - new Date(m.date)) / 86400000;
+      if (days <= 30) count30++;
+      if (days <= 60) count60++;
+      if (days <= 90) count90++;
+    });
+
+    // ── 2. Was new teacher ever previously assigned to this learner? ──────────
+    var assignmentHistory = migrations.filter(function(m) {
+      return normalizeTeacherName(m.toTeacher || '') === normalizedNew;
+    });
+    var wasEverAssigned = assignmentHistory.length > 0;
+
+    // Build periods: when assigned → when they left
+    var assignmentPeriods = [];
+    if (wasEverAssigned) {
+      assignmentHistory.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+      assignmentHistory.forEach(function(assignment) {
+        var assignedDate = assignment.date;
+        var departure = null;
+        for (var i = 0; i < migrations.length; i++) {
+          var m = migrations[i];
+          if (normalizeTeacherName(m.fromTeacher || '') === normalizedNew
+              && new Date(m.date) > new Date(assignedDate)) {
+            if (!departure || new Date(m.date) < new Date(departure.date)) departure = m;
+          }
+        }
+        var fromFmt = assignedDate ? new Date(assignedDate).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : 'Unknown';
+        var toFmt   = departure ? new Date(departure.date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : 'Present';
+        assignmentPeriods.push({
+          from:            assignedDate,
+          to:              departure ? departure.date : null,
+          fromFormatted:   fromFmt,
+          toFormatted:     toFmt,
+          departureReason: departure ? departure.reason : null
+        });
+      });
+    }
+
+    // ── 3. Escalation events involving the new teacher + this learner ─────────
+    var escalationEvents = migrations.filter(function(m) {
+      var r = (m.reason || '').toLowerCase();
+      var isEscalation = r.includes('escalation');
+      var involvesTeacher =
+        normalizeTeacherName(m.fromTeacher || '') === normalizedNew ||
+        normalizeTeacherName(m.toTeacher   || '') === normalizedNew;
+      return isEscalation && involvesTeacher;
+    });
+
+    // ── 4. Affinity detection ─────────────────────────────────────────────────
+    var isAffinityCase = assignmentHistory.some(function(m) {
+      return (m.reason || '').toLowerCase().includes('affinity');
+    });
+
+    // ── 5. Last migration for this learner ────────────────────────────────────
+    var sorted = migrations.slice().sort(function(a, b) {
+      return new Date(b.date || 0) - new Date(a.date || 0);
+    });
+    var lastMigration = sorted[0] || null;
+
+    // ── 6. Build alerts ───────────────────────────────────────────────────────
+    var alerts = [];
+
+    // Multiple migrations alerts (30/60/90d windows)
+    if (count30 >= 2) {
+      alerts.push({ level: 'danger', icon: 'exclamation-triangle',
+        message: count30 + ' migrations in the last 30 days — high churn risk. CLS review recommended.' });
+    } else if (count60 >= 2) {
+      alerts.push({ level: 'warning', icon: 'exclamation-circle',
+        message: count60 + ' migrations in the last 60 days — review if this migration is necessary.' });
+    } else if (count90 >= 2) {
+      alerts.push({ level: 'info', icon: 'info-circle',
+        message: count90 + ' migrations in the last 90 days — within range but monitor closely.' });
+    }
+
+    // Escalation alert
+    if (escalationEvents.length > 0) {
+      alerts.push({ level: 'danger', icon: 'exclamation-triangle',
+        message: escalationEvents.length + ' past escalation event(s) involving ' + resolvedNew + ' for this learner.' });
+    }
+
+    // Returning teacher alert
+    if (wasEverAssigned && !isAffinityCase) {
+      alerts.push({ level: 'warning', icon: 'history',
+        message: resolvedNew + ' was a previous teacher for this learner. Confirm re-assignment is intentional.' });
+    }
+    if (isAffinityCase) {
+      alerts.push({ level: 'success', icon: 'heart',
+        message: 'Teacher Affinity case — parent/learner has previously requested ' + resolvedNew + '.' });
+    }
+
+    // Target window check: <2 courses in 30-60d = flag
+    if (count30 === 1 && !isAffinityCase) {
+      alerts.push({ level: 'info', icon: 'clock',
+        message: 'Target: learners should stay with a teacher for at least 2 courses (30–60 days). Verify if criteria are met.' });
+    }
+
+    return {
+      success:           true,
+      jlid:              jlid,
+      learnerName:       timeline.learnerProfile ? (timeline.learnerProfile.learnerName || '') : '',
+      newTeacherName:    resolvedNew,
+      migrationCount30d: count30,
+      migrationCount60d: count60,
+      migrationCount90d: count90,
+      totalMigrations:   migrations.length,
+      wasEverAssigned:   wasEverAssigned,
+      assignmentPeriods: assignmentPeriods,
+      isAffinityCase:    isAffinityCase,
+      escalationCount:   escalationEvents.length,
+      escalationEvents:  escalationEvents,
+      lastMigrationDate:     lastMigration ? lastMigration.date    : null,
+      lastMigrationReason:   lastMigration ? lastMigration.reason  : null,
+      lastMigrationToTeacher:lastMigration ? lastMigration.toTeacher : null,
+      riskLevel:   timeline.journeyAnalysis ? timeline.journeyAnalysis.riskLevel   : 'Unknown',
+      riskMessage: timeline.journeyAnalysis ? timeline.journeyAnalysis.riskMessage : '',
+      alerts:      alerts
+    };
+
+  } catch (e) {
+    Logger.log('[checkNewTeacherForLearner] Error: ' + e.message + '\n' + e.stack);
+    return { success: false, message: e.message };
+  }
+}
+
 function getTeacherAttritionReport(teacherName) {
   var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
