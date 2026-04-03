@@ -2600,8 +2600,21 @@ tr.innerHTML = `
             ctxPanel.style.display = 'block';
             clearBtn.style.display = 'inline-flex';
             // Pre-fill filters
-            if (data.course) setSelectValue(currentCourseSelect, data.course);
-            if (data.age)    document.getElementById('learnerAge').value = data.age;
+            if (data.course && currentCourseSelect) {
+              var _found = false;
+              for (var _i = 0; _i < currentCourseSelect.options.length; _i++) {
+                if (currentCourseSelect.options[_i].value === data.course) {
+                  currentCourseSelect.value = data.course; _found = true; break;
+                }
+              }
+              if (!_found) {
+                var _opt = document.createElement('option');
+                _opt.value = data.course; _opt.textContent = data.course;
+                currentCourseSelect.appendChild(_opt);
+                currentCourseSelect.value = data.course;
+              }
+            }
+            if (data.age) document.getElementById('learnerAge').value = data.age;
           })
           .withFailureHandler(function(err) {
             fetchBtn.disabled = false;
@@ -2697,21 +2710,39 @@ tr.innerHTML = `
             return isNaN(pct) ? 'color:#94a3b8;' : pct >= 80 ? 'color:#15803d;font-weight:600;' : pct >= 50 ? 'color:#d97706;' : 'color:#b91c1c;';
           };
 
+          // Traits column: if a filter was applied show missing traits; otherwise show teacher's own traits
+          const hasTraitFilter = teacher.traitsMissing !== undefined && (teacher.teacherTraits || []).length > 0;
+          let traitsCellHtml;
+          if (teacher.traitsMissing && teacher.traitsMissing.length > 0) {
+            // Some traits missing — show them in red
+            traitsCellHtml = '<span style="color:#b91c1c;font-size:0.73rem;">'
+              + escapeHtml(teacher.traitsMissing.join(', ')) + '</span>';
+          } else if (teacher.teacherTraits && teacher.teacherTraits.length > 0) {
+            // All match or no filter — show teacher's own traits in green chips
+            traitsCellHtml = teacher.teacherTraits.slice(0, 4).map(function(t) {
+              return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.65rem;margin:1px;">'
+                + escapeHtml(t) + '</span>';
+            }).join(' ')
+            + (teacher.teacherTraits.length > 4 ? '<span style="font-size:0.65rem;color:#94a3b8;"> +' + (teacher.teacherTraits.length - 4) + '</span>' : '');
+          } else {
+            traitsCellHtml = '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
+          }
+
           const tr = document.createElement('tr');
           tr.innerHTML =
             '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
-            + '<td><strong>' + escapeHtml(teacher.teacherName) + '</strong>' + rankBadge + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.ageYear || '') + '</div></td>'
-            + '<td style="display:none;">' + escapeHtml(teacher.ageYear || '') + '</td>'
+            + '<td><strong>' + escapeHtml(teacher.teacherName) + '</strong>' + rankBadge
+              + (teacher.ageYear && teacher.ageYear !== 'N/A' ? '<div style="font-size:0.72rem;color:#64748b;margin-top:2px;">' + escapeHtml(teacher.ageYear) + '</div>' : '') + '</td>'
             + '<td style="' + slotStyle + 'text-align:center;">' + teacher.slotMatch + '</td>'
-            + '<td style="font-size:0.75rem;color:#475569;max-width:140px;">' + escapeHtml(teacher.alternateSlots || 'No slots') + '</td>'
-            + '<td><span style="font-size:0.82rem;' + progressStyle(teacher.currentCourseProgress) + '">' + escapeHtml(teacher.currentCourseProgress || 'N/A') + '</span></td>'
+            + '<td style="font-size:0.73rem;color:#475569;max-width:150px;line-height:1.4;">'
+              + (teacher.alternateSlots ? escapeHtml(teacher.alternateSlots).replace(/,/g, '<br>') : '<span style="color:#94a3b8;">No slots</span>') + '</td>'
+            + '<td><span style="font-size:0.82rem;font-weight:600;' + progressStyle(teacher.currentCourseProgress) + '">' + escapeHtml(teacher.currentCourseProgress || 'N/A') + '</span></td>'
             + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse1Progress) + '">' + escapeHtml(teacher.futureCourse1Progress || '—') + '</td>'
             + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse2Progress) + '">' + escapeHtml(teacher.futureCourse2Progress || '—') + '</td>'
             + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse3Progress) + '">' + escapeHtml(teacher.futureCourse3Progress || '—') + '</td>'
             + '<td>' + auditHtml + '</td>'
             + '<td>' + rfHtml + '</td>'
-            + '<td style="font-size:0.75rem;color:' + (teacher.traitsMissing && teacher.traitsMissing.length ? '#b91c1c' : '#15803d') + ';">'
-              + escapeHtml(teacher.traitsMissing && teacher.traitsMissing.length ? teacher.traitsMissing.join(', ') : 'None') + '</td>';
+            + '<td style="max-width:160px;">' + traitsCellHtml + '</td>';
           personaResultsBody.appendChild(tr);
         });
       }

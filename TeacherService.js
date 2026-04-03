@@ -727,8 +727,9 @@ function searchMatchingTeachers(requestData) {
 
     const teacherNameCol = headerMap['Teacher Name'];
     const teacherStatusCol = headerMap['Status'];
-    const ageOrYearCol_Math = headerMap['Math Age/Year (preferred)'] || headerMap['Age/Year'];
-    const ageOrYearCol_Tech = headerMap['Tech Age/Year (preferred)'] || headerMap['Age/Year'];
+    // Age column: try multiple naming conventions used across sheets
+    const ageOrYearCol_Math = headerMap['Math Age/Year (preferred)'] || headerMap['Age/Year'] || headerMap['Preferred Age Group'] || headerMap['Age Group'];
+    const ageOrYearCol_Tech = headerMap['Tech Age/Year (preferred)'] || headerMap['Age/Year'] || headerMap['Preferred Age Group'] || headerMap['Age Group'];
     const traitColsStart = headerMap['Trait 1'];
     const traitColsEnd   = headerMap['Trait 9'];
     const hasTraitCols   = (traitColsStart !== undefined && traitColsEnd !== undefined);
@@ -769,14 +770,17 @@ function searchMatchingTeachers(requestData) {
 
       let traitMissing = [];
       let traitMatchesCount = 0;
+      let teacherOwnTraits = [];
       const isMathCourse = currentCourse && currentCourse.toLowerCase().includes("math");
       const targetTraits = isMathCourse ? mathTraits.map(t => t.toLowerCase()) : techTraits.map(t => t.toLowerCase());
-      if (hasTraitCols && targetTraits.length > 0) {
+      if (hasTraitCols) {
         const teacherTraitRaw = row.slice(traitColsStart, traitColsEnd + 1);
-        const teacherTraits = normalize(teacherTraitRaw.flatMap(cell => String(cell).split(/\n|,/)));
-        const normalizedTeacherTraits = new Set(teacherTraits.map(t => t.toLowerCase()));
-        traitMissing = targetTraits.filter(t => !normalizedTeacherTraits.has(t));
-        traitMatchesCount = targetTraits.length - traitMissing.length;
+        teacherOwnTraits = normalize(teacherTraitRaw.flatMap(cell => String(cell).split(/\n|,/)));
+        if (targetTraits.length > 0) {
+          const normalizedTeacherTraits = new Set(teacherOwnTraits.map(t => t.toLowerCase()));
+          traitMissing = targetTraits.filter(t => !normalizedTeacherTraits.has(t));
+          traitMatchesCount = targetTraits.length - traitMissing.length;
+        }
       }
       const ageOrYearMatch = isMathCourse ? String(row[ageOrYearCol_Math] || 'N/A').trim() : String(row[ageOrYearCol_Tech] || 'N/A').trim();
       
@@ -823,6 +827,7 @@ function searchMatchingTeachers(requestData) {
         currentCourseProgress, futureCourse1Progress: futureCourseStatuses[0] || 'N/A',
         futureCourse2Progress: futureCourseStatuses[1] || 'N/A', futureCourse3Progress: futureCourseStatuses[2] || 'N/A',
         traitsMissing: traitMissing,
+        teacherTraits: teacherOwnTraits,
         avgClassScore: avgClassScore != null ? avgClassScore + '/80' : 'No data',
         auditGrade, redFlagCount, auditCount45,
         _rankScore: rankScore, _traitMatchesCount: traitMatchesCount, _currentCourseProgressOrder: progressOrder.indexOf(currentCourseProgress)
