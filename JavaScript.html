@@ -792,17 +792,20 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
 
     function loadDashboardData() {
     showLoading('Loading Command Center...');
-    // This single call will now fetch all data for the new dashboard sections
+    // Primary dashboard data — KPIs, briefing, action cards
     google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(e => { hideLoading(); showError(e); }).getNewDashboardData();
-    
-    // These can run in parallel to populate their specific sections
-    google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(showError).getTeacherDetailsForTable();
+
+    // Migration reasons bar chart for this calendar month
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(showError).getEnhancedMigrationReport({
       startDate: monthStart.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     });
+    // Teacher details are expensive (HubSpot per-teacher calls) — load lazily after main data
+    setTimeout(function() {
+      google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function() {}).getTeacherDetailsForTable();
+    }, 4000);
     // This call now specifically updates the "Recent Activities" section
     google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(showError).getDashboardStatistics();
 }
@@ -2542,14 +2545,49 @@ tr.innerHTML = `
     function loadSystemHealth() {
       showLoading('Checking system...');
       google.script.run.withSuccessHandler(health => {
-        document.getElementById('spreadsheetStatus').textContent = health.spreadsheetAccess ? 'Connected' : 'Error';
-        document.getElementById('emailStatus').textContent = health.emailService ? 'Active' : 'Error';
-        document.getElementById('emailQuota').textContent = health.emailQuota || 'N/A';
-        const totalSheets = Object.keys(health.sheets).length;
-        const presentSheets = Object.values(health.sheets).filter(Boolean).length;
-        document.getElementById('sheetsStatus').textContent = `${presentSheets}/${totalSheets} Present`;
-        document.getElementById('lastChecked').textContent = new Date(health.lastCheck).toLocaleString();
         hideLoading();
+
+        // Spreadsheet
+        const sheetOk = !!health.spreadsheetAccess;
+        document.getElementById('spreadsheetStatus').textContent        = sheetOk ? 'Connected' : 'Error';
+        document.getElementById('spreadsheetStatusBadge').textContent   = sheetOk ? 'CONNECTED' : 'ERROR';
+        document.getElementById('spreadsheetStatusBadge').style.color   = sheetOk ? '#10b981' : '#ef4444';
+        document.getElementById('spreadsheetDot').style.background      = sheetOk ? '#10b981' : '#ef4444';
+        document.getElementById('spreadsheetBar').style.width           = sheetOk ? '100%' : '8%';
+        document.getElementById('spreadsheetBar').style.background      = sheetOk ? '#10b981' : '#ef4444';
+        document.getElementById('healthApiResponse').textContent        = sheetOk ? '< 2s' : 'Error';
+        document.getElementById('healthApiStatus').textContent          = sheetOk ? 'HEALTHY' : 'ERROR';
+        document.getElementById('healthApiStatus').style.color          = sheetOk ? '#10b981' : '#ef4444';
+        document.getElementById('healthApiStatus').style.background     = sheetOk ? '#f0fdf4' : '#fef2f2';
+
+        // Email
+        const emailOk = !!health.emailService;
+        document.getElementById('emailStatus').textContent              = emailOk ? 'Active' : 'Error';
+        document.getElementById('emailStatusBadge').textContent         = emailOk ? 'CONNECTED' : 'ERROR';
+        document.getElementById('emailStatusBadge').style.color         = emailOk ? '#10b981' : '#ef4444';
+        document.getElementById('emailDot').style.background            = emailOk ? '#10b981' : '#ef4444';
+        document.getElementById('emailBar').style.width                 = emailOk ? '100%' : '8%';
+        document.getElementById('emailBar').style.background            = emailOk ? '#10b981' : '#ef4444';
+        document.getElementById('emailQuota').textContent               = health.emailQuota ? `${health.emailQuota} left` : '—';
+        document.getElementById('healthEmailQuotaDisplay').textContent  = health.emailQuota || (emailOk ? 'Active' : 'Error');
+        document.getElementById('healthEmailStatus').textContent        = emailOk ? 'HEALTHY' : 'ERROR';
+        document.getElementById('healthEmailStatus').style.color        = emailOk ? '#10b981' : '#ef4444';
+        document.getElementById('healthEmailStatus').style.background   = emailOk ? '#f0fdf4' : '#fef2f2';
+
+        // Sheets
+        const totalSheets   = Object.keys(health.sheets || {}).length;
+        const presentSheets = Object.values(health.sheets || {}).filter(Boolean).length;
+        const sheetsOk      = totalSheets > 0 && presentSheets === totalSheets;
+        document.getElementById('sheetsStatus').textContent             = `${presentSheets}/${totalSheets} Present`;
+        document.getElementById('healthSheetsDisplay').textContent      = `${presentSheets}/${totalSheets}`;
+        document.getElementById('healthSheetsStatus').textContent       = sheetsOk ? 'HEALTHY' : 'WARNING';
+        document.getElementById('healthSheetsStatus').style.color       = sheetsOk ? '#10b981' : '#f59e0b';
+        document.getElementById('healthSheetsStatus').style.background  = sheetsOk ? '#f0fdf4' : '#fffbeb';
+        document.getElementById('sheetsBar').style.width                = totalSheets > 0 ? `${Math.round((presentSheets / totalSheets) * 100)}%` : '0%';
+        document.getElementById('sheetsBar').style.background           = sheetsOk ? '#10b981' : '#f59e0b';
+
+        // Last checked
+        document.getElementById('lastChecked').textContent = health.lastCheck ? new Date(health.lastCheck).toLocaleString() : '—';
       }).withFailureHandler(showError).getSystemHealth();
     }
 
@@ -2594,7 +2632,7 @@ tr.innerHTML = `
             // Populate learner context panel
             document.getElementById('pcLearnerName').textContent    = data.learnerName    || '—';
             document.getElementById('pcJlid').textContent           = data.jlid           || jlid;
-            document.getElementById('pcCurrentTeacher').textContent = data.currentTeacher || '—';
+            document.getElementById('pcCurrentTeacher').value = data.currentTeacher || '';
             document.getElementById('pcCurrentCourse').textContent  = data.course         || '—';
             document.getElementById('pcLearnerAge').textContent     = data.age            || '—';
             ctxPanel.style.display = 'block';
@@ -2630,7 +2668,7 @@ tr.innerHTML = `
         clearBtn.style.display = 'none';
         document.getElementById('pcLearnerName').textContent    = '—';
         document.getElementById('pcJlid').textContent           = '—';
-        document.getElementById('pcCurrentTeacher').textContent = '—';
+        document.getElementById('pcCurrentTeacher').value = '';
         document.getElementById('pcCurrentCourse').textContent  = '—';
         document.getElementById('pcLearnerAge').textContent     = '—';
         document.getElementById('pcAuditBadge').style.display   = 'none';
@@ -7153,19 +7191,37 @@ document.getElementById('forcePasswordSaveBtn').addEventListener('click', () => 
 
 function loadProfilePage() {
     if (!currentUser) return;
-    document.getElementById('profileUsername').value  = currentUser.username;
-    document.getElementById('profileRole').value      = currentUser.role;
-    document.getElementById('profileLastLogin').value = currentUser.lastLogin || 'N/A';
+    const username  = currentUser.username || '';
+    const role      = currentUser.role || 'User';
+    const lastLogin = currentUser.lastLogin || 'N/A';
+
+    // Form inputs (kept for save handler)
+    document.getElementById('profileUsername').value  = username;
+    document.getElementById('profileRole').value      = role;
+    document.getElementById('profileLastLogin').value = lastLogin;
+
+    // Visual display elements
+    const initials = username.trim().split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || '?';
+    document.getElementById('profileAvatar').textContent        = initials;
+    document.getElementById('profileDisplayName').textContent   = username;
+    document.getElementById('profileRoleBadge').textContent     = role.toUpperCase();
+    document.getElementById('profileLastLoginDisplay').textContent = lastLogin;
+    const isAdmin = role.toLowerCase().includes('admin');
+    const roleTag = document.getElementById('profileRoleTag');
+    roleTag.textContent         = isAdmin ? 'ADMIN' : 'USER';
+    roleTag.style.background    = isAdmin ? '#ede9fe' : '#e0f2fe';
+    roleTag.style.color         = isAdmin ? '#6d28d9' : '#0369a1';
 
     // Fetch fresh email from backend
     google.script.run
         .withSuccessHandler(profile => {
             if (profile && profile.email) {
-                document.getElementById('profileEmail').value = profile.email;
+                document.getElementById('profileEmail').value          = profile.email;
+                document.getElementById('profileEmailDisplay').textContent = profile.email;
             }
         })
         .withFailureHandler(showError)
-        .getUserProfile(currentUser.username);
+        .getUserProfile(username);
 }
 
 document.getElementById('saveProfileBtn').addEventListener('click', () => {
