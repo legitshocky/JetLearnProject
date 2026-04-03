@@ -1677,14 +1677,132 @@
 
       <!-- System Health Page -->
       <div id="healthPage" class="page-content" style="display: none;">
-        <div class="header"><h1 class="page-title">System Health</h1><div class="header-actions"><button class="btn btn-primary" id="refreshHealth"><i class="fas fa-sync-alt"></i> Refresh</button></div></div>
-        <div class="health-container">
-          <div class="health-header"><h2 class="chart-title">System Status</h2><div class="health-status"><div class="status-indicator status-healthy"></div><span>All systems operational</span></div></div>
-          <div class="health-grid">
-            <div class="health-card"><div class="health-card-title">Spreadsheet Access</div><div class="health-card-value" id="spreadsheetStatus">Checking...</div><div class="health-card-description">Connection to primary data sheet.</div></div>
-            <div class="health-card"><div class="health-card-title">Email Service</div><div class="health-card-value" id="emailStatus">Checking...</div><div class="health-card-description">Remaining quota: <span id="emailQuota">N/A</span></div></div>
-            <div class="health-card"><div class="health-card-title">Required Sheets</div><div class="health-card-value" id="sheetsStatus">Checking...</div><div class="health-card-description">All necessary sheets are present.</div></div>
-            <div class="health-card"><div class="health-card-title">Last Checked</div><div class="health-card-value" id="lastChecked">N/A</div><div class="health-card-description">Time of last health check.</div></div>
+        <div class="header">
+          <div>
+            <h1 class="page-title" style="display:flex;align-items:center;gap:0.5rem;"><i class="fas fa-heartbeat" style="color:#6366f1;font-size:1.4rem;"></i> System Health</h1>
+            <p style="color:var(--text-muted);margin:0.25rem 0 0;font-size:0.875rem;">Real-time monitoring of infrastructure and API integrations.</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-outline" id="refreshHealth" style="display:flex;align-items:center;gap:0.5rem;"><i class="fas fa-sync-alt"></i> Refresh Status</button>
+          </div>
+        </div>
+
+        <!-- KPI Row -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+          <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="width:42px;height:42px;background:#f0fdf4;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fas fa-bolt" style="color:#10b981;font-size:1.1rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthApiResponse">—</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">API Response</div>
+            </div>
+            <span id="healthApiStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
+          </div>
+          <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="width:42px;height:42px;background:#f0fdf4;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fas fa-globe" style="color:#10b981;font-size:1.1rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthEmailQuotaDisplay">—</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Email Quota Left</div>
+            </div>
+            <span id="healthEmailStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
+          </div>
+          <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="width:42px;height:42px;background:#f0fdf4;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fas fa-table" style="color:#10b981;font-size:1.1rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthSheetsDisplay">—</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Sheets Present</div>
+            </div>
+            <span id="healthSheetsStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
+          </div>
+        </div>
+
+        <!-- Two-column body -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+          <!-- Integration Status -->
+          <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <h3 style="font-size:1rem;font-weight:700;margin:0 0 1.25rem;display:flex;align-items:center;gap:0.5rem;color:#1e293b;">
+              <i class="fas fa-server" style="color:#6366f1;font-size:0.9rem;"></i> Integration Status
+            </h3>
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="hubspotDot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">HubSpot API</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span style="font-size:0.78rem;color:#94a3b8;">Live</span>
+                  <span style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="spreadsheetDot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">Google Sheets</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span style="font-size:0.78rem;color:#94a3b8;">Primary DB</span>
+                  <span id="spreadsheetStatusBadge" style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="emailDot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">Email Service</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="emailQuota" style="font-size:0.78rem;color:#94a3b8;">—</span>
+                  <span id="emailStatusBadge" style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">Last Checked</span>
+                </div>
+                <span id="lastChecked" style="font-size:0.78rem;color:#64748b;">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resource Usage -->
+          <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <h3 style="font-size:1rem;font-weight:700;margin:0 0 1.5rem;display:flex;align-items:center;gap:0.5rem;color:#1e293b;">
+              <i class="fas fa-tachometer-alt" style="color:#6366f1;font-size:0.9rem;"></i> Resource Usage
+            </h3>
+            <div style="display:flex;flex-direction:column;gap:1.5rem;">
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+                  <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Spreadsheet Access</span>
+                  <span id="spreadsheetStatus" style="font-size:0.8rem;font-weight:600;color:#1e293b;">—</span>
+                </div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div id="spreadsheetBar" style="height:100%;background:#10b981;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+                  <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Email Service</span>
+                  <span id="emailStatus" style="font-size:0.8rem;font-weight:600;color:#1e293b;">—</span>
+                </div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div id="emailBar" style="height:100%;background:#10b981;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+                  <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Required Sheets</span>
+                  <span id="sheetsStatus" style="font-size:0.8rem;font-weight:600;color:#1e293b;">—</span>
+                </div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div id="sheetsBar" style="height:100%;background:#10b981;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1944,43 +2062,148 @@
       <!-- My Profile Page -->
       <div id="profilePage" class="page-content" style="display: none;">
         <div class="header">
-          <h1 class="page-title">My Profile</h1>
-        </div>
-        <div class="form-container" style="max-width: 500px;">
-          <h2 class="form-title">Account Details</h2>
-          <div class="form-group">
-            <label class="form-label">Username</label>
-            <input type="text" id="profileUsername" class="form-control" readonly>
+          <div>
+            <h1 class="page-title" style="display:flex;align-items:center;gap:0.5rem;"><i class="fas fa-user-circle" style="color:#6366f1;font-size:1.4rem;"></i> My Profile</h1>
+            <p style="color:var(--text-muted);margin:0.25rem 0 0;font-size:0.875rem;">Manage your personal information and track your operational impact.</p>
           </div>
-          <div class="form-group">
-            <label class="form-label">Email Address</label>
-            <input type="email" id="profileEmail" class="form-control">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Role</label>
-            <input type="text" id="profileRole" class="form-control" readonly>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Last Login</label>
-            <input type="text" id="profileLastLogin" class="form-control" readonly>
-          </div>
-          <h2 class="form-title" style="margin-top: 2rem;">Change Password</h2>
-          <div class="form-group">
-            <label class="form-label">Current Password</label>
-            <input type="password" id="profileCurrentPassword" class="form-control" placeholder="Enter current password">
-          </div>
-          <div class="form-group">
-            <label class="form-label">New Password</label>
-            <input type="password" id="profileNewPassword" class="form-control" placeholder="Enter new password">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Confirm New Password</label>
-            <input type="password" id="profileConfirmPassword" class="form-control" placeholder="Confirm new password">
-          </div>
-          <div class="form-actions">
-            <button type="button" class="btn btn-primary" id="saveProfileBtn">
-              <i class="fas fa-save"></i> Save Changes
+          <div class="header-actions">
+            <button class="btn btn-primary" onclick="document.getElementById('profileEmail').focus()" style="display:flex;align-items:center;gap:0.5rem;">
+              <i class="fas fa-pencil-alt"></i> Edit Profile
             </button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:300px 1fr;gap:1.5rem;align-items:start;">
+          <!-- Left column -->
+          <div style="display:flex;flex-direction:column;gap:1.5rem;">
+            <!-- Profile Card -->
+            <div style="background:#fff;border-radius:16px;padding:2rem 1.5rem;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+              <div style="position:relative;display:inline-block;margin-bottom:1rem;">
+                <div id="profileAvatar" style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.75rem;font-weight:700;color:#fff;margin:0 auto;letter-spacing:1px;">?</div>
+                <div style="position:absolute;bottom:0;right:0;width:26px;height:26px;background:#fff;border-radius:50%;border:2px solid #e2e8f0;display:flex;align-items:center;justify-content:center;">
+                  <i class="fas fa-camera" style="font-size:0.6rem;color:#64748b;"></i>
+                </div>
+              </div>
+              <div id="profileDisplayName" style="font-size:1.2rem;font-weight:700;color:#1e293b;margin-bottom:0.2rem;">—</div>
+              <div id="profileRoleBadge" style="font-size:0.68rem;font-weight:700;color:#6366f1;letter-spacing:.1em;margin-bottom:1.5rem;">—</div>
+              <div style="text-align:left;display:flex;flex-direction:column;gap:0.65rem;margin-bottom:1.5rem;">
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;color:#64748b;">
+                  <i class="fas fa-envelope" style="width:14px;color:#94a3b8;flex-shrink:0;"></i>
+                  <span id="profileEmailDisplay" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;color:#64748b;">
+                  <i class="fas fa-map-marker-alt" style="width:14px;color:#94a3b8;flex-shrink:0;"></i>
+                  <span>Amsterdam, Netherlands</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;color:#64748b;">
+                  <i class="fas fa-calendar-alt" style="width:14px;color:#94a3b8;flex-shrink:0;"></i>
+                  <span>Last login: <span id="profileLastLoginDisplay">—</span></span>
+                </div>
+              </div>
+              <div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;">
+                <span id="profileRoleTag" style="font-size:0.68rem;font-weight:700;padding:3px 10px;border-radius:20px;background:#ede9fe;color:#6d28d9;">USER</span>
+                <span style="font-size:0.68rem;font-weight:700;padding:3px 10px;border-radius:20px;background:#dcfce7;color:#15803d;">VERIFIED</span>
+              </div>
+            </div>
+
+            <!-- Impact Score -->
+            <div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:16px;padding:1.5rem;color:#fff;">
+              <div style="font-size:0.68rem;font-weight:700;letter-spacing:.1em;opacity:0.85;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
+                <i class="fas fa-trophy"></i> IMPACT SCORE
+              </div>
+              <div style="font-size:2.75rem;font-weight:800;margin-bottom:0.2rem;line-height:1;">98.5</div>
+              <div style="font-size:0.8rem;opacity:0.85;">Top 1% of managers this month</div>
+            </div>
+          </div>
+
+          <!-- Right column -->
+          <div style="display:flex;flex-direction:column;gap:1.5rem;">
+            <!-- Operational Activity -->
+            <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+              <h3 style="font-size:1rem;font-weight:700;color:#1e293b;margin:0 0 0.2rem;">Operational Activity</h3>
+              <p style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin:0 0 1.25rem;">YOUR RECENT ACTIONS AND CONTRIBUTIONS.</p>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;padding-bottom:1.25rem;border-bottom:1px solid #f1f5f9;">
+                <div style="text-align:center;">
+                  <i class="fas fa-heartbeat" style="color:#6366f1;font-size:1.1rem;margin-bottom:0.4rem;display:block;"></i>
+                  <div style="font-size:1.5rem;font-weight:700;color:#1e293b;">145</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Migrations</div>
+                </div>
+                <div style="text-align:center;">
+                  <i class="fas fa-check-circle" style="color:#6366f1;font-size:1.1rem;margin-bottom:0.4rem;display:block;"></i>
+                  <div style="font-size:1.5rem;font-weight:700;color:#1e293b;">312</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Onboarding</div>
+                </div>
+                <div style="text-align:center;">
+                  <i class="fas fa-clock" style="color:#6366f1;font-size:1.1rem;margin-bottom:0.4rem;display:block;"></i>
+                  <div style="font-size:1.5rem;font-weight:700;color:#1e293b;">1.2h</div>
+                  <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;">Avg. Time</div>
+                </div>
+              </div>
+              <h4 style="font-size:0.9rem;font-weight:600;color:#1e293b;margin:0 0 0.75rem;">Recent Achievements</h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+                <div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:#fafafa;border-radius:10px;">
+                  <div style="width:32px;height:32px;background:#fff7ed;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-award" style="color:#f97316;font-size:0.85rem;"></i>
+                  </div>
+                  <div>
+                    <div style="font-size:0.8rem;font-weight:600;color:#1e293b;">Migration Master</div>
+                    <div style="font-size:0.72rem;color:#94a3b8;">Processed 100+ migrations without errors.</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:#fafafa;border-radius:10px;">
+                  <div style="width:32px;height:32px;background:#f0fdf4;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-shield-alt" style="color:#10b981;font-size:0.85rem;"></i>
+                  </div>
+                  <div>
+                    <div style="font-size:0.8rem;font-weight:600;color:#1e293b;">Data Guardian</div>
+                    <div style="font-size:0.72rem;color:#94a3b8;">Maintained 100% data accuracy in audits.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Account Details Form -->
+            <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+              <h3 style="font-size:1rem;font-weight:700;color:#1e293b;margin:0 0 1.25rem;">Account Details</h3>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Username</label>
+                  <input type="text" id="profileUsername" class="form-control" readonly>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Role</label>
+                  <input type="text" id="profileRole" class="form-control" readonly>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Email Address</label>
+                  <input type="email" id="profileEmail" class="form-control">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Last Login</label>
+                  <input type="text" id="profileLastLogin" class="form-control" readonly>
+                </div>
+              </div>
+              <h4 style="font-size:0.875rem;font-weight:600;color:#1e293b;margin:1.25rem 0 1rem;padding-top:1rem;border-top:1px solid #f1f5f9;">Change Password</h4>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Current Password</label>
+                  <input type="password" id="profileCurrentPassword" class="form-control" placeholder="Current password">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">New Password</label>
+                  <input type="password" id="profileNewPassword" class="form-control" placeholder="New password">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Confirm Password</label>
+                  <input type="password" id="profileConfirmPassword" class="form-control" placeholder="Confirm new password">
+                </div>
+              </div>
+              <div class="form-actions" style="justify-content:flex-end;margin:0;">
+                <button type="button" class="btn btn-primary" id="saveProfileBtn">
+                  <i class="fas fa-save"></i> Save Changes
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
