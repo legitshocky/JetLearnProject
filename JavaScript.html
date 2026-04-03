@@ -3419,12 +3419,10 @@ tr.innerHTML = `
         amountPaidDisplay.value = '';
         balanceDueDisplay.value = '';
         return;
-
     }
-const pricingDetails = calculateInvoicePricingClient(formData);
+    const pricingDetails = calculateInvoicePricingClient(formData);
     const sym = pricingDetails.currencySymbol;
     const customPaid = parseFloat(formData.customPaidAmount) || 0;
-    console.log('[INV] paymentType:', formData.paymentType, '| numInstallments:', formData.numberOfInstallments, '| finalTotal:', pricingDetails.finalTotal, '| customPaid:', customPaid);
     let amountPaid;
     if (customPaid > 0) {
         amountPaid = customPaid;
@@ -3442,8 +3440,7 @@ const pricingDetails = calculateInvoicePricingClient(formData);
 
     const balanceCard = document.getElementById('balanceDueCard');
     const balanceDot  = document.getElementById('balanceDueDot');
-    
-    // Also apply color to the input text with !important
+
     totalPayableDisplay.style.setProperty('color', 'var(--primary)', 'important');
     amountPaidDisplay.style.setProperty('color', 'var(--success)', 'important');
 
@@ -6459,19 +6456,6 @@ function addOptionIfNotExists(selectElement, value) {
         selectElement.appendChild(newOpt);
         console.log(`Added dynamic teacher option: ${value}`);
     }
-}
-
-// 3. Attach the New Listener
-if(fetchMigrationDataBtn) {
-    // Remove previous listeners to be safe (by cloning and replacing)
-    const newBtn = fetchMigrationDataBtn.cloneNode(true);
-    fetchMigrationDataBtn.parentNode.replaceChild(newBtn, fetchMigrationDataBtn);
-    
-    // Add the new specific listener
-    newBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        fetchMigrationSpecificData();
-    });
 }
 
 // Helper to copy text from an input field
