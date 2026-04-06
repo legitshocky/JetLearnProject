@@ -1,6 +1,34 @@
 // =============================================
+// FILE: UserService.js
+// =============================================
+
+// =============================================
 // AUTHENTICATION & USER MANAGEMENT
 // =============================================
+
+function getUserProfiles() {
+  try {
+    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
+    if (!data || data.length <= 1) return [];
+    
+    const headers = data[0].map(h => String(h).trim().toLowerCase().replace(/\s/g, ''));
+    
+    return data.slice(1).map(row => ({
+      username: row[headers.indexOf('username')],
+      password: row[headers.indexOf('password')],
+      role: row[headers.indexOf('role')],
+      email: row[headers.indexOf('email')],
+      isActive: row[headers.indexOf('isactive')] === true || 
+                String(row[headers.indexOf('isactive')]).toLowerCase() === 'true',
+      lastLogin: row[headers.indexOf('lastlogin')],
+      mustChangePassword: row[headers.indexOf('mustchangepassword')] === true || 
+                          String(row[headers.indexOf('mustchangepassword')]).toLowerCase() === 'true'
+    }));
+  } catch (e) {
+    Logger.log('Error in getUserProfiles: ' + e.message);
+    return [];
+  }
+}
 
 function authenticateUser(username, password) {
   Logger.log('authenticateUser called for username: ' + username);
@@ -32,7 +60,7 @@ function authenticateUser(username, password) {
       role: user.role,
       username: username,
       permissions: PERMISSIONS[user.role] || [],
-      mustChangePassword: user.mustChangePassword === true || 
+      mustChangePassword: user.mustChangePassword === true ||
                           String(user.mustChangePassword).toLowerCase() === 'true'
     };
 
@@ -52,7 +80,7 @@ function authenticateUser(username, password) {
 function verifyUserSession(username) {
   Logger.log('verifyUserSession called for: ' + username);
   try {
-      const userProfiles = getUserProfiles(); 
+      const userProfiles = getUserProfiles();
       const user = userProfiles.find(u => u.username === username);
 
       if (!user || !user.isActive) {
@@ -73,56 +101,13 @@ function verifyUserSession(username) {
   }
 }
 
-function getUserProfiles() {
-  try {
-    // ✅ Check Apps Script cache first (60 second cache)
-    const cache = CacheService.getScriptCache();
-    const cached = cache.get('userProfiles');
-    if (cached) return JSON.parse(cached);
-
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
-
-    if (sheetData.length <= 1) {
-      createDefaultUsers();
-      return getUserProfiles();
-    }
-
-    const headers = sheetData[0];
-    const profiles = sheetData.slice(1).map(row => {
-      const user = {};
-      headers.forEach((header, i) => {
-        const key = header.toLowerCase().replace(/\s/g, '');
-        user[key] = row[i];
-      });
-      return {
-        username: user.username,
-        password: user.password,
-        role: user.role,
-        email: user.email,
-        isActive: user.isactive,
-        lastLogin: user.lastlogin,
-        createdDate: user.createddate,
-        mustChangePassword: user.mustchangepassword || false
-      };
-    });
-
-    // ✅ Cache for 60 seconds
-    try { cache.put('userProfiles', JSON.stringify(profiles), 60); } catch(e) {}
-
-    return profiles;
-  } catch (error) {
-    Logger.log('Error getting user profiles: ' + error.message);
-    return [];
-  }
-}
-
 
 function createDefaultUsers() {
   try {
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
 
-    if (sheet.getLastRow() === 0 || sheet.getRange('A1').isBlank()) { 
-      sheet.getRange(1, 1, 9, 9).setValues([
+    if (sheet.getLastRow() === 0 || sheet.getRange('A1').isBlank()) {
+      sheet.getRange(1, 1, 1, 9).setValues([
         ['Username', 'Password', 'Role', 'Email', 'IsActive', 'LastLogin', 'CreatedDate', 'ResetToken', 'TokenExpiry']
       ]);
     }
@@ -145,7 +130,7 @@ function createDefaultUsers() {
 function updateUserLastLogin(username) {
   try {
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES); 
+    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
     const headers = data[0].map(h => h.toLowerCase().replace(/\s/g, ''));
     const usernameColIndex = headers.indexOf('username');
     const lastLoginColIndex = headers.indexOf('lastlogin');
@@ -155,9 +140,9 @@ function updateUserLastLogin(username) {
       return;
     }
 
-    for (let i = 1; i < data.length; i++) { 
+    for (let i = 1; i < data.length; i++) {
       if (data[i][usernameColIndex] === username) {
-        sheet.getRange(i + 1, lastLoginColIndex + 1).setValue(new Date()); 
+        sheet.getRange(i + 1, lastLoginColIndex + 1).setValue(new Date());
         delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
         break;
       }
@@ -171,14 +156,14 @@ function requestPasswordReset(email) {
   Logger.log('requestPasswordReset called for email: ' + email);
   try {
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES); 
+    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
 
     if (data.length < 1) {
         Logger.log("User Profiles sheet is empty or does not have headers. Cannot process password reset.");
         return { success: false, message: "Server configuration error: User profiles not set up." };
     }
 
-    const headers = data[0].map(h => h.toLowerCase().replace(/\s/g, '')); 
+    const headers = data[0].map(h => h.toLowerCase().replace(/\s/g, ''));
     const emailCol = headers.indexOf('email');
     const usernameCol = headers.indexOf('username');
     const tokenCol = headers.indexOf('resettoken');
@@ -189,10 +174,10 @@ function requestPasswordReset(email) {
       return { success: false, message: "Server configuration error: Required columns for password reset not found. Please check 'User Profiles' sheet headers." };
     }
 
-    let userRowDataIndex = -1; 
-    for (let i = 1; i < data.length; i++) { 
+    let userRowDataIndex = -1;
+    for (let i = 1; i < data.length; i++) {
         if (data[i][emailCol] && String(data[i][emailCol]).trim().toLowerCase() === email.trim().toLowerCase()) {
-            userRowDataIndex = i; 
+            userRowDataIndex = i;
             break;
         }
     }
@@ -230,7 +215,7 @@ function requestPasswordReset(email) {
       subject: 'JetLearn System - Password Reset Request',
       htmlBody: emailBody,
       name: CONFIG.EMAIL.FROM_NAME,
-      from: CONFIG.EMAIL.FROM 
+      from: CONFIG.EMAIL.FROM
     });
     Logger.log('Password reset email sent to: ' + email);
 
@@ -250,7 +235,7 @@ function resetPassword(token, newPassword) {
   Logger.log('resetPassword called with token: ' + token);
   try {
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES); 
+    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
 
     if (data.length < 1) {
         Logger.log("User Profiles sheet is empty or does not have headers. Cannot process password reset.");
@@ -267,10 +252,10 @@ function resetPassword(token, newPassword) {
       return { success: false, message: "Server configuration error: Required columns for password reset not found. Please check 'User Profiles' sheet headers." };
     }
 
-    let userRowDataIndex = -1; 
-    for (let i = 1; i < data.length; i++) { 
+    let userRowDataIndex = -1;
+    for (let i = 1; i < data.length; i++) {
       if (data[i][tokenCol] && String(data[i][tokenCol]).trim() === String(token).trim()) {
-        userRowDataIndex = i; 
+        userRowDataIndex = i;
         break;
       }
     }
@@ -282,7 +267,7 @@ function resetPassword(token, newPassword) {
 
     const userSheetRowIndex = userRowDataIndex + 1;
 
-    const expiryDate = new Date(data[userRowDataIndex][expiryCol]); 
+    const expiryDate = new Date(data[userRowDataIndex][expiryCol]);
     if (isNaN(expiryDate.getTime())) {
         Logger.log(`Invalid expiry date for token ${token}: ${data[userRowDataIndex][expiryCol]}`);
         return { success: false, message: 'Invalid token expiry date. Please request a new link.' };
@@ -296,7 +281,7 @@ function resetPassword(token, newPassword) {
       return { success: false, message: 'Password reset token has expired.' };
     }
 
-    if (!newPassword || newPassword.length < 6) { 
+    if (!newPassword || newPassword.length < 6) {
         return { success: false, message: 'New password must be at least 6 characters long.' };
     }
 
@@ -323,7 +308,7 @@ function getActiveUsers() {
   Logger.log('getActiveUsers called');
 
   try {
-    const users = getUserProfiles(); 
+    const users = getUserProfiles();
     return users.map(user => ({
       username: user.username,
       role: user.role,
@@ -343,18 +328,18 @@ function updateUser(userData, currentUser) {
   Logger.log(`updateUser called for '${userData.username}' by user '${currentUser.username}'`);
 
   try {
-    if (!currentUser || currentUser.role !== ROLES.ADMIN || !hasPermission(currentUser.role, 'manage_users')) {
+    if (!currentUser || !hasPermission(currentUser.role, 'manage_users')) {
       logUserActivity(currentUser.username, 'Update User Failed', `Permission denied to update ${userData.username}.`);
       return { success: false, message: 'Permission denied. Only Admins can manage users.' };
     }
 
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES); 
+    const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
 
     let rowIndex = -1;
-    for (let i = 0; i < data.length; i++) { 
+    for (let i = 0; i < data.length; i++) {
       if (data[i][0] === userData.username) {
-        rowIndex = i + 1; 
+        rowIndex = i + 1;
         break;
       }
     }
@@ -445,7 +430,7 @@ function getSystemSettings() {
     emailFrom: CONFIG.EMAIL.FROM,
     emailFromName: CONFIG.EMAIL.FROM_NAME,
     paginationLimit: CONFIG.PAGINATION_LIMIT,
-    auditRetentionDays: 90 
+    auditRetentionDays: 90
   };
 }
 
@@ -456,7 +441,7 @@ function hasPermission(userRole, permission) {
 
 function addNewUser(userData, actingUser) {
   try {
-    if (!actingUser || actingUser.role !== 'Super Admin') {
+    if (!actingUser || !hasPermission(actingUser.role, 'create_users')) {
       return { success: false, message: 'Permission denied. Only Super Admins can create users.' };
     }
 
@@ -498,12 +483,12 @@ function addNewUser(userData, actingUser) {
 
     const emailResult = sendWelcomeEmail(userData.email, userData.username, tempPassword);
 
-logAuditAction('User Created', `Super Admin '${actingUser.username}' created new ${userData.role} account for '${userData.username}' (${userData.email})`);
+    logAuditAction('User Created', `Super Admin '${actingUser.username}' created new ${userData.role} account for '${userData.username}' (${userData.email})`);
     Logger.log(`User created: ${userData.username} by ${actingUser.username}`);
 
     return {
       success: true,
-      message: `User '${userData.username}' created. Welcome email ${emailResult.success ? 'sent \u2713' : 'FAILED \u2014 check logs'}.`
+      message: `User '${userData.username}' created. Welcome email ${emailResult.success ? 'sent ✓' : 'FAILED — check logs'}.`
     };
 
   } catch (e) {
@@ -512,13 +497,12 @@ logAuditAction('User Created', `Super Admin '${actingUser.username}' created new
   }
 }
 
-
 // =============================================
 // SEND WELCOME EMAIL (Super Admin only)
 // =============================================
 function sendWelcomeEmail(toEmail, username, tempPassword) {
   try {
-    const platformUrl = 'https://jetlearn-launcher.vercel.app/';
+    const platformUrl = ScriptApp.getService().getUrl();
     const platformLabel = 'JetLearn Operation System';
     const subject = `Your account is ready`;
 
@@ -557,13 +541,13 @@ function sendWelcomeEmail(toEmail, username, tempPassword) {
 
           <a href="${platformUrl}" style="display:block;background:#4a3c8a;color:white;text-decoration:none;font-size:14px;font-weight:500;padding:14px 24px;border-radius:4px;text-align:center;margin-bottom:24px;">Sign in to your account</a>
 
-          <p style="font-size:13px;color:#9a9a9a;margin:0 0 40px;line-height:1.6;">This is a temporary password. Please change it after your first login from Settings.</p>
+          <p style="font-size:13px;color:#9a9a9a;margin:0 0 40px;line-height:1.6;">This is a temporary password. You will be required to change it after your first login.</p>
 
         </div>
 
         <div style="background:#fafafa;border-top:1px solid #f0f0f0;padding:24px 48px;">
           <p style="font-size:12px;color:#b0b0b0;margin:0;line-height:1.7;">
-            Sent by JetLearn Operations System &nbsp;\u00B7&nbsp;
+            Sent by JetLearn Operations System &nbsp;·&nbsp;
             <a href="mailto:${CONFIG.EMAIL.FROM}" style="color:#b0b0b0;text-decoration:none;">${CONFIG.EMAIL.FROM}</a><br>
             If you didn't expect this email, you can safely ignore it.
           </p>
@@ -589,13 +573,12 @@ function sendWelcomeEmail(toEmail, username, tempPassword) {
   }
 }
 
-
 // =============================================
 // RESEND WELCOME / LOGIN EMAIL (Super Admin only)
 // =============================================
 function resendLoginEmail(targetUsername, actingUser) {
   try {
-    if (!actingUser || actingUser.role !== 'Super Admin') {
+    if (!actingUser || !hasPermission(actingUser.role, 'send_reset_email')) {
       return { success: false, message: 'Permission denied.' };
     }
 
@@ -655,17 +638,63 @@ function generateTempPassword() {
   return password;
 }
 
+// =============================================
+// THIS IS THE CORRECT, ENHANCED FUNCTION
+// =============================================
 function getUserProfile(username) {
   try {
     const profiles = getUserProfiles();
     const user = profiles.find(u => u.username === username);
     if (!user) return null;
-    return { username: user.username, email: user.email, role: user.role, lastLogin: user.lastLogin };
+
+    // --- NEW: Calculate user-specific stats ---
+    let migrationCount = 0;
+    let onboardingCount = 0;
+    try {
+      const auditLog = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+      if (auditLog && auditLog.length > 1) {
+        // Find the index for "Action" and "Intervened By" columns
+        const headers = auditLog[0].map(h => String(h).trim());
+        const actionCol = headers.indexOf('Action');
+        const userCol = headers.indexOf('Intervened By');
+
+        if (actionCol > -1 && userCol > -1) {
+          // Loop through all audit records
+          for (let i = 1; i < auditLog.length; i++) {
+            const rowUser = String(auditLog[i][userCol] || '').trim();
+            const rowAction = String(auditLog[i][actionCol] || '').trim();
+
+            // Check if the action was performed by the current user's email
+            if (rowUser.toLowerCase() === user.email.toLowerCase()) {
+              if (rowAction.includes('Migration')) {
+                migrationCount++;
+              }
+              if (rowAction.includes('Onboarding')) {
+                onboardingCount++;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log(`[getUserProfile] Failed to calculate stats for ${username}: ${e.message}`);
+    }
+    // --- END OF NEW STATS CALCULATION ---
+
+    return {
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'N/A',
+      migrationCount: migrationCount,   // NEW
+      onboardingCount: onboardingCount  // NEW
+    };
   } catch (e) {
     logError('getUserProfile', e);
     return null;
   }
 }
+
 
 function updateOwnProfile(data) {
   try {
@@ -675,6 +704,8 @@ function updateOwnProfile(data) {
     const usernameCol = headers.indexOf('Username');
     const passwordCol = headers.indexOf('Password');
     const emailCol    = headers.indexOf('Email');
+    const mustChangeCol = headers.indexOf('MustChangePassword');
+
 
     for (let i = 1; i < allData.length; i++) {
       if (String(allData[i][usernameCol]).toLowerCase() === data.username.toLowerCase()) {
@@ -685,6 +716,10 @@ function updateOwnProfile(data) {
             return { success: false, message: 'Current password is incorrect.' };
           }
           sheet.getRange(i + 1, passwordCol + 1).setValue(data.newPassword);
+          // After a successful password change, set MustChangePassword to FALSE
+          if (mustChangeCol !== -1) {
+            sheet.getRange(i + 1, mustChangeCol + 1).setValue(false);
+          }
         }
 
         // Update email
@@ -746,7 +781,7 @@ function logAuditAction(action, notes) {
 
 function toggleUserStatus(targetUsername, newStatus, actingUser) {
   try {
-    if (!actingUser || actingUser.role !== 'Super Admin') {
+    if (!actingUser || !hasPermission(actingUser.role, 'manage_users')) {
       return { success: false, message: 'Permission denied.' };
     }
 

@@ -57,6 +57,7 @@ let globalTimezones = []; // Will be populated from the server
 let globalTicketData = [];
 let globalTeacherDataList = [];
 let allTeacherDetailsCache = [];
+let globalMultiMigrationData = []; // To store the full report data
 let sparklineCharts = {};
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
@@ -319,19 +320,19 @@ const runAgenticAuditBtn = document.getElementById('runAgenticAuditBtn');
 const setupDailyAuditTriggerBtn = document.getElementById('setupDailyAuditTriggerBtn');
 
 
-// Persona Tool elements
-const personaForm = document.getElementById('personaForm');
-const requestedSlotSelect = document.getElementById('requestedSlot');
-const currentCourseSelect = document.getElementById('currentCourse');
-const futureCourse1Select = document.getElementById('futureCourse1');
-const futureCourse2Select = document.getElementById('futureCourse2');
-const futureCourse3Select = document.getElementById('futureCourse3');
-const currentCourseHeader = document.getElementById('currentCourseHeader');
-const cancelPersonaBtn = document.getElementById('cancelPersona');
-const refreshPersonaBtn = document.getElementById('refreshPersona');
+// Persona Tool elements — IDs updated to match personaPage HTML (personaFormEnhanced)
+const personaForm             = document.getElementById('personaFormEnhanced');   // was 'personaForm'
+const requestedSlotSelect     = null;   // removed — slots now live in #personaSlotsContainer rows
+const currentCourseSelect     = document.getElementById('pInpCourse');            // was 'currentCourse'
+const futureCourse1Select     = document.getElementById('pInpFuture1');           // was 'futureCourse1'
+const futureCourse2Select     = document.getElementById('pInpFuture2');           // was 'futureCourse2'
+const futureCourse3Select     = document.getElementById('pInpFuture3');           // was 'futureCourse3'
+const currentCourseHeader     = null;   // removed from new HTML
+const cancelPersonaBtn        = null;   // removed from new HTML — reset handled by form reset button
+const refreshPersonaBtn       = document.getElementById('refreshPersona');
 const personaResultsContainer = document.getElementById('personaResultsContainer');
-const personaResultsBody = document.getElementById('personaResultsBody');
-const personaResultsCount = document.getElementById('personaResultsCount');
+const personaResultsBody      = document.getElementById('personaResultsBody');
+const personaResultsCount     = document.getElementById('personaResultsCount');
 
 // Modal elements
 const loadingModal = document.getElementById('loadingModal');
@@ -612,13 +613,18 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     }
 
     function showLoading(message = 'Processing...') {
-      loadingMessage.textContent = message;
-      loadingModal.classList.add('active');
-    }
+        const modal = document.getElementById('loadingModal');
+        const msg = document.getElementById('loadingMessage');
+        if (msg) msg.textContent = message;
+        if (modal) modal.classList.add('active');
+        }
+
 
     function hideLoading() {
-      loadingModal.classList.remove('active');
+        const modal = document.getElementById('loadingModal');
+    if (modal) modal.classList.remove('active');
     }
+
 
     function showConfirm(title, message, callback) {
       const isLogout = title.toLowerCase().includes('logout') || title.toLowerCase().includes('sign out');
@@ -659,8 +665,12 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     }
 
     function switchPage(pageId, context = null) {
+    // Re-query live DOM (top-level querySelectorAll runs before DOM is ready in GAS HtmlService)
+    const livePageContents = document.querySelectorAll('.page-content');
+    const liveMenuItems = document.querySelectorAll('.menu-item');
+
     // Hide all pages
-    pageContents.forEach(page => {
+    livePageContents.forEach(page => {
         page.style.display = 'none';
         page.classList.remove('active');
     });
@@ -672,7 +682,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     }
 
     // Update Sidebar
-    menuItems.forEach(item => {
+    liveMenuItems.forEach(item => {
         item.classList.remove('active');
         if (item.dataset.page && pageId.includes(item.dataset.page)) {
             item.classList.add('active');
@@ -716,7 +726,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         userManagementTabBtn.style.display = hasPermission('manage_users') ? 'block' : 'none';
         // NEW: Show Agentic Audit section for admins with the right permission
         agenticAuditContainer.style.display = hasPermission('manage_agentic_audit') ? 'block' : 'none';
-        // AI PM \u2014 admin only
+        // AI PM — admin only
         const aiPmMenuItem = document.getElementById('aiPmMenuItem');
         if (aiPmMenuItem) aiPmMenuItem.style.display = hasPermission('use_ai_pm') ? 'flex' : 'none';
     }
@@ -945,99 +955,9 @@ function updateRecentActivities(data) {
     }
 }
 
+// (The old `updateDashboard` function has been replaced by `updateNewDashboard` and is removed for clarity)
 
-
-// function updateDashboard(data) {
-//     // 1. Update Statistics Cards
-//     document.getElementById('totalOnboardings').textContent = (data.activeLearners || data.onboardings.total).toLocaleString();
-//     document.getElementById('todayOnboardings').textContent = data.onboardings.today;
-//     document.getElementById('weekOnboardings').textContent = data.onboardings.thisWeek;
-//     document.getElementById('monthOnboardings').textContent = data.onboardings.thisMonth;
-    
-//     document.getElementById('totalMigrations').textContent = data.migrations.total;
-//     document.getElementById('todayMigrations').textContent = data.migrations.today;
-//     document.getElementById('weekMigrations').textContent = data.migrations.thisWeek;
-//     document.getElementById('monthMigrations').textContent = data.migrations.thisMonth;
-    
-//     document.getElementById('migrationSuccessRate').textContent = `${data.migrations.successRate}%`;
-    
-//     // 2. Update Chart
-//     initMigrationSuccessChart(data.migrations.successful, data.migrations.failed);
-
-//     // 3. Insight cards \u2014 real HubSpot total, audit log for weekly trend
-//     const activeLearners = data.activeLearners || data.onboardings.total || 0;
-//     const el = document.getElementById('dashActiveLearners');
-//     if (el) el.textContent = activeLearners.toLocaleString();
-//     const trendEl = document.getElementById('dashActiveLearnersTrend');
-//     if (trendEl) trendEl.textContent = `\u2191 +${data.onboardings.thisWeek || 0} new this week`;
-
-//     // Growth = month migrations vs week migrations annualised estimate
-//     const monthMig = data.migrations.thisMonth || 0;
-//     const growthEl = document.getElementById('dashGrowth');
-//     const growthTrendEl = document.getElementById('dashGrowthTrend');
-//     if (growthEl) growthEl.textContent = monthMig > 0 ? `${monthMig}` : '\u2014';
-//     if (growthTrendEl) growthTrendEl.textContent = `This month migrations`;
-
-//     // Escalations \u2014 from migrations failed count as proxy
-//     const escalations = data.migrations.failed || 0;
-//     const escEl = document.getElementById('dashEscalations');
-//     const escTrendEl = document.getElementById('dashEscalationsTrend');
-//     if (escEl) escEl.textContent = escalations;
-//     if (escTrendEl) {
-//         escTrendEl.textContent = escalations === 0 ? '\u2713 All clear' : `${escalations} failed migrations`;
-//         escTrendEl.style.color = escalations === 0 ? '#059669' : '#dc2626';
-//     }
-
-//     // 4. Update Recent Activities Feed
-//     const recentActivitiesList = document.getElementById('recentActivitiesList');
-//     recentActivitiesList.innerHTML = '';
-
-//     if (!data.recentActivities || data.recentActivities.length === 0) {
-//         recentActivitiesList.innerHTML = `<p style="text-align:center; color: var(--text-light);">No recent activities to show.</p>`;
-//     } else {
-//         data.recentActivities.forEach(activity => {
-//             const item = document.createElement('div');
-//             item.className = 'activity-item';
-
-//             const statusBadge = activity.status 
-//                 ? `<span class="status-badge status-${activity.status.toLowerCase().replace(' ', '-')}" style="${activity.status === 'Partial Success' ? 'background-color: rgba(255, 152, 0, 0.1); color: var(--warning);' : ''}">${activity.status}</span>` 
-//                 : '';
-
-//             const relativeTime = activity.timestamp ? moment(activity.timestamp).fromNow() : 'Unknown time';
-
-//             const iconClass = activity.type === 'migration' 
-//                 ? 'fa-exchange-alt' 
-//                 : activity.type === 'onboarding' 
-//                     ? 'fa-user-plus' 
-//                     : 'fa-envelope-open-text';
-
-//             let actionButtonHtml = '';
-//             if (activity.type === 'email' && activity.trackingId) {
-//                 actionButtonHtml = `<button class="btn btn-outline btn-sm" style="margin-left: 1rem;" onclick="viewEmailActivityDetails('${activity.trackingId}')">View Details</button>`;
-//             }
-
-//             item.innerHTML = `
-//               <div class="activity-icon ${activity.type}">
-//                 <i class="fas ${iconClass}"></i>
-//               </div>
-//               <div class="activity-details">
-//                 <div class="activity-title">${activity.title} ${statusBadge}</div>
-//                 <div class="activity-description">${activity.description}</div>
-//               </div>
-//               <div style="display: flex; align-items: center; margin-left: auto;">
-//                 <div class="activity-time">${relativeTime}</div>
-//                 ${actionButtonHtml}
-//               </div>
-//             `;
-
-//             recentActivitiesList.appendChild(item);
-//         });
-//     }
-    
-//     hideLoading();
-// }
-
-// \u2500\u2500 NEW: Top active teachers handler \u2500\u2500
+// –– NEW: Top active teachers handler ––
 function updateDashboardTeachers(teachers) {
     const container = document.getElementById('dashTopTeachers');
     if (!container) return;
@@ -1075,7 +995,7 @@ function updateDashboardTeachers(teachers) {
     }).join('');
 }
 
-// \u2500\u2500 NEW: Migration reasons bar chart handler \u2500\u2500
+// –– NEW: Migration reasons bar chart handler ––
 function updateDashboardReasons(result) {
     const container = document.getElementById('dashReasonBars');
     if (!container) return;
@@ -1096,7 +1016,7 @@ function updateDashboardReasons(result) {
         const barColor = escalationReasons.some(e => nameLower.includes(e)) ? '#f87171'
                        : performanceReasons.some(p => nameLower.includes(p)) ? '#f472b6'
                        : '#818cf8';
-        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '\u2026' : r.name;
+        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '…' : r.name;
         return `<div style="display:flex;align-items:center;gap:8px;">
             <div style="font-size:10px;color:var(--text-light);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}">${escapeHtml(shortName)}</div>
             <div style="flex:1;height:8px;background:var(--gray);border-radius:99px;overflow:hidden;">
@@ -1619,7 +1539,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
         });
 
         // 3. Activate the specific button
-        const tabButton = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
+        const tabButton = document.querySelector(`#communicationPage .tab-button[data-tab="${tabId}"]`);
         if (tabButton) {
             tabButton.classList.add('active');
         } else {
@@ -1968,7 +1888,7 @@ function collectEmailFormData(emailType) {
                 const oldTeacher = String(row[4] || '').trim();
                 const newTeacher = String(row[5] || '').trim();
                 let teachersInfo = 'N/A';
-                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} \u2192 ${newTeacher}`;
+                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} → ${newTeacher}`;
                 else if (newTeacher) teachersInfo = newTeacher;
                 else if (oldTeacher) teachersInfo = oldTeacher;
 tr.innerHTML = `
@@ -2038,7 +1958,7 @@ tr.innerHTML = `
                 if(data && data.success) {
                     const profile = data.profile;
 
-                    // \u2500\u2500 Header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    // –– Header –––––––––––––––––––––––––––––––––––––––––––––
                     const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
                     const info   = `<div class="teacher-profile-info">
                         <h2>${profile.name}</h2>
@@ -2051,7 +1971,7 @@ tr.innerHTML = `
                     </div>`;
                     contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
 
-                    // \u2500\u2500 Escalation Summary \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    // –– Escalation Summary ––––––––––––––––––––––––––––––––––––––
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
                     const escColor = esc.totalCount === 0 ? '#15803d' : esc.totalCount <= 2 ? '#d97706' : '#b91c1c';
                     const escBg    = esc.totalCount === 0 ? '#f0fdf4'  : esc.totalCount <= 2 ? '#fffbeb'  : '#fef2f2';
@@ -2078,12 +1998,12 @@ tr.innerHTML = `
                         </div>
                     </div>`;
 
-                    // \u2500\u2500 Escalation Tickets Table \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    // –– Escalation Tickets Table –––––––––––––––––––––––––––––––
                     if (esc.tickets && esc.tickets.length > 0) {
                         const ticketRows = esc.tickets.map(t => {
                             const sc = t.status === 'Completed' ? '#15803d' : '#d97706';
                             const sb = t.status === 'Completed' ? '#f0fdf4'  : '#fffbeb';
-                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '\u2014';
+                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '—';
                             return `<tr>
                                 <td style="font-size:0.8rem;color:#64748b;">${escapeHtml(t.ticketId)}</td>
                                 <td style="font-size:0.85rem;font-weight:500;">${escapeHtml(t.reason)}</td>
@@ -2095,7 +2015,7 @@ tr.innerHTML = `
                             </tr>`;
                         }).join('');
                         contentEl.innerHTML += `<div style="margin:0.5rem 0 1.5rem;">
-                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">\u1F4CB Escalation Ticket History</h3>
+                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">📋 Escalation Ticket History</h3>
                             <div class="table-container"><table class="data-table">
                                 <thead><tr>
                                     <th>Ticket ID</th><th>Reason</th><th>Triggered</th>
@@ -2106,7 +2026,7 @@ tr.innerHTML = `
                         </div>`;
                     }
 
-                    // \u2500\u2500 Course Categories \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                    // –– Course Categories ––––––––––––––––––––––––––––––––––––––
                     const coursesHtml = Object.keys(profile.coursesByCategory).map(category => {
                         const cats = profile.coursesByCategory[category];
                         if (cats.length === 0) return '';
@@ -2280,8 +2200,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Root Cause Analysis
                     <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">\u1F4CA Chart</button>
-                        <button onclick="toggleReportView('rootCause', 'table')">\u1F4CB Table</button>
+                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">📊 Chart</button>
+                        <button onclick="toggleReportView('rootCause', 'table')">📋 Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="rootCauseChartView">
@@ -2305,8 +2225,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Impact Analysis
                    <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('impact', 'chart')">\u1F4CA Chart</button>
-                        <button onclick="toggleReportView('impact', 'table')">\u1F4CB Table</button>
+                        <button class="active" onclick="toggleReportView('impact', 'chart')">📊 Chart</button>
+                        <button onclick="toggleReportView('impact', 'table')">📋 Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="impactChartView">
@@ -2591,202 +2511,256 @@ tr.innerHTML = `
       }).withFailureHandler(showError).getSystemHealth();
     }
 
-    // ── Teacher Intelligence Center ───────────────────────────────────────────
+    // –– Teacher Intelligence Center ––––––––––––––––––––––––––
 
     function loadPersonaTool() {
       initDateInputs();
-      populateSelect(requestedSlotSelect, generateTimeSlotsForPersona(), false, 'Select slot');
-      personaResultsContainer.style.display = 'none';
+      if (personaResultsContainer) personaResultsContainer.style.display = 'none';
+      // Populate course dropdowns using new IDs
       google.script.run
         .withSuccessHandler(function(courses) {
           if (courses) {
-            populateSelect(currentCourseSelect, courses, false, 'Select course');
-            populateSelect(futureCourse1Select, courses, true);
-            populateSelect(futureCourse2Select, courses, true);
-            populateSelect(futureCourse3Select, courses, true);
+            populateSelect(document.getElementById('pInpCourse'),   courses, false, 'Select course');
+            populateSelect(document.getElementById('pInpFuture1'),  courses, true);
+            populateSelect(document.getElementById('pInpFuture2'),  courses, true);
+            populateSelect(document.getElementById('pInpFuture3'),  courses, true);
           }
         })
         .withFailureHandler(showError)
         .getCourseNames();
+      // Initialise smart logic (attaches btnSmartFetch, btnAddPersonaSlot, form submit)
+      if (typeof initPersonaSmartLogic === 'function') initPersonaSmartLogic();
     }
 
-    // JLID Fetch — pre-fill course, teacher, age from HubSpot
+    // JLID Fetch — pre-fill course, teacher, age from HubSpot (wired via initPersonaSmartLogic)
     (function() {
-      const fetchBtn = document.getElementById('personaFetchBtn');
-      const clearBtn = document.getElementById('personaClearBtn');
-      const ctxPanel = document.getElementById('personaLearnerContext');
+      const fetchBtn = document.getElementById('btnSmartFetch');       // was 'personaFetchBtn'
+      const clearBtn = null;                                            // no clearBtn in new HTML
+      const ctxPanel = document.getElementById('personaLearnerSummary'); // was 'personaLearnerContext'
 
       if (fetchBtn) fetchBtn.addEventListener('click', function() {
-        const jlid = document.getElementById('personaJlidInput').value.trim();
+        const jlidEl = document.getElementById('smartPersonaJlid');    // was 'personaJlidInput'
+        const jlid = jlidEl ? jlidEl.value.trim() : '';
         if (!jlid) { showToast('error', 'Input Required', 'Enter a JLID first.'); return; }
         fetchBtn.disabled = true;
         fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching…';
         google.script.run
           .withSuccessHandler(function(resp) {
             fetchBtn.disabled = false;
-            fetchBtn.innerHTML = '<i class="fas fa-download"></i> Fetch Learner';
+            fetchBtn.innerHTML = '<i class="fas fa-magic"></i> Fetch & Analyze';
             if (!resp || !resp.success) {
               showToast('error', 'Not Found', (resp && resp.message) ? resp.message : 'No data returned.'); return;
             }
             const data = resp.data;
-            // Populate learner context panel
-            document.getElementById('pcLearnerName').textContent    = data.learnerName    || '—';
-            document.getElementById('pcJlid').textContent           = data.jlid           || jlid;
-            document.getElementById('pcCurrentTeacher').value = data.currentTeacher || '';
-            document.getElementById('pcCurrentCourse').textContent  = data.course         || '—';
-            document.getElementById('pcLearnerAge').textContent     = data.age            || '—';
-            ctxPanel.style.display = 'block';
-            clearBtn.style.display = 'inline-flex';
-            // Pre-fill filters
-            if (data.course && currentCourseSelect) {
+            // Populate learner summary panel (new IDs)
+            if (document.getElementById('pDispName'))   document.getElementById('pDispName').textContent   = data.learnerName || '—';
+            if (document.getElementById('pDispJlid'))   document.getElementById('pDispJlid').textContent   = data.jlid || jlid;
+            if (document.getElementById('pDispAge'))    document.getElementById('pDispAge').textContent    = data.age || '—';
+
+            // Populate and set the teacher dropdown (new ID)
+            const teacherSelect = document.getElementById('pCurrentTeacherDropdown');
+            if (teacherSelect && globalTeachers) {
+                populateSelect(teacherSelect, globalTeachers, false, 'Select Teacher');
+                teacherSelect.value = data.currentTeacher || '';
+            }
+
+            // Pre-fill current course (new ID)
+            const courseEl = document.getElementById('pInpCourse');
+            if (data.course && courseEl) {
               var _found = false;
-              for (var _i = 0; _i < currentCourseSelect.options.length; _i++) {
-                if (currentCourseSelect.options[_i].value === data.course) {
-                  currentCourseSelect.value = data.course; _found = true; break;
+              for (var _i = 0; _i < courseEl.options.length; _i++) {
+                if (courseEl.options[_i].value === data.course) {
+                  courseEl.value = data.course; _found = true; break;
                 }
               }
               if (!_found) {
                 var _opt = document.createElement('option');
                 _opt.value = data.course; _opt.textContent = data.course;
-                currentCourseSelect.appendChild(_opt);
-                currentCourseSelect.value = data.course;
+                courseEl.appendChild(_opt);
+                courseEl.value = data.course;
               }
             }
-            if (data.age) document.getElementById('learnerAge').value = data.age;
+
+            if (ctxPanel) ctxPanel.style.display = 'grid';
           })
           .withFailureHandler(function(err) {
             fetchBtn.disabled = false;
-            fetchBtn.innerHTML = '<i class="fas fa-download"></i> Fetch Learner';
+            fetchBtn.innerHTML = '<i class="fas fa-magic"></i> Fetch & Analyze';
             showError(err);
           })
           .fetchHubspotByJlid(jlid);
       });
-
-      if (clearBtn) clearBtn.addEventListener('click', function() {
-        document.getElementById('personaJlidInput').value = '';
-        ctxPanel.style.display = 'none';
-        clearBtn.style.display = 'none';
-        document.getElementById('pcLearnerName').textContent    = '—';
-        document.getElementById('pcJlid').textContent           = '—';
-        document.getElementById('pcCurrentTeacher').value = '';
-        document.getElementById('pcCurrentCourse').textContent  = '—';
-        document.getElementById('pcLearnerAge').textContent     = '—';
-        document.getElementById('pcAuditBadge').style.display   = 'none';
-      });
     })();
 
-    // Search submit
-    personaForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      const data = {
-        requestedDate:  document.getElementById('requestedDate').value,
-        requestedSlot:  requestedSlotSelect.value,
-        currentCourse:  currentCourseSelect.value,
-        learnerAge:     document.getElementById('learnerAge').value.trim(),
-        mathTraits:     '',
-        techTraits:     '',
-        futureCourse1:  futureCourse1Select.value,
-        futureCourse2:  futureCourse2Select.value,
-        futureCourse3:  futureCourse3Select.value
-      };
-      if (!data.requestedDate || !data.requestedSlot || !data.currentCourse) {
-        showToast('error', 'Validation Error', 'Date, Time Slot, and Course are required.');
-        return;
-      }
-      showLoading('Finding best matches…');
-      const hdr = document.getElementById('currentCourseHeader');
-      if (hdr) hdr.textContent = data.currentCourse;
-      google.script.run
-        .withSuccessHandler(updatePersonaResults)
-        .withFailureHandler(function(err) { hideLoading(); showError(err); })
-        .searchMatchingTeachers(data);
-    });
+    // Search submit — uses new personaFormEnhanced and new slot/course IDs
+    if (personaForm) {
+      personaForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-    function updatePersonaResults(result) {
-      hideLoading();
-      if (!result || !result.success) {
-        showToast('error', 'Search Failed', (result && result.message) ? result.message : 'Unknown error.');
-        return;
-      }
-      personaResults = result.results || [];
-      const count = personaResults.length;
-      const countEl = document.getElementById('personaResultsCount');
-      if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
-      personaResultsBody.innerHTML = '';
-
-      if (count === 0) {
-        personaResultsBody.innerHTML =
-          '<tr><td colspan="12" style="text-align:center;padding:2rem;color:var(--text-muted);">'
-          + 'No teachers match all criteria. Try a different date or course.</td></tr>';
-      } else {
-        personaResults.forEach(function(teacher, idx) {
-          const gradeColor = teacher.auditGrade === 'A' ? '#15803d'
-            : teacher.auditGrade === 'B' ? '#1d4ed8'
-            : teacher.auditGrade === 'C' ? '#d97706'
-            : teacher.auditGrade === 'D' ? '#b91c1c' : '#6b7280';
-
-          const auditHtml = teacher.avgClassScore && teacher.avgClassScore !== 'No data'
-            ? '<span style="font-weight:700;color:' + gradeColor + ';">' + escapeHtml(teacher.auditGrade) + '</span>'
-              + ' <span style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.avgClassScore) + '</span>'
-              + '<div style="font-size:0.65rem;color:#94a3b8;">' + (teacher.auditCount45 || 0) + ' sessions</div>'
-            : '<span style="color:#94a3b8;font-size:0.78rem;">No data</span>';
-
-          const rfHtml = (teacher.redFlagCount || 0) > 0
-            ? '<span style="color:#b91c1c;font-weight:600;">&#9872; ' + teacher.redFlagCount + '</span>'
-            : '<span style="color:#15803d;">—</span>';
-
-          const slotStyle = teacher.slotMatch === '\u2714\uFE0F'
-            ? 'font-size:1.1rem;' : 'font-size:1.1rem;opacity:0.4;';
-
-          const rankBadge = idx === 0
-            ? '<span style="font-size:0.65rem;background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:3px;margin-left:4px;">Top Pick</span>'
-            : '';
-
-          const progressStyle = function(v) {
-            if (!v || v === 'N/A' || v === 'Not Onboarded') return 'color:#94a3b8;';
-            const pct = parseInt(v);
-            return isNaN(pct) ? 'color:#94a3b8;' : pct >= 80 ? 'color:#15803d;font-weight:600;' : pct >= 50 ? 'color:#d97706;' : 'color:#b91c1c;';
-          };
-
-          // Traits column: if a filter was applied show missing traits; otherwise show teacher's own traits
-          const hasTraitFilter = teacher.traitsMissing !== undefined && (teacher.teacherTraits || []).length > 0;
-          let traitsCellHtml;
-          if (teacher.traitsMissing && teacher.traitsMissing.length > 0) {
-            // Some traits missing — show them in red
-            traitsCellHtml = '<span style="color:#b91c1c;font-size:0.73rem;">'
-              + escapeHtml(teacher.traitsMissing.join(', ')) + '</span>';
-          } else if (teacher.teacherTraits && teacher.teacherTraits.length > 0) {
-            // All match or no filter — show teacher's own traits in green chips
-            traitsCellHtml = teacher.teacherTraits.slice(0, 4).map(function(t) {
-              return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.65rem;margin:1px;">'
-                + escapeHtml(t) + '</span>';
-            }).join(' ')
-            + (teacher.teacherTraits.length > 4 ? '<span style="font-size:0.65rem;color:#94a3b8;"> +' + (teacher.teacherTraits.length - 4) + '</span>' : '');
-          } else {
-            traitsCellHtml = '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
+        // Collect multi-slot rows from new HTML structure
+        const slotRows = document.querySelectorAll('#personaSlotsContainer .slot-row');
+        const requestedSlots = [];
+        slotRows.forEach(function(row) {
+          const dateEl = row.querySelector('.p-slot-date');
+          const timeEl = row.querySelector('.p-slot-time');
+          if (dateEl && timeEl && dateEl.value && timeEl.value) {
+            requestedSlots.push({ date: dateEl.value, slot: timeEl.value });
           }
-
-          const tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
-            + '<td><strong>' + escapeHtml(teacher.teacherName) + '</strong>' + rankBadge
-              + (teacher.ageYear && teacher.ageYear !== 'N/A' ? '<div style="font-size:0.72rem;color:#64748b;margin-top:2px;">' + escapeHtml(teacher.ageYear) + '</div>' : '') + '</td>'
-            + '<td style="' + slotStyle + 'text-align:center;">' + teacher.slotMatch + '</td>'
-            + '<td style="font-size:0.73rem;color:#475569;max-width:150px;line-height:1.4;">'
-              + (teacher.alternateSlots ? escapeHtml(teacher.alternateSlots).replace(/,/g, '<br>') : '<span style="color:#94a3b8;">No slots</span>') + '</td>'
-            + '<td><span style="font-size:0.82rem;font-weight:600;' + progressStyle(teacher.currentCourseProgress) + '">' + escapeHtml(teacher.currentCourseProgress || 'N/A') + '</span></td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse1Progress) + '">' + escapeHtml(teacher.futureCourse1Progress || '—') + '</td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse2Progress) + '">' + escapeHtml(teacher.futureCourse2Progress || '—') + '</td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse3Progress) + '">' + escapeHtml(teacher.futureCourse3Progress || '—') + '</td>'
-            + '<td>' + auditHtml + '</td>'
-            + '<td>' + rfHtml + '</td>'
-            + '<td style="max-width:160px;">' + traitsCellHtml + '</td>';
-          personaResultsBody.appendChild(tr);
         });
-      }
-      personaResultsContainer.style.display = 'block';
-      personaResultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        const data = {
+          requestedDate:   '',
+          requestedSlot:   requestedSlots.length ? JSON.stringify(requestedSlots) : '',
+          requestedSlots:  requestedSlots,
+          currentCourse:   document.getElementById('pInpCourse')  ? document.getElementById('pInpCourse').value  : '',
+          learnerAge:      document.getElementById('pDispAge')     ? document.getElementById('pDispAge').textContent.trim() : '',
+          mathTraits:      document.getElementById('pInpMathTraits') ? document.getElementById('pInpMathTraits').value.trim() : '',
+          techTraits:      document.getElementById('pInpTechTraits') ? document.getElementById('pInpTechTraits').value.trim() : '',
+          futureCourse1:   (document.getElementById('pInpFuture1') && document.getElementById('pInpFuture1').value !== 'None') ? document.getElementById('pInpFuture1').value : '',
+          futureCourse2:   (document.getElementById('pInpFuture2') && document.getElementById('pInpFuture2').value !== 'None') ? document.getElementById('pInpFuture2').value : '',
+          futureCourse3:   (document.getElementById('pInpFuture3') && document.getElementById('pInpFuture3').value !== 'None') ? document.getElementById('pInpFuture3').value : ''
+        };
+
+        if (!data.requestedSlot || !data.currentCourse) {
+          showToast('error', 'Validation Error', 'At least one time slot and a course are required.');
+          return;
+        }
+
+        showLoading('Finding best matches…');
+        google.script.run
+          .withSuccessHandler(updatePersonaResults)
+          .withFailureHandler(function(err) { hideLoading(); showError(err); })
+          .searchMatchingTeachers(data);
+      });
     }
+
+function updatePersonaResults(result) {
+  hideLoading();
+
+  if (!result || !result.success) {
+    showToast('error', 'Search Failed', (result && result.message) ? result.message : 'Unknown error.');
+    return;
+  }
+
+  var personaResults = result.results || [];
+  var count = personaResults.length;
+  var countEl   = document.getElementById('personaResultsCount');
+  var tbody     = document.getElementById('personaResultsBody');
+  var container = document.getElementById('personaResultsContainer');
+
+  if (countEl)  countEl.textContent  = count + ' match' + (count !== 1 ? 'es' : '');
+  if (tbody)    tbody.innerHTML = '';
+
+  if (count === 0) {
+    if (tbody) tbody.innerHTML =
+      '<tr><td colspan="13" style="text-align:center;padding:2rem;color:var(--text-muted);">'
+      + 'No teachers match the criteria. Try different slots or courses.</td></tr>';
+  } else {
+    personaResults.forEach(function(t, idx) {
+
+      // ── Audit ──
+      var gradeColor = { 'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c' }[t.auditGrade] || '#6b7280';
+      var hasAudit   = t.avgClassScore && t.avgClassScore !== 'No data';
+      var auditHtml  = hasAudit
+        ? '<span style="font-weight:700;color:' + gradeColor + ';">' + escapeHtml(t.auditGrade) + '</span>'
+          + ' <span style="font-size:0.72rem;color:#64748b;">' + escapeHtml(t.avgClassScore) + '</span>'
+          + '<div style="font-size:0.65rem;color:#94a3b8;">' + (t.auditCount45 || 0) + ' sessions</div>'
+        : '<span style="color:#94a3b8;font-size:0.78rem;">No data</span>';
+
+      // ── Red flags ──
+      var rfCount = Number(t.redFlagCount) || 0;
+      var rfHtml  = rfCount > 0
+        ? '<span style="color:#b91c1c;font-weight:600;">\u2691 ' + rfCount + '</span>'
+        : '<span style="color:#94a3b8;">\u2014</span>';
+
+      // ── Slot ──
+      var slotRaw      = String(t.slotMatch || '');
+      var isFullMatch  = slotRaw.indexOf('\u2714') !== -1;
+      var isPartial    = slotRaw.indexOf('\u26A0') !== -1;
+      var slotIcon     = isFullMatch ? '<span style="color:#15803d;font-size:1.1rem;">\u2714\uFE0F</span>'
+                       : isPartial  ? '<span style="color:#d97706;font-size:0.9rem;">' + escapeHtml(slotRaw) + '</span>'
+                       :              '<span style="color:#ef4444;font-size:1.1rem;opacity:0.6;">\u274C</span>';
+
+      // ── Alternate slots ──
+      var altRaw  = String(t.alternateSlots || '');
+      var altHtml = altRaw
+        ? '<span style="font-size:0.71rem;color:#475569;line-height:1.6;">' + escapeHtml(altRaw).replace(/,\s*/g,'<br>') + '</span>'
+        : '<span style="color:#94a3b8;font-size:0.75rem;">No slots</span>';
+
+      // ── Top pick badge ──
+      var badge = idx === 0
+        ? ' <span style="font-size:0.6rem;background:#fbbf24;color:#78350f;padding:1px 6px;border-radius:3px;vertical-align:middle;margin-left:3px;">Top Pick</span>'
+        : '';
+
+      // ── Course progress colour ──
+      function pColor(v) {
+        if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '\u2014' || v === '—') return '#94a3b8';
+        var n = parseInt(v);
+        return isNaN(n) ? '#94a3b8' : n >= 80 ? '#15803d' : n >= 50 ? '#d97706' : '#b91c1c';
+      }
+      function pCell(v) {
+        var label = (v && v !== '\u2014') ? v : '\u2014';
+        return '<span style="font-size:0.8rem;font-weight:' + (parseInt(v) >= 71 ? '600' : '400') + ';color:' + pColor(v) + ';">' + escapeHtml(label) + '</span>';
+      }
+
+      // ── Traits ──
+      var traitsHtml;
+      if (t.traitsMissing && t.traitsMissing.length > 0) {
+        traitsHtml = '<span style="color:#b91c1c;font-size:0.7rem;">Missing: ' + escapeHtml(t.traitsMissing.join(', ')) + '</span>';
+      } else if (t.teacherTraits && t.teacherTraits.length > 0) {
+        traitsHtml = t.teacherTraits.slice(0, 3).map(function(tr) {
+          return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.62rem;margin:1px;">' + escapeHtml(tr) + '</span>';
+        }).join('');
+      } else {
+        traitsHtml = '<span style="color:#94a3b8;font-size:0.75rem;">\u2014</span>';
+      }
+
+      // ── Score badge ──
+      var score    = Number(t._rankScore) || 0;
+      var scoreBg  = score >= 70 ? '#dcfce7' : score >= 40 ? '#fef9c3' : '#fee2e2';
+      var scoreClr = score >= 70 ? '#15803d' : score >= 40 ? '#a16207' : '#b91c1c';
+
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
+        + '<td>'
+          + '<strong>' + escapeHtml(t.teacherName) + '</strong>' + badge
+          + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(t.ageYear || '\u2014') + '</div>'
+        + '</td>'
+        + '<td style="font-size:0.8rem;color:#64748b;">' + escapeHtml(t.ageYear || '\u2014') + '</td>'
+        + '<td style="text-align:center;">' + slotIcon + '</td>'
+        + '<td style="max-width:140px;">' + altHtml + '</td>'
+        + '<td>' + pCell(t.currentCourseProgress) + '</td>'
+        + '<td>' + pCell(t.futureCourse1Progress) + '</td>'
+        + '<td>' + pCell(t.futureCourse2Progress) + '</td>'
+        + '<td>' + pCell(t.futureCourse3Progress) + '</td>'
+        + '<td>' + auditHtml + '</td>'
+        + '<td style="text-align:center;">' + rfHtml + '</td>'
+        + '<td style="max-width:160px;">'
+          + '<div style="display:flex;flex-direction:column;gap:4px;">'
+            + '<span style="display:inline-block;background:' + scoreBg + ';color:' + scoreClr
+              + ';border:1px solid ' + scoreClr + '44;padding:2px 8px;border-radius:12px;font-weight:700;font-size:0.78rem;">'
+              + score + ' pts</span>'
+            + traitsHtml
+          + '</div>'
+        + '</td>'
+        + '<td style="text-align:right;">'
+          + '<button class="btn btn-outline btn-sm p-profile-btn" data-name="' + escapeHtml(t.teacherName) + '">Profile</button>'
+        + '</td>';
+
+      tr.querySelector('.p-profile-btn').addEventListener('click', function() {
+        switchPage('teacherProfilePage', this.dataset.name);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  if (container) {
+    container.style.display = 'block';
+    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 
     function loadBatchPage() {
         csvFileInput.value = '';
@@ -2855,7 +2829,7 @@ tr.innerHTML = `
     function searchLearnerHistory() {
         const jlid = document.getElementById('historyJlidInput').value.trim();
         if (!jlid) { showToast('error', 'Input Required', 'Please enter a JLID.'); return; }
-        showLoading('Loading migration timeline for ' + jlid + '\u2026');
+        showLoading('Loading migration timeline for ' + jlid + '…');
         document.getElementById('historyResultsContainer').style.display = 'none';
         const es = document.getElementById('historyEmptyState');
         if (es) es.style.display = 'none';
@@ -2865,7 +2839,7 @@ tr.innerHTML = `
             .getComprehensiveLearnerHistory(jlid);
     }
 
-    /* \u2500\u2500 colour helpers \u2500\u2500 */
+    /* –– colour helpers –– */
     function _tlRiskColors(level) {
         const map = {
             Critical: { bg:'#fff0f0', border:'#e11d48', icon:'#e11d48', dot:'#e11d48' },
@@ -2897,11 +2871,11 @@ tr.innerHTML = `
         try { return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); } catch(e) { return iso; }
     }
     function _fmtDateTime(iso) {
-        if (!iso) return '\u2014';
+        if (!iso) return '—';
         try { return new Date(iso).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); } catch(e) { return iso; }
     }
 
-    /* \u2500\u2500 global store for filter \u2500\u2500 */
+    /* –– global store for filter –– */
     var _tlAllTickets = [];
 
     function _renderTickets(tickets) {
@@ -2920,7 +2894,7 @@ tr.innerHTML = `
         }
         if (noTix) noTix.style.display = 'none';
         document.getElementById('tlFilterCount').textContent = tickets.length + ' event' + (tickets.length !== 1 ? 's' : '');
-        document.getElementById('tlTicketCount').textContent = '\u2014 ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
+        document.getElementById('tlTicketCount').textContent = '— ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
 
         tickets.forEach(function(evt, idx) {
             const rc  = _tlReasonColor(evt.type);
@@ -3027,20 +3001,20 @@ tr.innerHTML = `
         const tickets = result.migrationTimeline || [];
         const auditRows = result.auditLogTimeline || [];
 
-        /* \u2500\u2500 Profile card \u2500\u2500 */
+        /* –– Profile card –– */
         const name = p.learnerName || p.jlid || 'Unknown';
         const av   = document.getElementById('tlAvatar');
         if (av) av.textContent = _initials(name);
         _setText('tlName',        name);
-        _setText('tlJlid',        p.jlid              || '\u2014');
-        _setText('tlCourse',      p.course            || '\u2014');
-        _setText('tlTeacher',     p.currentTeacher    || '\u2014');
-        _setText('tlAge',         p.age               || '\u2014');
-        _setText('tlStartDate',   p.startingDate      ? new Date(p.startingDate).toLocaleDateString('en-GB') : '\u2014');
-        _setText('tlAmount',      p.dealAmount > 0    ? (p.currency || 'EUR') + ' ' + p.dealAmount.toLocaleString() : '\u2014');
-        _setText('tlPaymentType', p.currentSubscriptionType || '\u2014');
-        _setText('tlTenure',      p.tenure > 0        ? p.tenure : '\u2014');
-        _setText('tlJetGuide',    p.jetGuide          || '\u2014');
+        _setText('tlJlid',        p.jlid              || '—');
+        _setText('tlCourse',      p.course            || '—');
+        _setText('tlTeacher',     p.currentTeacher    || '—');
+        _setText('tlAge',         p.age               || '—');
+        _setText('tlStartDate',   p.startingDate      ? new Date(p.startingDate).toLocaleDateString('en-GB') : '—');
+        _setText('tlAmount',      p.dealAmount > 0    ? (p.currency || 'EUR') + ' ' + p.dealAmount.toLocaleString() : '—');
+        _setText('tlPaymentType', p.currentSubscriptionType || '—');
+        _setText('tlTenure',      p.tenure > 0        ? p.tenure : '—');
+        _setText('tlJetGuide',    p.jetGuide          || '—');
         const hlWrap = document.getElementById('tlHsLinkWrap');
         const hlEl   = document.getElementById('tlHsLink');
         if (hlWrap && hlEl && p.hubspotLink) {
@@ -3053,7 +3027,7 @@ tr.innerHTML = `
         _setText('tlStatInbound',  ja.inbound         || 0);
         _setText('tlStatOutbound', ja.outbound        || 0);
 
-        /* \u2500\u2500 Risk banner \u2500\u2500 */
+        /* –– Risk banner –– */
         const rc  = _tlRiskColors(ja.riskLevel || 'Stable');
         const banner = document.getElementById('tlRiskBanner');
         const rIcon  = document.getElementById('tlRiskIcon');
@@ -3064,17 +3038,17 @@ tr.innerHTML = `
         _setText('tlRiskLevel', 'Journey stability: ' + (ja.riskLevel || 'Stable'));
         _setText('tlRiskMsg',   ja.riskMessage || '');
 
-        /* \u2500\u2500 Summary \u2500\u2500 */
+        /* –– Summary –– */
         _setText('tlSummary', result.aiSummary || 'No summary available.');
 
-        /* \u2500\u2500 Tickets \u2500\u2500 */
+        /* –– Tickets –– */
         _tlAllTickets = tickets;
         _applyTlFilter('all');
 
-        /* \u2500\u2500 Audit log \u2500\u2500 */
+        /* –– Audit log –– */
         const auditBody = document.getElementById('tlAuditBody');
         const auditCount = document.getElementById('tlAuditCount');
-        if (auditCount) auditCount.textContent = auditRows.length ? '\u2014 ' + auditRows.length + ' entries' : '';
+        if (auditCount) auditCount.textContent = auditRows.length ? '— ' + auditRows.length + ' entries' : '';
         if (auditBody) {
             if (auditRows.length === 0) {
                 auditBody.innerHTML = '<div class="tl-empty"><i class="fas fa-history"></i><p>No audit log entries found for this learner.</p></div>';
@@ -3088,15 +3062,15 @@ tr.innerHTML = `
                         : sTxt ? '<span class="status-badge status-info" style="font-size:0.7rem;">' + _e(sTxt) + '</span>' : '';
 
                     let detail = '';
-                    if (row.fromTeacher && row.toTeacher) detail = _e(row.fromTeacher) + ' \u2192 ' + _e(row.toTeacher);
+                    if (row.fromTeacher && row.toTeacher) detail = _e(row.fromTeacher) + ' → ' + _e(row.toTeacher);
                     else if (row.fromTeacher) detail = _e(row.fromTeacher);
                     else if (row.toTeacher)  detail = _e(row.toTeacher);
-                    if (row.course) detail += (detail ? ' \u00B7 ' : '') + _e(row.course);
-                    if (row.notes)  detail += (detail ? ' \u00B7 ' : '') + _e(row.notes);
+                    if (row.course) detail += (detail ? ' · ' : '') + _e(row.course);
+                    if (row.notes)  detail += (detail ? ' · ' : '') + _e(row.notes);
 
                     return '<div class="tl-audit-item">'
                         + '<span class="tl-audit-time">' + _fmtDateTime(row.timestamp) + '</span>'
-                        + '<span class="tl-audit-action">' + _e(row.action) + (detail ? '<span class="tl-audit-detail">\u2014 ' + detail + '</span>' : '') + '</span>'
+                        + '<span class="tl-audit-action">' + _e(row.action) + (detail ? '<span class="tl-audit-detail">— ' + detail + '</span>' : '') + '</span>'
                         + '<span class="tl-audit-status">' + sBadge + '</span>'
                         + '</div>';
                 }).join('');
@@ -3173,152 +3147,8 @@ tr.innerHTML = `
     modal.classList.add('active');
 }
 
-    function updateLearnerHistoryDisplay(result) {
-    hideLoading();
-    
-    const container = document.getElementById('historyResultsContainer');
-    if (!result || result.success === false) {
-        container.style.display = 'none';
-        showToast('error', 'History Error', result && result.message ? result.message : 'Unknown error retrieving learner history.');
-        return;
-    }
-    container.style.display = 'block';
-    
-    // 1. Clear previous dynamic cards (Risk Card) to prevent duplicates
-    const existingCard = document.getElementById('journeyStabilityCard');
-    if(existingCard) existingCard.remove();
-
-    const learnerProfile = result.learnerProfile || {};
-    const learnerName = learnerProfile.learnerName || learnerProfile.jlid || 'Unknown Learner';
-    
-    // Update Title
-    document.getElementById('historyResultsTitle').textContent = `History for: ${learnerName}`;
-    
-    // --- 2. Render Journey Stability Card (The Clickable Boxes) ---
-    const analysis = result.journeyAnalysis;
-    if (analysis) {
-        // Store data globally so the modal function can access it
-        globalTicketData = analysis.ticketDetails || []; 
-
-        let colorClass = '#4caf50'; // Green
-        let bgClass = '#e8f5e9';
-        
-        if (analysis.riskLevel === 'Critical') { colorClass = '#d32f2f'; bgClass = '#ffebee'; } 
-        else if (analysis.riskLevel === 'High') { colorClass = '#f57c00'; bgClass = '#fff3e0'; } 
-        else if (analysis.riskLevel === 'Medium') { colorClass = '#fbc02d'; bgClass = '#fff9c4'; }
-
-        const stabilityCardHtml = `
-            <div id="journeyStabilityCard" class="learner-profile-card" style="border-left: 5px solid ${colorClass}; margin-bottom: 20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <h3 style="margin:0; color:${colorClass}; border-bottom:none;">Journey Stability: ${analysis.riskLevel}</h3>
-                    <span style="font-size:0.9em; background:${bgClass}; color:${colorClass}; padding:4px 8px; border-radius:4px; font-weight:bold;">
-                        ${analysis.outbound} System Changes
-                    </span>
-                </div>
-                
-                <p style="margin-top:10px; font-weight:500;">${analysis.riskMessage}</p>
-                
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-top:15px; text-align:center;">
-                    
-                    <!-- TOTAL BOX -->
-                    <div onclick="openTicketList('all')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='${colorClass}'; this.style.backgroundColor='var(--secondary)'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#333;">${analysis.totalMigrations}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">Total Changes</div>
-                    </div>
-
-                    <!-- INBOUND BOX -->
-                    <div onclick="openTicketList('inbound')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='#2196f3'; this.style.backgroundColor='#e3f2fd'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#2196f3;">${analysis.inbound}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">Parent Requests</div>
-                    </div>
-
-                    <!-- OUTBOUND BOX -->
-                    <div onclick="openTicketList('outbound')" 
-                         style="background:#f8f9fa; padding:15px; border-radius:8px; cursor:pointer; transition:0.2s; border:1px solid #eee;"
-                         onmouseover="this.style.borderColor='#f44336'; this.style.backgroundColor='#ffebee'"
-                         onmouseout="this.style.borderColor='#eee'; this.style.backgroundColor='#f8f9fa'">
-                        <div style="font-size:1.8em; font-weight:bold; color:#f44336;">${analysis.outbound}</div>
-                        <div style="font-size:0.85em; color:#666; font-weight:500;">JetLearn Initiated</div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Insert after title
-        document.getElementById('historyResultsTitle').insertAdjacentHTML('afterend', stabilityCardHtml);
-    }
-
-    // --- 3. Render Profile Data ---
-    document.getElementById('historyProfileLearnerName').textContent = learnerProfile.learnerName || 'N/A';
-    document.getElementById('historyProfileJlid').textContent = learnerProfile.jlid || 'N/A';
-    document.getElementById('historyProfileAge').textContent = learnerProfile.age || 'N/A';
-    document.getElementById('historyProfileCurrentCourse').textContent = learnerProfile.course || 'N/A';
-    document.getElementById('historyProfileCurrentTeacher').textContent = learnerProfile.currentTeacher || 'N/A';
-    document.getElementById('historyProfileSubscriptionType').textContent = learnerProfile.currentSubscriptionType || 'N/A';
-    document.getElementById('historyProfileOnboardingDate').textContent = learnerProfile.startingDate ? new Date(learnerProfile.startingDate).toLocaleDateString('en-GB') : 'N/A';
-    document.getElementById('historyProfileSubscriptionStartDate').textContent = learnerProfile.subscriptionStartDate ? new Date(learnerProfile.subscriptionStartDate).toLocaleDateString('en-GB') : 'N/A';
-    
-    document.getElementById('historyAISummary').textContent = result.aiSummary || 'No summary available.';
-    
-    // --- 4. Render Timeline (With Strict Filtering) ---
-    const timelineBody = document.getElementById('historyTimelineBody');
-    timelineBody.innerHTML = '';
-    
-    if (result.auditLogTimeline && result.auditLogTimeline.length > 0) {
-        
-        // STRICT FILTER: Keywords to HIDE from the visual timeline
-        const hiddenKeywords = ["PRM", "Renewal", "Pause", "Leave", "Kit", "Device", "Laptop", "Feedback", "Review"];
-        
-        result.auditLogTimeline.forEach(event => {
-            const desc = event.description || "";
-            
-            // If it's a HubSpot Ticket, apply the strict filter
-            if (event.type === 'hubspot-ticket') {
-                 if (hiddenKeywords.some(kw => desc.includes(kw))) {
-                     return; // Skip rendering this item
-                 }
-                 // Only show if it looks like a migration
-                 if (!desc.includes("Migration") && !desc.includes("Teacher") && !desc.includes("Slot") && !desc.includes("Escalation")) {
-                     // return; // Uncomment this if you want to be ULTRA strict
-                 }
-            }
-
-            const eventDiv = document.createElement('div');
-            let iconColor = 'var(--primary)';
-            
-            if (event.type === 'hubspot-ticket') {
-                iconColor = '#e11d48'; 
-                event.type = 'migration'; 
-            } else if (event.type === 'hubspot-note') {
-                iconColor = '#ea580c';
-                event.type = 'note';
-            }
-            
-            eventDiv.className = `timeline-event ${event.type}`;
-            
-            if(event.source === 'HubSpot') {
-                eventDiv.style.borderLeftColor = iconColor;
-                eventDiv.style.backgroundColor = 'rgba(0,0,0,0.02)';
-            }
-
-            eventDiv.innerHTML = `
-                <div class="timeline-date">${event.timestamp ? new Date(event.timestamp).toLocaleString('en-GB') : 'N/A'}</div>
-                <div class="timeline-description">
-                    ${event.source === 'HubSpot' ? `<i class="fab fa-hubspot" style="margin-right:5px; color:${iconColor}"></i>` : ''} 
-                    ${escapeHtml(desc)}
-                </div>`;
-            timelineBody.appendChild(eventDiv);
-        });
-    } else {
-        timelineBody.innerHTML = '<p style="text-align: center; color: var(--text-light);">No relevant history found.</p>';
-    }
-}
+    // This function is now a duplicate of the one above. Keeping the newer one.
+    // function updateLearnerHistoryDisplay(result) { ... }
 
     // Invoice Page Functions
     function populateSessionsPerWeekOptions(targetSelect = invoiceSessionsPerWeek) {
@@ -3389,9 +3219,9 @@ tr.innerHTML = `
 
     function getCurrencySymbolClient(currencyCode) {
         switch (currencyCode) {
-            case 'GBP': return '\u00A3'; case 'EUR': return '\u20AC'; case 'USD': return '$'; case 'INR': return '\u20B9'; case 'JPY': return '\u00A5';
-            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '\u00A5'; case 'SEK': return 'kr';
-            case 'NZD': return 'NZ$'; case 'AED': return '\u062F.\u0625'; case 'HKD': 'HK$';
+            case 'GBP': return '£'; case 'EUR': return '€'; case 'USD': return '$'; case 'INR': return '₹'; case 'JPY': return '¥';
+            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '¥'; case 'SEK': return 'kr';
+            case 'NZD': return 'NZ$'; case 'AED': return 'د.إ'; case 'HKD': 'HK$';
             case 'ZAR': return 'R'; case 'SGD': return 'S$'; case 'NOK': return 'kr';
             case 'DKK': return 'kr'; case 'MXN': return 'Mex$'; case 'BRL': return 'R$';
             default: return currencyCode || '';
@@ -4142,7 +3972,7 @@ function loadTeacherSpecificDetails(teacherName) {
     const existing = document.getElementById('attritionRiskSection');
     if (existing) existing.remove();
 
-    // \u2500\u2500 CALL 1: Basic Load Stats & Proficiency (Google Sheets) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // –– CALL 1: Basic Load Stats & Proficiency (Google Sheets) –––––––––––
     google.script.run
         .withSuccessHandler(data => {
             if (!data || !data.success) {
@@ -4180,7 +4010,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
             if (resultsContainer) resultsContainer.style.display = 'block';
 
-            // \u2500\u2500 CALL 2: Attrition Risk & Active Pool (HubSpot) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            // –– CALL 2: Attrition Risk & Active Pool (HubSpot) ––––––––––––
             google.script.run
                 .withSuccessHandler(report => {
                     hideLoading();
@@ -4233,7 +4063,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
                     students.forEach(s => {
 
-                        // \u2500\u2500 Risk badge & row highlight \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Risk badge & row highlight ––––––––––––––––––––––––––––––
                         let rowStyle = '';
                         let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                         if (s.recentMoves >= 2) {
@@ -4243,41 +4073,41 @@ function loadTeacherSpecificDetails(teacherName) {
                             riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
                         }
 
-                        // \u2500\u2500 Deal Value badge \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Deal Value badge –––––––––––––––––––––––––––––––––––––––
                         const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
                         const dealValueBadge = isUnknown
                             ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
                             : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
 
-                        // \u2500\u2500 Amount display \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Amount display ––––––––––––––––––––––––––––––––––––––––
                         // Show local currency amount; if non-EUR also show ~EUR equivalent
                         let amountDisplay = '';
                         if (s.dealAmountLocal > 0) {
                             const localStr = s.dealCurrency !== 'EUR'
                                 ? `${escapeHtml(s.dealCurrency)} ${s.dealAmountLocal.toLocaleString()}`
-                                : `\u20AC${s.dealAmountLocal.toLocaleString()}`;
+                                : `€${s.dealAmountLocal.toLocaleString()}`;
                             const eurNote  = (s.dealCurrency !== 'EUR' && s.dealAmountEur > 0)
-                                ? ` <small style="color:#888;">(~\u20AC${s.dealAmountEur.toLocaleString()})</small>`
+                                ? ` <small style="color:#888;">(~€${s.dealAmountEur.toLocaleString()})</small>`
                                 : '';
                             amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
                         }
 
-                        // \u2500\u2500 Payment tag: Upfront (green) / Installment (blue) \u2500\u2500
+                        // –– Payment tag: Upfront (green) / Installment (blue) ––
                         const paymentTagBadge = s.paymentTag === 'Installment'
                             ? `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd;">Installment</span>`
                             : `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">Upfront</span>`;
 
-                        // \u2500\u2500 Tenure label \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Tenure label –––––––––––––––––––––––––––––––––––––––––––
                         const tenureLabel = s.dealTenureMonths > 0
                             ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
                             : '';
 
-                        // \u2500\u2500 Previous teacher \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Previous teacher –––––––––––––––––––––––––––––––––––––––
                         const prevTeacherDisplay = (!s.prevTeacher || s.prevTeacher === 'N/A')
                             ? '<span style="color:#aaa;">No Teacher Changes</span>'
                             : escapeHtml(s.prevTeacher);
 
-                        // \u2500\u2500 Course (truncated) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+                        // –– Course (truncated) ––––––––––––––––––––––––––––––––––––
                         const courseDisplay = s.course && s.course.length > 35
                             ? s.course.substring(0, 35) + '...'
                             : (s.course || '-');
@@ -4534,23 +4364,34 @@ google.script.run
     // --- LOGIN & SESSION ---
 
     function handleLogin(e) {
-      e.preventDefault();
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value.trim();
-      if (!username || !password) { showToast('error', 'Login Failed', 'Username and password are required'); return; }
-      showLoading('Authenticating...');
-      google.script.run.withSuccessHandler(loginSuccess).withFailureHandler(loginFailed).authenticateUser(username, password);
-    }
+  // 1. PREVENT PAGE RELOAD (This is the most critical part)
+  e.preventDefault(); 
+  
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value.trim();
+  
+  if (!username || !password) {
+    showToast('error', 'Login Failed', 'Username and password are required');
+    return;
+  }
+  
+  showLoading('Authenticating...');
+  google.script.run
+    .withSuccessHandler(loginSuccess)
+    .withFailureHandler(loginFailed)
+    .authenticateUser(username, password);
+}
+
 
     const CURRENT_APP_VERSION = 'V35'; 
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
-                <strong>\u1F4C5 Latest Ticket Logic Fixed</strong><br>
+                <strong>📊 Latest Ticket Logic Fixed</strong><br>
                 Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
             </li>
             <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
-                <strong>\u1F9E9 Enhanced Data Mapping</strong><br>
+                <strong>🧩 Enhanced Data Mapping</strong><br>
                 Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
             </li>
         </ul>
@@ -4572,6 +4413,7 @@ google.script.run
 
     function loginSuccess(user) {
     if (!user || !user.success) {
+        hideLoading();
         showToast('error', 'Login Failed', (user && user.message) ? user.message : 'Invalid credentials');
         return;
     }
@@ -4582,15 +4424,17 @@ google.script.run
     userName.textContent = user.username;
     userRole.textContent = user.role;
     setupUIForRole();
+    
+    // 2. HIDE LOGIN PAGE & SHOW APP
     loginPage.style.display = 'none';
-    const inactivityMsg = document.getElementById('inactivityMessage');
-    if (inactivityMsg) inactivityMsg.style.display = 'none';
     appContainer.style.display = 'grid';
+
     startPolling();
-    startSessionTimer();// \u2190 ADD THIS BLOCK
+    startSessionTimer();
+    
     if (user.mustChangePassword) {
         document.getElementById('forcePasswordModal').classList.add('active');
-        return; // don't show welcome toast yet
+        return; 
     }
 
     showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
@@ -4599,10 +4443,64 @@ google.script.run
 
 
 
-    function loginFailed(error) {
-      hideLoading();
-      showToast('error', 'Login Error', error.message || 'An authentication error occurred.');
+
+function loginFailed(error) {
+  hideLoading();
+  showToast('error', 'Login Error', error.message || 'An authentication error occurred.');
+}
+
+
+// 3. THIS BLOCK WIRES EVERYTHING TOGETHER WHEN THE PAGE LOADS
+// It's the most likely missing piece from your code.
+document.addEventListener('DOMContentLoaded', () => {
+    // Other listeners can go here, but this is the essential one for login.
+    
+    if (loginForm) {
+        loginForm.addEventListener('submit', handleLogin);
     }
+    
+    // Wire up forgot/reset password forms as well
+    if (forgotPasswordForm) {
+        forgotPasswordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('resetEmail').value.trim();
+            if (!email) { showToast('error', 'Input Required', 'Please enter an email address.'); return; }
+            showLoading('Sending reset link...');
+            google.script.run.withSuccessHandler(result => {
+                hideLoading();
+                if (result && result.success) { showToast('success', 'Link Sent', result.message); switchLoginView('loginView'); }
+                else { showToast('error', 'Error', (result && result.message) ? result.message : 'Unknown error.'); }
+            }).withFailureHandler(showError).requestPasswordReset(email);
+        });
+    }
+
+    if (resetPasswordForm) {
+        resetPasswordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const token = document.getElementById('resetTokenInput').value;
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmNewPassword').value;
+            if (newPassword !== confirmPassword) { showToast('error', 'Password Mismatch', 'Passwords do not match.'); return; }
+            showLoading('Resetting password...');
+            google.script.run.withSuccessHandler(result => {
+                hideLoading();
+                if (result && result.success) { 
+                    showToast('success', 'Success', result.message); 
+                    window.location.href = window.location.pathname; 
+                } else { 
+                    showToast('error', 'Error', (result && result.message) ? result.message : 'Unknown error.'); 
+                }
+            }).withFailureHandler(showError).resetPassword(token, newPassword);
+        });
+    }
+
+    // You should keep the rest of your DOMContentLoaded logic from the previous answer here too...
+    // For example:
+    if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+    if (themeToggle) themeToggle.addEventListener('change', toggleTheme);
+    // etc.
+});
+
 
     function handleLogout() {
       showConfirm('Confirm Logout', 'Are you sure you want to log out?', confirmed => {
@@ -5136,13 +5034,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (themeToggle) themeToggle.addEventListener('change', toggleTheme);
 
     // Sidebar Navigation
-    menuItems.forEach(item => {
+    const liveMenuItems = document.querySelectorAll('.menu-item');
+    liveMenuItems.forEach(item => {
         // Prevent adding listener to 'emailActivities' if handled separately, 
         // or just let switchPage handle the routing logic
         if (item.dataset.page) {
             item.addEventListener('click', (e) => {
                 // Remove active class from all
-                menuItems.forEach(i => i.classList.remove('active'));
+                liveMenuItems.forEach(i => i.classList.remove('active'));
                 e.currentTarget.classList.add('active');
                 
                 const pageId = `${item.dataset.page}Page`;
@@ -5639,7 +5538,7 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     if (uploadArea) uploadArea.addEventListener('click', () => csvFileInput.click());
     if (csvFileInput) csvFileInput.addEventListener('change', handleFileUpload);
     if (processBatchBtn) processBatchBtn.addEventListener('click', processBatchFile);
-    if (cancelPersonaBtn) cancelPersonaBtn.addEventListener('click', () => { personaForm.reset(); initDateInputs(); personaResultsContainer.style.display = 'none'; });
+    if (cancelPersonaBtn) cancelPersonaBtn.addEventListener('click', () => { if (personaForm) personaForm.reset(); initDateInputs(); if (personaResultsContainer) personaResultsContainer.style.display = 'none'; });
     if (subscribeReportBtn) subscribeReportBtn.addEventListener('click', () => { showConfirm('Subscribe to Reports', 'Are you sure?', confirmed => { if (confirmed) { showLoading('Subscribing...'); google.script.run.withSuccessHandler(r => { hideLoading(); showToast(r && r.success ? 'success' : 'error', 'Subscription', (r && r.message) ? r.message : 'Unknown error.'); }).withFailureHandler(showError).subscribeToWeeklyReport(); } }); });
     if (backToTeachersBtn) backToTeachersBtn.addEventListener('click', () => switchPage('loadPage'));
     if (searchHistoryBtn) searchHistoryBtn.addEventListener('click', searchLearnerHistory);
@@ -5648,17 +5547,23 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     (function() {
       var mipDebounce = null;
 
-      function triggerMigrationIntelligence() {
+function triggerMigrationIntelligence() {
         var jlid        = jlidInput ? jlidInput.value.trim() : '';
         var newTeacher  = newTeacherSelect ? newTeacherSelect.value.trim() : '';
-        var panel       = document.getElementById('migrationIntelPanel');
-        if (!panel) return;
-        if (!jlid || !newTeacher) { panel.style.display = 'none'; return; }
+        var modal       = document.getElementById('migrationIntelModal');
+        if (!modal) return;
+        
+        // FIX: Only trigger if both fields are filled
+        if (!jlid || !newTeacher) {
+          return; // Do nothing if form isn't ready
+        }
 
         clearTimeout(mipDebounce);
         mipDebounce = setTimeout(function() {
-          panel.style.display = 'block';
-          // Show loading state
+          // FIX: Show the modal
+          modal.classList.add('active');
+
+          // Show loading state inside the modal
           document.getElementById('migrationAlertBanners').innerHTML =
             '<div style="padding:0.6rem 1rem;background:#f1f5f9;border-radius:6px;color:#64748b;font-size:0.83rem;">'
             + '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Analysing teacher history…</div>';
@@ -5684,10 +5589,8 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     })();
 
     function renderMigrationIntelPanel(result) {
-      var panel = document.getElementById('migrationIntelPanel');
-      if (!panel) return;
-      panel.style.display = 'block';
-
+      // FIX: No need to show/hide the panel, it's already visible inside the modal
+      // The logic to populate the content remains the same.
       var bannerContainer = document.getElementById('migrationAlertBanners');
       bannerContainer.innerHTML = '';
 
@@ -5739,8 +5642,8 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
       var riskEl = document.getElementById('mip_riskBadge');
       if (riskEl) {
         var risk = (result.riskLevel || 'Unknown').toLowerCase();
-        var riskColor = risk === 'high' ? '#b91c1c' : risk === 'medium' ? '#d97706' : '#15803d';
-        riskEl.innerHTML = '<span style="font-size:0.78rem;font-weight:700;padding:2px 8px;border-radius:4px;background:' + riskColor + ';color:#fff;">'
+        var riskColor = risk === 'high' || risk === 'critical' ? '#b91c1c' : risk === 'medium' || risk === 'watch' ? '#d97706' : '#15803d';
+        riskEl.innerHTML = '<span style="font-size:0.78rem;font-weight:700;padding:2px 8px;border-radius:4px;background:'+riskColor+'40;color:'+riskColor+';">'
           + escapeHtml(result.riskLevel || 'Unknown') + '</span>';
       }
 
@@ -5761,7 +5664,7 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
           }
           html += '<div style="margin-bottom:4px;color:#475569;font-weight:600;">Assignment Periods:</div>';
           (result.assignmentPeriods || []).forEach(function(p) {
-            html += '<div style="margin-bottom:3px;padding:4px 8px;background:#f8fafc;border-radius:4px;border-left:3px solid #6366f1;">'
+            html += '<div style="margin-bottom:3px;padding:4px 8px;background:#f1f5f9;border-radius:4px;border-left:3px solid #6366f1;">'
               + escapeHtml(p.fromFormatted) + ' → ' + escapeHtml(p.toFormatted);
             if (p.departureReason) html += ' <span style="color:#94a3b8;font-size:0.75rem;">(' + escapeHtml(p.departureReason) + ')</span>';
             html += '</div>';
@@ -5771,6 +5674,8 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
         }
       }
     }
+
+
 
     // ==========================================
     // 12. INVOICE PAGE LISTENERS
@@ -5917,31 +5822,6 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     }
 
     // =============================================
-    // NEW: Function to handle Custom Currency UI
-    // =============================================
-    function handleCurrencyChange(prefix) {
-        const currencySelect = document.getElementById(`${prefix}Currency`);
-        if (!currencySelect) return;
-        const isCustom = currencySelect.value === 'CUSTOM';
-
-        const codeGroup = document.getElementById(`${prefix}CustomCurrencyCodeGroup`);
-        const rateGroup = document.getElementById(`${prefix}CustomCurrencyRateGroup`);
-        const discountGroup = document.getElementById(`${prefix}CustomCurrencyDiscountGroup`);
-
-        if (codeGroup) codeGroup.style.display = isCustom ? 'block' : 'none';
-        if (rateGroup) rateGroup.style.display = isCustom ? 'block' : 'none';
-        if (discountGroup) discountGroup.style.display = isCustom ? 'block' : 'none';
-
-        if (isCustom) {
-            if (codeGroup) codeGroup.querySelector('select').required = true;
-            if (rateGroup) rateGroup.querySelector('input').required = true;
-            if (discountGroup) discountGroup.querySelector('input').required = true;
-        } else {
-            if (codeGroup) codeGroup.querySelector('select').required = false;
-            if (rateGroup) rateGroup.querySelector('input').required = false;
-            if (discountGroup) discountGroup.querySelector('input').required = false;
-        }
-    }
 // --- WATI TEMPLATE LOGIC (AUTO-SELECT) ---
     const reasonSelect = document.getElementById('reasonOfMigration');
     const watiContainer = document.getElementById('watiTemplateContainer');
@@ -6120,52 +6000,54 @@ function viewEmailActivityDetails(trackingId) {
         })
         .getEmailLogDetails(trackingId);
 }
-    function generateReport() {
-        const fromVal = document.getElementById('reportFromDate').value;
-        const toVal = document.getElementById('reportToDate').value;
-        
-        if(!fromVal || !toVal) {
-             showToast('error', 'Date Range', 'Please select From and To dates.');
-             return;
-        }
-
-        // Reset UI
-        document.getElementById('report-content-area').innerHTML = '';
-        showLoading('Generating intelligence report...');
-        
-        const params = { 
-            fromDate: fromVal, 
-            toDate: toVal,
-        };
-
-        // CALL 1: Standard Analytics (KPIs, Charts)
-        google.script.run.withSuccessHandler(result => {
-            if(result && result.success && result.data) { 
-                globalReportData = result; 
-                renderEnhancedReport(result.data, result.aiInsights); 
-                
-                // --- CALL 2: Double Migration Stability Check (CHAINED) ---
-                console.log("Fetching Double Migration Report...");
-                google.script.run.withSuccessHandler(doubleMigs => {
-                    hideLoading(); 
-                    console.log("Double Migrations Found:", doubleMigs ? doubleMigs.length : 0);
-                    renderDoubleMigrationSection(doubleMigs);
-                }).withFailureHandler(err => {
-                    hideLoading();
-                    console.error("Double Migration Error:", err);
-                }).getDoubleMigrationReport(params);
-                // ----------------------------------------------------------
-            }
-            else { 
-                hideLoading();
-                document.getElementById('report-content-area').innerHTML = `<p style="text-align: center; color: var(--danger);">No data found for this period.</p>`;
-            }
-        }).withFailureHandler(showError).getEnhancedMigrationReport(params);
+function generateReport() {
+    const fromVal = document.getElementById('reportFromDate').value;
+    const toVal = document.getElementById('reportToDate').value;
+    const perspective = document.getElementById('reportPerspective').value;
+    
+    if(!fromVal || !toVal) {
+         showToast('error', 'Date Range', 'Please select From and To dates.');
+         return;
     }
 
+    // Reset UI for both report sections
+    document.getElementById('enhanced-report-area').innerHTML = '';
+    document.getElementById('report-content-area').innerHTML = '';
+    const migrationFilters = document.getElementById('migration-count-filters');
+    if (migrationFilters) migrationFilters.style.display = 'none';
 
-    // --- NEW: RENDER FUNCTION FOR STABILITY TABLE ---
-    function renderDoubleMigrationSection(data) {
+    showLoading('Generating intelligence report...');
+    
+    const params = { 
+        fromDate: fromVal, 
+        toDate: toVal,
+        perspective: perspective
+    };
+
+    // --- CALL 1: Fetch the main analytics (KPIs, Charts, AI Summary) ---
+    google.script.run.withSuccessHandler(result => {
+        if(result && result.success && result.data) { 
+            globalReportData = result; 
+            renderEnhancedReport(result.data, result.aiInsights); 
+            
+            // --- CALL 2: Now, fetch the frequent migrations list using the ACCURATE ticket-based function ---
+            google.script.run.withSuccessHandler(migrationData => {
+                hideLoading(); // Hide loading only after the final call succeeds
+                renderMultiMigrationReport(migrationData); 
+            }).withFailureHandler(err => {
+                hideLoading();
+                showError(err);
+                renderMultiMigrationReport([]); // Render an empty state for the table section on failure
+            }).getMultiMigrationReportFromTickets(params); // <-- CORRECTED to use the ticket-based function
+
+        } else { 
+            hideLoading();
+            showError(result || { message: "Failed to generate the main report section." });
+        }
+    }).withFailureHandler(showError).getEnhancedMigrationReport(params);
+}
+
+function renderDoubleMigrationSection(data) {
         const mainArea = document.getElementById('report-content-area');
         if (!mainArea) return;
 
@@ -6183,7 +6065,7 @@ function viewEmailActivityDetails(trackingId) {
             container.style.borderLeft = '5px solid #4caf50'; 
             container.innerHTML = `
                 <h3><i class="fas fa-check-circle" style="color:var(--success);"></i> Stability Check</h3>
-                <p style="color:#666;">No learners were migrated 2+ times in the selected period.</p>
+                <p style="color:#666;">No learners were migrated 2 or more times in the selected period.</p>
             `;
             return;
         }
@@ -6199,7 +6081,7 @@ function viewEmailActivityDetails(trackingId) {
                         <tr>
                             <th style="width: 25%">Learner</th>
                             <th style="width: 10%; text-align:center;">Count</th>
-                            <th style="width: 65%">Migration Journey (Oldest $\rightarrow$ Newest)</th>
+                            <th style="width: 65%">Migration Journey (Oldest &rarr; Newest)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -6243,6 +6125,128 @@ function viewEmailActivityDetails(trackingId) {
         html += `</tbody></table></div>`;
         container.innerHTML = html;
     }
+
+
+
+    // --- NEW: RENDER FUNCTION FOR STABILITY TABLE ---
+function renderMultiMigrationReport(data, isNewData = true) {
+    if (isNewData) {
+        globalMultiMigrationData = data || []; // Store the full dataset for client-side filtering
+    }
+    
+    const mainArea = document.getElementById('report-content-area');
+    if (!mainArea) return;
+
+    // Show the filters only if we have data to filter
+    const filterContainer = document.getElementById('migration-count-filters');
+    if (filterContainer) {
+        filterContainer.style.display = (globalMultiMigrationData.length > 0) ? 'flex' : 'none';
+    }
+    
+    let container = document.getElementById('multiMigrationSection');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'multiMigrationSection';
+        container.className = 'report-section'; // Use the same styling as other report parts
+        mainArea.appendChild(container);
+    }
+
+    if (!data || data.length === 0) {
+        const currentFilterEl = document.querySelector('#migration-count-filters .tab-button.active');
+        const currentFilter = currentFilterEl ? currentFilterEl.textContent : 'the selected criteria';
+        container.innerHTML = `
+            <h3><i class="fas fa-check-circle" style="color:var(--success);"></i> Stability Check</h3>
+            <p style="color:#666;">No learners found matching ${currentFilter}.</p>
+        `;
+        return;
+    }
+
+    // --- DYNAMIC SUMMARY (based on the full, unfiltered dataset) ---
+    const totalLearners = globalMultiMigrationData.length;
+    const counts = { one: 0, two: 0, threePlus: 0 };
+    globalMultiMigrationData.forEach(item => {
+        if (item.count === 1) counts.one++;
+        if (item.count === 2) counts.two++;
+        if (item.count >= 3) counts.threePlus++;
+    });
+
+    let html = `
+        <h3><i class="fas fa-exclamation-triangle" style="color:var(--warning);"></i> Frequent Migrations (Stability Alert)</h3>
+        <div style="background: #fffbeb; border: 1px solid #fde68a; color: #b45309; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            <strong>Alert:</strong> A total of <strong>${totalLearners} learners</strong> had migrations in this period.
+            <ul style="margin: 0.5rem 0 0 1.5rem; padding: 0; font-size: 0.9em;">
+                <li><strong>${counts.one}</strong> learner(s) had 1 migration.</li>
+                <li><strong>${counts.two}</strong> learner(s) had 2 migrations.</li>
+                <li><strong>${counts.threePlus}</strong> learner(s) had 3 or more migrations.</li>
+            </ul>
+        </div>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 25%">Learner</th>
+                        <th style="width: 10%; text-align:center;">Count</th>
+                        <th style="width: 65%">Migration Journey (Oldest &rightarrow; Newest)</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    data.forEach(row => {
+        // Corrected Status Badge Logic
+        let statusClass, statusText;
+        switch(row.learnerStatus) {
+            case 'Paused Learner':
+                statusClass = 'status-warning';
+                statusText = 'Paused';
+                break;
+            case 'Active Learner':
+            case 'VIP':
+            case 'Break & Return':
+            case 'Friendly Learner':
+                statusClass = 'status-success';
+                statusText = 'Active';
+                break;
+            default: // Handles 'HubSpot Error', 'Status Not Found', 'Unqualified', etc.
+                statusClass = 'status-failed';
+                statusText = 'Status Error';
+        }
+        const statusBadge = `<span class="status-badge ${statusClass}" title="${escapeHtml(row.learnerStatus)}" style="font-size: 0.7em;">${statusText}</span>`;
+
+        // Timeline HTML
+        let journeyHtml = `<ul style="margin: 0; padding-left: 0; list-style-type: none;">`;
+        if (row.timeline && row.timeline.length > 0) {
+            row.timeline.forEach(step => {
+                journeyHtml += `
+                    <li style="margin-bottom: 8px; font-size: 0.9em; color:#4a5568;">
+                        <span style="color:#718096; font-family:monospace; margin-right:8px;">[${step.dateStr}]</span>
+                        Moved from ${escapeHtml(step.oldTeacher || 'N/A')} to <strong>${escapeHtml(step.newTeacher)}</strong>
+                        <div style="font-size:0.85em; color:#d9480f; margin-left: 95px;">
+                            Reason: ${escapeHtml(step.reason)}
+                        </div>
+                    </li>`;
+            });
+        }
+        journeyHtml += `</ul>`;
+
+        // Final HTML row assembly
+        html += `
+            <tr>
+                <td style="vertical-align: top; padding-top: 15px;">
+                    <strong>${escapeHtml(row.name)}</strong> ${statusBadge}<br>
+                    <small style="color:#999">${escapeHtml(row.jlid)}</small>
+                </td>
+                <td style="text-align:center; vertical-align: top; padding-top: 15px;">
+                    <span class="status-badge ${row.count >= 3 ? 'status-failed' : (row.count === 2 ? 'status-pending' : 'status-info')}" style="font-size:1.1em; padding:5px 10px;">${row.count}</span>
+                </td>
+                <td style="padding: 10px;">${journeyHtml}</td>
+            </tr>
+        `;
+    }); 
+
+    html += `</tbody></table></div>`;
+    container.innerHTML = html;
+}
 
 function fetchMigrationSpecificData() {
         const jlid = jlidInput.value.trim();
@@ -7195,6 +7199,11 @@ function loadProfilePage() {
     const role      = currentUser.role || 'User';
     const lastLogin = currentUser.lastLogin || 'N/A';
 
+    // Set placeholder values immediately
+    document.getElementById('profileMigrationCount').textContent = '...';
+    document.getElementById('profileOnboardingCount').textContent = '...';
+    document.getElementById('profileAvgTime').textContent = 'N/A';
+
     // Form inputs (kept for save handler)
     document.getElementById('profileUsername').value  = username;
     document.getElementById('profileRole').value      = role;
@@ -7212,18 +7221,40 @@ function loadProfilePage() {
     roleTag.style.background    = isAdmin ? '#ede9fe' : '#e0f2fe';
     roleTag.style.color         = isAdmin ? '#6d28d9' : '#0369a1';
 
-    // Fetch fresh email from backend
+    // =============================================
+    // START OF FIX: Fetch and populate dynamic data
+    // =============================================
     google.script.run
         .withSuccessHandler(profile => {
-            if (profile && profile.email) {
-                document.getElementById('profileEmail').value          = profile.email;
-                document.getElementById('profileEmailDisplay').textContent = profile.email;
+            if (profile) {
+                // Populate Email
+                if (profile.email) {
+                    document.getElementById('profileEmail').value = profile.email;
+                    document.getElementById('profileEmailDisplay').textContent = profile.email;
+                }
+                
+                // Populate Operational Activity Counts
+                document.getElementById('profileMigrationCount').textContent = profile.migrationCount || 0;
+                document.getElementById('profileOnboardingCount').textContent = profile.onboardingCount || 0;
+                
+                // Note: Average Time is a complex metric and is kept as 'N/A' for now.
+                document.getElementById('profileAvgTime').textContent = 'N/A';
+            } else {
+                // Handle case where profile data could not be fetched
+                showToast('warning', 'Profile Data', 'Could not load your activity stats.');
+                document.getElementById('profileMigrationCount').textContent = 'Error';
+                document.getElementById('profileOnboardingCount').textContent = 'Error';
             }
         })
         .withFailureHandler(showError)
         .getUserProfile(username);
+    // =============================================
+    // END OF FIX
+    // =============================================
 }
 
+// NOTE: The saveProfileBtn event listener does not need to be changed.
+// It is included here for completeness as you provided it.
 document.getElementById('saveProfileBtn').addEventListener('click', () => {
     const newEmail    = document.getElementById('profileEmail').value.trim();
     const currentPass = document.getElementById('profileCurrentPassword').value;
@@ -7258,5 +7289,229 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
             newPassword: newPass
         });
 });
+
+function initPersonaSmartLogic() {
+    const btnFetch = document.getElementById('btnSmartFetch');
+    const btnAddSlot = document.getElementById('btnAddPersonaSlot');
+    const pForm = document.getElementById('personaFormEnhanced');
+    const refreshBtn = document.getElementById('refreshPersona');
+
+    // Attach Listeners with existence checks to prevent "reading properties of null"
+    if (btnFetch) btnFetch.addEventListener('click', handleSmartFetchAction);
+    if (btnAddSlot) btnAddSlot.addEventListener('click', () => addSingleSlotRow(false));
+    if (pForm) pForm.addEventListener('submit', handlePersonaSearchSubmit);
+    
+    // Wire up the refresh button from the header
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            showToast('info', 'Refreshing', 'Updating teacher directory...');
+            loadTeachersPage(); // Reuse teacher loader to refresh cache
+        });
+    }
+
+    // Populate Current Teacher dropdown initially
+    const tDrop = document.getElementById('pCurrentTeacherDropdown');
+    if (tDrop && globalTeachers && globalTeachers.length > 0) {
+        populateSelect(tDrop, globalTeachers, false, "Select Teacher");
+    }
+}
+
+/**
+ * Executes Smart Fetch from HubSpot (Detects Migration vs Onboarding)
+ */
+function handleSmartFetchAction() {
+    const jlidInput = document.getElementById('smartPersonaJlid');
+    const jlid = jlidInput ? jlidInput.value.trim() : '';
+
+    if (!jlid) {
+        showToast('error', 'Input Required', 'Please enter a JLID first.');
+        return;
+    }
+
+    showLoading('AI System detecting learner status...');
+
+    // ── Inner function: runs after we are sure courses & teachers are loaded ──
+    function _doFetch(courses, teachers) {
+        google.script.run
+            .withSuccessHandler(res => {
+                hideLoading();
+                if (!res.success) { showToast('error', 'Fetch Error', res.message); return; }
+
+                const d = res.data;
+
+                // Summary bar
+                const summaryBar = document.getElementById('personaLearnerSummary');
+                if (summaryBar) summaryBar.style.display = 'grid';
+
+                // Mode label
+                const modeEl = document.getElementById('pDetectedMode');
+                if (modeEl) {
+                    modeEl.textContent = res.mode;
+                    modeEl.style.color = res.mode === 'Migration' ? '#e11d48' : '#10b981';
+                }
+
+                // Basic fields
+                if (document.getElementById('pDispName')) document.getElementById('pDispName').textContent = d.learnerName || '—';
+                if (document.getElementById('pDispJlid')) document.getElementById('pDispJlid').textContent = d.jlid || jlid;
+                if (document.getElementById('pDispAge'))  document.getElementById('pDispAge').textContent  = d.age  || '—';
+
+                // ── Current Teacher dropdown ──
+                const tDrop = document.getElementById('pCurrentTeacherDropdown');
+                if (tDrop) {
+                    populateSelect(tDrop, teachers, false, 'Select Teacher');
+                    tDrop.value = d.currentTeacher || '';
+                    // If value not in list, add it dynamically so it shows correctly
+                    if (tDrop.value === '' && d.currentTeacher) {
+                        const opt = new Option(d.currentTeacher, d.currentTeacher, true, true);
+                        tDrop.appendChild(opt);
+                    }
+                }
+
+                // ── Course dropdowns ──
+                // Helper: populate + set value, adding option dynamically if missing
+                function _setCourseDrop(id, value, allowNone) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    populateSelect(el, courses, allowNone, 'Select course');
+                    if (value) {
+                        el.value = value;
+                        if (el.value === '') {
+                            // Course not in list — add it so it shows
+                            const opt = new Option(value, value, true, true);
+                            el.appendChild(opt);
+                            el.value = value;
+                        }
+                    }
+                }
+
+                _setCourseDrop('pInpCourse',  d.currentCourse  || '', false);
+                _setCourseDrop('pInpFuture1', d.futureCourse1  || '', true);
+                _setCourseDrop('pInpFuture2', d.futureCourse2  || '', true);
+                _setCourseDrop('pInpFuture3', d.futureCourse3  || '', true);
+
+                // ── Slot rows: generate based on sessions/week ──
+                const countMatch = (d.sessionsPerWeek || '1').match(/(\d+)/);
+                const count = countMatch ? parseInt(countMatch[1]) : 1;
+                const slotContainer = document.getElementById('personaSlotsContainer');
+                if (slotContainer) {
+                    slotContainer.innerHTML = '';
+                    for (let i = 0; i < count; i++) { addSingleSlotRow(i === 0); }
+                }
+
+                showToast('success', 'Context Loaded', `Detected ${res.mode} mode.`);
+            })
+            .withFailureHandler(showError)
+            .fetchPersonaSmartData(jlid);
+    }
+
+    // ── Ensure globalCourses & globalTeachers are populated before fetching ──
+    const needsCourses  = !globalCourses  || globalCourses.length  === 0;
+    const needsTeachers = !globalTeachers || globalTeachers.length === 0;
+
+    if (needsCourses || needsTeachers) {
+        // Fetch communication page data which contains both courses and teachers
+        google.script.run
+            .withSuccessHandler(data => {
+                if (data && data.success) {
+                    if (needsTeachers) globalTeachers = data.teachers  || [];
+                    if (needsCourses)  globalCourses  = data.courses   || [];
+                    // Also backfill other globals so the rest of the app works too
+                    if (!globalClsManagers || !globalClsManagers.length)  globalClsManagers  = data.clsManagers  || [];
+                    if (!globalTpManagers  || !globalTpManagers.length)   globalTpManagers   = data.tpManagers   || [];
+                    if (!globalJetGuides   || !globalJetGuides.length)    globalJetGuides    = data.jetGuides    || [];
+                    if (!globalTimezones   || !globalTimezones.length)    globalTimezones    = data.timezones    || [];
+                }
+                _doFetch(globalCourses, globalTeachers);
+            })
+            .withFailureHandler(err => {
+                hideLoading();
+                showError(err);
+            })
+            .getCommunicationPageData();
+    } else {
+        // Globals already populated — go straight to the HubSpot fetch
+        _doFetch(globalCourses, globalTeachers);
+    }
+}
+
+/**
+ * Adds a session row for multi-slot matching
+ */
+function addSingleSlotRow(isFirst = false) {
+    const container = document.getElementById('personaSlotsContainer');
+    if (!container) return;
+
+    const row = document.createElement('div');
+    row.className = 'form-grid slot-row';
+    row.style.cssText = "display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px; margin-bottom: 10px; align-items: center;";
+    
+    const slots = generateTimeSlotsForPersona(); 
+    let slotOptions = '<option value="" disabled selected>Select Time Slot (CET)</option>';
+    slots.forEach(s => slotOptions += `<option value="${s}">${s}</option>`);
+
+    row.innerHTML = `
+        <input type="date" class="form-control p-slot-date" required style="height:42px;">
+        <select class="form-control form-select p-slot-time" required style="height:42px;">${slotOptions}</select>
+        <div style="width:42px;">
+            ${!isFirst ? `<button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()" style="height:42px; width:42px;"><i class="fas fa-trash"></i></button>` : ''}
+        </div>
+    `;
+    container.appendChild(row);
+}
+
+/**
+ * Executes the multi-slot search
+ */
+function handlePersonaSearchSubmit(e) {
+    e.preventDefault();
+    const slotRows = document.querySelectorAll('.slot-row');
+    const requestedSlots = Array.from(slotRows).map(row => ({
+        date: row.querySelector('.p-slot-date').value,
+        slot: row.querySelector('.p-slot-time').value
+    })).filter(s => s.date && s.slot);
+
+    const searchData = {
+        requestedSlots: requestedSlots,
+        currentCourse: document.getElementById('pInpCourse').value,
+        futureCourse1: document.getElementById('pInpFuture1').value,
+        futureCourse2: document.getElementById('pInpFuture2').value,
+        futureCourse3: document.getElementById('pInpFuture3').value,
+        learnerAge: document.getElementById('pDispAge') ? document.getElementById('pDispAge').textContent : ''
+    };
+
+    showLoading('Ranking teachers for all slots...');
+    google.script.run
+        .withSuccessHandler(updatePersonaResults)
+        .searchMatchingTeachers(searchData);
+}
+
+
+// Call on load
+document.addEventListener('DOMContentLoaded', initPersonaSmartLogic);
+
+function filterMigrationReport(countFilter) {
+    // Update active state on buttons
+    const filterButtons = document.querySelectorAll('#migration-count-filters .tab-button');
+    filterButtons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('onclick') === `filterMigrationReport('${countFilter}')` || btn.getAttribute('onclick') === `filterMigrationReport(${countFilter})`) {
+            btn.classList.add('active');
+        }
+    });
+    
+    let filteredData = globalMultiMigrationData;
+    if (countFilter !== 'all') {
+        filteredData = globalMultiMigrationData.filter(item => {
+            if (countFilter === 1) return item.count === 1;
+            if (countFilter === 2) return item.count === 2;
+            if (countFilter === 3) return item.count >= 3;
+            return true;
+        });
+    }
+    
+    // Re-render the report with the filtered data
+    renderMultiMigrationReport(filteredData, false); // false = don't reset global data
+}
+
 
 </script>

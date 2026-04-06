@@ -26,7 +26,7 @@ function fetchHubspotByJlid(jlid) {
     'installment_months', 'installment_received_months__cloned_', 'payment_due_date',
     'full_payment_received__y_n_', 'jet_guide', 'cls_manager', 'teacher_manager',
     'parent_email', 'parent_name', 'phone_number_deal_',
-    'stage____payment_trigger_date', 'zoom_masked_link'
+    'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date'
   ];
 
   const requestBody = {
@@ -140,6 +140,8 @@ function fetchHubspotByJlid(jlid) {
         endDate: contactProperties.module_end_date || '',
         subscriptionStartDate: contactProperties.current_subscription_start_date || '', 
         planName: contactProperties.subscription || '',
+        learnerStatus: contactProperties.learner_status || 'Unknown',
+        pauseDate: contactProperties.urge_on_pause_date || null,
         classSessions: parseClassTimings(contactProperties.class_timings || contactProperties.regular_class_day),
         paymentType: paymentPlanParsed.paymentPlanType,
         installmentFrequency: paymentPlanParsed.installmentFrequency,
@@ -2500,4 +2502,50 @@ try {
     Logger.log(`[getNewDashboardData] Error: ${e.message}\n${e.stack}`);
     return { success: false, message: e.message };
   }
+}
+
+function fetchPersonaSmartData(jlid) {
+  Logger.log('[fetchPersonaSmartData] Logic start for JLID: ' + jlid);
+  
+  if (!jlid) return { success: false, message: 'JLID is required.' };
+  
+  // 1. Check Migration Pipeline first
+  const ticketResult = fetchLatestMigrationTicket(jlid);
+  
+  // 2. Fetch Deal baseline
+  const dealResult = fetchHubspotByJlid(jlid);
+  if (!dealResult.success) return dealResult;
+  
+  const d = dealResult.data;
+  let mode = "Onboarding"; // Default
+  
+  let contextData = {
+    learnerName: d.learnerName || '',
+    jlid: d.jlid || jlid,
+    currentTeacher: d.currentTeacher || '',
+    age: d.age || '',
+    currentCourse: d.course || '',
+    futureCourse1: "",
+    futureCourse2: "",
+    futureCourse3: "",
+    sessionsPerWeek: d.sessionsPerWeek || "1 Session/week"
+  };
+
+  // 3. Logic: If active ticket exists, switch to Migration mode and override courses
+  if (ticketResult.found) {
+    mode = "Migration";
+    contextData.currentCourse = ticketResult.ticketCourse || d.course;
+    contextData.currentTeacher = ticketResult.oldTeacher || d.currentTeacher;
+    
+    const props = ticketResult.rawProperties || {}; 
+    contextData.futureCourse1 = getCourseLabel(props.future_course_1) || "";
+    contextData.futureCourse2 = getCourseLabel(props.future_course_2) || "";
+    contextData.futureCourse3 = getCourseLabel(props.future_course_3) || "";
+  }
+
+  return {
+    success: true,
+    mode: mode,
+    data: contextData
+  };
 }

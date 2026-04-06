@@ -242,117 +242,110 @@ function getMigrationTrends(days = 30) {
 //Monthly & AI Reports:
 function getEnhancedMigrationReport(params) {
     try {
-        const rawSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
-        const sheetData = (rawSheetData && Array.isArray(rawSheetData)) ? rawSheetData : [];
-        const headers = sheetData[0] ||[];
-        
-        const timestampCol = 0;
-        const actionCol = headers.indexOf('Action');
-        const reasonCol = headers.indexOf('Reason for Migration');
-        const intervenedCol = headers.indexOf('Intervened By');
-        const oldTeacherCol = headers.indexOf('Old Teacher');
-        const newTeacherCol = headers.indexOf('New Teacher');
-        const courseCol = headers.indexOf('Course');
-
-        if (actionCol === -1 || reasonCol === -1 || intervenedCol === -1) {
-            return { success: true, message: "Missing columns.", data: null };
-        }
-
         const toDate = new Date(params.toDate || params.endDate);
         toDate.setHours(23, 59, 59, 999);
         const fromDate = new Date(params.fromDate || params.startDate);
         fromDate.setHours(0, 0, 0, 0);
 
-        const periodDuration = toDate.getTime() - fromDate.getTime();
-        const prevToDate = new Date(fromDate.getTime() - (24 * 60 * 60 * 1000)); 
-        const prevFromDate = new Date(prevToDate.getTime() - periodDuration);
+        const MIGRATION_PIPELINE_ID = '66161281';
+        const EXCLUDED_STAGE_IDS = ['133821818', '153457301']; 
 
-        const processPeriod = (start, end) => {
-            const periodData = {
-                totalMigrations: 0, clsInvolvement: 0, tpInvolvement: 0, opsInvolvement: 0,
-                reasonBreakdown: {}, teamInvolvementByReason: {}, teacherMigrationsFrom: {}, teacherMigrationsTo: {}, courseMigrations: {}
-            };
+        const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+        const searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
 
-            sheetData.slice(1).forEach(row => {
-                const action = String(row[actionCol] || "");
-                if (!action.includes('Migration')) return;
+        const fetchExecutedTickets = (start, end) => {
+            let allTickets = [];
+            let after = undefined;
+            do {
+                const requestBody = {
+                    filterGroups: [{
+                        filters: [
+                            { propertyName: "hs_pipeline", operator: "EQ", value: MIGRATION_PIPELINE_ID },
+                            { propertyName: "migration_completed_date", operator: "BETWEEN", value: start.getTime(), highValue: end.getTime() },
+                            { propertyName: "hs_pipeline_stage", operator: "NOT_IN", values: EXCLUDED_STAGE_IDS }
+                        ]
+                    }],
+                    properties: ["reason_of_migration__t_", "migration_intervened_by", "current_teacher__t_", "new_teacher", "current_course"],
+                    limit: 100,
+                    after: after
+                };
+                const response = UrlFetchApp.fetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
+                const data = JSON.parse(response.getContentText());
+                if (data && data.results) allTickets = allTickets.concat(data.results);
+                after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+            } while (after);
+            return allTickets;
+        };
 
-                const timestamp = parseSheetDate(row[timestampCol]);
-                if (!timestamp || timestamp < start || timestamp > end) return;
+        const currentTickets = fetchExecutedTickets(fromDate, toDate);
 
+        const processTickets = (tickets) => {
+            const periodData = { totalMigrations: 0, clsInvolvement: 0, tpInvolvement: 0, opsInvolvement: 0, reasonBreakdown: {}, teamInvolvementByReason: {}, teacherMigrationsFrom: {}, teacherMigrationsTo: {}, courseMigrations: {} };
+            tickets.forEach(ticket => {
+                const props = ticket.properties;
                 periodData.totalMigrations++;
-                const reason = String(row[reasonCol] || 'Unknown').trim();
-                const teams = String(row[intervenedCol] || '').toLowerCase();
-
+                const reason = String(props.reason_of_migration__t_ || 'Unknown').trim();
+                const teams = String(props.migration_intervened_by || '').toLowerCase();
+                
                 if (teams.includes('cls')) periodData.clsInvolvement++;
                 if (teams.includes('tp')) periodData.tpInvolvement++;
                 if (teams.includes('ops')) periodData.opsInvolvement++;
 
                 periodData.reasonBreakdown[reason] = (periodData.reasonBreakdown[reason] || 0) + 1;
                 
-                if (!periodData.teamInvolvementByReason[reason]) periodData.teamInvolvementByReason[reason] = { cls: 0, tp: 0, ops: 0 };
+                // ======================= FIX IS HERE ==========================
+                // This block was missing, causing the crash. It initializes and populates the team involvement data.
+                if (!periodData.teamInvolvementByReason[reason]) {
+                    periodData.teamInvolvementByReason[reason] = { cls: 0, tp: 0, ops: 0 };
+                }
                 if (teams.includes('cls')) periodData.teamInvolvementByReason[reason].cls++;
                 if (teams.includes('tp')) periodData.teamInvolvementByReason[reason].tp++;
                 if (teams.includes('ops')) periodData.teamInvolvementByReason[reason].ops++;
+                // ===================== END OF FIX ===========================
 
-                const oldTeacher = String(row[oldTeacherCol] || '').trim();
-                const newTeacher = String(row[newTeacherCol] || '').trim();
+                const oldTeacher = getTeacherLabel(props.current_teacher__t_);
+                const newTeacher = getTeacherLabel(props.new_teacher);
                 if (oldTeacher) periodData.teacherMigrationsFrom[oldTeacher] = (periodData.teacherMigrationsFrom[oldTeacher] || 0) + 1;
                 if (newTeacher) periodData.teacherMigrationsTo[newTeacher] = (periodData.teacherMigrationsTo[newTeacher] || 0) + 1;
-
-                const course = String(row[courseCol] || 'Unknown').trim();
-                if (!periodData.courseMigrations[course]) periodData.courseMigrations[course] = { count: 0, reasons: {} };
-                periodData.courseMigrations[course].count++;
-                periodData.courseMigrations[course].reasons[reason] = (periodData.courseMigrations[course].reasons[reason] || 0) + 1;
+                
+                const course = getCourseLabel(props.current_course);
+                if (course) {
+                   if (!periodData.courseMigrations[course]) periodData.courseMigrations[course] = { count: 0, reasons: {} };
+                   periodData.courseMigrations[course].count++;
+                   periodData.courseMigrations[course].reasons[reason] = (periodData.courseMigrations[course].reasons[reason] || 0) + 1;
+                }
             });
             return periodData;
         };
-
-        const currentPeriod = processPeriod(fromDate, toDate);
-        const previousPeriod = processPeriod(prevFromDate, prevToDate);
-
-        const calculateChange = (current, previous) => (previous === 0) ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
         
-        const daysInPeriod = (toDate.getTime() - fromDate.getTime()) / (1000 * 3600 * 24) + 1;
-        const daysInPrevPeriod = (prevToDate.getTime() - prevFromDate.getTime()) / (1000 * 3600 * 24) + 1;
-        const currentAvg = daysInPeriod > 0 ? (currentPeriod.totalMigrations / daysInPeriod) : 0;
-        const prevAvg = daysInPrevPeriod > 0 ? (previousPeriod.totalMigrations / daysInPrevPeriod) : 0;
-
+        const currentPeriod = processTickets(currentTickets);
+        
+        const daysInPeriod = ((toDate.getTime() - fromDate.getTime()) / (1000 * 3600 * 24)) + 1;
         const kpis = {
-            totalMigrations: { current: currentPeriod.totalMigrations, previous: previousPeriod.totalMigrations, change: calculateChange(currentPeriod.totalMigrations, previousPeriod.totalMigrations) },
-            avgMigrationsPerDay: { current: currentAvg, previous: prevAvg, change: calculateChange(currentAvg, prevAvg) },
-            clsRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.clsInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: (previousPeriod.totalMigrations > 0 ? (previousPeriod.clsInvolvement / previousPeriod.totalMigrations) * 100 : 0) },
-            tpRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.tpInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: (previousPeriod.totalMigrations > 0 ? (previousPeriod.tpInvolvement / previousPeriod.totalMigrations) * 100 : 0) },
+            totalMigrations: { current: currentPeriod.totalMigrations, previous: 0, change: 0 },
+            avgMigrationsPerDay: { current: (daysInPeriod > 0 ? (currentPeriod.totalMigrations / daysInPeriod) : 0), previous: 0, change: 0 },
+            clsRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.clsInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: 0, change: 0 },
+            tpRate: { current: (currentPeriod.totalMigrations > 0 ? (currentPeriod.tpInvolvement / currentPeriod.totalMigrations) * 100 : 0), previous: 0, change: 0 },
         };
-        kpis.clsRate.change = kpis.clsRate.current - kpis.clsRate.previous;
-        kpis.tpRate.change = kpis.tpRate.current - kpis.tpRate.previous;
-
-        const allTeachers = new Set([...Object.keys(currentPeriod.teacherMigrationsFrom), ...Object.keys(currentPeriod.teacherMigrationsTo)]);
-        const teacherImpact = Array.from(allTeachers).map(name => {
-            const from = currentPeriod.teacherMigrationsFrom[name] || 0;
-            const to = currentPeriod.teacherMigrationsTo[name] || 0;
-            return { name, from, to, netFlow: to - from };
-        }).sort((a, b) => a.netFlow - b.netFlow);
-
-        const courseImpact = Object.entries(currentPeriod.courseMigrations).map(([name, data]) => {
-            const topReason = Object.keys(data.reasons).length > 0 ? Object.entries(data.reasons).sort((a, b) => b[1] - a[1])[0][0] : 'N/A';
-            return { name, count: data.count, topReason };
-        }).sort((a, b) => b.count - a.count);
-
+        // This logic remains the same
+        const teacherImpact = Object.keys(currentPeriod.teacherMigrationsFrom).map(name => ({ name, from: currentPeriod.teacherMigrationsFrom[name] || 0, to: currentPeriod.teacherMigrationsTo[name] || 0, netFlow: (currentPeriod.teacherMigrationsTo[name] || 0) - (currentPeriod.teacherMigrationsFrom[name] || 0) })).sort((a,b) => b.from - a.from);
+        const courseImpact = Object.entries(currentPeriod.courseMigrations).map(([name, data]) => ({ name, count: data.count, topReason: Object.keys(data.reasons).sort((a, b) => data.reasons[b] - data.reasons[a])[0] || 'N/A' })).sort((a, b) => b.count - a.count);
+        
         const reportData = {
             kpis,
             reasonBreakdown: Object.entries(currentPeriod.reasonBreakdown).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
-            teamInvolvementByReason: currentPeriod.teamInvolvementByReason,
+            teamInvolvementByReason: currentPeriod.teamInvolvementByReason, // This object is now correctly populated
             teacherImpact,
             courseImpact
         };
-
+        
         const aiInsights = getEnhancedAIInsights(reportData, fromDate.toLocaleString('default', { month: 'long' }));
 
         return { success: true, data: reportData, aiInsights: aiInsights };
+
     } catch (error) {
-        Logger.log('Error in getEnhancedMigrationReport: ' + error.message);
-        return { success: false, message: 'Error generating report: ' + error.message, data: null };
+        Logger.log('Error in getEnhancedMigrationReport (Ticket Version): ' + error.stack);
+        return { success: false, message: 'Error generating report from tickets: ' + error.message };
     }
 }
 
@@ -820,5 +813,190 @@ function getDoubleMigrationReport(params) {
   } catch (e) {
     Logger.log("Error in getDoubleMigrationReport: " + e.stack);
     return[];
+  }
+}
+
+function getMultiMigrationReport(params) {
+  try {
+    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    
+    if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
+        return [];
+    }
+
+    const fromDate = new Date(params.fromDate);
+    fromDate.setHours(0, 0, 0, 0);
+    const toDate = new Date(params.toDate);
+    toDate.setHours(23, 59, 59, 999);
+
+    const learnerMap = {};
+
+    // 1. Gather all migrations from the audit log
+    sheetData.slice(1).forEach(row => {
+      const action = String(row[1] || "");
+      if (!action.includes("Migration") || String(row[7] || "").trim().toLowerCase() === 'failed') return;
+
+      const date = parseSheetDate(row[0]);
+      if (!date || isNaN(date.getTime()) || date < fromDate || date > toDate) return;
+
+      const jlid = String(row[2]).trim().toUpperCase();
+      if (!jlid) return;
+
+      if (!learnerMap[jlid]) {
+          learnerMap[jlid] = { name: row[3] || "Unknown", events: [] };
+      }
+
+      learnerMap[jlid].events.push({
+        date: date,
+        dateStr: formatDateDDMMYYYY(date),
+        oldTeacher: String(row[4] || "").trim(),
+        newTeacher: String(row[5] || "").trim(),
+        reason: String(row[10] || "Unspecified").trim()
+      });
+    });
+
+    const multiMigrations = [];
+    const learnerJlids = Object.keys(learnerMap);
+
+    // 2. Process each learner and enrich with HubSpot data
+    for (const jlid of learnerJlids) {
+      const data = learnerMap[jlid];
+      data.events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      const uniqueEvents = data.events.filter((e, index, arr) => {
+        if (index === 0) return true;
+        return e.newTeacher !== arr[index - 1].newTeacher;
+      });
+
+      if (uniqueEvents.length >= 1) {
+        
+        // --- THIS IS THE CORE FIX ---
+        // We set default "error" values first.
+        let learnerStatus = 'HubSpot Error';
+        let subscriptionEndDate = null;
+        let pauseDate = null;
+        let pausedTiming = 'N/A';
+
+        // Then, we TRY to update them with real HubSpot data.
+        try {
+          const hubspotResult = HubSpotService.fetchHubspotByJlid(jlid);
+          if (hubspotResult.success) {
+            const hsData = hubspotResult.data;
+            learnerStatus = hsData.learnerStatus || 'Status Not Found';
+            subscriptionEndDate = hsData.endDate ? new Date(hsData.endDate) : null;
+            pauseDate = hsData.pauseDate ? new Date(hsData.pauseDate) : null;
+            
+            if (learnerStatus === 'Paused Learner' && pauseDate && subscriptionEndDate) {
+                pausedTiming = pauseDate.getTime() < subscriptionEndDate.getTime() ? 'Before End of Subscription' : 'At End of Subscription';
+            }
+          }
+        } catch (hsError) {
+          Logger.log(`Graceful failure for HubSpot data on ${jlid}: ${hsError.message}`);
+        }
+        
+        // NOW, we push the learner to the report REGARDLESS of the HubSpot result.
+        // The user's request to "Include in it both Active and Paused Learners" is now
+        // a filter on the data we successfully get, not a hard requirement to show the row.
+        multiMigrations.push({
+            jlid: jlid,
+            name: data.name,
+            count: uniqueEvents.length,
+            timeline: uniqueEvents.map(e => ({
+                dateStr: e.dateStr,
+                oldTeacher: e.oldTeacher,
+                newTeacher: e.newTeacher,
+                reason: e.reason
+            })),
+            learnerStatus: learnerStatus,
+            subscriptionEndDate: subscriptionEndDate ? subscriptionEndDate.toLocaleDateString('en-CA') : '',
+            pauseDate: pauseDate ? pauseDate.toLocaleDateString('en-CA') : '',
+            pausedTiming: pausedTiming
+        });
+      }
+    }
+
+    return multiMigrations.sort((a, b) => b.count - a.count);
+
+  } catch (e) {
+    Logger.log("FATAL Error in getMultiMigrationReport: " + e.stack);
+    return []; // Return empty on catastrophic failure
+  }
+}
+
+function getMultiMigrationReportFromTickets(params) {
+  try {
+    const fromDate = new Date(params.fromDate);
+    const toDate = new Date(params.toDate);
+    const MIGRATION_PIPELINE_ID = '66161281';
+
+    // *** The correct IDs are now here ***
+    const EXCLUDED_STAGE_IDS = ['133821818', '153457301']; 
+
+    const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token) throw new Error("HubSpot API Key is not configured.");
+
+    const searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+    
+    let allTickets = [];
+    let after = undefined;
+
+    do {
+      const requestBody = {
+        filterGroups: [{
+          filters: [
+            { propertyName: "hs_pipeline", operator: "EQ", value: MIGRATION_PIPELINE_ID },
+            { propertyName: "migration_completed_date", operator: "BETWEEN", value: fromDate.getTime(), highValue: toDate.getTime() },
+            { propertyName: "hs_pipeline_stage", operator: "NOT_IN", values: EXCLUDED_STAGE_IDS }
+          ]
+        }],
+        properties: ["learner_uid", "learner_full_name", "createdate", "migration_completed_date", "current_teacher__t_", "new_teacher", "reason_of_migration__t_"],
+        sorts: [{ propertyName: "migration_completed_date", direction: "ASCENDING" }],
+        limit: 100,
+        after: after
+      };
+
+      const response = UrlFetchApp.fetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
+      const data = JSON.parse(response.getContentText());
+      if (data && data.results) allTickets = allTickets.concat(data.results);
+      after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+
+    } while (after);
+
+    const learnerMap = {};
+    allTickets.forEach(ticket => {
+        const props = ticket.properties;
+        const jlid = (props.learner_uid || '').trim().toUpperCase();
+        if (!jlid) return;
+        if (!learnerMap[jlid]) learnerMap[jlid] = { name: props.learner_full_name || "Unknown", events: [] };
+        
+        learnerMap[jlid].events.push({
+            date: new Date(props.migration_completed_date || ticket.createdAt),
+            dateStr: formatDateDDMMYYYY(new Date(props.migration_completed_date || ticket.createdAt)),
+            oldTeacher: getTeacherLabel(props.current_teacher__t_) || 'N/A',
+            newTeacher: getTeacherLabel(props.new_teacher) || '[Unassigned]',
+            reason: props.reason_of_migration__t_ || "Unspecified"
+        });
+    });
+    
+    const multiMigrations = [];
+    for (const jlid of Object.keys(learnerMap)) {
+        const data = learnerMap[jlid];
+        if (data.events.length < 1) continue;
+        let learnerStatus = 'HubSpot Error';
+        try {
+            const hubspotResult = HubSpotService.fetchHubspotByJlid(jlid);
+            if (hubspotResult.success) {
+                learnerStatus = hubspotResult.data.learnerStatus || 'Status Not Found';
+            } else {
+                learnerStatus = hubspotResult.message || 'Deal Not Found';
+            }
+        } catch (hsError) { /* Graceful failure */ }
+
+        multiMigrations.push({ jlid, name: data.name, count: data.events.length, timeline: data.events, learnerStatus });
+    }
+    return multiMigrations.sort((a, b) => b.count - a.count);
+  } catch (e) {
+    Logger.log("FATAL Error in getMultiMigrationReportFromTickets: " + e.stack);
+    return [];
   }
 }

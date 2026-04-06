@@ -681,169 +681,262 @@ function getTeacherSpecificLoad(teacherName) {
 }
 
 function searchMatchingTeachers(requestData) {
-  Logger.log('searchMatchingTeachers called with:', requestData);
+  Logger.log('searchMatchingTeachers called: ' + JSON.stringify(requestData).substring(0, 500));
 
   try {
-    const mainData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
+    var mainData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
+    if (mainData.length < 2) return { success: true, results: [] };
+    var headers = mainData[1];
 
-    if (mainData.length < 2) {
-      Logger.log("Persona Data sheet is empty or has no headers.");
-      return { success: true, results: [] };
+    // ── Parse requestedSlots (GAS may serialise array as JSON string) ──
+    var requestedSlots = requestData.requestedSlots || [];
+    if (typeof requestedSlots === 'string') {
+      try { requestedSlots = JSON.parse(requestedSlots); } catch(e) { requestedSlots = []; }
     }
-    const headers = mainData[1];
+    if (!Array.isArray(requestedSlots) || requestedSlots.length === 0) {
+      if (requestData.requestedDate && requestData.requestedSlot) {
+        requestedSlots = [{ date: requestData.requestedDate, slot: requestData.requestedSlot }];
+      }
+    }
+    Logger.log('[SMT] slots: ' + JSON.stringify(requestedSlots));
 
-    const requestedDate = requestData.requestedDate;
-    const requestedSlot = requestData.requestedSlot;
-    const currentCourse = requestData.currentCourse;
+    var currentCourse = String(requestData.currentCourse || '').trim();
+    var futureCourses = [
+      String(requestData.futureCourse1 || '').trim(),
+      String(requestData.futureCourse2 || '').trim(),
+      String(requestData.futureCourse3 || '').trim()
+    ].filter(function(f) { return f && f !== 'None'; });
 
-    // Load audit scores (last 45 days) and availability map
-    var auditScoreMap = {};
-    try { auditScoreMap = _buildAuditScoreMapDays(45); } catch(ae) { Logger.log('[searchMatchingTeachers] Audit map error: ' + ae.message); }
-    Logger.log('[searchMatchingTeachers] Audit map: ' + Object.keys(auditScoreMap).length + ' teachers');
+    // ── Build TEACHER_COURSES map — same source as findSimilarTeachers ──
+    // { normalizedName: { 'course name lower': progress } }
+    var teacherCourseMap = {};
+    var validStatuses = ['71-80%', '81-90%', '91-99%', '100%'];
+    try {
+      var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+      if (tcSheet && tcSheet.length > 1) {
+        tcSheet.slice(1).forEach(function(row) {
+          var tName    = String(row[0] || '').trim();
+          var cName    = String(row[1] || '').trim();
+          var progress = String(row[3] || '').trim();
+          if (!tName || !cName) return;
+          var key = normalizeTeacherName(tName);
+          if (!teacherCourseMap[key]) teacherCourseMap[key] = {};
+          teacherCourseMap[key][cName.toLowerCase()] = progress;
+        });
+        Logger.log('[SMT] teacherCourseMap: ' + Object.keys(teacherCourseMap).length + ' teachers');
+        // Log a sample of course names so we can compare with what's sent
+        var sampleKey = Object.keys(teacherCourseMap)[0];
+        if (sampleKey) Logger.log('[SMT] sample courses for "' + sampleKey + '": ' + Object.keys(teacherCourseMap[sampleKey]).join(' | '));
+      }
+    } catch(tce) {
+      Logger.log('[SMT] TEACHER_COURSES error: ' + tce.message);
+    }
 
-    var availabilityMap = {};
-    try { availabilityMap = _getTeacherAvailabilityMap(requestedDate); } catch(ave) { Logger.log('[searchMatchingTeachers] Avail map error: ' + ave.message); }
-    Logger.log('[searchMatchingTeachers] Availability map: ' + Object.keys(availabilityMap).length + ' teachers');
+    // ── Course lookup: fuzzy match against TEACHER_COURSES ──
+    function getCourseProgress(tNorm, tCanon, courseName) {
+      if (!courseName) return null;
+      var cLower = courseName.toLowerCase().trim();
+      var keys = [tNorm, tCanon];
+      for (var ki = 0; ki < keys.length; ki++) {
+        var courses = teacherCourseMap[keys[ki]];
+        if (!courses) continue;
+        // 1. Exact (case-insensitive)
+        if (courses[cLower] !== undefined) return courses[cLower];
+        // 2. Sheet col starts with what we have (handles extra words at end)
+        // 3. What we have starts with sheet col (handles truncation)
+        var courseKeys = Object.keys(courses);
+        for (var ci = 0; ci < courseKeys.length; ci++) {
+          var ck = courseKeys[ci];
+          if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return courses[ck];
+          // 4. Substring match on first 15 chars (handles HubSpot truncation)
+          var prefix = cLower.substring(0, 15);
+          if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return courses[ck];
+        }
+      }
+      return null; // not in their list
+    }
 
-    const futureCourses = [
-      requestData.futureCourse1,
-      requestData.futureCourse2,
-      requestData.futureCourse3
-    ].filter(Boolean);
+    // ── Slot string normaliser ──
+    // Handles "04:00 PM - 05:00 PM", "4:00 PM-5:00 PM", "16:00-17:00"
+    function normaliseSlot(s) {
+      if (!s) return '';
+      s = String(s).trim().toUpperCase().replace(/\s+/g, ' ').replace(/\s*-\s*/g, ' - ');
+      // Convert 24h to 12h: "16:00" → "04:00 PM"
+      s = s.replace(/\b(\d{1,2}):(\d{2})\b(?!\s*(AM|PM))/gi, function(_, h, m) {
+        var hr = parseInt(h, 10);
+        var ap = hr < 12 ? 'AM' : 'PM';
+        var h12 = hr % 12 || 12;
+        return String(h12).padStart(2, '0') + ':' + m + ' ' + ap;
+      });
+      return s;
+    }
 
-    const normalize = arr => arr.map(t => String(t).trim()).filter(t => !!t);
+    // ── Persona headerMap (traits + age + status only — NOT courses) ──
+    var headerMap = {};
+    headers.forEach(function(h, idx) { if (h) headerMap[String(h).trim()] = idx; });
+    var teacherNameCol   = headerMap['Teacher Name'];
+    var teacherStatusCol = headerMap['Status'];
+    var isMathCourse     = currentCourse.toLowerCase().indexOf('math') !== -1;
+    var ageCol = isMathCourse
+      ? (headerMap['Math Age/Year (preferred)'] !== undefined ? headerMap['Math Age/Year (preferred)'] : (headerMap['Age/Year'] || headerMap['Age Group']))
+      : (headerMap['Tech Age/Year (preferred)'] !== undefined ? headerMap['Tech Age/Year (preferred)'] : (headerMap['Age/Year'] || headerMap['Age Group']));
+    var traitColsStart = headerMap['Trait 1'];
+    var traitColsEnd   = headerMap['Trait 9'];
 
-    const mathTraits = normalize(requestData.mathTraits ? requestData.mathTraits.split(',') : []);
-    const techTraits = normalize(requestData.techTraits ? requestData.techTraits.split(',') : []);
+    if (teacherNameCol === undefined) {
+      return { success: false, message: "Persona sheet missing 'Teacher Name' column." };
+    }
 
-    const output = [];
-
-    const headerMap = {};
-    headers.forEach((h, idx) => {
-      if (h) {
-        headerMap[String(h).trim()] = idx;
+    // ── Pre-build availability maps per date ──
+    var uniqueDates = [];
+    requestedSlots.forEach(function(s) {
+      if (s.date && uniqueDates.indexOf(s.date) === -1) uniqueDates.push(s.date);
+    });
+    var availabilityByDate = {};
+    uniqueDates.forEach(function(dateStr) {
+      try {
+        availabilityByDate[dateStr] = _getTeacherAvailabilityMap(dateStr);
+        Logger.log('[SMT] avail ' + dateStr + ': ' + Object.keys(availabilityByDate[dateStr]).length + ' teachers');
+      } catch(e) {
+        Logger.log('[SMT] avail error ' + dateStr + ': ' + e.message);
+        availabilityByDate[dateStr] = {};
       }
     });
 
-    const teacherNameCol = headerMap['Teacher Name'];
-    const teacherStatusCol = headerMap['Status'];
-    // Age column: try multiple naming conventions used across sheets
-    const ageOrYearCol_Math = headerMap['Math Age/Year (preferred)'] || headerMap['Age/Year'] || headerMap['Preferred Age Group'] || headerMap['Age Group'];
-    const ageOrYearCol_Tech = headerMap['Tech Age/Year (preferred)'] || headerMap['Age/Year'] || headerMap['Preferred Age Group'] || headerMap['Age Group'];
-    const traitColsStart = headerMap['Trait 1'];
-    const traitColsEnd   = headerMap['Trait 9'];
-    const hasTraitCols   = (traitColsStart !== undefined && traitColsEnd !== undefined);
+    // ── Audit map ──
+    var auditScoreMap = {};
+    try { auditScoreMap = _buildAuditScoreMapDays(45); } catch(ae) { Logger.log('[SMT] audit error: ' + ae.message); }
 
-    if (teacherNameCol === undefined) {
-      throw new Error("Persona sheet is missing the required 'Teacher Name' column.");
+    // ── Traits ──
+    function splitTraits(str) {
+      return str ? String(str).split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
     }
-    // Status column is optional — if absent, treat all rows as Active
-    const hasStatusCol = (teacherStatusCol !== undefined);
+    var targetTraits = isMathCourse ? splitTraits(requestData.mathTraits) : splitTraits(requestData.techTraits);
 
-    const progressOrder = ["100%", "91-99%", "81-90%", "71-80%", "61-70%", "51-60%", "41-50%", "31-40%", "21-30%", "11-20%", "1-10%", "0%", "Not Onboarded", "N/A"];
-    const requestedDateObj = new Date(requestedDate);
-    const requestedDateStr = requestedDateObj.toISOString().split('T')[0];
+    var progressOrder = ['100%','91-99%','81-90%','71-80%','61-70%','51-60%',
+                         '41-50%','31-40%','21-30%','11-20%','1-10%','0%','Not Onboarded','N/A'];
+    var output = [];
+    var debugCourseNotFound = 0;
+    var debugCourseFiltered = 0;
+    var debugSlotFiltered   = 0;
 
-    for (let i = 2; i < mainData.length; i++) {
-      const row = mainData[i];
-      if (hasStatusCol) {
-        const teacherStatus = String(row[teacherStatusCol] || '').trim();
-        if (teacherStatus !== "Active") continue;
-      }
-      const teacherName = String(row[teacherNameCol] || '').trim();
+    // ── Main loop ──
+    for (var i = 2; i < mainData.length; i++) {
+      var row = mainData[i];
+      var teacherName = String(row[teacherNameCol] || '').trim();
       if (!teacherName) continue;
 
-      let currentCourseProgress = 'N/A';
+      if (teacherStatusCol !== undefined &&
+          String(row[teacherStatusCol] || '').trim() !== 'Active') continue;
+
+      var tNorm  = normalizeTeacherName(teacherName);
+      var tCanon = normalizeTeacherName(resolveTeacherName(teacherName));
+
+      // ── COURSE — from TEACHER_COURSES ──
+      var currentCourseProgress = 'N/A';
       if (currentCourse) {
-        const currentCourseColIndex = headerMap[currentCourse];
-        if (currentCourseColIndex !== undefined) {
-          currentCourseProgress = String(row[currentCourseColIndex] || 'N/A').trim();
-          const validStatuses = ["71-80%", "81-90%", "91-99%", "100%"];
-          if (!validStatuses.includes(currentCourseProgress)) continue;
-        }
+        var prog = getCourseProgress(tNorm, tCanon, currentCourse);
+        if (prog === null) { debugCourseNotFound++; continue; }
+        currentCourseProgress = prog;
+        if (validStatuses.indexOf(currentCourseProgress) === -1) { debugCourseFiltered++; continue; }
       }
 
-      const futureCourseStatuses = futureCourses.map(fc => {
-        const fcColIndex = headerMap[fc];
-        return fcColIndex !== undefined ? String(row[fcColIndex] || "N/A").trim() : "N/A";
-      });
-
-      let traitMissing = [];
-      let traitMatchesCount = 0;
-      let teacherOwnTraits = [];
-      const isMathCourse = currentCourse && currentCourse.toLowerCase().includes("math");
-      const targetTraits = isMathCourse ? mathTraits.map(t => t.toLowerCase()) : techTraits.map(t => t.toLowerCase());
-      if (hasTraitCols) {
-        const teacherTraitRaw = row.slice(traitColsStart, traitColsEnd + 1);
-        teacherOwnTraits = normalize(teacherTraitRaw.flatMap(cell => String(cell).split(/\n|,/)));
-        if (targetTraits.length > 0) {
-          const normalizedTeacherTraits = new Set(teacherOwnTraits.map(t => t.toLowerCase()));
-          traitMissing = targetTraits.filter(t => !normalizedTeacherTraits.has(t));
-          traitMatchesCount = targetTraits.length - traitMissing.length;
+      // ── SLOT MATCHING ──
+      var slotsMatched = 0;
+      var allAlternate = [];
+      for (var si = 0; si < requestedSlots.length; si++) {
+        var req        = requestedSlots[si];
+        var dateMap    = availabilityByDate[req.date] || {};
+        var sheetSlots = dateMap[tNorm] || dateMap[tCanon] || null;
+        if (sheetSlots && sheetSlots.length > 0) {
+          sheetSlots.forEach(function(s) { if (allAlternate.indexOf(s) === -1) allAlternate.push(s); });
         }
-      }
-      const ageOrYearMatch = isMathCourse ? String(row[ageOrYearCol_Math] || 'N/A').trim() : String(row[ageOrYearCol_Tech] || 'N/A').trim();
-      
-      // Slot matching: primary = availability map from Migration Teacher tab in audit sheet
-      const teacherNormKey = normalizeTeacherName(teacherName);
-      const availableSlots = availabilityMap[teacherNormKey] || availabilityMap[normalizeTeacherName(resolveTeacherName(teacherName))] || null;
-      let slotMatch = '\u274C';
-      let alternateSlots = [];
-      if (availableSlots !== null) {
-        if (availableSlots.some(s => s === requestedSlot)) slotMatch = '\u2714\uFE0F';
-        alternateSlots = availableSlots; // all available slots for that day
-      } else {
-        // Fallback: date columns in persona sheet
-        const slotHeaderKey = Object.keys(headerMap).find(h => {
-          try { return !isNaN(new Date(h).getTime()) && new Date(h).toISOString().split('T')[0] === requestedDateStr; }
-          catch (e) { return false; }
+        var reqNorm = normaliseSlot(req.slot);
+        var isMatch = sheetSlots !== null && sheetSlots.some(function(s) {
+          return normaliseSlot(s) === reqNorm;
         });
-        const avail = slotHeaderKey ? String(row[headerMap[slotHeaderKey]] || '').trim() : '';
-        if (avail && avail.includes(requestedSlot)) slotMatch = '\u2714\uFE0F';
-        if (avail && avail !== 'No Slots' && avail !== 'No Slots Available') {
-          alternateSlots = avail.split(',').map(s => s.trim()).filter(Boolean);
+        if (isMatch) slotsMatched++;
+      }
+      var totalSlots      = requestedSlots.length;
+      var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
+      if (totalSlots > 1 && slotsMatched < totalSlots) { debugSlotFiltered++; continue; }
+
+      // ── TRAITS ──
+      var teacherOwnTraits  = [];
+      var traitsMissing     = [];
+      var traitMatchesCount = 0;
+      if (traitColsStart !== undefined) {
+        var traitEnd = (traitColsEnd !== undefined) ? traitColsEnd : traitColsStart;
+        row.slice(traitColsStart, traitEnd + 1).forEach(function(cell) {
+          String(cell).split(/[,\n]/).forEach(function(t) { var tr = t.trim(); if (tr) teacherOwnTraits.push(tr); });
+        });
+        if (targetTraits.length > 0) {
+          var tSet = {};
+          teacherOwnTraits.forEach(function(t) { tSet[t.toLowerCase()] = true; });
+          traitsMissing     = targetTraits.filter(function(t) { return !tSet[t.toLowerCase()]; });
+          traitMatchesCount = targetTraits.length - traitsMissing.length;
         }
       }
+      var ageMatch = (ageCol !== undefined) ? String(row[ageCol] || 'N/A').trim() : 'N/A';
 
-      // Audit score — last 45 days of audit data. Class score /80 → 0-20 pts. Red flags lower rank.
-      const auditEntry    = auditScoreMap[teacherNormKey] || auditScoreMap[normalizeTeacherName(resolveTeacherName(teacherName))] || null;
-      const avgClassScore = auditEntry ? auditEntry.avgScore    : null;
-      const redFlagCount  = auditEntry ? (auditEntry.redFlags   || 0) : 0;
-      const auditCount45  = auditEntry ? (auditEntry.auditCount || 0) : 0;
-      const auditBonus    = avgClassScore != null ? Math.round((avgClassScore / 80) * 20) : 10;
-      const auditPenalty  = Math.min(redFlagCount * 3, 15);
-      const auditScore    = Math.max(0, auditBonus - auditPenalty);
-      const auditGrade    = avgClassScore == null ? '-' : avgClassScore >= 65 ? 'A' : avgClassScore >= 50 ? 'B' : avgClassScore >= 35 ? 'C' : 'D';
+      // ── FUTURE COURSES — from TEACHER_COURSES ──
+      function fcProg(fc) {
+        if (!fc) return '\u2014';
+        var p = getCourseProgress(tNorm, tCanon, fc);
+        return p !== null ? p : 'Not Onboarded';
+      }
 
-      // Combined ranking score: slot match (40) + audit (20) + course progress (20) + traits (20)
-      const slotPoints  = slotMatch === '\u2714\uFE0F' ? 40 : 0;
-      const coursePoints = Math.max(0, 20 - progressOrder.indexOf(currentCourseProgress));
-      const traitPoints  = targetTraits && targetTraits.length > 0 ? Math.round((traitMatchesCount / targetTraits.length) * 20) : 10;
-      const rankScore    = slotPoints + auditScore + coursePoints + traitPoints;
+      // ── AUDIT ──
+      var auditEntry      = auditScoreMap[tNorm] || auditScoreMap[tCanon] || null;
+      var avgScore        = auditEntry ? auditEntry.avgScore    : null;
+      var redFlags        = auditEntry ? (auditEntry.redFlags   || 0) : 0;
+      var auditCount      = auditEntry ? (auditEntry.auditCount || 0) : 0;
+      var auditBonus      = avgScore != null ? Math.round((avgScore / 80) * 20) : 10;
+      var auditFinalScore = Math.max(0, auditBonus - Math.min(redFlags * 3, 15));
+      var auditGrade      = avgScore == null ? '-' : avgScore >= 65 ? 'A' : avgScore >= 50 ? 'B' : avgScore >= 35 ? 'C' : 'D';
+
+      // ── RANK ──
+      var slotPoints     = totalSlots === 0 ? 40 : Math.round((slotsMatched / totalSlots) * 40);
+      var progressPoints = Math.max(0, 20 - progressOrder.indexOf(currentCourseProgress));
+      var traitPoints    = targetTraits.length > 0 ? Math.round((traitMatchesCount / targetTraits.length) * 20) : 10;
+      var totalRank      = slotPoints + auditFinalScore + progressPoints + traitPoints;
+
+      var slotLabel = totalSlots === 0    ? '\u2714\uFE0F'
+                    : isFullSlotMatch     ? '\u2714\uFE0F Match All'
+                    : '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots;
 
       output.push({
-        teacherName, ageYear: ageOrYearMatch, slotMatch,
-        alternateSlots: alternateSlots.join(', '),
-        currentCourseProgress, futureCourse1Progress: futureCourseStatuses[0] || 'N/A',
-        futureCourse2Progress: futureCourseStatuses[1] || 'N/A', futureCourse3Progress: futureCourseStatuses[2] || 'N/A',
-        traitsMissing: traitMissing,
-        teacherTraits: teacherOwnTraits,
-        avgClassScore: avgClassScore != null ? avgClassScore + '/80' : 'No data',
-        auditGrade, redFlagCount, auditCount45,
-        _rankScore: rankScore, _traitMatchesCount: traitMatchesCount, _currentCourseProgressOrder: progressOrder.indexOf(currentCourseProgress)
+        teacherName           : teacherName,
+        ageYear               : ageMatch,
+        slotMatch             : slotLabel,
+        alternateSlots        : allAlternate.join(', '),
+        currentCourseProgress : currentCourseProgress,
+        futureCourse1Progress : fcProg(futureCourses[0]),
+        futureCourse2Progress : fcProg(futureCourses[1]),
+        futureCourse3Progress : fcProg(futureCourses[2]),
+        teacherTraits         : teacherOwnTraits,
+        traitsMissing         : traitsMissing,
+        avgClassScore         : avgScore != null ? avgScore + '/80' : 'No data',
+        auditGrade            : auditGrade,
+        redFlagCount          : redFlags,
+        auditCount45          : auditCount,
+        _rankScore            : totalRank,
+        _traitMatchesCount    : traitMatchesCount,
+        _currentCourseProgressOrder : progressOrder.indexOf(currentCourseProgress)
       });
     }
 
-    output.sort((a, b) => b._rankScore - a._rankScore);
-
-    Logger.log('Found ' + output.length + ' matching teachers');
+    output.sort(function(a, b) { return b._rankScore - a._rankScore; });
+    Logger.log('[SMT] done: ' + output.length + ' results | courseNotFound=' + debugCourseNotFound
+      + ' courseFiltered=' + debugCourseFiltered + ' slotFiltered=' + debugSlotFiltered);
     return { success: true, results: output };
 
   } catch (error) {
-    Logger.log('Error in searchMatchingTeachers: ' + error.message);
-    return { success: false, message: 'Error searching teachers: ' + error.message };
+    Logger.log('Error in searchMatchingTeachers: ' + error.message + '\n' + error.stack);
+    return { success: false, message: 'Search failed: ' + error.message };
   }
 }
+
 
 function updateTeacherPersona(teacherData) {
   Logger.log('updateTeacherPersona called for teacher: ' + teacherData['Teacher Name']);
@@ -1633,23 +1726,26 @@ function _getTeacherAvailabilityMap(requestedDateStr) {
     var headers = data[0].map(function(h) { return String(h).trim(); });
     var teacherIdx = 0; // Column A = Teacher
 
-    // Find the column matching requestedDateStr (ISO format yyyy-MM-dd)
-    var requestedDate = new Date(requestedDateStr);
+    // Headers like "Fri, 3-Apr-26" — new Date() can't parse these reliably in GAS.
+    var MONTH_MAP = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+    function _parseSheetDateHeader(h) {
+      var clean = h.replace(/^[A-Za-z]+,?\s*/, '').trim();
+      var parts = clean.split('-');
+      if (parts.length < 3) return null;
+      var day = parseInt(parts[0], 10);
+      var mon = MONTH_MAP[parts[1].toLowerCase().substring(0,3)];
+      var yr  = parseInt(parts[2], 10);
+      if (isNaN(day) || !mon || isNaN(yr)) return null;
+      var fy = yr < 100 ? 2000 + yr : yr;
+      return fy + '-' + String(mon).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    }
     var targetColIdx = -1;
     for (var ci = 0; ci < headers.length; ci++) {
       var h = headers[ci];
       if (!h || h === 'Teacher' || h === 'Calendar ID') continue;
-      try {
-        // Headers are like "Fri, 3-Apr-26" — try parsing
-        var parsed = new Date(h);
-        if (!isNaN(parsed.getTime())) {
-          var parsedISO = Utilities.formatDate(parsed, 'UTC', 'yyyy-MM-dd');
-          if (parsedISO === requestedDateStr) { targetColIdx = ci; break; }
-        }
-      } catch(e) {}
+      if (_parseSheetDateHeader(String(h).trim()) === requestedDateStr) { targetColIdx = ci; break; }
     }
-
-    Logger.log('[_getTeacherAvailabilityMap] Date col for ' + requestedDateStr + ': ' + targetColIdx + ' (' + (targetColIdx > -1 ? headers[targetColIdx] : 'not found') + ')');
+    Logger.log('[avail] date=' + requestedDateStr + ' col=' + targetColIdx + (targetColIdx > -1 ? ' (' + headers[targetColIdx] + ')' : ' NOT FOUND'));
 
     for (var ri = 1; ri < data.length; ri++) {
       var teacherName = String(data[ri][teacherIdx] || '').trim();
