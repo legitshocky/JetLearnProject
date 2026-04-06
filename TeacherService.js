@@ -684,11 +684,7 @@ function searchMatchingTeachers(requestData) {
   Logger.log('searchMatchingTeachers called: ' + JSON.stringify(requestData).substring(0, 500));
 
   try {
-    var mainData = _getCachedSheetData(CONFIG.SHEETS.PERSONA_DATA, CONFIG.PERSONA_SHEET_ID);
-    if (mainData.length < 2) return { success: true, results: [] };
-    var headers = mainData[1];
-
-    // ── Parse requestedSlots (GAS may serialise array as JSON string) ──
+    // ── 1. Parse request ──
     var requestedSlots = requestData.requestedSlots || [];
     if (typeof requestedSlots === 'string') {
       try { requestedSlots = JSON.parse(requestedSlots); } catch(e) { requestedSlots = []; }
@@ -706,98 +702,101 @@ function searchMatchingTeachers(requestData) {
       String(requestData.futureCourse2 || '').trim(),
       String(requestData.futureCourse3 || '').trim()
     ].filter(function(f) { return f && f !== 'None'; });
+    var learnerAge   = String(requestData.learnerAge || '').trim();
+    var isMathCourse = currentCourse.toLowerCase().indexOf('math') !== -1;
 
-    // ── Build TEACHER_COURSES map — same source as findSimilarTeachers ──
-    // { normalizedName: { 'course name lower': progress } }
-    var teacherCourseMap = {};
-    var validStatuses = ['71-80%', '81-90%', '91-99%', '100%'];
+    // ── 2. Load Teacher Persona Mapping (same source as findSimilarTeachers) ──
+    var personaData = _getCachedSheetData('Teacher Persona Mapping');
+    if (!personaData || personaData.length < 2) {
+      return { success: false, message: 'Teacher Persona Mapping sheet not found in migration spreadsheet.' };
+    }
+    var pHeaders = personaData[0].map(function(h) { return String(h).trim(); });
+    var nameIdx = pHeaders.indexOf('Teacher Name');
+    if (nameIdx === -1) return { success: false, message: "'Teacher Name' column not found in Teacher Persona Mapping." };
+
+    var ageGroupIdx = pHeaders.indexOf('Preferred Age Group');
+    if (ageGroupIdx === -1) ageGroupIdx = pHeaders.indexOf('Age Group');
+
+    // Detect trait cols using same broad regex as findSimilarTeachers
+    var traitCols = pHeaders.reduce(function(acc, h, i) {
+      if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) acc.push(i);
+      return acc;
+    }, []);
+    var hiddenIdx = pHeaders.indexOf('Hidden In Search');
+    Logger.log('[SMT] Persona Mapping loaded. Trait cols: ' + traitCols.map(function(i) { return pHeaders[i]; }).join(', '));
+
+    // ── 3. Build Teacher Courses map (wide format: col0=Teacher, col1=Email, col2=Manager, col3=Health, col4+=courses) ──
+    var teacherCourseMap = {}; // normalizedName → { 'course name lower': progress }
+    var upskillCountMap  = {}; // normalizedName → count of non-"Not Onboarded" courses
     try {
       var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
       if (tcSheet && tcSheet.length > 1) {
-        tcSheet.slice(1).forEach(function(row) {
-          var tName    = String(row[0] || '').trim();
-          var cName    = String(row[1] || '').trim();
-          var progress = String(row[3] || '').trim();
-          if (!tName || !cName) return;
-          var key = normalizeTeacherName(tName);
-          if (!teacherCourseMap[key]) teacherCourseMap[key] = {};
-          teacherCourseMap[key][cName.toLowerCase()] = progress;
+        // Find header row (first row where col 0 === 'teacher')
+        var tcHeaderIdx = 0;
+        for (var hi = 0; hi < Math.min(tcSheet.length, 10); hi++) {
+          if (String(tcSheet[hi][0]).trim().toLowerCase() === 'teacher') { tcHeaderIdx = hi; break; }
+        }
+        var tcHeaders = tcSheet[tcHeaderIdx];
+        var COURSE_START = 4; // Teacher | Email | Manager | Health → courses start at col 4
+        tcSheet.slice(tcHeaderIdx + 1).forEach(function(row) {
+          var rawName = String(row[0] || '').trim();
+          if (!rawName || rawName.toLowerCase() === 'teacher') return;
+          var key = normalizeTeacherName(rawName);
+          var map = {};
+          var count = 0;
+          for (var ci = COURSE_START; ci < tcHeaders.length; ci++) {
+            var cName = String(tcHeaders[ci] || '').trim();
+            var prog  = String(row[ci] || '').trim();
+            if (!cName) continue;
+            map[cName.toLowerCase()] = prog || 'Not Onboarded';
+            if (prog && prog.toLowerCase() !== 'not onboarded') count++;
+          }
+          teacherCourseMap[key] = map;
+          upskillCountMap[key]  = count;
         });
         Logger.log('[SMT] teacherCourseMap: ' + Object.keys(teacherCourseMap).length + ' teachers');
-        // Log a sample of course names so we can compare with what's sent
-        var sampleKey = Object.keys(teacherCourseMap)[0];
-        if (sampleKey) Logger.log('[SMT] sample courses for "' + sampleKey + '": ' + Object.keys(teacherCourseMap[sampleKey]).join(' | '));
+        var sk = Object.keys(teacherCourseMap)[0];
+        if (sk) Logger.log('[SMT] sample courses for "' + sk + '": ' + Object.keys(teacherCourseMap[sk]).slice(0,5).join(' | '));
       }
     } catch(tce) {
       Logger.log('[SMT] TEACHER_COURSES error: ' + tce.message);
     }
 
-    // ── Course lookup: fuzzy match against TEACHER_COURSES ──
-    function getCourseProgress(tNorm, tCanon, courseName) {
+    // Fuzzy course progress lookup
+    function getCourseProgress(tNorm, courseName) {
       if (!courseName) return null;
       var cLower = courseName.toLowerCase().trim();
-      var keys = [tNorm, tCanon];
-      for (var ki = 0; ki < keys.length; ki++) {
-        var courses = teacherCourseMap[keys[ki]];
-        if (!courses) continue;
-        // 1. Exact (case-insensitive)
-        if (courses[cLower] !== undefined) return courses[cLower];
-        // 2. Sheet col starts with what we have (handles extra words at end)
-        // 3. What we have starts with sheet col (handles truncation)
-        var courseKeys = Object.keys(courses);
-        for (var ci = 0; ci < courseKeys.length; ci++) {
-          var ck = courseKeys[ci];
-          if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return courses[ck];
-          // 4. Substring match on first 15 chars (handles HubSpot truncation)
-          var prefix = cLower.substring(0, 15);
-          if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return courses[ck];
-        }
+      var courses = teacherCourseMap[tNorm];
+      if (!courses) return null;
+      if (courses[cLower] !== undefined) return courses[cLower];
+      var courseKeys = Object.keys(courses);
+      for (var ci = 0; ci < courseKeys.length; ci++) {
+        var ck = courseKeys[ci];
+        if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return courses[ck];
+        var prefix = cLower.substring(0, 15);
+        if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return courses[ck];
       }
-      return null; // not in their list
+      return null;
     }
 
-    // ── Slot string normaliser ──
-    // Handles "04:00 PM - 05:00 PM", "4:00 PM-5:00 PM", "16:00-17:00"
+    // ── 4. Slot normaliser ──
     function normaliseSlot(s) {
       if (!s) return '';
       s = String(s).trim().toUpperCase().replace(/\s+/g, ' ').replace(/\s*-\s*/g, ' - ');
-      // Convert 24h to 12h: "16:00" → "04:00 PM"
       s = s.replace(/\b(\d{1,2}):(\d{2})\b(?!\s*(AM|PM))/gi, function(_, h, m) {
         var hr = parseInt(h, 10);
         var ap = hr < 12 ? 'AM' : 'PM';
         var h12 = hr % 12 || 12;
         return String(h12).padStart(2, '0') + ':' + m + ' ' + ap;
       });
-      // Zero-pad single-digit 12h hours: "5:00 PM" → "05:00 PM"
       s = s.replace(/\b(\d):(\d{2})\s*(AM|PM)/g, '0$1:$2 $3');
       return s;
     }
 
-    // ── Persona headerMap (traits + age + status only — NOT courses) ──
-    var headerMap = {};
-    headers.forEach(function(h, idx) { if (h) headerMap[String(h).trim()] = idx; });
-    var teacherNameCol   = headerMap['Teacher Name'];
-    var teacherStatusCol = headerMap['Status'];
-    var isMathCourse     = currentCourse.toLowerCase().indexOf('math') !== -1;
-    function _resolveAgeCol(preferredKey) {
-      if (headerMap[preferredKey] !== undefined) return headerMap[preferredKey];
-      if (headerMap['Age/Year'] !== undefined) return headerMap['Age/Year'];
-      if (headerMap['Preferred Age Group'] !== undefined) return headerMap['Preferred Age Group'];
-      if (headerMap['Age Group'] !== undefined) return headerMap['Age Group'];
-      return undefined;
-    }
-    var ageCol = isMathCourse ? _resolveAgeCol('Math Age/Year (preferred)') : _resolveAgeCol('Tech Age/Year (preferred)');
-    var traitColsStart = headerMap['Trait 1'];
-    var traitColsEnd   = headerMap['Trait 9'];
-
-    if (teacherNameCol === undefined) {
-      return { success: false, message: "Persona sheet missing 'Teacher Name' column." };
-    }
-
-    // ── Pre-build availability maps per date ──
+    // ── 5. Build availability maps for each requested date ──
     var uniqueDates = [];
-    requestedSlots.forEach(function(s) {
-      if (s.date && uniqueDates.indexOf(s.date) === -1) uniqueDates.push(s.date);
+    requestedSlots.forEach(function(rs) {
+      if (rs.date && uniqueDates.indexOf(rs.date) === -1) uniqueDates.push(rs.date);
     });
     var availabilityByDate = {};
     uniqueDates.forEach(function(dateStr) {
@@ -810,140 +809,187 @@ function searchMatchingTeachers(requestData) {
       }
     });
 
-    // ── Audit map ──
+    // ── 6. Audit score map (last 45 days) ──
     var auditScoreMap = {};
     try { auditScoreMap = _buildAuditScoreMapDays(45); } catch(ae) { Logger.log('[SMT] audit error: ' + ae.message); }
 
-    // ── Traits ──
+    // ── 7. Parse requested traits ──
     function splitTraits(str) {
-      return str ? String(str).split(',').map(function(t){ return t.trim(); }).filter(Boolean) : [];
+      return str ? String(str).split(',').map(function(t){ return t.trim().toLowerCase(); }).filter(Boolean) : [];
     }
     var targetTraits = isMathCourse ? splitTraits(requestData.mathTraits) : splitTraits(requestData.techTraits);
 
-    var progressOrder = ['100%','91-99%','81-90%','71-80%','61-70%','51-60%',
-                         '41-50%','31-40%','21-30%','11-20%','1-10%','0%','Not Onboarded','N/A'];
+    // ── 8. Learner age number (for age group matching) ──
+    var learnerAgeNum = parseInt(learnerAge, 10);
+
+    // ── 9. Progress → course score mapping (0-30pts) ──
+    var PROG_SCORE = {
+      '100%':30, '91-99%':27, '81-90%':24, '71-80%':21,
+      '61-70%':18, '51-60%':15, '41-50%':12, '31-40%':9,
+      '21-30%':6,  '11-20%':3,  '1-10%':1,   '0%':0
+    };
+
     var output = [];
-    var debugCourseNotFound = 0;
-    var debugCourseFiltered = 0;
-    var debugSlotFiltered   = 0;
+    var debugSlotFiltered = 0;
 
-    // ── Main loop ──
-    for (var i = 2; i < mainData.length; i++) {
-      var row = mainData[i];
-      var teacherName = String(row[teacherNameCol] || '').trim();
-      if (!teacherName) continue;
+    // ── 10. Main loop — iterate over Teacher Persona Mapping (same as findSimilarTeachers) ──
+    var candidates = personaData.slice(1).filter(function(r) {
+      var rn = String(r[nameIdx] || '').trim();
+      if (!rn) return false;
+      if (hiddenIdx > -1 && String(r[hiddenIdx] || '').trim().toLowerCase() === 'yes') return false;
+      return true;
+    });
+    Logger.log('[SMT] Scoring ' + candidates.length + ' candidates from Teacher Persona Mapping');
 
-      if (teacherStatusCol !== undefined &&
-          String(row[teacherStatusCol] || '').trim() !== 'Active') continue;
-
-      var tNorm  = normalizeTeacherName(teacherName);
-      var tCanon = normalizeTeacherName(resolveTeacherName(teacherName));
-
-      // ── COURSE — from TEACHER_COURSES ──
-      // Show ALL active teachers: mark as "Not Onboarded" if course not in their list,
-      // or show actual progress. Rank score handles sorting by readiness.
-      var currentCourseProgress = 'N/A';
-      if (currentCourse) {
-        var prog = getCourseProgress(tNorm, tCanon, currentCourse);
-        if (prog === null) {
-          debugCourseNotFound++;
-          currentCourseProgress = 'Not Onboarded';
-        } else {
-          currentCourseProgress = prog;
-          if (validStatuses.indexOf(currentCourseProgress) === -1) debugCourseFiltered++;
-        }
-      }
+    candidates.forEach(function(row) {
+      var rawName = String(row[nameIdx] || '').trim();
+      var tNorm   = normalizeTeacherName(rawName);
+      var tCanon  = normalizeTeacherName(resolveTeacherName(rawName));
 
       // ── SLOT MATCHING ──
-      var slotsMatched = 0;
-      var allAlternate = [];
+      var slotsMatched    = 0;
+      var allAlternate    = [];
+      var teacherInAnyMap = false;
       for (var si = 0; si < requestedSlots.length; si++) {
-        var req        = requestedSlots[si];
-        var dateMap    = availabilityByDate[req.date] || {};
-        var sheetSlots = dateMap[tNorm] || dateMap[tCanon] || null;
-        if (sheetSlots && sheetSlots.length > 0) {
-          sheetSlots.forEach(function(s) { if (allAlternate.indexOf(s) === -1) allAlternate.push(s); });
+        var req     = requestedSlots[si];
+        var dateMap = availabilityByDate[req.date] || {};
+        var sheetSlots = (dateMap[tNorm] !== undefined) ? dateMap[tNorm]
+                       : (dateMap[tCanon] !== undefined) ? dateMap[tCanon]
+                       : undefined;
+        if (sheetSlots !== undefined) {
+          teacherInAnyMap = true;
+          if (sheetSlots.length > 0) {
+            sheetSlots.forEach(function(s) { if (allAlternate.indexOf(s) === -1) allAlternate.push(s); });
+          }
         }
         var reqNorm = normaliseSlot(req.slot);
-        var isMatch = sheetSlots !== null && sheetSlots.some(function(s) {
-          return normaliseSlot(s) === reqNorm;
-        });
+        var isMatch = sheetSlots && sheetSlots.some(function(s) { return normaliseSlot(s) === reqNorm; });
         if (isMatch) slotsMatched++;
       }
-      var totalSlots      = requestedSlots.length;
-      var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
-      // For multi-slot: show partial matches with ⚠️ badge rather than dropping them entirely.
-      // Only hard-drop if ZERO slots matched and at least one was requested.
-      if (totalSlots > 0 && slotsMatched === 0 && allAlternate.length === 0) { debugSlotFiltered++; continue; }
+      var totalSlots = requestedSlots.length;
+      // Only drop if teacher IS in the map but has zero slots (confirmed unavailable)
+      if (totalSlots > 0 && teacherInAnyMap && slotsMatched === 0 && allAlternate.length === 0) {
+        debugSlotFiltered++;
+        return;
+      }
 
-      // ── TRAITS ──
-      var teacherOwnTraits  = [];
-      var traitsMissing     = [];
-      var traitMatchesCount = 0;
-      if (traitColsStart !== undefined) {
-        var traitEnd = (traitColsEnd !== undefined) ? traitColsEnd : traitColsStart;
-        row.slice(traitColsStart, traitEnd + 1).forEach(function(cell) {
-          String(cell).split(/[,\n]/).forEach(function(t) { var tr = t.trim(); if (tr) teacherOwnTraits.push(tr); });
+      // ── TRAITS (30pts) — same logic as findSimilarTeachers ──
+      var teacherTraits = traitCols.reduce(function(acc, i) {
+        String(row[i] || '').split(/[,\n]/).forEach(function(t) {
+          var clean = t.trim().toLowerCase();
+          if (clean) acc.push(clean);
         });
-        if (targetTraits.length > 0) {
-          var tSet = {};
-          teacherOwnTraits.forEach(function(t) { tSet[t.toLowerCase()] = true; });
-          traitsMissing     = targetTraits.filter(function(t) { return !tSet[t.toLowerCase()]; });
-          traitMatchesCount = targetTraits.length - traitsMissing.length;
+        return acc;
+      }, []);
+      var traitScore    = 0;
+      var traitsMissing = [];
+      if (targetTraits.length > 0) {
+        var matchedT  = targetTraits.filter(function(t) { return teacherTraits.indexOf(t) > -1; });
+        traitsMissing = targetTraits.filter(function(t) { return teacherTraits.indexOf(t) === -1; });
+        traitScore    = Math.round((matchedT.length / targetTraits.length) * 30);
+      } else {
+        traitScore = 15; // neutral when no traits requested
+      }
+
+      // ── AGE (20pts) — same logic as findSimilarTeachers ──
+      var candidateAgeGroups = [];
+      var ageScore = 10; // neutral default
+      if (ageGroupIdx > -1) {
+        candidateAgeGroups = String(row[ageGroupIdx] || '').split(',')
+          .map(function(a) { return a.trim(); }).filter(Boolean);
+        if (!isNaN(learnerAgeNum) && candidateAgeGroups.length > 0) {
+          var ageMatched = candidateAgeGroups.some(function(ag) {
+            var agL = ag.toLowerCase();
+            var rangeParts = agL.match(/(\d+)\s*[-\u2013]\s*(\d+)/);
+            if (rangeParts) {
+              return learnerAgeNum >= parseInt(rangeParts[1]) && learnerAgeNum <= parseInt(rangeParts[2]);
+            }
+            var plusMatch = agL.match(/(\d+)\+/);
+            if (plusMatch) return learnerAgeNum >= parseInt(plusMatch[1]);
+            return false;
+          });
+          ageScore = ageMatched ? 20 : 5;
         }
       }
-      var ageMatch = (ageCol !== undefined) ? String(row[ageCol] || 'N/A').trim() : 'N/A';
+      var ageMatchDisplay = candidateAgeGroups.join(', ') || 'N/A';
 
-      // ── FUTURE COURSES — from TEACHER_COURSES ──
-      function fcProg(fc) {
-        if (!fc) return '\u2014';
-        var p = getCourseProgress(tNorm, tCanon, fc);
-        return p !== null ? p : 'Not Onboarded';
+      // ── COURSE READINESS (30pts) — from Teacher Courses wide format ──
+      var currentCourseProgress = 'Not Onboarded';
+      var courseScore = 0;
+      if (currentCourse) {
+        var prog = getCourseProgress(tNorm, currentCourse);
+        if (!prog && tCanon !== tNorm) prog = getCourseProgress(tCanon, currentCourse);
+        if (prog) {
+          currentCourseProgress = prog;
+          courseScore = PROG_SCORE[prog] !== undefined ? PROG_SCORE[prog] : 5;
+        }
       }
 
-      // ── AUDIT ──
-      var auditEntry      = auditScoreMap[tNorm] || auditScoreMap[tCanon] || null;
-      var avgScore        = auditEntry ? auditEntry.avgScore    : null;
-      var redFlags        = auditEntry ? (auditEntry.redFlags   || 0) : 0;
-      var auditCount      = auditEntry ? (auditEntry.auditCount || 0) : 0;
-      var auditBonus      = avgScore != null ? Math.round((avgScore / 80) * 20) : 10;
-      var auditFinalScore = Math.max(0, auditBonus - Math.min(redFlags * 3, 15));
-      var auditGrade      = avgScore == null ? '-' : avgScore >= 65 ? 'A' : avgScore >= 50 ? 'B' : avgScore >= 35 ? 'C' : 'D';
+      // Future course progress lookup
+      function fcProg(fc) {
+        if (!fc) return 'N/A';
+        return getCourseProgress(tNorm, fc) || getCourseProgress(tCanon, fc) || 'Not Onboarded';
+      }
 
-      // ── RANK ──
-      var slotPoints     = totalSlots === 0 ? 40 : Math.round((slotsMatched / totalSlots) * 40);
-      var progressPoints = Math.max(0, 20 - progressOrder.indexOf(currentCourseProgress));
-      var traitPoints    = targetTraits.length > 0 ? Math.round((traitMatchesCount / targetTraits.length) * 20) : 10;
-      var totalRank      = slotPoints + auditFinalScore + progressPoints + traitPoints;
+      // ── AUDIT (20pts) — same as findSimilarTeachers, last 45 days ──
+      var auditData    = auditScoreMap[tNorm] || auditScoreMap[tCanon] || null;
+      var auditGrade   = '\u2014';
+      var redFlagCount = 0;
+      var auditScore   = 10; // neutral when no data
+      if (auditData) {
+        redFlagCount = auditData.redFlags || 0;
+        if (auditData.avgScore != null) {
+          var sc = auditData.avgScore;
+          auditGrade = sc >= 65 ? 'A' : sc >= 50 ? 'B' : sc >= 35 ? 'C' : 'D';
+          auditScore = Math.max(0, Math.round((sc / 80) * 20) - Math.min(redFlagCount * 3, 10));
+        }
+      }
 
-      var slotLabel = totalSlots === 0    ? '\u2714\uFE0F'
-                    : isFullSlotMatch     ? '\u2714\uFE0F Match All'
-                    : '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots;
+      // ── TOTAL SCORE (max 100: Traits30 + Age20 + Course30 + Audit20) ──
+      var totalScore = traitScore + ageScore + courseScore + auditScore;
+
+      // Slot display label
+      var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
+      var slotLabel = totalSlots === 0        ? '\u2714\uFE0F'
+                    : isFullSlotMatch         ? '\u2714\uFE0F Match All'
+                    : slotsMatched > 0        ? '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots
+                    :                           '';
 
       output.push({
-        teacherName           : teacherName,
-        ageYear               : ageMatch,
+        teacherName           : rawName,
+        ageYear               : ageMatchDisplay,
         slotMatch             : slotLabel,
+        slotFullMatch         : isFullSlotMatch,
         alternateSlots        : allAlternate.join(', '),
         currentCourseProgress : currentCourseProgress,
         futureCourse1Progress : fcProg(futureCourses[0]),
         futureCourse2Progress : fcProg(futureCourses[1]),
         futureCourse3Progress : fcProg(futureCourses[2]),
-        teacherTraits         : teacherOwnTraits,
+        teacherTraits         : teacherTraits,
         traitsMissing         : traitsMissing,
-        avgClassScore         : avgScore != null ? avgScore + '/80' : 'No data',
+        avgClassScore         : auditData && auditData.avgScore != null ? auditData.avgScore + '/80' : 'No data',
         auditGrade            : auditGrade,
-        redFlagCount          : redFlags,
-        auditCount45          : auditCount,
-        _rankScore            : totalRank,
-        _traitMatchesCount    : traitMatchesCount,
-        _currentCourseProgressOrder : progressOrder.indexOf(currentCourseProgress)
+        redFlagCount          : redFlagCount,
+        auditCount45          : auditData ? (auditData.auditCount || 0) : 0,
+        upskillCount          : upskillCountMap[tNorm] || upskillCountMap[tCanon] || 0,
+        traitScore            : traitScore,
+        ageScore              : ageScore,
+        courseScore           : courseScore,
+        auditScore            : auditScore,
+        _rankScore            : totalScore,
+        _traitMatchesCount    : targetTraits.length > 0 ? (targetTraits.length - traitsMissing.length) : 0,
+        _currentCourseProgressOrder : ['100%','91-99%','81-90%','71-80%','61-70%','51-60%',
+                                       '41-50%','31-40%','21-30%','11-20%','1-10%','0%',
+                                       'Not Onboarded','N/A'].indexOf(currentCourseProgress)
       });
-    }
+    });
 
-    output.sort(function(a, b) { return b._rankScore - a._rankScore; });
-    Logger.log('[SMT] done: ' + output.length + ' results | courseNotFound=' + debugCourseNotFound
-      + ' courseFiltered=' + debugCourseFiltered + ' slotFiltered=' + debugSlotFiltered);
+    // Sort: full slot match first, then by total score descending
+    output.sort(function(a, b) {
+      if (b.slotFullMatch !== a.slotFullMatch) return b.slotFullMatch ? 1 : -1;
+      return b._rankScore - a._rankScore;
+    });
+    Logger.log('[SMT] done: ' + output.length + ' results | slotFiltered=' + debugSlotFiltered);
     return { success: true, results: output };
 
   } catch (error) {
