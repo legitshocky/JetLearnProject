@@ -779,9 +779,14 @@ function searchMatchingTeachers(requestData) {
     var teacherNameCol   = headerMap['Teacher Name'];
     var teacherStatusCol = headerMap['Status'];
     var isMathCourse     = currentCourse.toLowerCase().indexOf('math') !== -1;
-    var ageCol = isMathCourse
-      ? (headerMap['Math Age/Year (preferred)'] !== undefined ? headerMap['Math Age/Year (preferred)'] : (headerMap['Age/Year'] || headerMap['Age Group']))
-      : (headerMap['Tech Age/Year (preferred)'] !== undefined ? headerMap['Tech Age/Year (preferred)'] : (headerMap['Age/Year'] || headerMap['Age Group']));
+    function _resolveAgeCol(preferredKey) {
+      if (headerMap[preferredKey] !== undefined) return headerMap[preferredKey];
+      if (headerMap['Age/Year'] !== undefined) return headerMap['Age/Year'];
+      if (headerMap['Preferred Age Group'] !== undefined) return headerMap['Preferred Age Group'];
+      if (headerMap['Age Group'] !== undefined) return headerMap['Age Group'];
+      return undefined;
+    }
+    var ageCol = isMathCourse ? _resolveAgeCol('Math Age/Year (preferred)') : _resolveAgeCol('Tech Age/Year (preferred)');
     var traitColsStart = headerMap['Trait 1'];
     var traitColsEnd   = headerMap['Trait 9'];
 
