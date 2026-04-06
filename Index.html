@@ -1995,27 +1995,36 @@
 
   <!-- Section 3: AI Ranked Results -->
   <div id="personaResultsContainer" style="display:none; margin-top: 2rem;">
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom:1rem;">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:0.75rem;">
        <h3 class="dashboard-section-title" style="margin:0;">AI Ranked Recommendations</h3>
        <span id="personaResultsCount" class="status-badge status-info">0 matches</span>
-       <span style="font-size:0.72rem; color:#64748b; margin-left:auto;">Ranked by: Slot availability &middot; Course readiness &middot; Audit score (45d) &middot; Trait match</span>
+       <span style="font-size:0.72rem; color:#64748b; margin-left:auto;">Ranked by: Slot availability &middot; Audit score (45d) &middot; Course readiness &middot; Trait match</span>
+    </div>
+    <!-- Audit legend -->
+    <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;font-size:0.72rem;color:#64748b;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+      <span><strong style="color:#15803d;">A</strong> &ge;65/80</span>
+      <span><strong style="color:#1d4ed8;">B</strong> 50&ndash;64</span>
+      <span><strong style="color:#d97706;">C</strong> 35&ndash;49</span>
+      <span><strong style="color:#b91c1c;">D</strong> &lt;35</span>
+      <span style="color:#94a3b8;">&#8212; No audit data (45d)</span>
+      <span>&#128681; Red flag from audit</span>
     </div>
     <div class="table-container">
       <table class="data-table" style="font-size:0.83rem;">
         <thead>
           <tr>
-            <th>#</th>
+            <th style="width:32px;">#</th>
             <th>Teacher</th>
             <th>Age/Year</th>
-            <th style="text-align:center;">Slot</th>
+            <th style="text-align:center;width:48px;">Slot</th>
             <th>Available Slots (day)</th>
-            <th>Current Course</th>
+            <th id="personaCurrentCourseHeader">Current Course</th>
             <th>Future 1</th>
             <th>Future 2</th>
             <th>Future 3</th>
             <th>Audit (45d)</th>
-            <th>Flags</th>
-            <th>Score / Traits Gap</th>
+            <th style="text-align:center;">Flags</th>
+            <th>Traits Gap</th>
             <th style="text-align:right;">Action</th>
           </tr>
         </thead>

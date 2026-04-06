@@ -2584,13 +2584,18 @@ function updatePersonaResults(result) {
   }
 
   var personaResults = result.results || [];
-  var count = personaResults.length;
-  var countEl   = document.getElementById('personaResultsCount');
-  var tbody     = document.getElementById('personaResultsBody');
-  var container = document.getElementById('personaResultsContainer');
+  var count      = personaResults.length;
+  var countEl    = document.getElementById('personaResultsCount');
+  var tbody      = document.getElementById('personaResultsBody');
+  var container  = document.getElementById('personaResultsContainer');
+  var courseHdr  = document.getElementById('personaCurrentCourseHeader');
 
-  if (countEl)  countEl.textContent  = count + ' match' + (count !== 1 ? 'es' : '');
-  if (tbody)    tbody.innerHTML = '';
+  // Set dynamic column header to actual course name
+  var courseName = document.getElementById('pInpCourse') ? document.getElementById('pInpCourse').value : '';
+  if (courseHdr) courseHdr.textContent = courseName || 'Current Course';
+
+  if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
+  if (tbody)   tbody.innerHTML = '';
 
   if (count === 0) {
     if (tbody) tbody.innerHTML =
@@ -2599,92 +2604,105 @@ function updatePersonaResults(result) {
   } else {
     personaResults.forEach(function(t, idx) {
 
-      // ── Audit ──
-      var gradeColor = { 'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c' }[t.auditGrade] || '#6b7280';
-      var hasAudit   = t.avgClassScore && t.avgClassScore !== 'No data';
-      var auditHtml  = hasAudit
-        ? '<span style="font-weight:700;color:' + gradeColor + ';">' + escapeHtml(t.auditGrade) + '</span>'
-          + ' <span style="font-size:0.72rem;color:#64748b;">' + escapeHtml(t.avgClassScore) + '</span>'
-          + '<div style="font-size:0.65rem;color:#94a3b8;">' + (t.auditCount45 || 0) + ' sessions</div>'
-        : '<span style="color:#94a3b8;font-size:0.78rem;">No data</span>';
+      // ── Slot match ──
+      var slotRaw     = String(t.slotMatch || '');
+      var isFullMatch = slotRaw.indexOf('\u2714') !== -1;
+      var isPartial   = slotRaw.indexOf('\u26A0') !== -1;
+      // Blue check for match, pink X for no match, amber warning for partial
+      var slotIcon = isFullMatch
+        ? '<span style="color:#3b82f6;font-size:1.2rem;font-weight:700;">&#10003;</span>'
+        : isPartial
+          ? '<span style="color:#d97706;font-size:0.8rem;font-weight:600;">' + escapeHtml(slotRaw) + '</span>'
+          : '<span style="color:#f43f5e;font-size:1.1rem;">&#10007;</span>';
 
-      // ── Red flags ──
-      var rfCount = Number(t.redFlagCount) || 0;
-      var rfHtml  = rfCount > 0
-        ? '<span style="color:#b91c1c;font-weight:600;">\u2691 ' + rfCount + '</span>'
-        : '<span style="color:#94a3b8;">\u2014</span>';
-
-      // ── Slot ──
-      var slotRaw      = String(t.slotMatch || '');
-      var isFullMatch  = slotRaw.indexOf('\u2714') !== -1;
-      var isPartial    = slotRaw.indexOf('\u26A0') !== -1;
-      var slotIcon     = isFullMatch ? '<span style="color:#15803d;font-size:1.1rem;">\u2714\uFE0F</span>'
-                       : isPartial  ? '<span style="color:#d97706;font-size:0.9rem;">' + escapeHtml(slotRaw) + '</span>'
-                       :              '<span style="color:#ef4444;font-size:1.1rem;opacity:0.6;">\u274C</span>';
-
-      // ── Alternate slots ──
+      // ── Available slots ──
       var altRaw  = String(t.alternateSlots || '');
       var altHtml = altRaw
-        ? '<span style="font-size:0.71rem;color:#475569;line-height:1.6;">' + escapeHtml(altRaw).replace(/,\s*/g,'<br>') + '</span>'
+        ? '<span style="font-size:0.72rem;color:#334155;line-height:1.7;">' + escapeHtml(altRaw).replace(/,\s*/g, '<br>') + '</span>'
         : '<span style="color:#94a3b8;font-size:0.75rem;">No slots</span>';
 
-      // ── Top pick badge ──
+      // ── Top Pick badge ──
       var badge = idx === 0
-        ? ' <span style="font-size:0.6rem;background:#fbbf24;color:#78350f;padding:1px 6px;border-radius:3px;vertical-align:middle;margin-left:3px;">Top Pick</span>'
+        ? ' <span style="font-size:0.62rem;background:#fbbf24;color:#78350f;padding:1px 7px;border-radius:4px;vertical-align:middle;margin-left:4px;font-weight:600;">Top Pick</span>'
         : '';
 
-      // ── Course progress colour ──
+      // ── Teacher name colour: blue if slot matched ──
+      var nameColor = isFullMatch ? '#2563eb' : '#1e293b';
+
+      // ── Course progress helpers ──
       function pColor(v) {
         if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '\u2014' || v === '—') return '#94a3b8';
         var n = parseInt(v);
         return isNaN(n) ? '#94a3b8' : n >= 80 ? '#15803d' : n >= 50 ? '#d97706' : '#b91c1c';
       }
       function pCell(v) {
-        var label = (v && v !== '\u2014') ? v : '\u2014';
-        return '<span style="font-size:0.8rem;font-weight:' + (parseInt(v) >= 71 ? '600' : '400') + ';color:' + pColor(v) + ';">' + escapeHtml(label) + '</span>';
+        var label = (v && v !== '\u2014' && v !== '—') ? v : '\u2014';
+        var isBold = parseInt(v) >= 71;
+        return '<span style="font-size:0.8rem;font-weight:' + (isBold ? '700' : '400') + ';color:' + pColor(v) + ';">'
+               + escapeHtml(label) + '</span>';
       }
 
-      // ── Traits ──
+      // ── Audit ──
+      var gradeColor = { 'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c' }[t.auditGrade] || '#94a3b8';
+      var hasAudit   = t.avgClassScore && t.avgClassScore !== 'No data';
+      var auditHtml  = hasAudit
+        ? '<span style="font-weight:700;color:' + gradeColor + ';font-size:0.88rem;">' + escapeHtml(t.auditGrade) + '</span>'
+          + '<span style="font-size:0.7rem;color:#64748b;margin-left:3px;">' + escapeHtml(t.avgClassScore) + '</span>'
+          + '<div style="font-size:0.65rem;color:#94a3b8;">' + (t.auditCount45 || 0) + ' sessions</div>'
+        : '<span style="color:#94a3b8;font-size:0.78rem;">\u2014</span>';
+
+      // ── Flags ──
+      var rfCount = Number(t.redFlagCount) || 0;
+      var rfHtml  = rfCount > 0
+        ? '<span style="color:#b91c1c;font-weight:600;">&#128681; ' + rfCount + '</span>'
+        : '<span style="color:#94a3b8;">\u2014</span>';
+
+      // ── Traits Gap ──
       var traitsHtml;
       if (t.traitsMissing && t.traitsMissing.length > 0) {
         traitsHtml = '<span style="color:#b91c1c;font-size:0.7rem;">Missing: ' + escapeHtml(t.traitsMissing.join(', ')) + '</span>';
       } else if (t.teacherTraits && t.teacherTraits.length > 0) {
         traitsHtml = t.teacherTraits.slice(0, 3).map(function(tr) {
           return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.62rem;margin:1px;">' + escapeHtml(tr) + '</span>';
-        }).join('');
+        }).join('') + (t.teacherTraits.length > 3 ? '<span style="font-size:0.62rem;color:#94a3b8;"> +' + (t.teacherTraits.length - 3) + '</span>' : '');
       } else {
-        traitsHtml = '<span style="color:#94a3b8;font-size:0.75rem;">\u2014</span>';
+        traitsHtml = '<span style="color:#94a3b8;">\u2014</span>';
       }
-
-      // ── Score badge ──
-      var score    = Number(t._rankScore) || 0;
-      var scoreBg  = score >= 70 ? '#dcfce7' : score >= 40 ? '#fef9c3' : '#fee2e2';
-      var scoreClr = score >= 70 ? '#15803d' : score >= 40 ? '#a16207' : '#b91c1c';
 
       var tr = document.createElement('tr');
       tr.innerHTML =
-        '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
-        + '<td>'
-          + '<strong>' + escapeHtml(t.teacherName) + '</strong>' + badge
-          + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(t.ageYear || '\u2014') + '</div>'
-        + '</td>'
-        + '<td style="font-size:0.8rem;color:#64748b;">' + escapeHtml(t.ageYear || '\u2014') + '</td>'
+        '<td style="color:#94a3b8;font-size:0.78rem;text-align:center;">' + (idx + 1) + '</td>'
+
+        // Teacher — name (coloured when slot matches) + Top Pick badge
+        + '<td><span style="font-weight:700;color:' + nameColor + ';">' + escapeHtml(t.teacherName) + '</span>' + badge + '</td>'
+
+        // Age/Year
+        + '<td style="font-size:0.78rem;color:#475569;">' + escapeHtml(t.ageYear || '\u2014') + '</td>'
+
+        // Slot icon
         + '<td style="text-align:center;">' + slotIcon + '</td>'
-        + '<td style="max-width:140px;">' + altHtml + '</td>'
+
+        // Available slots (day)
+        + '<td style="max-width:130px;">' + altHtml + '</td>'
+
+        // Current course progress (header = course name)
         + '<td>' + pCell(t.currentCourseProgress) + '</td>'
+
+        // Future 1 / 2 / 3
         + '<td>' + pCell(t.futureCourse1Progress) + '</td>'
         + '<td>' + pCell(t.futureCourse2Progress) + '</td>'
         + '<td>' + pCell(t.futureCourse3Progress) + '</td>'
+
+        // Audit
         + '<td>' + auditHtml + '</td>'
+
+        // Flags
         + '<td style="text-align:center;">' + rfHtml + '</td>'
-        + '<td style="max-width:160px;">'
-          + '<div style="display:flex;flex-direction:column;gap:4px;">'
-            + '<span style="display:inline-block;background:' + scoreBg + ';color:' + scoreClr
-              + ';border:1px solid ' + scoreClr + '44;padding:2px 8px;border-radius:12px;font-weight:700;font-size:0.78rem;">'
-              + score + ' pts</span>'
-            + traitsHtml
-          + '</div>'
-        + '</td>'
+
+        // Traits Gap
+        + '<td style="max-width:150px;">' + traitsHtml + '</td>'
+
+        // Action
         + '<td style="text-align:right;">'
           + '<button class="btn btn-outline btn-sm p-profile-btn" data-name="' + escapeHtml(t.teacherName) + '">Profile</button>'
         + '</td>';
