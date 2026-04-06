@@ -1765,7 +1765,8 @@ function _getTeacherAvailabilityMap(requestedDateStr) {
       if (targetColIdx > -1) {
         var cell = String(data[ri][targetColIdx] || '').trim();
         if (cell && cell !== 'No Slots' && cell !== 'No Slots Available') {
-          slots = cell.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+          // Cells use newlines (Alt+Enter) and/or commas between multiple slots
+          slots = cell.split(/[\n,]/).map(function(s) { return s.trim(); }).filter(Boolean);
         }
       }
       map[key] = slots;
