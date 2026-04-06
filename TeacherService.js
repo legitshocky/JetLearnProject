@@ -768,6 +768,8 @@ function searchMatchingTeachers(requestData) {
         var h12 = hr % 12 || 12;
         return String(h12).padStart(2, '0') + ':' + m + ' ' + ap;
       });
+      // Zero-pad single-digit 12h hours: "5:00 PM" → "05:00 PM"
+      s = s.replace(/\b(\d):(\d{2})\s*(AM|PM)/g, '0$1:$2 $3');
       return s;
     }
 
@@ -833,12 +835,18 @@ function searchMatchingTeachers(requestData) {
       var tCanon = normalizeTeacherName(resolveTeacherName(teacherName));
 
       // ── COURSE — from TEACHER_COURSES ──
+      // Show ALL active teachers: mark as "Not Onboarded" if course not in their list,
+      // or show actual progress. Rank score handles sorting by readiness.
       var currentCourseProgress = 'N/A';
       if (currentCourse) {
         var prog = getCourseProgress(tNorm, tCanon, currentCourse);
-        if (prog === null) { debugCourseNotFound++; continue; }
-        currentCourseProgress = prog;
-        if (validStatuses.indexOf(currentCourseProgress) === -1) { debugCourseFiltered++; continue; }
+        if (prog === null) {
+          debugCourseNotFound++;
+          currentCourseProgress = 'Not Onboarded';
+        } else {
+          currentCourseProgress = prog;
+          if (validStatuses.indexOf(currentCourseProgress) === -1) debugCourseFiltered++;
+        }
       }
 
       // ── SLOT MATCHING ──
@@ -859,7 +867,9 @@ function searchMatchingTeachers(requestData) {
       }
       var totalSlots      = requestedSlots.length;
       var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
-      if (totalSlots > 1 && slotsMatched < totalSlots) { debugSlotFiltered++; continue; }
+      // For multi-slot: show partial matches with ⚠️ badge rather than dropping them entirely.
+      // Only hard-drop if ZERO slots matched and at least one was requested.
+      if (totalSlots > 0 && slotsMatched === 0 && allAlternate.length === 0) { debugSlotFiltered++; continue; }
 
       // ── TRAITS ──
       var teacherOwnTraits  = [];

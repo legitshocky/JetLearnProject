@@ -2514,9 +2514,8 @@ tr.innerHTML = `
     // –– Teacher Intelligence Center ––––––––––––––––––––––––––
 
     function loadPersonaTool() {
-      initDateInputs();
       if (personaResultsContainer) personaResultsContainer.style.display = 'none';
-      // Populate course dropdowns using new IDs
+      // Populate course dropdowns and then wire smart logic
       google.script.run
         .withSuccessHandler(function(courses) {
           if (courses) {
@@ -2525,72 +2524,14 @@ tr.innerHTML = `
             populateSelect(document.getElementById('pInpFuture2'),  courses, true);
             populateSelect(document.getElementById('pInpFuture3'),  courses, true);
           }
+          // Wire buttons/slot row — guarded so it only truly runs once
+          if (typeof initPersonaSmartLogic === 'function') initPersonaSmartLogic();
         })
         .withFailureHandler(showError)
         .getCourseNames();
-      // Initialise smart logic (attaches btnSmartFetch, btnAddPersonaSlot, form submit)
-      if (typeof initPersonaSmartLogic === 'function') initPersonaSmartLogic();
     }
 
-    // JLID Fetch — pre-fill course, teacher, age from HubSpot (wired via initPersonaSmartLogic)
-    (function() {
-      const fetchBtn = document.getElementById('btnSmartFetch');       // was 'personaFetchBtn'
-      const clearBtn = null;                                            // no clearBtn in new HTML
-      const ctxPanel = document.getElementById('personaLearnerSummary'); // was 'personaLearnerContext'
-
-      if (fetchBtn) fetchBtn.addEventListener('click', function() {
-        const jlidEl = document.getElementById('smartPersonaJlid');    // was 'personaJlidInput'
-        const jlid = jlidEl ? jlidEl.value.trim() : '';
-        if (!jlid) { showToast('error', 'Input Required', 'Enter a JLID first.'); return; }
-        fetchBtn.disabled = true;
-        fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching…';
-        google.script.run
-          .withSuccessHandler(function(resp) {
-            fetchBtn.disabled = false;
-            fetchBtn.innerHTML = '<i class="fas fa-magic"></i> Fetch & Analyze';
-            if (!resp || !resp.success) {
-              showToast('error', 'Not Found', (resp && resp.message) ? resp.message : 'No data returned.'); return;
-            }
-            const data = resp.data;
-            // Populate learner summary panel (new IDs)
-            if (document.getElementById('pDispName'))   document.getElementById('pDispName').textContent   = data.learnerName || '—';
-            if (document.getElementById('pDispJlid'))   document.getElementById('pDispJlid').textContent   = data.jlid || jlid;
-            if (document.getElementById('pDispAge'))    document.getElementById('pDispAge').textContent    = data.age || '—';
-
-            // Populate and set the teacher dropdown (new ID)
-            const teacherSelect = document.getElementById('pCurrentTeacherDropdown');
-            if (teacherSelect && globalTeachers) {
-                populateSelect(teacherSelect, globalTeachers, false, 'Select Teacher');
-                teacherSelect.value = data.currentTeacher || '';
-            }
-
-            // Pre-fill current course (new ID)
-            const courseEl = document.getElementById('pInpCourse');
-            if (data.course && courseEl) {
-              var _found = false;
-              for (var _i = 0; _i < courseEl.options.length; _i++) {
-                if (courseEl.options[_i].value === data.course) {
-                  courseEl.value = data.course; _found = true; break;
-                }
-              }
-              if (!_found) {
-                var _opt = document.createElement('option');
-                _opt.value = data.course; _opt.textContent = data.course;
-                courseEl.appendChild(_opt);
-                courseEl.value = data.course;
-              }
-            }
-
-            if (ctxPanel) ctxPanel.style.display = 'grid';
-          })
-          .withFailureHandler(function(err) {
-            fetchBtn.disabled = false;
-            fetchBtn.innerHTML = '<i class="fas fa-magic"></i> Fetch & Analyze';
-            showError(err);
-          })
-          .fetchHubspotByJlid(jlid);
-      });
-    })();
+    // JLID Fetch is handled by handleSmartFetchAction (wired via initPersonaSmartLogic)
 
     // Search submit — uses new personaFormEnhanced and new slot/course IDs
     if (personaForm) {
@@ -7290,30 +7231,42 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
         });
 });
 
+var _personaSmartLogicInited = false;
 function initPersonaSmartLogic() {
-    const btnFetch = document.getElementById('btnSmartFetch');
+    // Guard: only attach listeners once — loadPersonaTool calls this on every page visit
+    if (_personaSmartLogicInited) {
+        // Still ensure first slot row exists on each visit
+        var sc = document.getElementById('personaSlotsContainer');
+        if (sc && sc.querySelectorAll('.slot-row').length === 0) addSingleSlotRow(true);
+        return;
+    }
+    _personaSmartLogicInited = true;
+
+    const btnFetch   = document.getElementById('btnSmartFetch');
     const btnAddSlot = document.getElementById('btnAddPersonaSlot');
-    const pForm = document.getElementById('personaFormEnhanced');
     const refreshBtn = document.getElementById('refreshPersona');
 
-    // Attach Listeners with existence checks to prevent "reading properties of null"
-    if (btnFetch) btnFetch.addEventListener('click', handleSmartFetchAction);
+    // Attach listeners (form submit is handled by the personaForm listener below — do NOT double-attach)
+    if (btnFetch)   btnFetch.addEventListener('click', handleSmartFetchAction);
     if (btnAddSlot) btnAddSlot.addEventListener('click', () => addSingleSlotRow(false));
-    if (pForm) pForm.addEventListener('submit', handlePersonaSearchSubmit);
-    
-    // Wire up the refresh button from the header
+
+    // Wire up the refresh button
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
             showToast('info', 'Refreshing', 'Updating teacher directory...');
-            loadTeachersPage(); // Reuse teacher loader to refresh cache
+            loadTeachersPage();
         });
     }
 
-    // Populate Current Teacher dropdown initially
+    // Populate Current Teacher dropdown if teachers already loaded
     const tDrop = document.getElementById('pCurrentTeacherDropdown');
     if (tDrop && globalTeachers && globalTeachers.length > 0) {
-        populateSelect(tDrop, globalTeachers, false, "Select Teacher");
+        populateSelect(tDrop, globalTeachers, false, 'Select Teacher');
     }
+
+    // Add first slot row so the form is ready without needing JLID fetch
+    var sc = document.getElementById('personaSlotsContainer');
+    if (sc && sc.querySelectorAll('.slot-row').length === 0) addSingleSlotRow(true);
 }
 
 /**
