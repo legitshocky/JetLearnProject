@@ -242,13 +242,16 @@ function fetchLatestMigrationTicket(jlid) {
   const PIPELINE_ID = '66161281';
   
   const properties = [
-    'current_teacher__t_',       
-    'new_teacher',               
-    'reason_of_migration__t_',   
-    'current_course__t_',        
-    'current_course',            
-    'regular_class_day__t_',     
-    'regular_class_time__in_cet_', 
+    'current_teacher__t_',
+    'new_teacher',
+    'reason_of_migration__t_',
+    'current_course__t_',
+    'current_course',
+    'future_course_1',
+    'future_course_2',
+    'future_course_3',
+    'regular_class_day__t_',
+    'regular_class_time__in_cet_',
     'subject',
     'createdate' // Asking for it, but will fallback to root
   ];
@@ -300,12 +303,14 @@ function fetchLatestMigrationTicket(jlid) {
 
       return {
         found: true,
-        oldTeacher: getTeacherLabel(props.current_teacher__t_) || '', 
+        ticketId: latestTicket.id,
+        oldTeacher: getTeacherLabel(props.current_teacher__t_) || '',
         newTeacher: getTeacherLabel(props.new_teacher) || '',
         reason: props.reason_of_migration__t_ || '',
-        ticketCourse: getCourseLabel(props.current_course__t_ || props.current_course) || '', 
+        ticketCourse: getCourseLabel(props.current_course__t_ || props.current_course) || '',
         classDay: props.regular_class_day__t_ || '',
-        classTime: props.regular_class_time__in_cet_ || ''
+        classTime: props.regular_class_time__in_cet_ || '',
+        rawProperties: props
       };
     }
     
@@ -1871,9 +1876,40 @@ function checkNewTeacherForLearner(jlid, newTeacherName) {
         message: 'Target: learners should stay with a teacher for at least 2 courses (30–60 days). Verify if criteria are met.' });
     }
 
+    // ── 7. Future courses + upskill check ─────────────────────────────────────
+    var futureCourses = [];
+    var mipTicketId   = null;
+    try {
+      var tcResult = fetchLatestMigrationTicket(jlid);
+      if (tcResult.found) {
+        mipTicketId = tcResult.ticketId;
+        var rawProps = tcResult.rawProperties || {};
+        var allTeacherCourses = {};
+        try { allTeacherCourses = getTeacherCourses(); } catch(te) {}
+        var resolvedNewLow = resolvedNew.toLowerCase().trim();
+        var matchedKey = Object.keys(allTeacherCourses).find(function(k) {
+          return k.toLowerCase().trim() === resolvedNewLow;
+        });
+        var teacherCourseList = matchedKey ? allTeacherCourses[matchedKey] : [];
+        [rawProps.future_course_1, rawProps.future_course_2, rawProps.future_course_3].forEach(function(raw, idx) {
+          if (!raw) return;
+          var label = '';
+          try { label = getCourseLabel(raw) || raw; } catch(ce) { label = raw; }
+          var labelLow = label.toLowerCase().trim();
+          var upskilled = teacherCourseList.some(function(tc) {
+            return (tc.course || '').toLowerCase().trim() === labelLow;
+          });
+          futureCourses.push({ index: idx + 1, courseLabel: label, rawValue: raw, isUpskilled: upskilled });
+        });
+      }
+    } catch(fcErr) {
+      Logger.log('[checkNewTeacherForLearner] Future courses error: ' + fcErr.message);
+    }
+
     return {
       success:           true,
       jlid:              jlid,
+      ticketId:          mipTicketId,
       learnerName:       timeline.learnerProfile ? (timeline.learnerProfile.learnerName || '') : '',
       newTeacherName:    resolvedNew,
       migrationCount30d: count30,
@@ -1890,12 +1926,111 @@ function checkNewTeacherForLearner(jlid, newTeacherName) {
       lastMigrationToTeacher:lastMigration ? lastMigration.toTeacher : null,
       riskLevel:   timeline.journeyAnalysis ? timeline.journeyAnalysis.riskLevel   : 'Unknown',
       riskMessage: timeline.journeyAnalysis ? timeline.journeyAnalysis.riskMessage : '',
-      alerts:      alerts
+      alerts:      alerts,
+      futureCourses: futureCourses
     };
 
   } catch (e) {
     Logger.log('[checkNewTeacherForLearner] Error: ' + e.message + '\n' + e.stack);
     return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Adds a note engagement to a HubSpot ticket via the legacy engagements API.
+ */
+function addNoteToHubSpotTicket(ticketId, noteBody) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token || !ticketId || !noteBody) return;
+    var payload = {
+      engagement: { active: true, type: 'NOTE', timestamp: new Date().getTime() },
+      associations: { ticketIds: [parseInt(ticketId, 10)] },
+      metadata: { body: noteBody }
+    };
+    var resp = UrlFetchApp.fetch('https://api.hubapi.com/engagements/v1/engagements', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    Logger.log('[addNote] Ticket ' + ticketId + ' → HTTP ' + resp.getResponseCode());
+  } catch(e) {
+    Logger.log('[addNote] Error: ' + e.message);
+  }
+}
+
+/**
+ * Checks new teacher upskilling across future courses and writes a note to the ticket.
+ * Called after a successful migration submission.
+ * @param {string} jlid
+ * @param {string} newTeacherName
+ * @param {Array}  confirmedCourses  [{courseLabel, isUpskilled}] from client-side popup confirms
+ */
+function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
+  try {
+    var ticketResult = fetchLatestMigrationTicket(jlid);
+    if (!ticketResult.found || !ticketResult.ticketId) {
+      Logger.log('[upskillNote] No ticket/ticketId for ' + jlid);
+      return;
+    }
+    var ticketId = ticketResult.ticketId;
+
+    // Build list of course labels to check
+    var courseLabels = [];
+    if (confirmedCourses && confirmedCourses.length > 0) {
+      confirmedCourses.forEach(function(c) { if (c && c.courseLabel) courseLabels.push(c.courseLabel); });
+    }
+    if (courseLabels.length === 0) {
+      // Fall back to HubSpot ticket data
+      var props = ticketResult.rawProperties || {};
+      [props.future_course_1, props.future_course_2, props.future_course_3].forEach(function(raw) {
+        if (!raw) return;
+        try { courseLabels.push(getCourseLabel(raw) || raw); } catch(e) { courseLabels.push(raw); }
+      });
+    }
+    if (courseLabels.length === 0) {
+      Logger.log('[upskillNote] No future courses for ' + jlid);
+      return;
+    }
+
+    // Check upskilling server-side (authoritative)
+    var allTC = {};
+    try { allTC = getTeacherCourses(); } catch(e) {}
+    var resolvedNew = newTeacherName;
+    try { resolvedNew = resolveTeacherName(newTeacherName); } catch(e) {}
+    var matchedKey = Object.keys(allTC).find(function(k) {
+      return k.toLowerCase().trim() === resolvedNew.toLowerCase().trim();
+    });
+    var teacherCourseList = matchedKey ? allTC[matchedKey] : [];
+
+    var results = courseLabels.map(function(label) {
+      var labelLow = label.toLowerCase().trim();
+      var upskilled = teacherCourseList.some(function(tc) {
+        return (tc.course || '').toLowerCase().trim() === labelLow;
+      });
+      return { label: label, upskilled: upskilled };
+    });
+
+    var gapped = results.filter(function(r) { return !r.upskilled; });
+    var note;
+    if (gapped.length === 0) {
+      note = '✅ Teacher Upskilling Check\n'
+        + resolvedNew + ' is fully upskilled in all future courses:\n'
+        + results.map(function(r) { return '• ' + r.label; }).join('\n')
+        + '\n\nNo upskilling action required.';
+    } else {
+      var allList = results.map(function(r) { return (r.upskilled ? '✓ ' : '✗ ') + r.label; }).join('\n');
+      note = '⚠️ Teacher Upskilling Gap — Action Required\n'
+        + resolvedNew + ' needs upskilling:\n' + allList
+        + '\n\nGap courses: ' + gapped.map(function(r) { return r.label; }).join(', ')
+        + '\n\n@Teacher Partner — please arrange upskilling before new sessions begin.';
+    }
+
+    addNoteToHubSpotTicket(ticketId, note);
+    Logger.log('[upskillNote] Note written to ticket ' + ticketId + ' for ' + jlid);
+  } catch(e) {
+    Logger.log('[checkAndWriteUpskillNote] Error: ' + e.message);
   }
 }
 

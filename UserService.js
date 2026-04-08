@@ -81,6 +81,11 @@ function verifyUserSession(username) {
   Logger.log('verifyUserSession called for: ' + username);
   try {
       const userProfiles = getUserProfiles();
+      // Empty list = sheet unreadable (permission/quota error) — treat as transient
+      if (!userProfiles || userProfiles.length === 0) {
+        Logger.log('verifyUserSession: user list empty (transient sheet error)');
+        return { success: false, transient: true, message: 'Session check temporarily unavailable.' };
+      }
       const user = userProfiles.find(u => u.username === username);
 
       if (!user || !user.isActive) {
@@ -97,7 +102,7 @@ function verifyUserSession(username) {
       };
   } catch (error) {
     Logger.log('Error in verifyUserSession: ' + error.message);
-    return { success: false, message: 'Session verification error.' };
+    return { success: false, transient: true, message: 'Session verification error.' };
   }
 }
 

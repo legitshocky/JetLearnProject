@@ -664,24 +664,27 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       toast.querySelector('.toast-close').addEventListener('click', () => { clearTimeout(timer); toast.remove(); });
     }
 
-    function switchPage(pageId, context = null) {
-    // Re-query live DOM (top-level querySelectorAll runs before DOM is ready in GAS HtmlService)
+function switchPage(pageId, context = null) {
+    // Re-query live DOM to get all elements with the .page-content class, wherever they are.
     const livePageContents = document.querySelectorAll('.page-content');
     const liveMenuItems = document.querySelectorAll('.menu-item');
 
-    // Hide all pages
+    // 1. Hide all pages — remove 'active' class AND reset inline display style.
     livePageContents.forEach(page => {
-        page.style.display = 'none';
         page.classList.remove('active');
+        page.style.display = 'none';
     });
 
-    // Show target page
+    // 2. Show the single target page — add 'active' class AND set display to block.
     const targetPage = document.getElementById(pageId);
-    if(targetPage) {
+    if (targetPage) {
+        targetPage.classList.add('active');
         targetPage.style.display = 'block';
+    } else {
+        console.error(`[switchPage] Critical Error: Could not find page with ID: ${pageId}. This confirms a broken HTML structure.`);
     }
 
-    // Update Sidebar
+    // 3. Update Sidebar active state.
     liveMenuItems.forEach(item => {
         item.classList.remove('active');
         if (item.dataset.page && pageId.includes(item.dataset.page)) {
@@ -689,13 +692,13 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         }
     });
 
-    // Run Loaders
+    // 4. Run Loaders for the newly activated page.
     const pageLoaders = {
         dashboardPage: loadDashboardData,
         auditPage: loadAuditLog,
-        auditCenterPage: loadAuditCenterPage, 
+        auditCenterPage: loadAuditCenterPage,
         healthPage: loadSystemHealth,
-        communicationPage: loadCommunicationForms, // Triggers the loading logic above
+        communicationPage: loadCommunicationForms,
         teachersPage: loadTeachersPage,
         coursesPage: loadCoursesPage,
         reportsPage: loadReportsPage,
@@ -712,7 +715,9 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
         profilePage: loadProfilePage
     };
 
-    if (pageLoaders[pageId]) pageLoaders[pageId]();
+    if (pageLoaders[pageId]) {
+        pageLoaders[pageId]();
+    }
 }
 
 
@@ -808,7 +813,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     // Migration reasons bar chart for this calendar month
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(showError).getEnhancedMigrationReport({
+    google.script.run.withSuccessHandler(updateDashboardReasons).withFailureHandler(e => console.warn('[Dashboard] Migration report failed:', e)).getEnhancedMigrationReport({
       startDate: monthStart.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     });
@@ -817,7 +822,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function() {}).getTeacherDetailsForTable();
     }, 4000);
     // This call now specifically updates the "Recent Activities" section
-    google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(showError).getDashboardStatistics();
+    google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(e => console.warn('[Dashboard] Statistics failed:', e)).getDashboardStatistics();
 }
 
 
@@ -1213,7 +1218,8 @@ function submitMigrationForm(e) {
           manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
           // --------------------------
           
-          watiTemplateName: selectedWatiTemplate 
+          watiTemplateName: selectedWatiTemplate,
+          confirmedFutureCourses: window.mipConfirmedCourses || []
       };
 
       const validation = validateMigrationData(migrationData);
@@ -1230,6 +1236,7 @@ function submitMigrationForm(e) {
               hideLoading();
               if (result && result.success) {
                 showToast('success', 'Migration Complete', result.message);
+                window.mipConfirmedCourses = [];
                 migrationForm.reset();
                 classSessionsContainer.innerHTML = '';
                 // Re-initialize with a fresh row (this triggers the dropdown creation)
@@ -1363,7 +1370,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     // Determine where to show the alert based on the active form
                     let activeForm = null;
                     if (formPrefix === 'migration') activeForm = document.getElementById('migrationForm');
-                    else if (formPrefix === 'onboardingParent') activeForm = document.getElementById('onboardingParentEmailForm');
+                    // else if (formPrefix === 'onboardingParent') activeForm = document.getElementById('onboardingParentEmailForm');
                     
                     // Remove old alert
                     const oldAlert = document.getElementById('churnAlertBox');
@@ -1527,46 +1534,40 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
 
     // Communication Tab Switching
     function switchCommunicationTab(tabId) {
-        // 1. Get all tabs and content containers
-        const communicationTabButtons = document.querySelectorAll('#communicationPage .tab-button');
-        const communicationTabContents = document.querySelectorAll('#communicationPage .tab-content');
+    const communicationTabButtons = document.querySelectorAll('#communicationPage .tab-button');
+    // **FIX**: Find ALL tab content elements across the entire document.
+    // This will find the orphaned tabs that are no longer inside #communicationPage.
+    const allTabContents = document.querySelectorAll('.tab-content');
 
-        // 2. Deactivate all tabs and hide all content
-        communicationTabButtons.forEach(btn => btn.classList.remove('active'));
-        communicationTabContents.forEach(content => {
-            content.classList.remove('active');
-            content.style.display = 'none'; // CRITICAL: Force hide
-        });
+    // Deactivate all buttons and hide ALL tab content panels.
+    communicationTabButtons.forEach(btn => btn.classList.remove('active'));
+    allTabContents.forEach(content => {
+        content.classList.remove('active');
+    });
 
-        // 3. Activate the specific button
-        const tabButton = document.querySelector(`#communicationPage .tab-button[data-tab="${tabId}"]`);
-        if (tabButton) {
-            tabButton.classList.add('active');
-        } else {
-            console.error(`Error: Communication tab button with data-tab="${tabId}" not found.`);
-            return;
-        }
-
-        // 4. Show the specific content
-        const tabContentElement = document.getElementById(`${tabId}Tab`);
-        if (tabContentElement) {
-            tabContentElement.classList.add('active');
-            tabContentElement.style.display = 'block'; // CRITICAL: Force show
-        } else {
-            console.error(`Error: Communication tab content element with ID "${tabId}Tab" not found.`);
-        }
-
-        // 5. Reset fields for specific forms based on the tab opened
-        // It is more efficient to reset only the relevant form, but resetting all ensures a clean state
-        resetHubspotFields('onboarding');
-        resetHubspotFields('migration');
-        resetHubspotFields('onboardingParent');
-        resetHubspotFields('minecraft');
-        resetHubspotFields('roblox');
-        
-        // 6. Re-initialize date inputs
-        initDateInputs();
+    // Activate the specific button that was clicked.
+    const tabButton = document.querySelector(`#communicationPage .tab-button[data-tab="${tabId}"]`);
+    if (tabButton) {
+        tabButton.classList.add('active');
     }
+
+    // Show the specific content for the clicked tab.
+    const tabContentElement = document.getElementById(`${tabId}Tab`);
+    if (tabContentElement) {
+        tabContentElement.classList.add('active');
+    }
+
+    // Reset relevant forms for a clean state.
+    resetHubspotFields('onboarding');
+    resetHubspotFields('migration');
+    resetHubspotFields('onboardingParent');
+    resetHubspotFields('minecraft');
+    resetHubspotFields('roblox');
+
+    // Re-initialize date inputs.
+    initDateInputs();
+}
+
 
     // ==========================================
     // Debounce Logic for Real-Time Previews
@@ -2590,9 +2591,18 @@ function updatePersonaResults(result) {
   var container  = document.getElementById('personaResultsContainer');
   var courseHdr  = document.getElementById('personaCurrentCourseHeader');
 
-  // Set dynamic column header to actual course name
+  // Set dynamic column headers to actual course names
   var courseName = document.getElementById('pInpCourse') ? document.getElementById('pInpCourse').value : '';
   if (courseHdr) courseHdr.textContent = courseName || 'Current Course';
+  var f1Val = document.getElementById('pInpFuture1') ? document.getElementById('pInpFuture1').value : '';
+  var f2Val = document.getElementById('pInpFuture2') ? document.getElementById('pInpFuture2').value : '';
+  var f3Val = document.getElementById('pInpFuture3') ? document.getElementById('pInpFuture3').value : '';
+  var f1Hdr = document.getElementById('personaFuture1Header');
+  var f2Hdr = document.getElementById('personaFuture2Header');
+  var f3Hdr = document.getElementById('personaFuture3Header');
+  if (f1Hdr) f1Hdr.textContent = (f1Val && f1Val !== 'None') ? f1Val : 'Future 1';
+  if (f2Hdr) f2Hdr.textContent = (f2Val && f2Val !== 'None') ? f2Val : 'Future 2';
+  if (f3Hdr) f3Hdr.textContent = (f3Val && f3Val !== 'None') ? f3Val : 'Future 3';
 
   if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
   if (tbody)   tbody.innerHTML = '';
@@ -2659,12 +2669,29 @@ function updatePersonaResults(result) {
 
       // ── Traits Gap ──
       var traitsHtml;
+      // Helper: shorten a trait name to max 14 chars with category prefix stripped
+      function shortTrait(tr) {
+        // Strip long category prefix like "Intermediate Programming (Python...)" → "Int. Programming"
+        var s = tr.trim();
+        if (s.indexOf('(') > -1) s = s.substring(0, s.indexOf('(')).trim(); // drop parenthetical
+        return s.length > 16 ? s.substring(0, 15) + '…' : s;
+      }
+      var traitTotal = (t.traitsMissing ? t.traitsMissing.length : 0) + (t._traitMatchesCount || 0);
+      var traitNum   = traitTotal > 0 ? Math.round(((t._traitMatchesCount || 0) / traitTotal) * 30) : 15;
+      var traitColor = traitNum >= 25 ? '#15803d' : traitNum >= 15 ? '#d97706' : '#b91c1c';
       if (t.traitsMissing && t.traitsMissing.length > 0) {
-        traitsHtml = '<span style="color:#b91c1c;font-size:0.7rem;">Missing: ' + escapeHtml(t.traitsMissing.join(', ')) + '</span>';
+        traitsHtml = '<div style="font-weight:700;font-size:0.85rem;color:' + traitColor + ';">' + traitNum + '<span style="font-size:0.65rem;font-weight:400;color:#94a3b8;">/30</span></div>'
+                   + '<div style="color:#b91c1c;font-size:0.68rem;">&#10007; ' + t.traitsMissing.length + ' missing</div>';
+      } else if (t.traitsMissing && t.traitsMissing.length === 0 && t._traitMatchesCount > 0) {
+        traitsHtml = '<div style="font-weight:700;font-size:0.85rem;color:#15803d;">30<span style="font-size:0.65rem;font-weight:400;color:#94a3b8;">/30</span></div>'
+                   + '<div style="color:#15803d;font-size:0.68rem;">&#10003; All matched</div>';
       } else if (t.teacherTraits && t.teacherTraits.length > 0) {
-        traitsHtml = t.teacherTraits.slice(0, 3).map(function(tr) {
-          return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.62rem;margin:1px;">' + escapeHtml(tr) + '</span>';
-        }).join('') + (t.teacherTraits.length > 3 ? '<span style="font-size:0.62rem;color:#94a3b8;"> +' + (t.teacherTraits.length - 3) + '</span>' : '');
+        var first = shortTrait(t.teacherTraits[0]);
+        var rest  = t.teacherTraits.length - 1;
+        traitsHtml = '<div style="font-weight:700;font-size:0.85rem;color:#64748b;">15<span style="font-size:0.65rem;font-weight:400;color:#94a3b8;">/30</span></div>'
+                   + '<div><span style="display:inline-block;background:#eff6ff;color:#1e40af;border-radius:3px;padding:1px 5px;font-size:0.63rem;">'
+                   + escapeHtml(first) + '</span>'
+                   + (rest > 0 ? '<span style="font-size:0.63rem;color:#64748b;"> +' + rest + '</span>' : '') + '</div>';
       } else {
         traitsHtml = '<span style="color:#94a3b8;">\u2014</span>';
       }
@@ -2933,6 +2960,25 @@ function updatePersonaResults(result) {
         if (filter === 'completed') filtered = _tlAllTickets.filter(function(t){ return t.isCompleted; });
         _renderTickets(filtered);
     }
+
+// ── Migration Intelligence: override helpers ─────────────────────────────
+function mipToggleOverride(idx) {
+  var sel = document.getElementById('mip_fc_override_' + idx);
+  if (sel) sel.style.display = (sel.style.display === 'none' || sel.style.display === '') ? 'inline-block' : 'none';
+}
+
+function mipApplyOverride(idx, newCourse) {
+  if (!newCourse) return;
+  var labelEl = document.getElementById('mip_fc_label_' + idx);
+  if (labelEl) labelEl.textContent = newCourse;
+  if (window.mipConfirmedCourses && window.mipConfirmedCourses[idx]) {
+    window.mipConfirmedCourses[idx].courseLabel = newCourse;
+    window.mipConfirmedCourses[idx].isUpskilled = false;
+  }
+  var sel = document.getElementById('mip_fc_override_' + idx);
+  if (sel) sel.style.display = 'none';
+  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' set to: ' + newCourse);
+}
 
     /* wire filter buttons once */
     document.addEventListener('DOMContentLoaded', function() {
@@ -4342,7 +4388,7 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V35'; 
+    const CURRENT_APP_VERSION = 'V38';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
@@ -4479,6 +4525,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleSessionVerification(response) {
       if (response && response.success) {
         loginSuccess(response);
+      } else if (response && response.transient) {
+        // Sheet temporarily unreadable — restore session from storage, don't log out
+        console.warn('Session verification transient error — restoring from sessionStorage:', response.message);
+        hideLoading();
+        try {
+          const restoredUser = JSON.parse(sessionStorage.getItem('currentUser'));
+          if (restoredUser && restoredUser.username) { loginSuccess(restoredUser); return; }
+        } catch(e2) {}
+        sessionStorage.removeItem('currentUser');
+        appContainer.style.display = 'none';
+        loginPage.style.display = 'flex';
       } else {
         hideLoading();
         sessionStorage.removeItem('currentUser');
@@ -4965,13 +5022,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (storedUserJSON) {
             try {
                 const storedUser = JSON.parse(storedUserJSON);
+                // Immediately restore session from storage — don't wait for server round-trip.
+                // Background verify: only force-logout if server explicitly says user is invalid/inactive.
+                loginSuccess(storedUser);
                 google.script.run
-                    .withSuccessHandler(handleSessionVerification)
-                    .withFailureHandler(error => {
-                        hideLoading();
-                        sessionStorage.removeItem('currentUser');
-                        console.error("Session Check Failed", error);
-                        switchLoginView('loginView');
+                    .withSuccessHandler(function(response) {
+                        if (response && response.success) {
+                            // Update currentUser with fresh server data (role/permissions may have changed)
+                            currentUser = Object.assign({}, storedUser, response);
+                            sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                        } else if (response && !response.transient) {
+                            // Definitive rejection (user deactivated/removed) — log out
+                            console.warn('Background session check: user invalid, logging out.', response.message);
+                            handleLogout();
+                        }
+                        // transient = sheet error — stay logged in, do nothing
+                    })
+                    .withFailureHandler(function(err) {
+                        console.warn('Background session check failed (transient):', err);
+                        // Stay logged in — don't log out on GAS errors
                     })
                     .verifyUserSession(storedUser.username);
             } catch (e) {
@@ -5632,8 +5701,56 @@ function triggerMigrationIntelligence() {
           histEl.innerHTML = html;
         }
       }
-    }
 
+      // ── Future Courses & Upskilling ──────────────────────────────────────────
+      var fcSection = document.getElementById('mip_futureCoursesSection');
+      var fcContent = document.getElementById('mip_futureCoursesContent');
+      var fcs = result.futureCourses || [];
+      // Initialise the confirmed courses store (used on form submit)
+      window.mipConfirmedCourses = fcs.map(function(fc) {
+        return { courseLabel: fc.courseLabel, isUpskilled: fc.isUpskilled };
+      });
+
+      if (fcs.length === 0) {
+        if (fcSection) fcSection.style.display = 'none';
+      } else {
+        if (fcSection) fcSection.style.display = 'block';
+        if (fcContent) {
+          var allUpskilled = fcs.every(function(fc) { return fc.isUpskilled; });
+          var summaryColor = allUpskilled ? '#15803d' : '#b91c1c';
+          var summaryText  = allUpskilled
+            ? '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher is upskilled in all future courses</span>'
+            : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found — note will be added to ticket on submission</span>';
+          var fcHtml = '<div style="margin-bottom:0.6rem;">' + summaryText + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
+
+          fcs.forEach(function(fc, i) {
+            var upBadge = fc.isUpskilled
+              ? '<span style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">✓ Upskilled</span>'
+              : '<span style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">✗ Not upskilled</span>';
+
+            // Build course options from globalCourses
+            var opts = '<option value="">— select course —</option>'
+              + (window.globalCourses || []).map(function(c) {
+                  return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+                }).join('');
+
+            fcHtml += '<div style="display:flex;align-items:center;gap:0.6rem;padding:0.45rem 0.65rem;background:#fff;border-radius:6px;border:1px solid #e2e8f0;flex-wrap:wrap;">'
+              + '<span style="font-size:0.7rem;color:#94a3b8;min-width:52px;">Future ' + fc.index + '</span>'
+              + '<span id="mip_fc_label_' + i + '" style="font-weight:600;font-size:0.84rem;flex:1;min-width:140px;">' + escapeHtml(fc.courseLabel) + '</span>'
+              + upBadge
+              + '<button type="button" onclick="mipToggleOverride(' + i + ')" style="margin-left:auto;font-size:0.72rem;padding:2px 9px;border:1px solid #cbd5e1;border-radius:4px;background:#f8fafc;cursor:pointer;color:#475569;">'
+              +   '<i class="fas fa-pencil-alt" style="margin-right:3px;"></i>Override</button>'
+              + '<select id="mip_fc_override_' + i + '" style="display:none;font-size:0.78rem;padding:3px 6px;border:1px solid #6366f1;border-radius:4px;" onchange="mipApplyOverride(' + i + ', this.value)">'
+              + opts + '</select>'
+              + '</div>';
+          });
+
+          fcHtml += '</div>';
+          fcContent.innerHTML = fcHtml;
+        }
+      }
+    }
 
 
     // ==========================================
@@ -6656,6 +6773,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V38': [
+      "**Migration Intelligence — Future Courses Panel**: Migration Intelligence popup now shows a third card listing all 3 future courses from the HubSpot ticket with upskilling status (✓ Upskilled / ✗ Not upskilled) for the selected new teacher.",
+      "**Confirm / Override Per Course**: Each future course row has an Override button that opens a dropdown to correct the course if HubSpot data is wrong — confirmed values are stored and passed through on submission.",
+      "**Automatic HubSpot Ticket Note on Complete Migration**: After a migration is submitted, the system checks the new teacher's upskilling across all future courses and writes a note to the ticket automatically.",
+      "**Upskilled Note**: If the new teacher is upskilled in all future courses, a ✅ note is added: 'Teacher is fully upskilled in all future courses — no action required.'",
+      "**Upskilling Gap Note**: If any course is missing, a ⚠️ note is added tagging Teacher Partner: 'Teacher needs upskilling in [courses] — @Teacher Partner please arrange upskilling before new sessions begin.'"
+    ],
+    'V37': [
+      "**Full Width Teacher Intelligence Center**: Removed max-width: 1400px constraints from #personaPage and #personaResultsContainer — the results table now stretches the full available content area with no wasted side space.",
+      "**Side Padding Reduced**: Page-level padding on the Teacher Intelligence Center reduced from 2rem to 0.5rem on each side so the table has maximum horizontal room."
+    ],
+    'V36': [
+      "**Parallel Calendar Fetching**: Replaced sequential CalendarApp calls with UrlFetchApp.fetchAll() REST API batch — all teacher calendars are fetched simultaneously, significantly reducing search time.",
+      "**Session Restore on Reload**: Page refresh no longer logs the user out. A 'transient' flag distinguishes a temporary sheet-read failure from a genuine invalid session and restores from sessionStorage.",
+      "**Future Courses Fetched from HubSpot**: future_course_1, future_course_2, future_course_3 properties are now fetched from HubSpot Migration tickets and populated into the Teacher Intelligence Center form.",
+      "**Dynamic Future Course Column Headers**: Future 1 / 2 / 3 column headers in the results table update to show the actual course name (same as the Current Course header behaviour).",
+      "**Course Name Normalisation**: HubSpot course labels (e.g. 'Game development and AI with Scratch') are fuzzy-matched to Teacher Courses sheet names (e.g. 'Game Dev and AI with Scratch') — both server-side and in the dropdown.",
+      "**Traits Gap Score Numbers**: Traits Gap column now always shows a score number (e.g. 15/30, 30/30) with colour coding — green ≥25, amber ≥15, red <15.",
+      "**Teacher Email Matching**: Jetlearn email from Teacher Data sheet is used to match teachers against master calendar guest lists, fixing missing results for teachers like Shweta Mittal and Simleen Kaur.",
+      "**Master Calendar Blocking Fix**: Changed name-part matching from .some() to .every() to prevent false blocks on common surnames (e.g. 'Kaur', 'Mittal') that appear in other teachers' events."
+    ],
     'V35': [
       "**Dashboard Insight Cards**: Added a row of 4 live KPI cards \u2014 Active Learners (with weekly delta), Avg Onboard Time, Escalations (90-day), and Month-on-Month Growth.",
       "**Dashboard Migration Reasons Chart**: Horizontal bar chart showing top 6 migration reasons for the current month, colour-coded by type (Standard / Performance / Escalation).",
@@ -7344,15 +7482,23 @@ function handleSmartFetchAction() {
                     const el = document.getElementById(id);
                     if (!el) return;
                     populateSelect(el, courses, allowNone, 'Select course');
-                    if (value) {
-                        el.value = value;
-                        if (el.value === '') {
-                            // Course not in list — add it so it shows
-                            const opt = new Option(value, value, true, true);
-                            el.appendChild(opt);
-                            el.value = value;
-                        }
-                    }
+                    if (!value) return;
+                    // Try exact match first
+                    el.value = value;
+                    if (el.value !== '') return;
+                    // Fuzzy match: find option whose text best overlaps with value
+                    const vLow = value.toLowerCase();
+                    const vWords = vLow.split(/\s+/).filter(w => w.length > 3);
+                    let bestOpt = null, bestScore = 0;
+                    Array.from(el.options).forEach(opt => {
+                        const oLow = opt.text.toLowerCase();
+                        if (oLow === vLow) { bestOpt = opt; bestScore = 999; return; }
+                        const oWords = oLow.split(/\s+/).filter(w => w.length > 3);
+                        const overlap = vWords.filter(w => oWords.includes(w)).length;
+                        const score = overlap / Math.max(Math.min(vWords.length, oWords.length), 1);
+                        if (score > bestScore && score >= 0.6) { bestScore = score; bestOpt = opt; }
+                    });
+                    if (bestOpt) { el.value = bestOpt.value; }
                 }
 
                 _setCourseDrop('pInpCourse',  d.currentCourse  || '', false);

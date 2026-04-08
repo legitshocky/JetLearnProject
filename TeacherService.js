@@ -703,83 +703,10 @@ function searchMatchingTeachers(requestData) {
       String(requestData.futureCourse3 || '').trim()
     ].filter(function(f) { return f && f !== 'None'; });
     var learnerAge   = String(requestData.learnerAge || '').trim();
-    var isMathCourse = currentCourse.toLowerCase().indexOf('math') !== -1;
+    var learnerAgeNum = parseInt(learnerAge, 10);
+    var isMathCourse  = currentCourse.toLowerCase().indexOf('math') !== -1;
 
-    // ── 2. Load Teacher Persona Mapping (same source as findSimilarTeachers) ──
-    var personaData = _getCachedSheetData('Teacher Persona Mapping');
-    if (!personaData || personaData.length < 2) {
-      return { success: false, message: 'Teacher Persona Mapping sheet not found in migration spreadsheet.' };
-    }
-    var pHeaders = personaData[0].map(function(h) { return String(h).trim(); });
-    var nameIdx = pHeaders.indexOf('Teacher Name');
-    if (nameIdx === -1) return { success: false, message: "'Teacher Name' column not found in Teacher Persona Mapping." };
-
-    var ageGroupIdx = pHeaders.indexOf('Preferred Age Group');
-    if (ageGroupIdx === -1) ageGroupIdx = pHeaders.indexOf('Age Group');
-
-    // Detect trait cols using same broad regex as findSimilarTeachers
-    var traitCols = pHeaders.reduce(function(acc, h, i) {
-      if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) acc.push(i);
-      return acc;
-    }, []);
-    var hiddenIdx = pHeaders.indexOf('Hidden In Search');
-    Logger.log('[SMT] Persona Mapping loaded. Trait cols: ' + traitCols.map(function(i) { return pHeaders[i]; }).join(', '));
-
-    // ── 3. Build Teacher Courses map (wide format: col0=Teacher, col1=Email, col2=Manager, col3=Health, col4+=courses) ──
-    var teacherCourseMap = {}; // normalizedName → { 'course name lower': progress }
-    var upskillCountMap  = {}; // normalizedName → count of non-"Not Onboarded" courses
-    try {
-      var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
-      if (tcSheet && tcSheet.length > 1) {
-        // Find header row (first row where col 0 === 'teacher')
-        var tcHeaderIdx = 0;
-        for (var hi = 0; hi < Math.min(tcSheet.length, 10); hi++) {
-          if (String(tcSheet[hi][0]).trim().toLowerCase() === 'teacher') { tcHeaderIdx = hi; break; }
-        }
-        var tcHeaders = tcSheet[tcHeaderIdx];
-        var COURSE_START = 4; // Teacher | Email | Manager | Health → courses start at col 4
-        tcSheet.slice(tcHeaderIdx + 1).forEach(function(row) {
-          var rawName = String(row[0] || '').trim();
-          if (!rawName || rawName.toLowerCase() === 'teacher') return;
-          var key = normalizeTeacherName(rawName);
-          var map = {};
-          var count = 0;
-          for (var ci = COURSE_START; ci < tcHeaders.length; ci++) {
-            var cName = String(tcHeaders[ci] || '').trim();
-            var prog  = String(row[ci] || '').trim();
-            if (!cName) continue;
-            map[cName.toLowerCase()] = prog || 'Not Onboarded';
-            if (prog && prog.toLowerCase() !== 'not onboarded') count++;
-          }
-          teacherCourseMap[key] = map;
-          upskillCountMap[key]  = count;
-        });
-        Logger.log('[SMT] teacherCourseMap: ' + Object.keys(teacherCourseMap).length + ' teachers');
-        var sk = Object.keys(teacherCourseMap)[0];
-        if (sk) Logger.log('[SMT] sample courses for "' + sk + '": ' + Object.keys(teacherCourseMap[sk]).slice(0,5).join(' | '));
-      }
-    } catch(tce) {
-      Logger.log('[SMT] TEACHER_COURSES error: ' + tce.message);
-    }
-
-    // Fuzzy course progress lookup
-    function getCourseProgress(tNorm, courseName) {
-      if (!courseName) return null;
-      var cLower = courseName.toLowerCase().trim();
-      var courses = teacherCourseMap[tNorm];
-      if (!courses) return null;
-      if (courses[cLower] !== undefined) return courses[cLower];
-      var courseKeys = Object.keys(courses);
-      for (var ci = 0; ci < courseKeys.length; ci++) {
-        var ck = courseKeys[ci];
-        if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return courses[ck];
-        var prefix = cLower.substring(0, 15);
-        if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return courses[ck];
-      }
-      return null;
-    }
-
-    // ── 4. Slot normaliser ──
+    // ── 2. Slot normaliser ──
     function normaliseSlot(s) {
       if (!s) return '';
       s = String(s).trim().toUpperCase().replace(/\s+/g, ' ').replace(/\s*-\s*/g, ' - ');
@@ -793,171 +720,716 @@ function searchMatchingTeachers(requestData) {
       return s;
     }
 
-    // ── 5. Build availability maps for each requested date ──
-    var uniqueDates = [];
+    // ── 3. Load Migration Teacher sheet as PRIMARY teacher list + slot data ──
+    var MONTH_MAP = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+    function parseMigDateHeader(h) {
+      var clean = h.replace(/^[A-Za-z]+,?\s*/, '').trim();
+      var parts  = clean.split('-');
+      if (parts.length < 3) return null;
+      var day = parseInt(parts[0], 10);
+      var mon = MONTH_MAP[parts[1].toLowerCase().substring(0,3)];
+      var yr  = parseInt(parts[2], 10);
+      if (isNaN(day) || !mon || isNaN(yr)) return null;
+      var fy = yr < 100 ? 2000 + yr : yr;
+      return fy + '-' + String(mon).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+    }
+
+    var migSS    = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var migSheet = migSS.getSheetByName('Migration Teacher');
+    if (!migSheet) return { success: false, message: 'Migration Teacher tab not found in audit spreadsheet.' };
+
+    // Use getValues() for slot cell data, getDisplayValues() for headers (date headers
+    // may be stored as actual Date objects in the sheet — getDisplayValues() returns
+    // the visible text like "Mon, 6-Apr-26" regardless of underlying type)
+    var migRange        = migSheet.getDataRange();
+    var migData         = migRange.getValues();        // raw values for slot cells
+    var migDataDisplay  = migRange.getDisplayValues(); // display strings for header parsing
+    if (migData.length < 2) return { success: true, results: [] };
+
+    // Find the header row (first row where col A display = "Teacher")
+    var migHeaderRowIdx = 0;
+    for (var hri = 0; hri < Math.min(migDataDisplay.length, 5); hri++) {
+      if (String(migDataDisplay[hri][0] || '').trim().toLowerCase() === 'teacher') {
+        migHeaderRowIdx = hri; break;
+      }
+    }
+    var migHeaderDisplay = migDataDisplay[migHeaderRowIdx]; // display strings for all header cells
+    var migDataRows      = migData.slice(migHeaderRowIdx + 1); // raw data rows
+    Logger.log('[SMT] migHeaderRowIdx=' + migHeaderRowIdx
+      + ' displayHeaders[0..6]=' + migHeaderDisplay.slice(0,7).join(' | '));
+
+    // Map each requested date (YYYY-MM-DD) → column index
+    // Handles both text headers like "Mon, 6-Apr-26" and Date-formatted headers
+    function headerToYMD(h) {
+      var s = String(h || '').trim();
+      if (!s) return null;
+      // Try MONTH_MAP text format first: "Mon, 6-Apr-26"
+      var clean = s.replace(/^[A-Za-z]+,?\s*/, '').trim();
+      var parts  = clean.split('-');
+      if (parts.length === 3) {
+        var day = parseInt(parts[0], 10);
+        var mon = MONTH_MAP[parts[1].toLowerCase().substring(0, 3)];
+        var yr  = parseInt(parts[2], 10);
+        if (!isNaN(day) && mon && !isNaN(yr)) {
+          var fy = yr < 100 ? 2000 + yr : yr;
+          return fy + '-' + String(mon).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        }
+      }
+      // Try "d/m/yyyy" or "m/d/yyyy" display format Google sometimes uses
+      var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (slash) {
+        // Ambiguous — assume d/m/yyyy (European) matching GAS locale
+        var dd = parseInt(slash[1], 10), mm = parseInt(slash[2], 10), yyyy = parseInt(slash[3], 10);
+        if (dd > 12) return yyyy + '-' + String(mm).padStart(2,'0') + '-' + String(dd).padStart(2,'0');
+        return yyyy + '-' + String(dd).padStart(2,'0') + '-' + String(mm).padStart(2,'0');
+      }
+      return null;
+    }
+
+    var slotColMap = {}; // dateStr (YYYY-MM-DD) → colIdx
     requestedSlots.forEach(function(rs) {
-      if (rs.date && uniqueDates.indexOf(rs.date) === -1) uniqueDates.push(rs.date);
-    });
-    var availabilityByDate = {};
-    uniqueDates.forEach(function(dateStr) {
-      try {
-        availabilityByDate[dateStr] = _getTeacherAvailabilityMap(dateStr);
-        Logger.log('[SMT] avail ' + dateStr + ': ' + Object.keys(availabilityByDate[dateStr]).length + ' teachers');
-      } catch(e) {
-        Logger.log('[SMT] avail error ' + dateStr + ': ' + e.message);
-        availabilityByDate[dateStr] = {};
+      if (slotColMap[rs.date] !== undefined) return;
+      for (var ci = 1; ci < migHeaderDisplay.length; ci++) {
+        if (headerToYMD(migHeaderDisplay[ci]) === rs.date) {
+          slotColMap[rs.date] = ci;
+          break;
+        }
       }
     });
+    Logger.log('[SMT] slotColMap: ' + JSON.stringify(slotColMap)
+      + ' | requested dates: ' + requestedSlots.map(function(r){ return r.date; }).join(', '));
 
-    // ── 6. Audit score map (last 45 days) ──
+    // ── Detect "Hidden In Search" column in Migration Teacher sheet ──
+    // Add a column named "Hidden In Search" to the sheet and set "Yes" to exclude a teacher
+    var hiddenColIdx = -1;
+    for (var hci = 0; hci < migHeaderDisplay.length; hci++) {
+      var hh = String(migHeaderDisplay[hci] || '').trim().toLowerCase();
+      if (hh === 'hidden in search' || hh === 'hidden' || hh === 'exclude') {
+        hiddenColIdx = hci; break;
+      }
+    }
+    Logger.log('[SMT] hiddenColIdx=' + hiddenColIdx);
+
+    // ── 3b. Build calendarId map from Migration Teacher col B ──
+    var calendarIdMap = {}; // normalizedName → calendarId (email)
+    migDataRows.forEach(function(row) {
+      var n   = String(row[0] || '').trim();
+      var cid = String(row[1] || '').trim();
+      if (n && cid && cid.indexOf('@') > -1) {
+        calendarIdMap[normalizeTeacherName(n)] = cid;
+      }
+    });
+    Logger.log('[SMT] calendarIdMap: ' + Object.keys(calendarIdMap).length + ' teachers with calendar IDs');
+
+    // ── 3c. Build name → jetlearn email map from Teacher Data ──
+    var teacherEmailMap = {}; // normalizedName → jetlearn email (row[8])
+    try {
+      var tdRows = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+      tdRows.slice(1).forEach(function(row) {
+        var n  = String(row[1] || '').trim();
+        var em = String(row[8] || '').trim().toLowerCase();
+        if (n && em) teacherEmailMap[normalizeTeacherName(n)] = em;
+      });
+    } catch(tde) { Logger.log('[SMT] teacherEmailMap error: ' + tde.message); }
+    Logger.log('[SMT] teacherEmailMap: ' + Object.keys(teacherEmailMap).length + ' teachers with emails');
+
+    // ── Calendar slot helpers ──
+    var _calSlotCache  = {}; // key: calId+'_'+dateStr → [{startMs,endMs}] or null (error)
+    var AVAIL_KEYWORDS = ['availability', 'available hours', 'teaching hours'];
+    var SLOT_HOUR_MS   = 60 * 60 * 1000;
+
+    // Cache master calendar events per date (shared across all teacher lookups)
+    var _masterEvtCache = {}; // dateStr → [{startMs,endMs,guests:[email,...]}]
+    function getMasterEventsForDate(dateStr) {
+      if (_masterEvtCache[dateStr] !== undefined) return _masterEvtCache[dateStr];
+      try {
+        var masterCal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
+        if (!masterCal) { _masterEvtCache[dateStr] = []; return []; }
+        var dp = dateStr.split('-');
+        var dayDate = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+        var evts = masterCal.getEventsForDay(dayDate);
+        _masterEvtCache[dateStr] = evts.map(function(ev) {
+          var guests = [];
+          try { ev.getGuestList().forEach(function(g) { guests.push(g.getEmail().toLowerCase()); }); } catch(e) {}
+          return { startMs: ev.getStartTime().getTime(), endMs: ev.getEndTime().getTime(), guests: guests, title: ev.getTitle().toLowerCase() };
+        });
+      } catch(e) {
+        Logger.log('[masterCal] Error fetching ' + dateStr + ': ' + e.message);
+        _masterEvtCache[dateStr] = [];
+      }
+      return _masterEvtCache[dateStr];
+    }
+
+    // Fetch and cache available 1-hour slots for a teacher's calendar on a given date.
+    // Returns [] if no availability events; null if calendar inaccessible (don't penalise teacher).
+    var _scriptCache = CacheService.getScriptCache();
+    var CAL_CACHE_VER = 'v5'; // bump to invalidate stale calendar cache
+    function fetchTeacherCalendarSlots(calId, dateStr, teacherName, teacherEmail) {
+      var ck = CAL_CACHE_VER + '_' + calId + '_' + dateStr;
+      if (_calSlotCache[ck] !== undefined) return _calSlotCache[ck];
+      // Check persistent script cache first (avoids repeat API calls within 1 hour)
+      try {
+        var cached = _scriptCache.get(ck);
+        if (cached !== null) {
+          var parsed = cached === '__null__' ? null : JSON.parse(cached);
+          _calSlotCache[ck] = parsed;
+          return parsed;
+        }
+      } catch(e) {}
+      try {
+        var cal = CalendarApp.getCalendarById(calId);
+        if (!cal) {
+          _calSlotCache[ck] = null;
+          try { _scriptCache.put(ck, '__null__', 3600); } catch(e) {}
+          return null;
+        }
+        var dp      = dateStr.split('-');
+        var dayDate = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+        var allEvts = cal.getEventsForDay(dayDate);
+        // Availability events — timed only (skip all-day banners; they don't represent real open hours)
+        var availEvts = allEvts.filter(function(e) {
+          if (e.isAllDayEvent()) return false;
+          var t = e.getTitle().toLowerCase();
+          return AVAIL_KEYWORDS.some(function(kw) { return t.indexOf(kw) > -1; });
+        });
+        // All other events on teacher's own calendar = blocked time
+        var blockedEvts = allEvts.filter(function(e) {
+          var t = e.getTitle().toLowerCase();
+          return !AVAIL_KEYWORDS.some(function(kw) { return t.indexOf(kw) > -1; });
+        });
+        // Also block any master-calendar events where this teacher is an attendee
+        // OR where the teacher's name appears in the event title
+        // (class bookings live on hello@jet-learn.com, teacher often referenced by name not email)
+        var masterEvts = getMasterEventsForDate(dateStr);
+        var calIdLower = calId.toLowerCase();
+        // Block if: teacher's calendar ID is a guest, OR jetlearn email is a guest, OR full name in title
+        var teacherEmailLower = (teacherEmail || '').toLowerCase();
+        var nameParts = (teacherName || '').toLowerCase().split(/\s+/).filter(function(p) { return p.length >= 3; });
+        masterEvts.forEach(function(mev) {
+          var isGuest    = mev.guests.indexOf(calIdLower) > -1
+                        || (teacherEmailLower && mev.guests.indexOf(teacherEmailLower) > -1);
+          var isInTitle  = nameParts.length > 0 && nameParts.every(function(part) { return mev.title.indexOf(part) > -1; });
+          if (isGuest || isInTitle) {
+            blockedEvts.push({ getStartTime: function(){ return { getTime: function(){ return mev.startMs; } }; },
+                               getEndTime:   function(){ return { getTime: function(){ return mev.endMs;   } }; } });
+          }
+        });
+        // Split each availability block into 1-hour chunks, clipped to the requested date in CET.
+        // This prevents multi-day timed events (e.g. Sat 5pm → Sun 5pm) from generating
+        // slots outside the teacher's actual working hours on the requested date.
+        var dp2 = dateStr.split('-');
+        var yr2 = parseInt(dp2[0]), mo2 = parseInt(dp2[1]), dy2 = parseInt(dp2[2]);
+        var cetOff2    = (mo2 >= 4 && mo2 <= 9) ? 2 : 1;
+        var dayStartMs = Date.UTC(yr2, mo2 - 1, dy2,     -cetOff2, 0, 0); // midnight CET on dateStr
+        var dayEndMs   = Date.UTC(yr2, mo2 - 1, dy2 + 1, -cetOff2, 0, 0); // midnight CET next day
+        var freeSlots = [];
+        availEvts.forEach(function(av) {
+          var s = Math.max(av.getStartTime().getTime(), dayStartMs);
+          var e = Math.min(av.getEndTime().getTime(),   dayEndMs);
+          for (var cur = s; cur + SLOT_HOUR_MS <= e; cur += SLOT_HOUR_MS) {
+            freeSlots.push({ startMs: cur, endMs: cur + SLOT_HOUR_MS });
+          }
+        });
+        // Subtract all blocked events (teacher's own + master calendar classes)
+        var available = freeSlots.filter(function(slot) {
+          return !blockedEvts.some(function(ev) {
+            return slot.startMs < ev.getEndTime().getTime() && slot.endMs > ev.getStartTime().getTime();
+          });
+        });
+        Logger.log('[cal] ' + calId + ' on ' + dateStr + ': ' + availEvts.length + ' avail evts, ' + blockedEvts.length + ' blocked, ' + available.length + ' free slots');
+        _calSlotCache[ck] = available;
+        try { _scriptCache.put(ck, JSON.stringify(available), 3600); } catch(e) {}
+        return available;
+      } catch(ce) {
+        Logger.log('[cal] Error for ' + calId + ': ' + ce.message);
+        _calSlotCache[ck] = null;
+        return null;
+      }
+    }
+
+    // Batch-prefetch multiple teacher calendars in parallel via Calendar REST API.
+    // Populates _calSlotCache before the main teacher loop so each fetchTeacherCalendarSlots
+    // call is a fast in-memory hit instead of a sequential HTTP round-trip.
+    function prefetchCalendarsBatch(pairs) {
+      // pairs: [{calId, dateStr, teacherName}] — de-dupe and skip already-cached
+      var seen = {};
+      var toFetch = [];
+      pairs.forEach(function(p) {
+        var ck = CAL_CACHE_VER + '_' + p.calId + '_' + p.dateStr;
+        var key = p.calId + '_' + p.dateStr;
+        if (seen[key]) return;
+        seen[key] = true;
+        if (_calSlotCache[ck] !== undefined) return;
+        try {
+          var hit = _scriptCache.get(ck);
+          if (hit !== null) { _calSlotCache[ck] = hit === '__null__' ? null : JSON.parse(hit); return; }
+        } catch(e) {}
+        toFetch.push(p);
+      });
+      if (toFetch.length === 0) return;
+
+      // Prefetch master calendar for all unique dates first (single sequential call per date)
+      var uniqueDates = [];
+      toFetch.forEach(function(p) { if (uniqueDates.indexOf(p.dateStr) === -1) uniqueDates.push(p.dateStr); });
+      uniqueDates.forEach(function(ds) { getMasterEventsForDate(ds); });
+
+      // Build parallel Calendar REST API requests
+      var token = ScriptApp.getOAuthToken();
+      var requests = toFetch.map(function(p) {
+        var dp = p.dateStr.split('-');
+        var yr = parseInt(dp[0]), mo = parseInt(dp[1]), dy = parseInt(dp[2]);
+        var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+        var tMin = new Date(Date.UTC(yr, mo-1, dy,   -cetOff, 0, 0)).toISOString();
+        var tMax = new Date(Date.UTC(yr, mo-1, dy+1, -cetOff, 0, 0)).toISOString();
+        return {
+          url: 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(p.calId)
+             + '/events?singleEvents=true&timeMin=' + encodeURIComponent(tMin)
+             + '&timeMax=' + encodeURIComponent(tMax),
+          headers: { Authorization: 'Bearer ' + token },
+          muteHttpExceptions: true
+        };
+      });
+
+      var responses;
+      try { responses = UrlFetchApp.fetchAll(requests); }
+      catch(fe) { Logger.log('[prefetch] fetchAll error: ' + fe.message); return; }
+
+      responses.forEach(function(resp, idx) {
+        var p  = toFetch[idx];
+        var ck = CAL_CACHE_VER + '_' + p.calId + '_' + p.dateStr;
+        if (resp.getResponseCode() !== 200) {
+          _calSlotCache[ck] = null;
+          try { _scriptCache.put(ck, '__null__', 3600); } catch(e) {}
+          return;
+        }
+        try {
+          var items = (JSON.parse(resp.getContentText()).items || []);
+          var availEvts = [], blockedEvts = [];
+          items.forEach(function(item) {
+            if (item.status === 'cancelled') return;
+            var title   = (item.summary || '').toLowerCase();
+            var isAllDay = !!(item.start && item.start.date && !item.start.dateTime);
+            if (isAllDay) return; // skip all-day banners
+            var sMs = new Date(item.start.dateTime).getTime();
+            var eMs = new Date(item.end.dateTime).getTime();
+            if (AVAIL_KEYWORDS.some(function(kw) { return title.indexOf(kw) > -1; })) {
+              availEvts.push({ startMs: sMs, endMs: eMs });
+            } else {
+              blockedEvts.push({ startMs: sMs, endMs: eMs });
+            }
+          });
+          // Block master-calendar events matching by guest email OR teacher name in title
+          var masterEvts  = getMasterEventsForDate(p.dateStr);
+          var calIdLower      = p.calId.toLowerCase();
+          var tEmailLower     = (p.teacherEmail || '').toLowerCase();
+          var nameParts       = (p.teacherName || '').toLowerCase().split(/\s+/).filter(function(pt) { return pt.length >= 3; });
+          masterEvts.forEach(function(mev) {
+            var isGuest   = mev.guests.indexOf(calIdLower) > -1
+                         || (tEmailLower && mev.guests.indexOf(tEmailLower) > -1);
+            var isInTitle = nameParts.length > 0 && nameParts.every(function(part) { return mev.title.indexOf(part) > -1; });
+            if (isGuest || isInTitle) blockedEvts.push({ startMs: mev.startMs, endMs: mev.endMs });
+          });
+          // Clip to CET day and enumerate 1-hour slots
+          var dp2 = p.dateStr.split('-');
+          var yr2 = parseInt(dp2[0]), mo2 = parseInt(dp2[1]), dy2 = parseInt(dp2[2]);
+          var co2 = (mo2 >= 4 && mo2 <= 9) ? 2 : 1;
+          var dSMs = Date.UTC(yr2, mo2-1, dy2,   -co2, 0, 0);
+          var dEMs = Date.UTC(yr2, mo2-1, dy2+1, -co2, 0, 0);
+          var freeSlots = [];
+          availEvts.forEach(function(av) {
+            var s = Math.max(av.startMs, dSMs), e = Math.min(av.endMs, dEMs);
+            for (var cur = s; cur + SLOT_HOUR_MS <= e; cur += SLOT_HOUR_MS) {
+              freeSlots.push({ startMs: cur, endMs: cur + SLOT_HOUR_MS });
+            }
+          });
+          var available = freeSlots.filter(function(slot) {
+            return !blockedEvts.some(function(ev) { return slot.startMs < ev.endMs && slot.endMs > ev.startMs; });
+          });
+          Logger.log('[prefetch] ' + p.calId + ' ' + p.dateStr + ': ' + availEvts.length + ' avail, ' + blockedEvts.length + ' blocked, ' + available.length + ' free');
+          _calSlotCache[ck] = available;
+          try { _scriptCache.put(ck, JSON.stringify(available), 3600); } catch(e) {}
+        } catch(pe) {
+          Logger.log('[prefetch] parse error ' + p.calId + ': ' + pe.message);
+          _calSlotCache[ck] = null;
+        }
+      });
+    }
+
+    // Convert "04:00 PM - 05:00 PM" (CET) + "2026-04-08" → [startMs, endMs] UTC
+    function parseSlotToUtcMs(dateStr, slotStr) {
+      var di = slotStr.indexOf(' - ');
+      if (di === -1) return null;
+      var startStr = slotStr.substring(0, di).trim();
+      var endStr   = slotStr.substring(di + 3).trim();
+      function p12(ts) {
+        var m = ts.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        if (!m) return null;
+        var h = parseInt(m[1]), mn = parseInt(m[2]), ap = m[3].toUpperCase();
+        if (ap === 'PM' && h !== 12) h += 12;
+        if (ap === 'AM' && h === 12) h = 0;
+        return { h: h, m: mn };
+      }
+      var st = p12(startStr), et = p12(endStr);
+      if (!st || !et) return null;
+      var dp = dateStr.split('-');
+      var yr = parseInt(dp[0]), mo = parseInt(dp[1]), dy = parseInt(dp[2]);
+      // Apr–Sep = CEST (UTC+2); Oct–Mar = CET (UTC+1)
+      var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+      return [
+        Date.UTC(yr, mo - 1, dy, st.h - cetOff, st.m, 0),
+        Date.UTC(yr, mo - 1, dy, et.h - cetOff, et.m, 0)
+      ];
+    }
+
+    // Format a UTC ms range as "Wed, 9 Apr · 04:00 PM - 05:00 PM" in CET
+    var DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function utcMsToCetLabel(startMs, endMs, dateStr) {
+      function fmt(ms) {
+        var d = new Date(ms);
+        var mo = d.getUTCMonth() + 1;
+        var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+        var h  = (d.getUTCHours() + cetOff) % 24;
+        var mn = d.getUTCMinutes();
+        var ap = h >= 12 ? 'PM' : 'AM';
+        var h12 = h % 12 || 12;
+        return String(h12).padStart(2, '0') + ':' + String(mn).padStart(2, '0') + ' ' + ap;
+      }
+      var datePrefix = '';
+      if (dateStr) {
+        var dp  = dateStr.split('-');
+        var dd  = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]));
+        datePrefix = DAY_NAMES[dd.getDay()] + ', ' + dd.getDate() + ' ' + MONTH_NAMES[dd.getMonth()] + ' · ';
+      }
+      return datePrefix + fmt(startMs) + ' - ' + fmt(endMs);
+    }
+
+    // ── 4. Load Teacher Persona Mapping — traits + age (join by name) ──
+    var personaMap       = {}; // normalizedName → { traits[], ageGroups[] }
+    // Load hidden teachers from Script Properties (set by "Hide" button on replacement page)
+    var hiddenTeacherSet = {};
+    try {
+      var rawHidden = getHiddenTeachersMap();
+      Object.keys(rawHidden).forEach(function(name) {
+        hiddenTeacherSet[normalizeTeacherName(name)] = true;
+      });
+    } catch(he) { Logger.log('[SMT] hiddenTeachers load error: ' + he.message); }
+    Logger.log('[SMT] hiddenTeacherSet: ' + Object.keys(hiddenTeacherSet).length + ' teachers hidden');
+    try {
+      var personaData = _getCachedSheetData('Teacher Persona Mapping');
+      if (personaData && personaData.length > 1) {
+        var pHeaders   = personaData[0].map(function(h) { return String(h).trim(); });
+        var pNameIdx   = pHeaders.indexOf('Teacher Name');
+        var pAgeIdx    = pHeaders.indexOf('Preferred Age Group');
+        if (pAgeIdx === -1) pAgeIdx = pHeaders.indexOf('Age Group');
+        var pHiddenIdx = pHeaders.indexOf('Hidden In Search');
+        var pTraitCols = pHeaders.reduce(function(acc, h, i) {
+          if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) acc.push(i);
+          return acc;
+        }, []);
+        personaData.slice(1).forEach(function(row) {
+          var rn = String(row[pNameIdx] || '').trim();
+          if (!rn) return;
+          var key = normalizeTeacherName(rn);
+          if (pHiddenIdx > -1 && String(row[pHiddenIdx] || '').trim().toLowerCase() === 'yes') return;
+          var traits = [];
+          pTraitCols.forEach(function(i) {
+            String(row[i] || '').split(/[,\n]/).forEach(function(t) {
+              var clean = t.trim(); if (clean) traits.push(clean);
+            });
+          });
+          var ageGroups = pAgeIdx > -1
+            ? String(row[pAgeIdx] || '').split(',').map(function(a) { return a.trim(); }).filter(Boolean)
+            : [];
+          personaMap[key] = { traits: traits, ageGroups: ageGroups };
+        });
+        Logger.log('[SMT] personaMap: ' + Object.keys(personaMap).length + ' teachers');
+      }
+    } catch(pe) { Logger.log('[SMT] personaMap error: ' + pe.message); }
+
+    // ── 5. Load Teacher Courses (wide format: col0=Teacher, col4+=courses) ──
+    var teacherCourseMap = {}; // normalizedName → { courseLower: progress }
+    var upskillCountMap  = {}; // normalizedName → count
+    try {
+      var tcSheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+      if (tcSheet && tcSheet.length > 1) {
+        var tcHeaderIdx = 0;
+        for (var hi = 0; hi < Math.min(tcSheet.length, 10); hi++) {
+          if (String(tcSheet[hi][0]).trim().toLowerCase() === 'teacher') { tcHeaderIdx = hi; break; }
+        }
+        var tcHeaders   = tcSheet[tcHeaderIdx];
+        var COURSE_START = 4;
+        tcSheet.slice(tcHeaderIdx + 1).forEach(function(row) {
+          var rawName = String(row[0] || '').trim();
+          if (!rawName || rawName.toLowerCase() === 'teacher') return;
+          var key = normalizeTeacherName(rawName);
+          var map = {}; var count = 0;
+          for (var ci = COURSE_START; ci < tcHeaders.length; ci++) {
+            var cName = String(tcHeaders[ci] || '').trim();
+            var prog  = String(row[ci] || '').trim();
+            if (!cName) continue;
+            map[cName.toLowerCase()] = prog || 'Not Onboarded';
+            if (prog && prog.toLowerCase() !== 'not onboarded') count++;
+          }
+          teacherCourseMap[key] = map;
+          upskillCountMap[key]  = count;
+        });
+        Logger.log('[SMT] teacherCourseMap: ' + Object.keys(teacherCourseMap).length + ' teachers');
+      }
+    } catch(tce) { Logger.log('[SMT] teacherCourseMap error: ' + tce.message); }
+
+    // Fuzzy course lookup — exact → prefix → 15-char substr → word overlap
+    function getCourseProgress(tNorm, courseName) {
+      if (!courseName) return null;
+      var cLower  = courseName.toLowerCase().trim();
+      var courses = teacherCourseMap[tNorm];
+      if (!courses) return null;
+      if (courses[cLower] !== undefined) return courses[cLower];
+      var courseKeys = Object.keys(courses);
+      for (var ci = 0; ci < courseKeys.length; ci++) {
+        var ck = courseKeys[ci];
+        if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return courses[ck];
+        var prefix = cLower.substring(0, 15);
+        if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return courses[ck];
+        // Word overlap: ≥60% of meaningful words match (handles "Design Pro with Roblox" ↔ "Design with Roblox")
+        var appWords   = cLower.split(/\s+/).filter(function(w) { return w.length > 3; });
+        var sheetWords = ck.split(/\s+/).filter(function(w) { return w.length > 3; });
+        if (appWords.length > 0 && sheetWords.length > 0) {
+          var overlap = appWords.filter(function(w) { return sheetWords.indexOf(w) > -1; }).length;
+          var minLen  = Math.min(appWords.length, sheetWords.length);
+          if (overlap >= Math.ceil(minLen * 0.6)) return courses[ck];
+        }
+      }
+      return null;
+    }
+
+    // ── 5b. Normalize currentCourse/futureCourses to exact Teacher Courses sheet key ──
+    // HubSpot labels (e.g. "Game development and AI with Scratch") may differ from
+    // sheet names (e.g. "Game Dev and AI with Scratch") — find best fuzzy match.
+    function normalizeCourseToSheetKey(courseName) {
+      if (!courseName) return courseName;
+      var cLower = courseName.toLowerCase().trim();
+      // Collect all unique course keys across all teachers
+      var allKeys = {};
+      Object.keys(teacherCourseMap).forEach(function(t) {
+        Object.keys(teacherCourseMap[t]).forEach(function(k) { allKeys[k] = true; });
+      });
+      if (allKeys[cLower] !== undefined) return courseName; // already exact
+      var keys = Object.keys(allKeys);
+      for (var ki = 0; ki < keys.length; ki++) {
+        var ck = keys[ki];
+        if (ck === cLower) return ck;
+        if (ck.indexOf(cLower) === 0 || cLower.indexOf(ck) === 0) return ck;
+        var prefix = cLower.substring(0, 15);
+        if (prefix.length >= 10 && ck.indexOf(prefix) !== -1) return ck;
+        var appW  = cLower.split(/\s+/).filter(function(w) { return w.length > 3; });
+        var shW   = ck.split(/\s+/).filter(function(w) { return w.length > 3; });
+        if (appW.length > 0 && shW.length > 0) {
+          var ovlp = appW.filter(function(w) { return shW.indexOf(w) > -1; }).length;
+          var minL = Math.min(appW.length, shW.length);
+          if (ovlp >= Math.ceil(minL * 0.6)) return ck;
+        }
+      }
+      return courseName; // no match found, keep original
+    }
+    currentCourse = normalizeCourseToSheetKey(currentCourse);
+    futureCourses = futureCourses.map(normalizeCourseToSheetKey);
+    Logger.log('[SMT] normalized currentCourse: ' + currentCourse);
+
+    // ── 6. Audit map (last 45 days) ──
     var auditScoreMap = {};
     try { auditScoreMap = _buildAuditScoreMapDays(45); } catch(ae) { Logger.log('[SMT] audit error: ' + ae.message); }
 
-    // ── 7. Parse requested traits ──
+    // ── 7. Traits / scoring helpers ──
     function splitTraits(str) {
       return str ? String(str).split(',').map(function(t){ return t.trim().toLowerCase(); }).filter(Boolean) : [];
     }
     var targetTraits = isMathCourse ? splitTraits(requestData.mathTraits) : splitTraits(requestData.techTraits);
 
-    // ── 8. Learner age number (for age group matching) ──
-    var learnerAgeNum = parseInt(learnerAge, 10);
-
-    // ── 9. Progress → course score mapping (0-30pts) ──
     var PROG_SCORE = {
-      '100%':30, '91-99%':27, '81-90%':24, '71-80%':21,
-      '61-70%':18, '51-60%':15, '41-50%':12, '31-40%':9,
-      '21-30%':6,  '11-20%':3,  '1-10%':1,   '0%':0
+      '100%':30,'91-99%':27,'81-90%':24,'71-80%':21,'61-70%':18,
+      '51-60%':15,'41-50%':12,'31-40%':9,'21-30%':6,'11-20%':3,'1-10%':1,'0%':0
     };
 
+    var VALID_PROGRESS = ['71-80%','81-90%','91-99%','100%'];
     var output = [];
     var debugSlotFiltered = 0;
 
-    // ── 10. Main loop — iterate over Teacher Persona Mapping (same as findSimilarTeachers) ──
-    var candidates = personaData.slice(1).filter(function(r) {
-      var rn = String(r[nameIdx] || '').trim();
-      if (!rn) return false;
-      if (hiddenIdx > -1 && String(r[hiddenIdx] || '').trim().toLowerCase() === 'yes') return false;
-      return true;
-    });
-    Logger.log('[SMT] Scoring ' + candidates.length + ' candidates from Teacher Persona Mapping');
+    // ── 7b. Parallel pre-fetch — batch all teacher calendars in one shot ──
+    // This converts N sequential CalendarApp HTTP calls into 1 parallel UrlFetchApp.fetchAll,
+    // reducing wall-clock time from ~N×500ms to ~500ms regardless of teacher count.
+    if (requestedSlots.length > 0) {
+      var prefetchPairs = [];
+      migDataRows.forEach(function(mRow) {
+        var rn = String(mRow[0] || '').trim();
+        if (!rn || rn.toLowerCase() === 'teacher') return;
+        var tn = normalizeTeacherName(rn);
+        var tc = normalizeTeacherName(resolveTeacherName(rn));
+        if (hiddenTeacherSet[tn] || hiddenTeacherSet[tc]) return;
+        if (currentCourse) {
+          var ep = getCourseProgress(tn, currentCourse);
+          if (!ep && tc !== tn) ep = getCourseProgress(tc, currentCourse);
+          if (VALID_PROGRESS.indexOf(ep || '') === -1) return;
+        }
+        var cid = calendarIdMap[tn] || calendarIdMap[tc] || null;
+        if (!cid) return;
+        requestedSlots.forEach(function(req) {
+          var em = teacherEmailMap[tn] || teacherEmailMap[tc] || '';
+          prefetchPairs.push({ calId: cid, dateStr: req.date, teacherName: rn, teacherEmail: em });
+        });
+      });
+      prefetchCalendarsBatch(prefetchPairs);
+    }
 
-    candidates.forEach(function(row) {
-      var rawName = String(row[nameIdx] || '').trim();
-      var tNorm   = normalizeTeacherName(rawName);
-      var tCanon  = normalizeTeacherName(resolveTeacherName(rawName));
+    // ── 8. Main loop — iterate over Migration Teacher data rows ──
+    for (var ri = 0; ri < migDataRows.length; ri++) {
+      var mRow    = migDataRows[ri];
+      var rawName = String(mRow[0] || '').trim();
+      if (!rawName || rawName.toLowerCase() === 'teacher') continue;
 
-      // ── SLOT MATCHING ──
-      var slotsMatched    = 0;
-      var allAlternate    = [];
+      var tNorm  = normalizeTeacherName(rawName);
+      var tCanon = normalizeTeacherName(resolveTeacherName(rawName));
+
+      // ── HIDDEN CHECK — skip teachers hidden via the "Hide" button on replacement page ──
+      if (hiddenTeacherSet[tNorm] || hiddenTeacherSet[tCanon]) continue;
+
+      // ── COURSE FILTER EARLY — skip unskilled teachers before any calendar API call ──
+      if (currentCourse) {
+        var earlyProg = getCourseProgress(tNorm, currentCourse);
+        if (!earlyProg && tCanon !== tNorm) earlyProg = getCourseProgress(tCanon, currentCourse);
+        if (VALID_PROGRESS.indexOf(earlyProg || '') === -1) continue;
+      }
+
+      // ── SLOT MATCHING — live Google Calendar (fallback: Migration Teacher sheet) ──
+      var calId        = calendarIdMap[tNorm] || calendarIdMap[tCanon] || null;
+      var slotsMatched = 0;
+      var allAlternate = [];
       var teacherInAnyMap = false;
+
       for (var si = 0; si < requestedSlots.length; si++) {
-        var req     = requestedSlots[si];
-        var dateMap = availabilityByDate[req.date] || {};
-        var sheetSlots = (dateMap[tNorm] !== undefined) ? dateMap[tNorm]
-                       : (dateMap[tCanon] !== undefined) ? dateMap[tCanon]
-                       : undefined;
-        if (sheetSlots !== undefined) {
-          teacherInAnyMap = true;
-          if (sheetSlots.length > 0) {
-            sheetSlots.forEach(function(s) { if (allAlternate.indexOf(s) === -1) allAlternate.push(s); });
+        var req = requestedSlots[si];
+
+        if (calId) {
+          // ── Calendar path: get live free slots for this teacher on req.date ──
+          var tEmail   = teacherEmailMap[tNorm] || teacherEmailMap[tCanon] || '';
+          var calSlots = fetchTeacherCalendarSlots(calId, req.date, rawName, tEmail);
+          if (calSlots !== null) {
+            // null = calendar inaccessible (API error) → don't penalise teacher
+            // [] or [slots] = calendar accessible → we know their real availability
+            teacherInAnyMap = true;
+            var utcRange = parseSlotToUtcMs(req.date, normaliseSlot(req.slot));
+            if (utcRange) {
+              var reqSMs = utcRange[0], reqEMs = utcRange[1];
+              // Slot is FREE if availability block covers the entire requested window
+              // AND no class/blocked event overlaps it (already subtracted in fetchTeacherCalendarSlots)
+              if (calSlots.some(function(cs) { return cs.startMs <= reqSMs && cs.endMs >= reqEMs; })) {
+                slotsMatched++;
+              }
+            }
+            // Only collect alternates if requested slot was NOT matched (teacher unavailable at that time)
+            var thisSlotMatched = utcRange && calSlots.some(function(cs) { return cs.startMs <= utcRange[0] && cs.endMs >= utcRange[1]; });
+            if (!thisSlotMatched) {
+              calSlots.forEach(function(cs) {
+                var lbl = utcMsToCetLabel(cs.startMs, cs.endMs, req.date);
+                if (allAlternate.indexOf(lbl) === -1) allAlternate.push(lbl);
+              });
+            }
+          }
+          // If calSlots === null (inaccessible): teacherInAnyMap stays false → teacher won't be dropped
+        } else {
+          // ── Sheet fallback: read slot text from Migration Teacher column ──
+          var colIdx = slotColMap[req.date];
+          if (colIdx !== undefined) {
+            teacherInAnyMap = true;
+            var cell    = String(mRow[colIdx] || '').trim();
+            var slotArr = (cell && cell !== 'No Slots' && cell !== 'No Slots Available')
+              ? cell.split(/[\n,]/).map(function(sv) { return sv.trim(); }).filter(Boolean)
+              : [];
+            var reqNorm = normaliseSlot(req.slot);
+            var sheetSlotMatched = slotArr.some(function(sv) { return normaliseSlot(sv) === reqNorm; });
+            if (sheetSlotMatched) {
+              slotsMatched++;
+            } else {
+              // Only add alternates if this slot wasn't matched
+              slotArr.forEach(function(sv) { if (allAlternate.indexOf(sv) === -1) allAlternate.push(sv); });
+            }
           }
         }
-        var reqNorm = normaliseSlot(req.slot);
-        var isMatch = sheetSlots && sheetSlots.some(function(s) { return normaliseSlot(s) === reqNorm; });
-        if (isMatch) slotsMatched++;
-      }
-      var totalSlots = requestedSlots.length;
-      // Only drop if teacher IS in the map but has zero slots (confirmed unavailable)
-      if (totalSlots > 0 && teacherInAnyMap && slotsMatched === 0 && allAlternate.length === 0) {
-        debugSlotFiltered++;
-        return;
       }
 
-      // ── TRAITS (30pts) — same logic as findSimilarTeachers ──
-      var teacherTraits = traitCols.reduce(function(acc, i) {
-        String(row[i] || '').split(/[,\n]/).forEach(function(t) {
-          var clean = t.trim().toLowerCase();
-          if (clean) acc.push(clean);
-        });
-        return acc;
-      }, []);
-      var traitScore    = 0;
+      var totalSlots      = requestedSlots.length;
+      var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
+      // Drop teacher only if we have confirmed availability data and they have zero free slots
+      if (totalSlots > 0 && teacherInAnyMap && slotsMatched === 0 && allAlternate.length === 0) {
+        debugSlotFiltered++; continue;
+      }
+
+      // ── TRAITS + AGE — joined from Teacher Persona Mapping ──
+      var personaEntry       = personaMap[tNorm] || personaMap[tCanon] || null;
+      var teacherTraits      = personaEntry ? personaEntry.traits : [];
+      var candidateAgeGroups = personaEntry ? personaEntry.ageGroups : [];
+
+      var traitScore    = 15; // neutral when no traits requested
       var traitsMissing = [];
       if (targetTraits.length > 0) {
-        var matchedT  = targetTraits.filter(function(t) { return teacherTraits.indexOf(t) > -1; });
-        traitsMissing = targetTraits.filter(function(t) { return teacherTraits.indexOf(t) === -1; });
-        traitScore    = Math.round((matchedT.length / targetTraits.length) * 30);
-      } else {
-        traitScore = 15; // neutral when no traits requested
+        var tLow    = teacherTraits.map(function(t) { return t.toLowerCase(); });
+        var matched = targetTraits.filter(function(t) { return tLow.indexOf(t) > -1; });
+        traitsMissing = targetTraits.filter(function(t) { return tLow.indexOf(t) === -1; });
+        traitScore    = teacherTraits.length > 0 ? Math.round((matched.length / targetTraits.length) * 30) : 0;
       }
 
-      // ── AGE (20pts) — same logic as findSimilarTeachers ──
-      var candidateAgeGroups = [];
-      var ageScore = 10; // neutral default
-      if (ageGroupIdx > -1) {
-        candidateAgeGroups = String(row[ageGroupIdx] || '').split(',')
-          .map(function(a) { return a.trim(); }).filter(Boolean);
-        if (!isNaN(learnerAgeNum) && candidateAgeGroups.length > 0) {
-          var ageMatched = candidateAgeGroups.some(function(ag) {
-            var agL = ag.toLowerCase();
-            var rangeParts = agL.match(/(\d+)\s*[-\u2013]\s*(\d+)/);
-            if (rangeParts) {
-              return learnerAgeNum >= parseInt(rangeParts[1]) && learnerAgeNum <= parseInt(rangeParts[2]);
-            }
-            var plusMatch = agL.match(/(\d+)\+/);
-            if (plusMatch) return learnerAgeNum >= parseInt(plusMatch[1]);
-            return false;
-          });
-          ageScore = ageMatched ? 20 : 5;
-        }
+      var ageScore = 10; // neutral
+      if (!isNaN(learnerAgeNum) && candidateAgeGroups.length > 0) {
+        var ageMatched = candidateAgeGroups.some(function(ag) {
+          var agL = ag.toLowerCase();
+          var rng = agL.match(/(\d+)\s*[-\u2013]\s*(\d+)/);
+          if (rng) return learnerAgeNum >= parseInt(rng[1]) && learnerAgeNum <= parseInt(rng[2]);
+          var plus = agL.match(/(\d+)\+/);
+          if (plus) return learnerAgeNum >= parseInt(plus[1]);
+          return false;
+        });
+        ageScore = ageMatched ? 20 : 5;
       }
-      var ageMatchDisplay = candidateAgeGroups.join(', ') || 'N/A';
 
-      // ── COURSE READINESS (30pts) — from Teacher Courses wide format ──
+      // ── COURSE READINESS — from Teacher Courses wide format ──
       var currentCourseProgress = 'Not Onboarded';
       var courseScore = 0;
       if (currentCourse) {
         var prog = getCourseProgress(tNorm, currentCourse);
         if (!prog && tCanon !== tNorm) prog = getCourseProgress(tCanon, currentCourse);
-        if (prog) {
-          currentCourseProgress = prog;
-          courseScore = PROG_SCORE[prog] !== undefined ? PROG_SCORE[prog] : 5;
-        }
+        if (prog) { currentCourseProgress = prog; courseScore = PROG_SCORE[prog] !== undefined ? PROG_SCORE[prog] : 5; }
       }
-
-      // Future course progress lookup
+      // ── DROP if not at least 71% on current course (already checked early, this is a safety net) ──
+      if (currentCourse && VALID_PROGRESS.indexOf(currentCourseProgress) === -1) continue;
       function fcProg(fc) {
         if (!fc) return 'N/A';
-        return getCourseProgress(tNorm, fc) || getCourseProgress(tCanon, fc) || 'Not Onboarded';
+        var p = getCourseProgress(tNorm, fc); if (p) return p;
+        p = getCourseProgress(tCanon, fc); return p || 'Not Onboarded';
       }
 
-      // ── AUDIT (20pts) — same as findSimilarTeachers, last 45 days ──
+      // ── AUDIT — last 45 days ──
       var auditData    = auditScoreMap[tNorm] || auditScoreMap[tCanon] || null;
       var auditGrade   = '\u2014';
       var redFlagCount = 0;
-      var auditScore   = 10; // neutral when no data
+      var auditScore   = 10;
       if (auditData) {
         redFlagCount = auditData.redFlags || 0;
         if (auditData.avgScore != null) {
           var sc = auditData.avgScore;
-          auditGrade = sc >= 65 ? 'A' : sc >= 50 ? 'B' : sc >= 35 ? 'C' : 'D';
-          auditScore = Math.max(0, Math.round((sc / 80) * 20) - Math.min(redFlagCount * 3, 10));
+          auditGrade  = sc >= 65 ? 'A' : sc >= 50 ? 'B' : sc >= 35 ? 'C' : 'D';
+          auditScore  = Math.max(0, Math.round((sc / 80) * 20) - Math.min(redFlagCount * 3, 10));
         }
       }
 
-      // ── TOTAL SCORE (max 100: Traits30 + Age20 + Course30 + Audit20) ──
       var totalScore = traitScore + ageScore + courseScore + auditScore;
-
-      // Slot display label
-      var isFullSlotMatch = (totalSlots === 0) || (slotsMatched === totalSlots);
-      var slotLabel = totalSlots === 0        ? '\u2714\uFE0F'
-                    : isFullSlotMatch         ? '\u2714\uFE0F Match All'
-                    : slotsMatched > 0        ? '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots
-                    :                           '';
+      var slotLabel  = totalSlots === 0    ? '\u2714\uFE0F'
+                     : isFullSlotMatch     ? '\u2714\uFE0F Match All'
+                     : slotsMatched > 0   ? '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots
+                     :                      '';
 
       output.push({
         teacherName           : rawName,
-        ageYear               : ageMatchDisplay,
+        ageYear               : candidateAgeGroups.join(', ') || 'N/A',
         slotMatch             : slotLabel,
         slotFullMatch         : isFullSlotMatch,
         alternateSlots        : allAlternate.join(', '),
@@ -972,22 +1444,24 @@ function searchMatchingTeachers(requestData) {
         redFlagCount          : redFlagCount,
         auditCount45          : auditData ? (auditData.auditCount || 0) : 0,
         upskillCount          : upskillCountMap[tNorm] || upskillCountMap[tCanon] || 0,
-        traitScore            : traitScore,
-        ageScore              : ageScore,
-        courseScore           : courseScore,
-        auditScore            : auditScore,
         _rankScore            : totalScore,
-        _traitMatchesCount    : targetTraits.length > 0 ? (targetTraits.length - traitsMissing.length) : 0,
-        _currentCourseProgressOrder : ['100%','91-99%','81-90%','71-80%','61-70%','51-60%',
-                                       '41-50%','31-40%','21-30%','11-20%','1-10%','0%',
-                                       'Not Onboarded','N/A'].indexOf(currentCourseProgress)
+        _traitMatchesCount    : targetTraits.length > 0 ? (targetTraits.length - traitsMissing.length) : 0
       });
-    });
+    }
 
-    // Sort: full slot match first, then by total score descending
+    // Sort: 1) slot match (✓ first)  2) course progress (100% > 91% > ...)  3) trait matches count
+    var PROGRESS_RANK = {'100%':0,'91-99%':1,'81-90%':2,'71-80%':3};
     output.sort(function(a, b) {
-      if (b.slotFullMatch !== a.slotFullMatch) return b.slotFullMatch ? 1 : -1;
-      return b._rankScore - a._rankScore;
+      // Priority 1: slot match
+      var sa = a.slotFullMatch ? 0 : 1;
+      var sb = b.slotFullMatch ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      // Priority 2: course progress (higher % = lower rank number = earlier)
+      var pa = PROGRESS_RANK[a.currentCourseProgress] !== undefined ? PROGRESS_RANK[a.currentCourseProgress] : 99;
+      var pb = PROGRESS_RANK[b.currentCourseProgress] !== undefined ? PROGRESS_RANK[b.currentCourseProgress] : 99;
+      if (pa !== pb) return pa - pb;
+      // Priority 3: trait matches
+      return (b._traitMatchesCount || 0) - (a._traitMatchesCount || 0);
     });
     Logger.log('[SMT] done: ' + output.length + ' results | slotFiltered=' + debugSlotFiltered);
     return { success: true, results: output };
@@ -1760,10 +2234,32 @@ function _buildAuditScoreMap() {
  * Stores "Hidden In Search" = "Yes" (or blank) in the Persona sheet.
  */
 function setTeacherVisibility(teacherName, isHidden) {
-  return updateTeacherPersona({
-    'Teacher Name':     teacherName,
-    'Hidden In Search': isHidden ? 'Yes' : ''
-  });
+  try {
+    // Store hidden set in Script Properties — no sheet write permission needed
+    var props  = PropertiesService.getScriptProperties();
+    var raw    = props.getProperty('HIDDEN_TEACHERS') || '{}';
+    var hidden = {};
+    try { hidden = JSON.parse(raw); } catch(e) {}
+    if (isHidden) {
+      hidden[teacherName.trim()] = true;
+    } else {
+      delete hidden[teacherName.trim()];
+    }
+    props.setProperty('HIDDEN_TEACHERS', JSON.stringify(hidden));
+    Logger.log('[setTeacherVisibility] Saved to Script Properties: ' + teacherName + ' hidden=' + isHidden);
+    return { success: true, message: teacherName + (isHidden ? ' hidden' : ' unhidden') + ' successfully.' };
+  } catch(e) {
+    Logger.log('[setTeacherVisibility] Error: ' + e.message);
+    return { success: false, message: 'Could not update visibility: ' + e.message };
+  }
+}
+
+// Helper: get all hidden teacher names from Script Properties
+function getHiddenTeachersMap() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('HIDDEN_TEACHERS') || '{}';
+    return JSON.parse(raw);
+  } catch(e) { return {}; }
 }
 
 /**
@@ -1894,4 +2390,131 @@ function _buildAuditScoreMapDays(days) {
     Logger.log('[_buildAuditScoreMapDays] Error: ' + e.message);
   }
   return map;
+}
+
+// =============================================
+// GOOGLE CALENDAR TEST — run from GAS editor
+// Verify teacher calendar availability before full implementation
+// =============================================
+function testCalendarSlotAvailability() {
+  // --- CONFIG ---
+  var TEST_DATE_STR = '2026-04-08';   // Change to any upcoming date you want to test
+  var MAX_TEACHERS  = 5;              // How many teachers to sample
+  var AVAIL_KW      = ['availability', 'available hours', 'teaching hours'];
+  var SLOT_MS       = 60 * 60 * 1000; // 1 hour
+
+  Logger.log('===== testCalendarSlotAvailability (v2 — own-calendar subtraction) =====');
+  Logger.log('Test date: ' + TEST_DATE_STR);
+  Logger.log('Logic: free slot = Teacher Availability Hour with NO other event overlapping it on their OWN calendar');
+
+  var dateParts = TEST_DATE_STR.split('-');
+  var testDate  = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+
+  // Load Migration Teacher sheet
+  var auditSS;
+  try { auditSS = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID); }
+  catch (e) { Logger.log('ERROR opening AUDIT sheet: ' + e.message); return; }
+
+  var migSheet = null;
+  var allSheets = auditSS.getSheets();
+  for (var i = 0; i < allSheets.length; i++) {
+    if (allSheets[i].getName().toLowerCase().indexOf('migration teacher') > -1) {
+      migSheet = allSheets[i]; break;
+    }
+  }
+  if (!migSheet) { Logger.log('ERROR: Migration Teacher tab not found'); return; }
+  Logger.log('Found sheet: ' + migSheet.getName());
+
+  var migData = migSheet.getDataRange().getValues();
+  var headerRowIdx = -1;
+  for (var r = 0; r < Math.min(10, migData.length); r++) {
+    if (String(migData[r][0]).trim().toLowerCase() === 'teacher') { headerRowIdx = r; break; }
+  }
+  if (headerRowIdx === -1) { Logger.log('ERROR: No "Teacher" header row found'); return; }
+
+  // Collect up to MAX_TEACHERS teachers with a calendar ID in col B
+  var teachers = [];
+  for (var r = headerRowIdx + 1; r < migData.length && teachers.length < MAX_TEACHERS; r++) {
+    var name = String(migData[r][0] || '').trim();
+    var cid  = String(migData[r][1] || '').trim();
+    if (!name || !cid || cid.indexOf('@') === -1) continue;
+    teachers.push({ name: name, calendarId: cid });
+  }
+  Logger.log('Teachers to test (' + teachers.length + '): ' + teachers.map(function(t) { return t.name; }).join(', '));
+
+  // CET label helper (Apr-Sep = CEST UTC+2, else CET UTC+1)
+  function toCetLabel(startMs, endMs) {
+    function fmt(ms) {
+      var d = new Date(ms), mo = d.getUTCMonth() + 1, off = (mo >= 4 && mo <= 9) ? 2 : 1;
+      var h = (d.getUTCHours() + off) % 24, mn = d.getUTCMinutes();
+      var ap = h >= 12 ? 'PM' : 'AM', h12 = h % 12 || 12;
+      return String(h12).padStart(2,'0') + ':' + String(mn).padStart(2,'0') + ' ' + ap;
+    }
+    return fmt(startMs) + ' - ' + fmt(endMs) + ' CET';
+  }
+
+  // --- Process each teacher ---
+  teachers.forEach(function(teacher) {
+    Logger.log('\n--- ' + teacher.name + ' (' + teacher.calendarId + ') ---');
+
+    var cal;
+    try { cal = CalendarApp.getCalendarById(teacher.calendarId); } catch(e) { Logger.log('  ERROR: ' + e.message); return; }
+    if (!cal) { Logger.log('  ERROR: calendar null — not shared with hello@jet-learn.com'); return; }
+
+    var allEvents = cal.getEventsForDay(testDate);
+    Logger.log('  Total events on ' + TEST_DATE_STR + ': ' + allEvents.length);
+
+    // ── Availability events (teacher-marked open blocks) ──
+    var availEvents = allEvents.filter(function(ev) {
+      var t = ev.getTitle().toLowerCase();
+      return AVAIL_KW.some(function(kw) { return t.indexOf(kw) > -1; });
+    });
+
+    // ── Everything else on teacher's own calendar = blocked time ──
+    var blockedEvents = allEvents.filter(function(ev) {
+      var t = ev.getTitle().toLowerCase();
+      return !AVAIL_KW.some(function(kw) { return t.indexOf(kw) > -1; });
+    });
+
+    if (availEvents.length === 0) {
+      Logger.log('  No availability events found.');
+      Logger.log('  All event titles: ' + allEvents.map(function(e) { return '"' + e.getTitle() + '"'; }).join(', '));
+      return;
+    }
+
+    Logger.log('  Availability events: ' + availEvents.length);
+    Logger.log('  Other (blocked) events: ' + blockedEvents.length + ' → ' +
+      blockedEvents.map(function(e) { return '"' + e.getTitle() + '"'; }).join(', '));
+
+    // Split each availability block into 1-hour chunks
+    var rawSlots = [];
+    availEvents.forEach(function(av) {
+      var s = av.getStartTime().getTime(), e = av.getEndTime().getTime();
+      for (var cur = s; cur + SLOT_MS <= e; cur += SLOT_MS) {
+        rawSlots.push({ startMs: cur, endMs: cur + SLOT_MS });
+      }
+    });
+    Logger.log('  Raw 1-hour slots: ' + rawSlots.length);
+
+    // Subtract any blocked event that overlaps a slot
+    var freeSlots = rawSlots.filter(function(slot) {
+      var blocker = blockedEvents.filter(function(ev) {
+        return slot.startMs < ev.getEndTime().getTime() && slot.endMs > ev.getStartTime().getTime();
+      });
+      if (blocker.length > 0) {
+        Logger.log('  BLOCKED ' + toCetLabel(slot.startMs, slot.endMs) + ' by: ' +
+          blocker.map(function(e) { return '"' + e.getTitle() + '"'; }).join(', '));
+      }
+      return blocker.length === 0;
+    });
+
+    Logger.log('  FREE slots (' + freeSlots.length + '):');
+    if (freeSlots.length === 0) {
+      Logger.log('    (none — teacher fully booked on this day)');
+    } else {
+      freeSlots.forEach(function(s) { Logger.log('    ✓ ' + toCetLabel(s.startMs, s.endMs)); });
+    }
+  });
+
+  Logger.log('\n===== TEST COMPLETE =====');
 }

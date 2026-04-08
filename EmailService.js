@@ -345,9 +345,20 @@ function sendMigrationEmail(data, attachments = []) {
     // --- STATUS CHECK ---
     if (watiSuccess) {
         finalStatus = 'Success';
-        return { success: true, message: 'Migration process completed successfully.' };
     } else {
         finalStatus = 'Partial Success';
+    }
+
+    // ── Write upskill note to HubSpot ticket ──────────────────────────────────
+    try {
+      checkAndWriteUpskillNote(data.jlid, data.newTeacher, data.confirmedFutureCourses || []);
+    } catch(upErr) {
+      Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
+    }
+
+    if (watiSuccess) {
+        return { success: true, message: 'Migration process completed successfully.' };
+    } else {
         return { success: true, message: 'Email sent, but WhatsApp failed. Check Logs.' };
     }
 

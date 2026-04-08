@@ -364,7 +364,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "344"; 
+const APP_VERSION = "366";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -386,4 +386,41 @@ function setupCheckRepliesTrigger() {
 
   Logger.log('checkReplies trigger set up successfully — runs every 2 hours.');
 }
+
+function debugCourseMatch() {
+  var data = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+  // Find the real header row (same logic as main code)
+  var tcHeaderIdx = 0;
+  for (var hi = 0; hi < Math.min(data.length, 10); hi++) {
+    if (String(data[hi][0]).trim().toLowerCase() === 'teacher') { tcHeaderIdx = hi; break; }
+  }
+  var headers = data[tcHeaderIdx];
+  data.slice(tcHeaderIdx + 1).forEach(function(row) {
+    var name = String(row[0] || '').trim().toLowerCase();
+    if (name.indexOf('shweta') > -1 || name.indexOf('simleen') > -1) {
+      Logger.log('=== ' + row[0] + ' ===');
+      for (var i = 4; i < headers.length; i++) {
+        var course = String(headers[i] || '').trim();
+        var prog = String(row[i] || '').trim();
+        if (course) Logger.log('  ' + course + ' = ' + (prog || 'blank'));
+      }
+    }
+  });
+}
+
+function debugCourseLabel() {
+  // Check what the HubSpot ticket's current_course__t_ internal value maps to
+  var data = _getCachedSheetData(CONFIG.SHEETS.COURSE_HS_DATA);
+  Logger.log('COURSE_HS_DATA rows: ' + data.length);
+  for (var i = 1; i < data.length; i++) {
+    var internal = String(data[i][0] || '').trim();
+    var label = String(data[i][1] || '').trim();
+    if (label.toLowerCase().indexOf('scratch') > -1 || label.toLowerCase().indexOf('game') > -1) {
+      Logger.log('internal: ' + internal + ' → label: ' + label);
+    }
+  }
+}
+
+
+
 

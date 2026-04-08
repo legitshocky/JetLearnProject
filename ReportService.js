@@ -130,34 +130,39 @@ function calculateDashboardStats() {
 // onboardings.today/thisWeek/thisMonth = audit log new-onboarding events
 // These are intentionally separate: total is a live snapshot, cadence tracks new additions
 function getDashboardStatistics() {
-  const stats = calculateDashboardStats();
-
   try {
-    const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    if (!token) throw new Error('HUBSPOT_API_KEY not set');
+    const stats = calculateDashboardStats();
 
-    const body = {
-      filterGroups: [{ filters: [{ propertyName: 'learner_status', operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }] }],
-      properties: ['hs_object_id'],
-      limit: 1
-    };
-    const response = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
-      method: 'post',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(body),
-      muteHttpExceptions: true
-    });
-    const data = JSON.parse(response.getContentText());
-    if (data.error || data.status === 'error') throw new Error(data.message || 'HubSpot error');
-    const hsTotal = data.total || 0;
-    Logger.log('[getDashboardStatistics] HubSpot active total: ' + hsTotal);
-    stats.activeLearners = hsTotal > 0 ? hsTotal : stats.onboardings.total;
+    try {
+      const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+      if (!token) throw new Error('HUBSPOT_API_KEY not set');
+
+      const body = {
+        filterGroups: [{ filters: [{ propertyName: 'learner_status', operator: 'IN', values: ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'] }] }],
+        properties: ['hs_object_id'],
+        limit: 1
+      };
+      const response = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+      const data = JSON.parse(response.getContentText());
+      if (data.error || data.status === 'error') throw new Error(data.message || 'HubSpot error');
+      const hsTotal = data.total || 0;
+      Logger.log('[getDashboardStatistics] HubSpot active total: ' + hsTotal);
+      stats.activeLearners = hsTotal > 0 ? hsTotal : stats.onboardings.total;
+    } catch (e) {
+      Logger.log('[getDashboardStatistics] HubSpot call failed: ' + e.message);
+      stats.activeLearners = stats.onboardings.total;
+    }
+
+    return stats;
   } catch (e) {
-    Logger.log('[getDashboardStatistics] HubSpot call failed: ' + e.message);
-    stats.activeLearners = stats.onboardings.total;
+    Logger.log('[getDashboardStatistics] Fatal error: ' + e.message);
+    return { migrations: { total:0,successful:0,failed:0,today:0,thisWeek:0,thisMonth:0,successRate:0 }, onboardings: { total:0,today:0,thisWeek:0,thisMonth:0 }, recentActivities:[], activeLearners:0 };
   }
-
-  return stats;
 }
 
 function getMigrationTrends(days = 30) {

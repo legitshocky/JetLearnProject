@@ -233,7 +233,6 @@
 
     <!-- Main Content -->
     <div class="main-content">
-      <!--     <div class="main-content">
       <!-- Dashboard Page -->
       <div id="dashboardPage" class="page-content" style="display:none;">
         <div class="header">
@@ -560,7 +559,19 @@
                   </div>
                 </div>
               </div>
-            </div>
+
+              <!-- Future Courses & Teacher Upskilling -->
+              <div id="mip_futureCoursesSection" style="display:none;margin-top:1rem;background:#f8f9ff;border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.25rem;">
+                <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:0.75rem;font-weight:600;">
+                  <i class="fas fa-graduation-cap" style="margin-right:5px;color:#6366f1;"></i>Future Courses &amp; Teacher Upskilling
+                  <span style="margin-left:8px;font-size:0.65rem;color:#94a3b8;font-weight:400;text-transform:none;">Verify course assignments — confirm or override each course</span>
+                </div>
+                <div id="mip_futureCoursesContent">
+                  <span style="color:#94a3b8;font-size:0.82rem;">Loading…</span>
+                </div>
+              </div>
+
+            </div><!-- end modal-body -->
             <div class="modal-footer">
               <button class="btn btn-primary" data-dismiss="modal">Close</button>
             </div>
@@ -2019,9 +2030,9 @@
             <th style="text-align:center;width:48px;">Slot</th>
             <th>Available Slots (day)</th>
             <th id="personaCurrentCourseHeader">Current Course</th>
-            <th>Future 1</th>
-            <th>Future 2</th>
-            <th>Future 3</th>
+            <th id="personaFuture1Header">Future 1</th>
+            <th id="personaFuture2Header">Future 2</th>
+            <th id="personaFuture3Header">Future 3</th>
             <th>Audit (45d)</th>
             <th style="text-align:center;">Flags</th>
             <th>Traits Gap</th>

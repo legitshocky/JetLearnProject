@@ -502,12 +502,31 @@
     .main-content::before, .main-content::after { display: none; }
 
     /* Each page fills available space and scrolls — footer stays at the very end */
-    .page-content {
+  .page-content {
       padding: 1.5rem 2rem;
       animation: cardSlideUp 0.4s cubic-bezier(0.16,1,0.3,1) both;
       position: relative;
       z-index: 1;
-      flex: 1;                   /* push footer to bottom */
+      flex: 1;                   /* This line is critical for footer placement */
+    }
+    /* Teacher Intelligence Center — reduced side padding so results table uses full width */
+    #personaPage.page-content {
+      padding: 1.5rem 0.5rem;
+    }
+    #personaPage > div {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    #personaResultsContainer {
+      width: 100%;
+    }
+    #personaPage .table-container {
+      overflow-x: auto;
+      width: 100%;
+    }
+    #personaPage .data-table {
+      width: 100%;
+      min-width: 1000px;
     }
 
     /* Header animate in */
@@ -2055,18 +2074,12 @@
     #personaPage {
       display: block;
       width: 100%;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 1.5rem 2rem;
       box-sizing: border-box;
     }
 
     #personaPage .header {
       margin-bottom: 2rem;
       width: 100%;
-      max-width: 1400px;
-      margin-left: auto;
-      margin-right: auto;
     }
 
     #personaPage .form-container {
@@ -2079,12 +2092,13 @@
     }
 
     #personaResultsContainer {
-      max-width: 1400px;
-      margin: 2rem auto;
+      width: 100%;
+      margin-top: 2rem;
       background-color: white;
       border-radius: 12px;
       padding: 1.5rem;
       box-shadow: var(--shadow-sm);
+      box-sizing: border-box;
     }
 
     .persona-results-table th {
@@ -2843,9 +2857,7 @@
       gap: 1.5rem;
       font-size: 0.8rem;
       color: #9ca3af;
-      position: sticky;
-      bottom: 0;
-      z-index: 10;
+      margin-top: auto;
     }
 
 .footer-item {

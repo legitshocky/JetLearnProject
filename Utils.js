@@ -4,7 +4,12 @@ let _spreadsheetCache = {};
 
 function _getSpreadsheet(id) {
   if (!_spreadsheetCache[id]) {
-    _spreadsheetCache[id] = SpreadsheetApp.openById(id);
+    try {
+      _spreadsheetCache[id] = SpreadsheetApp.openById(id);
+    } catch(e) {
+      Logger.log('[_getSpreadsheet] Cannot open spreadsheet ' + id + ': ' + e.message);
+      return null; // return null so callers can handle gracefully
+    }
   }
   return _spreadsheetCache[id];
 }
@@ -14,6 +19,7 @@ function _getCachedSheetData(sheetName, spreadsheetId = CONFIG.MIGRATION_SHEET_I
   if (!_sheetDataCache[cacheKey]) {
     try {
       const spreadsheet = _getSpreadsheet(spreadsheetId);
+      if (!spreadsheet) { _sheetDataCache[cacheKey] = []; return []; }
       const sheet = spreadsheet.getSheetByName(sheetName);
       if (!sheet) {
         Logger.log(`Warning: Sheet '${sheetName}' not found in spreadsheet ID: ${spreadsheetId}. Returning empty array.`);
