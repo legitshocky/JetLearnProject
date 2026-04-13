@@ -1697,25 +1697,36 @@
           </div>
           <div id="personaMatchTab" class="tab-content">
               <div class="form-container" style="max-width: 100%;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                      <div>
-                        <h2 class="form-title" style="margin: 0 0 4px;">Find Replacement Teacher</h2>
-                        <p id="personaTeacherCountLabel" style="margin:0; font-size:0.85rem; color:var(--text-muted);">Loading teachers...</p>
-                      </div>
-                      <select id="personaStatusFilter" class="form-control form-select" style="width: 200px;" onchange="renderPersonaTable()">
-                          <option value="Active" selected>Active Teachers</option>
-                          <option value="EWS">EWS</option>
-                          <option value="Attrited">Attrited / Inactive</option>
-                          <option value="On Leave">On Leave</option>
-                          <option value="All">All Teachers</option>
-                      </select>
+                <!-- Top bar -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem;">
+                  <div>
+                    <h2 class="form-title" style="margin:0 0 2px;">Find Replacement Teacher</h2>
+                    <p id="personaTeacherCountLabel" style="margin:0;font-size:0.82rem;color:var(--text-muted);">Loading teachers...</p>
                   </div>
-                <div class="table-container">
-                    <table class="data-table">
-                        <thead><tr><th>Teacher Name</th><th>Status</th><th>Active Learners</th><th style="text-align: right;">Action</th></tr></thead>
-                        <tbody id="personaTeacherTableBody"></tbody>
-                    </table>
+                  <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                    <select id="personaStatusFilter" class="form-control form-select" style="height:36px;font-size:0.82rem;" onchange="renderPersonaTable()">
+                      <option value="Active" selected>Active Teachers</option>
+                      <option value="EWS">EWS</option>
+                      <option value="Attrited">Attrited / Inactive</option>
+                      <option value="On Leave">On Leave</option>
+                      <option value="All">All Teachers</option>
+                    </select>
+                    <span style="font-size:0.78rem;color:#64748b;">Show</span>
+                    <select id="teacherBrowsePageSize" style="height:36px;padding:0 8px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.78rem;cursor:pointer;" onchange="renderPersonaTable()">
+                      <option value="15" selected>15</option>
+                      <option value="30">30</option>
+                      <option value="45">45</option>
+                      <option value="60">60</option>
+                      <option value="75">75</option>
+                      <option value="100">100</option>
+                    </select>
+                    <span style="font-size:0.78rem;color:#64748b;">per page</span>
+                  </div>
                 </div>
+                <!-- Card grid -->
+                <div id="personaTeacherTableBody" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;"></div>
+                <!-- Pagination -->
+                <div id="teacherBrowsePagination" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-top:1.25rem;flex-wrap:wrap;"></div>
               </div>
           </div>
 
