@@ -808,6 +808,9 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
     }, 4000);
     // This call now specifically updates the "Recent Activities" section
     google.script.run.withSuccessHandler(updateRecentActivities).withFailureHandler(showError).getDashboardStatistics();
+    // New widgets
+    loadStuckMigrations();
+    if (currentUser) loadImpactScore(currentUser.username);
 }
 
 
@@ -2039,17 +2042,39 @@ tr.innerHTML = `
                     const profile = data.profile;
 
                     // \u2500\u2500 Header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-                    const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
-                    const info   = `<div class="teacher-profile-info">
-                        <h2>${profile.name}</h2>
-                        <p><strong>Email:</strong> ${profile.email || 'N/A'}</p>
-                        <p><strong>Status:</strong> <span class="status-badge ${profile.status === 'Active' ? 'status-success' : 'status-pending'}">${profile.status}</span></p>
-                        <p><strong>Manager:</strong> ${profile.manager || 'N/A'}</p>
-                        <p><strong>CLS Manager:</strong> ${profile.clsManager || 'N/A'}</p>
-                        <p><strong>Joined:</strong> ${profile.joinDate || 'N/A'}</p>
-                        <p><strong>Total Upskilled Courses:</strong> ${profile.totalCourses}</p>
-                    </div>`;
-                    contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
+                    const initials = profile.name.substring(0, 2).toUpperCase();
+                    const statusColor = profile.status === 'Active' ? '#15803d' : '#d97706';
+                    const statusBg    = profile.status === 'Active' ? '#dcfce7' : '#fef3c7';
+
+                    const infoRows = [
+                      { icon:'fa-envelope',       label:'Email',          val: profile.email || 'N/A' },
+                      { icon:'fa-venus-mars',      label:'Gender',         val: profile.gender || 'N/A' },
+                      { icon:'fa-phone',           label:'Contact',        val: profile.contactNumber || 'N/A' },
+                      { icon:'fa-calendar-plus',   label:'Date of Joining',val: profile.dateOfJoining || profile.joinDate || 'N/A' },
+                      { icon:'fa-user-tie',        label:'TP Manager',     val: profile.manager || 'N/A' },
+                      { icon:'fa-user-check',      label:'CLS Manager',    val: profile.clsManager || 'N/A' },
+                      { icon:'fa-book-open',       label:'Courses Upskilled', val: profile.totalCourses },
+                      { icon:'fa-clock',           label:'Last Activity',  val: profile.lastActivity || 'N/A' }
+                    ].map(r =>
+                      `<div style="display:flex;align-items:flex-start;gap:0.6rem;font-size:0.83rem;padding:5px 0;border-bottom:1px solid #f1f5f9;">
+                        <i class="fas ${r.icon}" style="color:#94a3b8;width:14px;margin-top:2px;flex-shrink:0;"></i>
+                        <span style="color:#64748b;min-width:130px;flex-shrink:0;">${r.label}</span>
+                        <span style="color:#1e293b;font-weight:500;">${escapeHtml(String(r.val))}</span>
+                      </div>`
+                    ).join('');
+
+                    contentEl.innerHTML = `
+                      <div style="display:grid;grid-template-columns:260px 1fr;gap:1.5rem;align-items:start;margin-bottom:1.5rem;">
+                        <div style="background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.5rem;text-align:center;">
+                          <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:700;color:#fff;margin:0 auto 0.75rem;">${initials}</div>
+                          <div style="font-size:1.1rem;font-weight:700;color:#1e293b;margin-bottom:4px;">${escapeHtml(profile.name)}</div>
+                          <span style="background:${statusBg};color:${statusColor};border-radius:99px;padding:2px 12px;font-size:0.72rem;font-weight:700;">${escapeHtml(profile.status)}</span>
+                        </div>
+                        <div style="background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.25rem 1.5rem;">
+                          <h3 style="font-size:0.85rem;font-weight:700;color:#64748b;letter-spacing:.05em;margin:0 0 0.75rem;">TEACHER DETAILS</h3>
+                          ${infoRows}
+                        </div>
+                      </div>`;
 
                     // \u2500\u2500 Escalation Summary \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
@@ -2696,64 +2721,9 @@ tr.innerHTML = `
         return;
       }
       personaResults = result.results || [];
-      const count = personaResults.length;
-      const countEl = document.getElementById('personaResultsCount');
-      if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
-      personaResultsBody.innerHTML = '';
-
-      if (count === 0) {
-        personaResultsBody.innerHTML =
-          '<tr><td colspan="12" style="text-align:center;padding:2rem;color:var(--text-muted);">'
-          + 'No teachers match all criteria. Try a different date or course.</td></tr>';
-      } else {
-        personaResults.forEach(function(teacher, idx) {
-          const gradeColor = teacher.auditGrade === 'A' ? '#15803d'
-            : teacher.auditGrade === 'B' ? '#1d4ed8'
-            : teacher.auditGrade === 'C' ? '#d97706'
-            : teacher.auditGrade === 'D' ? '#b91c1c' : '#6b7280';
-
-          const auditHtml = teacher.avgClassScore && teacher.avgClassScore !== 'No data'
-            ? '<span style="font-weight:700;color:' + gradeColor + ';">' + escapeHtml(teacher.auditGrade) + '</span>'
-              + ' <span style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.avgClassScore) + '</span>'
-              + '<div style="font-size:0.65rem;color:#94a3b8;">' + (teacher.auditCount45 || 0) + ' sessions</div>'
-            : '<span style="color:#94a3b8;font-size:0.78rem;">No data</span>';
-
-          const rfHtml = (teacher.redFlagCount || 0) > 0
-            ? '<span style="color:#b91c1c;font-weight:600;">&#9872; ' + teacher.redFlagCount + '</span>'
-            : '<span style="color:#15803d;">—</span>';
-
-          const slotStyle = teacher.slotMatch === '\u2714\uFE0F'
-            ? 'font-size:1.1rem;' : 'font-size:1.1rem;opacity:0.4;';
-
-          const rankBadge = idx === 0
-            ? '<span style="font-size:0.65rem;background:#fbbf24;color:#78350f;padding:1px 5px;border-radius:3px;margin-left:4px;">Top Pick</span>'
-            : '';
-
-          const progressStyle = function(v) {
-            if (!v || v === 'N/A' || v === 'Not Onboarded') return 'color:#94a3b8;';
-            const pct = parseInt(v);
-            return isNaN(pct) ? 'color:#94a3b8;' : pct >= 80 ? 'color:#15803d;font-weight:600;' : pct >= 50 ? 'color:#d97706;' : 'color:#b91c1c;';
-          };
-
-          const tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td style="color:#94a3b8;font-size:0.8rem;text-align:center;">' + (idx + 1) + '</td>'
-            + '<td><strong>' + escapeHtml(teacher.teacherName) + '</strong>' + rankBadge + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(teacher.ageYear || '') + '</div></td>'
-            + '<td style="display:none;">' + escapeHtml(teacher.ageYear || '') + '</td>'
-            + '<td style="' + slotStyle + 'text-align:center;">' + teacher.slotMatch + '</td>'
-            + '<td style="font-size:0.75rem;color:#475569;max-width:140px;">' + escapeHtml(teacher.alternateSlots || 'No slots') + '</td>'
-            + '<td><span style="font-size:0.82rem;' + progressStyle(teacher.currentCourseProgress) + '">' + escapeHtml(teacher.currentCourseProgress || 'N/A') + '</span></td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse1Progress) + '">' + escapeHtml(teacher.futureCourse1Progress || '—') + '</td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse2Progress) + '">' + escapeHtml(teacher.futureCourse2Progress || '—') + '</td>'
-            + '<td style="font-size:0.78rem;' + progressStyle(teacher.futureCourse3Progress) + '">' + escapeHtml(teacher.futureCourse3Progress || '—') + '</td>'
-            + '<td>' + auditHtml + '</td>'
-            + '<td>' + rfHtml + '</td>'
-            + '<td style="font-size:0.75rem;color:' + (teacher.traitsMissing && teacher.traitsMissing.length ? '#b91c1c' : '#15803d') + ';">'
-              + escapeHtml(teacher.traitsMissing && teacher.traitsMissing.length ? teacher.traitsMissing.join(', ') : 'None') + '</td>';
-          personaResultsBody.appendChild(tr);
-        });
-      }
+      _personaCurrentPage = 1;
       personaResultsContainer.style.display = 'block';
+      renderPersonaCards();
       personaResultsContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -4556,14 +4526,19 @@ google.script.run
     if (inactivityMsg) inactivityMsg.style.display = 'none';
     appContainer.style.display = 'grid';
     startPolling();
-    startSessionTimer();// \u2190 ADD THIS BLOCK
+    startSessionTimer();
     if (user.mustChangePassword) {
         document.getElementById('forcePasswordModal').classList.add('active');
-        return; // don't show welcome toast yet
+        return;
     }
-
     showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
     switchPage('dashboardPage');
+    // Load new dashboard widgets
+    setTimeout(function() {
+      loadImpactScore(user.username);
+      loadStuckMigrations();
+      loadNotifications(user.username);
+    }, 800);
 }
 
 
@@ -7227,5 +7202,369 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
             newPassword: newPass
         });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// IMPACT SCORE
+// ═══════════════════════════════════════════════════════════════════
+function loadImpactScore(username) {
+  google.script.run
+    .withSuccessHandler(function(data) { renderImpactScore(data); })
+    .withFailureHandler(function() {})
+    .getUserImpactScore(username);
+}
+
+function renderImpactScore(data) {
+  if (!data) return;
+  var score = data.score || 0;
+  var circle = document.getElementById('impactScoreCircle');
+  var valEl   = document.getElementById('impactScoreVal');
+  var pctEl   = document.getElementById('impactPercentile');
+  var insEl   = document.getElementById('impactInsight');
+  var miniEl  = document.getElementById('impactMiniStats');
+  if (!circle) return;
+
+  // Animate count-up
+  var start = 0, end = score, dur = 900, step = 16;
+  var timer = setInterval(function() {
+    start = Math.min(start + Math.ceil(end / (dur / step)), end);
+    if (valEl) valEl.textContent = start;
+    var pct = start / 100;
+    var color = start >= 80 ? '#10b981' : start >= 50 ? '#6366f1' : start >= 20 ? '#f59e0b' : '#ef4444';
+    circle.style.background = 'conic-gradient(' + color + ' ' + (pct * 360) + 'deg, #e2e8f0 0deg)';
+    if (start >= end) clearInterval(timer);
+  }, step);
+
+  if (pctEl) pctEl.textContent = 'Top ' + (100 - (data.percentile || 0)) + '% of operators this month';
+  if (insEl) insEl.textContent = data.insight || '';
+
+  if (miniEl) {
+    miniEl.style.display = 'grid';
+    var m = document.getElementById('impactMigrations');
+    var a = document.getElementById('impactAudits');
+    var e = document.getElementById('impactEmails');
+    var t = document.getElementById('impactTasks');
+    if (m) m.textContent = data.migrationsHandled || 0;
+    if (a) a.textContent = data.auditsRun || 0;
+    if (e) e.textContent = data.emailsSent || 0;
+    if (t) t.textContent = data.tasksCompleted || 0;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STUCK MIGRATIONS WIDGET + MODAL
+// ═══════════════════════════════════════════════════════════════════
+var _stuckMigrationsData = null;
+var _stuckSortKey = 'daysStuck';
+
+function loadStuckMigrations() {
+  google.script.run
+    .withSuccessHandler(function(data) {
+      _stuckMigrationsData = data;
+      renderStuckWidget(data);
+    })
+    .withFailureHandler(function() {})
+    .getStuckMigrations(7);
+}
+
+function renderStuckWidget(data) {
+  var list = document.getElementById('stuckMigrationsList');
+  var badge = document.getElementById('stuckCountBadge');
+  if (!list) return;
+  var tickets = (data && data.tickets) || [];
+  if (badge) badge.textContent = tickets.length;
+
+  if (tickets.length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:1rem 0;color:#10b981;font-size:0.82rem;"><i class="fas fa-check-circle"></i> No stuck migrations — all clear!</div>';
+    return;
+  }
+  list.innerHTML = tickets.slice(0, 4).map(function(t) {
+    var urgency = t.daysStuck >= 14 ? '#b91c1c' : t.daysStuck >= 10 ? '#d97706' : '#6366f1';
+    return '<div style="display:flex;align-items:center;gap:0.6rem;padding:6px 8px;border-radius:8px;background:#f8fafc;border-left:3px solid ' + urgency + ';">'
+      + '<div style="flex-shrink:0;text-align:center;min-width:36px;">'
+      + '<div style="font-size:1rem;font-weight:800;color:' + urgency + ';line-height:1;">' + t.daysStuck + '</div>'
+      + '<div style="font-size:0.55rem;color:#94a3b8;font-weight:600;">DAYS</div></div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:0.78rem;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t.learnerName) + '</div>'
+      + '<div style="font-size:0.68rem;color:#64748b;">' + escapeHtml(t.toTeacher) + ' · ' + escapeHtml(t.stage) + '</div></div>'
+      + '<a href="' + t.hubspotLink + '" target="_blank" style="font-size:0.68rem;color:#6366f1;text-decoration:none;flex-shrink:0;"><i class="fas fa-external-link-alt"></i></a>'
+      + '</div>';
+  }).join('');
+  if (tickets.length > 4) {
+    list.innerHTML += '<div style="text-align:center;padding:4px 0;font-size:0.72rem;color:#94a3b8;">+ ' + (tickets.length - 4) + ' more — click View All</div>';
+  }
+}
+
+function openStuckMigrationsModal() {
+  var modal = document.getElementById('stuckMigrationsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  if (_stuckMigrationsData) {
+    _renderStuckModalTable(_stuckMigrationsData.tickets || []);
+  } else {
+    loadStuckMigrations();
+  }
+}
+
+function closeStuckMigrationsModal() {
+  var modal = document.getElementById('stuckMigrationsModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function refreshStuckMigrationsModal() {
+  var tbody = document.getElementById('stuckModalBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Refreshing…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      _stuckMigrationsData = data;
+      renderStuckWidget(data);
+      _renderStuckModalTable(data.tickets || []);
+    })
+    .withFailureHandler(function() {})
+    .getStuckMigrations(7);
+}
+
+function _renderStuckModalTable(tickets) {
+  var tbody  = document.getElementById('stuckModalBody');
+  var cntEl  = document.getElementById('stuckModalCount');
+  var footEl = document.getElementById('stuckModalFooterText');
+  if (!tbody) return;
+  if (cntEl) cntEl.textContent = tickets.length + ' ticket' + (tickets.length !== 1 ? 's' : '');
+  if (footEl) footEl.textContent = 'Showing ' + tickets.length + ' WIP tickets older than 7 days';
+  if (tickets.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#10b981;"><i class="fas fa-check-circle"></i> No stuck migrations right now.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tickets.map(function(t) {
+    var urgency = t.daysStuck >= 14 ? '#b91c1c' : t.daysStuck >= 10 ? '#d97706' : '#15803d';
+    var urgBg   = t.daysStuck >= 14 ? '#fef2f2' : t.daysStuck >= 10 ? '#fffbeb' : '#f0fdf4';
+    return '<tr style="border-bottom:1px solid #f1f5f9;">'
+      + '<td style="padding:10px 12px;"><span style="background:' + urgBg + ';color:' + urgency + ';border-radius:6px;padding:3px 10px;font-size:0.8rem;font-weight:700;">' + t.daysStuck + 'd</span></td>'
+      + '<td style="padding:10px 12px;font-size:0.8rem;color:#64748b;">' + escapeHtml(t.jlid) + '</td>'
+      + '<td style="padding:10px 12px;font-weight:500;font-size:0.85rem;">' + escapeHtml(t.learnerName) + '</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;">' + escapeHtml(t.fromTeacher) + '</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;color:#6366f1;font-weight:500;">' + escapeHtml(t.toTeacher) + '</td>'
+      + '<td style="padding:10px 12px;"><span style="background:#f1f5f9;border-radius:6px;padding:2px 8px;font-size:0.74rem;color:#475569;">' + escapeHtml(t.stage) + '</span></td>'
+      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">' + escapeHtml(t.createdDate) + '</td>'
+      + '<td style="padding:10px 12px;text-align:center;"><a href="' + t.hubspotLink + '" target="_blank" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:4px 10px;font-size:0.74rem;font-weight:600;text-decoration:none;white-space:nowrap;"><i class="fas fa-external-link-alt"></i> Escalate</a></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function filterStuckModal(searchVal) {
+  if (!_stuckMigrationsData) return;
+  var stageFilter = (document.getElementById('stuckModalStageFilter') || {}).value || '';
+  var q = (searchVal || '').toLowerCase();
+  var filtered = (_stuckMigrationsData.tickets || []).filter(function(t) {
+    var matchSearch = !q || [t.jlid, t.learnerName, t.fromTeacher, t.toTeacher, t.stage]
+      .some(function(v) { return String(v || '').toLowerCase().indexOf(q) > -1; });
+    var matchStage  = !stageFilter || t.stage.indexOf(stageFilter) > -1;
+    return matchSearch && matchStage;
+  });
+  _renderStuckModalTable(filtered);
+}
+
+function sortStuckModal(key) {
+  if (!_stuckMigrationsData) return;
+  _stuckSortKey = key;
+  var sorted = (_stuckMigrationsData.tickets || []).slice().sort(function(a, b) {
+    return (b[key] || 0) - (a[key] || 0);
+  });
+  _renderStuckModalTable(sorted);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NOTIFICATION BELL
+// ═══════════════════════════════════════════════════════════════════
+var _notifOpen = false;
+var _notifAutoRefreshTimer = null;
+
+function loadNotifications(username) {
+  google.script.run
+    .withSuccessHandler(function(data) { _renderNotifications(data); })
+    .withFailureHandler(function() {})
+    .getStuckMigrations(7); // use stuck migrations as notification source for now
+}
+
+function toggleNotifDropdown() {
+  var dd = document.getElementById('notifDropdown');
+  var bd = document.getElementById('notifBackdrop');
+  if (!dd) return;
+  _notifOpen = !_notifOpen;
+  dd.style.display = _notifOpen ? 'block' : 'none';
+  if (bd) bd.style.display = _notifOpen ? 'block' : 'none';
+  if (_notifOpen && currentUser) {
+    _fetchAndRenderNotifications(currentUser.username);
+  }
+}
+
+function _fetchAndRenderNotifications(username) {
+  var list = document.getElementById('notifList');
+  if (list) list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#94a3b8;font-size:0.83rem;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+  google.script.run
+    .withSuccessHandler(function(stuck) {
+      var items = [];
+      if (stuck && stuck.tickets && stuck.tickets.length > 0) {
+        stuck.tickets.forEach(function(t) {
+          items.push({
+            icon: 'fa-exclamation-triangle',
+            color: t.daysStuck >= 14 ? '#b91c1c' : '#d97706',
+            bg:    t.daysStuck >= 14 ? '#fef2f2' : '#fffbeb',
+            title: 'Stuck Migration — ' + t.daysStuck + ' days',
+            body:  (t.learnerName || '—') + ' → ' + (t.toTeacher || '—'),
+            link:  t.hubspotLink
+          });
+        });
+      }
+      _renderNotifItems(items);
+    })
+    .withFailureHandler(function() {
+      var list = document.getElementById('notifList');
+      if (list) list.innerHTML = '<div style="padding:1rem;text-align:center;color:#94a3b8;font-size:0.82rem;">Could not load notifications.</div>';
+    })
+    .getStuckMigrations(7);
+}
+
+function _renderNotifications(data) {
+  var count = (data && data.count) || 0;
+  var badge = document.getElementById('notifBadge');
+  var cntEl = document.getElementById('notifDropdownCount');
+  if (badge) {
+    badge.style.display = count > 0 ? 'flex' : 'none';
+    badge.textContent = count > 9 ? '9+' : count;
+  }
+  if (cntEl) cntEl.textContent = count;
+}
+
+function _renderNotifItems(items) {
+  var list = document.getElementById('notifList');
+  var badge = document.getElementById('notifBadge');
+  var cntEl = document.getElementById('notifDropdownCount');
+  if (!list) return;
+  if (badge) { badge.style.display = items.length > 0 ? 'flex' : 'none'; badge.textContent = items.length > 9 ? '9+' : items.length; }
+  if (cntEl) cntEl.textContent = items.length;
+  if (items.length === 0) {
+    list.innerHTML = '<div style="padding:2rem;text-align:center;"><div style="font-size:2rem;margin-bottom:0.5rem;">🔔</div><div style="color:#64748b;font-size:0.85rem;font-weight:500;">All clear — no notifications</div></div>';
+    return;
+  }
+  list.innerHTML = items.map(function(n) {
+    return '<div style="display:flex;gap:0.75rem;padding:10px 16px;border-bottom:1px solid #f8fafc;cursor:pointer;" onclick="if(\'' + (n.link || '') + '\'){window.open(\'' + (n.link || '') + '\',\'_blank\');}">'
+      + '<div style="width:32px;height:32px;border-radius:8px;background:' + (n.bg || '#ede9fe') + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+      + '<i class="fas ' + (n.icon || 'fa-bell') + '" style="color:' + (n.color || '#6366f1') + ';font-size:0.8rem;"></i></div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:0.82rem;font-weight:600;color:#1e293b;margin-bottom:2px;">' + escapeHtml(n.title || '') + '</div>'
+      + '<div style="font-size:0.75rem;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(n.body || '') + '</div></div>'
+      + (n.link ? '<a href="' + n.link + '" target="_blank" style="font-size:0.7rem;color:#6366f1;text-decoration:none;flex-shrink:0;margin-top:2px;" onclick="event.stopPropagation()"><i class="fas fa-external-link-alt"></i></a>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function markAllNotifRead() {
+  var badge = document.getElementById('notifBadge');
+  var cntEl = document.getElementById('notifDropdownCount');
+  if (badge) badge.style.display = 'none';
+  if (cntEl) cntEl.textContent = '0';
+  var list = document.getElementById('notifList');
+  if (list) list.innerHTML = '<div style="padding:2rem;text-align:center;"><div style="font-size:2rem;margin-bottom:0.5rem;">✅</div><div style="color:#64748b;font-size:0.85rem;">Marked all as read</div></div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PERSONA CARD GRID (replaces table rows)
+// ═══════════════════════════════════════════════════════════════════
+var _personaCurrentPage = 1;
+
+function renderPersonaCards() {
+  var grid    = document.getElementById('personaCardsGrid');
+  var pageEl  = document.getElementById('personaCardsPagination');
+  var countEl = document.getElementById('personaResultsCount');
+  if (!grid || !personaResults || personaResults.length === 0) return;
+
+  var pageSize = parseInt((document.getElementById('personaPageSizeSelect') || {}).value || '15');
+  var total = personaResults.length;
+  var totalPages = Math.ceil(total / pageSize);
+  if (_personaCurrentPage > totalPages) _personaCurrentPage = 1;
+
+  var start = (_personaCurrentPage - 1) * pageSize;
+  var slice = personaResults.slice(start, start + pageSize);
+
+  if (countEl) countEl.textContent = total + ' match' + (total !== 1 ? 'es' : '');
+
+  grid.innerHTML = slice.map(function(t, i) {
+    var rank = start + i;
+    var gradeColors = { A: { bg:'#dcfce7', text:'#15803d' }, B: { bg:'#dbeafe', text:'#1d4ed8' }, C: { bg:'#fef3c7', text:'#d97706' }, D: { bg:'#fee2e2', text:'#b91c1c' } };
+    var gc = gradeColors[t.auditGrade] || { bg:'#f1f5f9', text:'#64748b' };
+
+    var slotMatch = t.slotMatch === '✔️' || t.slotMatch === '\u2714\uFE0F';
+    var progressColor = function(v) {
+      if (!v || v === 'N/A' || v === 'Not Onboarded') return '#94a3b8';
+      var p = parseInt(v); if (isNaN(p)) return '#94a3b8';
+      return p >= 80 ? '#15803d' : p >= 50 ? '#d97706' : '#b91c1c';
+    };
+
+    var topBadge = rank === 0 ? '<span style="background:#fbbf24;color:#78350f;border-radius:99px;padding:1px 7px;font-size:0.62rem;font-weight:700;margin-left:4px;">Top Pick</span>' : '';
+    var rfBadge  = (t.redFlagCount || 0) > 0 ? '<span style="background:#fee2e2;color:#b91c1c;border-radius:99px;padding:1px 7px;font-size:0.62rem;font-weight:700;margin-left:4px;">⚑ ' + t.redFlagCount + ' flag</span>' : '';
+
+    return '<div style="background:#fff;border-radius:14px;border:1.5px solid #e2e8f0;padding:1.1rem;display:flex;flex-direction:column;gap:0.6rem;transition:box-shadow .15s,border-color .15s;" onmouseover="this.style.boxShadow=\'0 4px 18px rgba(99,102,241,0.12)\';this.style.borderColor=\'#c7d2fe\'" onmouseout="this.style.boxShadow=\'\';this.style.borderColor=\'#e2e8f0\'">'
+      // Card header
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">'
+      + '<div style="display:flex;align-items:center;gap:0.6rem;min-width:0;">'
+      + '<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;color:#fff;flex-shrink:0;">' + escapeHtml((t.teacherName || '').substring(0,2).toUpperCase()) + '</div>'
+      + '<div style="min-width:0;">'
+      + '<div style="font-weight:700;font-size:0.88rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t.teacherName || '') + topBadge + '</div>'
+      + '<div style="font-size:0.72rem;color:#64748b;">' + escapeHtml(t.ageYear || '—') + '</div>'
+      + '</div></div>'
+      // Grade badge
+      + '<div style="background:' + gc.bg + ';color:' + gc.text + ';border-radius:8px;padding:4px 10px;text-align:center;flex-shrink:0;">'
+      + '<div style="font-size:1.1rem;font-weight:800;line-height:1;">' + (t.auditGrade || '—') + '</div>'
+      + '<div style="font-size:0.58rem;font-weight:600;">GRADE</div>'
+      + '</div></div>'
+      // Rank number + flags
+      + '<div style="display:flex;align-items:center;gap:0.4rem;">'
+      + '<span style="font-size:0.68rem;color:#94a3b8;background:#f8fafc;border-radius:4px;padding:1px 6px;">#' + (rank + 1) + '</span>'
+      + rfBadge
+      + '</div>'
+      // Slot
+      + '<div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border-radius:8px;padding:6px 10px;">'
+      + '<span style="font-size:0.74rem;color:#64748b;">Slot Match</span>'
+      + '<span style="font-size:0.85rem;">' + (slotMatch ? '<span style="color:#15803d;font-weight:700;">✔ Matches</span>' : '<span style="color:#94a3b8;">✗ No match</span>') + '</span>'
+      + '</div>'
+      // Audit score
+      + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+      + '<span style="font-size:0.74rem;color:#64748b;">Audit (45d)</span>'
+      + '<span style="font-size:0.82rem;font-weight:600;color:' + gc.text + ';">' + escapeHtml(t.avgClassScore || 'No data') + (t.auditCount45 ? ' <span style="font-size:0.68rem;color:#94a3b8;">(' + t.auditCount45 + ' sessions)</span>' : '') + '</span>'
+      + '</div>'
+      // Courses
+      + '<div style="border-top:1px solid #f1f5f9;padding-top:0.5rem;">'
+      + '<div style="font-size:0.7rem;color:#94a3b8;font-weight:600;margin-bottom:4px;">COURSES</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:0.72rem;">'
+      + '<div style="color:#475569;">Current: <span style="color:' + progressColor(t.currentCourseProgress) + ';font-weight:600;">' + escapeHtml(t.currentCourseProgress || 'N/A') + '</span></div>'
+      + '<div style="color:#475569;">Future 1: <span style="color:' + progressColor(t.futureCourse1Progress) + ';font-weight:600;">' + escapeHtml(t.futureCourse1Progress || '—') + '</span></div>'
+      + '</div></div>'
+      // Traits gap
+      + (t.traitsMissing && t.traitsMissing.length > 0
+        ? '<div style="font-size:0.72rem;background:#fff7ed;border-radius:6px;padding:4px 8px;color:#92400e;">Missing traits: ' + escapeHtml(t.traitsMissing.join(', ')) + '</div>'
+        : '<div style="font-size:0.72rem;background:#f0fdf4;border-radius:6px;padding:4px 8px;color:#15803d;">All traits matched</div>')
+      + '</div>';
+  }).join('');
+
+  // Pagination
+  if (pageEl) {
+    if (totalPages <= 1) { pageEl.innerHTML = ''; return; }
+    var html = '';
+    for (var p = 1; p <= totalPages; p++) {
+      var active = p === _personaCurrentPage;
+      html += '<button onclick="_goPersonaPage(' + p + ')" style="width:32px;height:32px;border-radius:8px;border:1.5px solid ' + (active ? '#6366f1' : '#e2e8f0') + ';background:' + (active ? '#6366f1' : '#fff') + ';color:' + (active ? '#fff' : '#374151') + ';font-size:0.8rem;font-weight:' + (active ? '700' : '400') + ';cursor:pointer;">' + p + '</button>';
+    }
+    pageEl.innerHTML = html;
+  }
+}
+
+function _goPersonaPage(p) {
+  _personaCurrentPage = p;
+  renderPersonaCards();
+  var container = document.getElementById('personaResultsContainer');
+  if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 </script>

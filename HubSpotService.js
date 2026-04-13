@@ -2501,3 +2501,74 @@ try {
     return { success: false, message: e.message };
   }
 }
+
+// ── Stuck Migration Tracker ────────────────────────────────────────────────────
+function getStuckMigrations(thresholdDays) {
+  thresholdDays = thresholdDays || 7;
+  try {
+    var MIGRATION_PIPELINE_ID = '66161281';
+    var WIP_STAGE_IDS = ['128913748','128913750','128913752','1030980247','133755411','128913749'];
+    var STAGE_LABELS = {
+      '128913748': 'WIP',
+      '128913750': 'WIP - TP Approval Pending',
+      '128913752': 'WIP - CLS Approval Pending',
+      '1030980247': 'WIP - Rejected by CLS',
+      '133755411': 'WIP - Approved by CLS',
+      '128913749': 'WIP - PR Approval Pending'
+    };
+
+    var cutoffMs = Date.now() - (thresholdDays * 24 * 60 * 60 * 1000);
+    var url = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+    var payload = {
+      filterGroups: [{
+        filters: [
+          { propertyName: 'hs_pipeline', operator: 'EQ', value: MIGRATION_PIPELINE_ID },
+          { propertyName: 'hs_pipeline_stage', operator: 'IN', values: WIP_STAGE_IDS }
+        ]
+      }],
+      properties: ['subject','createdate','hs_pipeline_stage','current_teacher__t_','new_teacher','learner_uid','learner_full_name'],
+      limit: 100,
+      sorts: [{ propertyName: 'createdate', direction: 'ASCENDING' }]
+    };
+
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + _getHubSpotApiKey() },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    var resp = UrlFetchApp.fetch(url, options);
+    var data = JSON.parse(resp.getContentText());
+    var results = (data.results || []);
+    var tickets = [];
+
+    results.forEach(function(t) {
+      var props = t.properties || {};
+      var created = new Date(props.createdate || 0);
+      var createdMs = created.getTime();
+      if (createdMs > cutoffMs) return; // not stuck yet
+
+      var daysStuck = Math.floor((Date.now() - createdMs) / (1000 * 60 * 60 * 24));
+      var stageId = String(props.hs_pipeline_stage || '').trim();
+      tickets.push({
+        id: t.id,
+        jlid: props.learner_uid || '—',
+        learnerName: props.learner_full_name || props.subject || '—',
+        fromTeacher: props.current_teacher__t_ || '—',
+        toTeacher: props.new_teacher || '—',
+        stage: STAGE_LABELS[stageId] || ('Stage ' + stageId),
+        daysStuck: daysStuck,
+        createdDate: created.toLocaleDateString('en-GB'),
+        hubspotLink: 'https://app.hubspot.com/contacts/19520841/ticket/' + t.id
+      });
+    });
+
+    tickets.sort(function(a, b) { return b.daysStuck - a.daysStuck; });
+    return { success: true, count: tickets.length, tickets: tickets };
+  } catch (e) {
+    Logger.log('[getStuckMigrations] Error: ' + e.message);
+    return { success: false, count: 0, tickets: [], message: e.message };
+  }
+}

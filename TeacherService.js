@@ -1457,6 +1457,41 @@ function getTeacherProfileData(teacherName) {
       coursesByCategory[cat].push(entry);
     });
 
+    // ── Extra fields from Teacher Persona Mapping sheet ────────────────────
+    var gender = '', dateOfJoining = '', contactNumber = '';
+    try {
+      var personaMapData = _getCachedSheetData('Teacher Persona Mapping');
+      if (personaMapData && personaMapData.length > 1) {
+        var pmHeaders = personaMapData[0].map(function(h){ return String(h).trim(); });
+        var pmNameIdx    = pmHeaders.indexOf('Teacher Name');
+        var pmGenderIdx  = pmHeaders.indexOf('Gender');
+        var pmDojIdx     = pmHeaders.findIndex ? pmHeaders.findIndex(function(h){ return /date.*join/i.test(h); }) : -1;
+        if (pmDojIdx === -1) pmDojIdx = pmHeaders.indexOf('Date of Joining');
+        var pmContactIdx = pmHeaders.findIndex ? pmHeaders.findIndex(function(h){ return /contact|phone|mobile/i.test(h); }) : -1;
+        if (pmContactIdx === -1) pmContactIdx = pmHeaders.indexOf('Contact Number');
+
+        if (pmNameIdx > -1) {
+          var pmNameLower = String(teacherName).trim().toLowerCase();
+          for (var pr = 1; pr < personaMapData.length; pr++) {
+            var pmRow = personaMapData[pr];
+            if (String(pmRow[pmNameIdx] || '').trim().toLowerCase() === pmNameLower) {
+              if (pmGenderIdx  > -1) gender        = String(pmRow[pmGenderIdx]  || '').trim();
+              if (pmDojIdx     > -1) {
+                var doj = pmRow[pmDojIdx];
+                if (doj) {
+                  try { dateOfJoining = new Date(doj).toLocaleDateString('en-GB'); } catch(de) { dateOfJoining = String(doj).trim(); }
+                }
+              }
+              if (pmContactIdx > -1) contactNumber = String(pmRow[pmContactIdx] || '').trim();
+              break;
+            }
+          }
+        }
+      }
+    } catch(pe) {
+      Logger.log('[getTeacherProfileData] Persona enrichment error: ' + pe.message);
+    }
+
     return {
       success: true,
       profile: {
@@ -1465,7 +1500,10 @@ function getTeacherProfileData(teacherName) {
         status:            teacherInfo ? (teacherInfo.status  || 'N/A') : (loadData && loadData.status ? loadData.status : 'N/A'),
         manager:           teacherInfo ? (teacherInfo.manager || 'N/A') : 'N/A',
         clsManager:        teacherInfo ? (teacherInfo.clsManagerResponsible || 'N/A') : 'N/A',
-        joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : 'N/A',
+        joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : (dateOfJoining || 'N/A'),
+        gender:            gender || 'N/A',
+        dateOfJoining:     dateOfJoining || 'N/A',
+        contactNumber:     contactNumber || 'N/A',
         totalCourses:      courses.length,
         lastActivity:      loadData ? (loadData.lastActivity || 'N/A') : 'N/A',
         coursesByCategory: coursesByCategory,

@@ -226,6 +226,10 @@
         <div class="user-profile">
           <div class="user-avatar" id="userAvatar">AD</div>
           <div class="user-info"><div class="user-name" id="userName">Admin User</div><div class="user-role" id="userRole">Administrator</div></div>
+          <button id="notifBellBtn" onclick="toggleNotifDropdown()" title="Notifications" style="position:relative;background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:1.1rem;padding:6px;border-radius:8px;transition:background .15s;flex-shrink:0;" onmouseover="this.style.background='rgba(99,102,241,0.1)'" onmouseout="this.style.background='none'">
+            <i class="fas fa-bell"></i>
+            <span id="notifBadge" style="display:none;position:absolute;top:2px;right:2px;min-width:16px;height:16px;background:#ef4444;color:#fff;border-radius:99px;font-size:0.6rem;font-weight:700;line-height:16px;text-align:center;padding:0 3px;">0</span>
+          </button>
           <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i></button>
         </div>
       </div>
@@ -292,6 +296,66 @@
               <div class="kpi-sparkline"><canvas id="kpiSuccessRateSparkline"></canvas></div>
             </div>
             <div class="kpi-footer" id="kpiSuccessRateFooter">Loading trend...</div>
+          </div>
+        </div>
+
+        <!-- 2b. IMPACT SCORE + STUCK MIGRATIONS ROW -->
+        <div id="impactRow" style="display:grid;grid-template-columns:1fr 2fr;gap:1rem;margin-top:1rem;">
+          <!-- Global Impact Score -->
+          <div class="dashboard-section" style="padding:1.25rem 1.5rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+              <h3 class="dashboard-section-title" style="margin:0;font-size:0.9rem;">My Impact Score</h3>
+              <span style="font-size:0.7rem;color:#94a3b8;">30-day window</span>
+            </div>
+            <div id="impactScoreContent">
+              <div style="display:flex;align-items:center;gap:1.25rem;">
+                <div id="impactScoreCircle" style="width:72px;height:72px;border-radius:50%;background:conic-gradient(#6366f1 0%,#e2e8f0 0%);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;">
+                  <div style="width:56px;height:56px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;">
+                    <span id="impactScoreVal" style="font-size:1.25rem;font-weight:800;color:#1e293b;line-height:1;">0</span>
+                    <span style="font-size:0.55rem;color:#94a3b8;font-weight:600;">/ 100</span>
+                  </div>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div id="impactPercentile" style="font-size:0.78rem;color:#6366f1;font-weight:600;margin-bottom:4px;">Loading…</div>
+                  <div id="impactInsight" style="font-size:0.75rem;color:#64748b;line-height:1.4;"></div>
+                </div>
+              </div>
+              <div id="impactMiniStats" style="display:none;margin-top:0.75rem;gap:0.6rem;grid-template-columns:repeat(4,1fr);">
+                <div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px;">
+                  <div id="impactMigrations" style="font-size:1rem;font-weight:700;color:#6366f1;">0</div>
+                  <div style="font-size:0.62rem;color:#94a3b8;">Migrations</div>
+                </div>
+                <div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px;">
+                  <div id="impactAudits" style="font-size:1rem;font-weight:700;color:#10b981;">0</div>
+                  <div style="font-size:0.62rem;color:#94a3b8;">Audits</div>
+                </div>
+                <div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px;">
+                  <div id="impactEmails" style="font-size:1rem;font-weight:700;color:#f59e0b;">0</div>
+                  <div style="font-size:0.62rem;color:#94a3b8;">Emails</div>
+                </div>
+                <div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px;">
+                  <div id="impactTasks" style="font-size:1rem;font-weight:700;color:#3b82f6;">0</div>
+                  <div style="font-size:0.62rem;color:#94a3b8;">Tasks</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stuck Migrations -->
+          <div class="dashboard-section" style="padding:1.25rem 1.5rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+              <h3 class="dashboard-section-title" style="margin:0;font-size:0.9rem;display:flex;align-items:center;gap:0.5rem;">
+                <span id="stuckCountBadge" style="background:#fef2f2;color:#b91c1c;border-radius:99px;padding:1px 8px;font-size:0.72rem;font-weight:700;">0</span>
+                Stuck Migrations
+              </h3>
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <span style="font-size:0.7rem;color:#94a3b8;">WIP &gt; 7 days</span>
+                <button onclick="openStuckMigrationsModal()" style="font-size:0.72rem;color:#6366f1;background:#ede9fe;border:none;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:600;">View All →</button>
+              </div>
+            </div>
+            <div id="stuckMigrationsList" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;">
+              <div style="color:#94a3b8;font-size:0.82rem;text-align:center;padding:1rem 0;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+            </div>
           </div>
         </div>
 
@@ -2009,49 +2073,41 @@
 
     <!-- Section 3: Results -->
     <div id="personaResultsContainer" style="display:none;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+      <!-- Results Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem;">
         <div style="display:flex;align-items:center;gap:0.75rem;">
-          <i class="fas fa-list-ol" style="color:var(--primary);"></i>
+          <i class="fas fa-id-card" style="color:var(--primary);"></i>
           <span style="font-weight:700;font-size:1rem;color:#1e293b;">AI Ranked Recommendations</span>
           <span id="personaResultsCount" style="font-size:0.8rem;background:#ede9fe;color:#5b21b6;padding:2px 10px;border-radius:10px;font-weight:600;">0 matches</span>
         </div>
-        <div style="font-size:0.75rem;color:var(--text-muted);">
-          Ranked by: Slot availability · Audit score (45d) · Course readiness · Trait match
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <span style="font-size:0.74rem;color:var(--text-muted);">Show:</span>
+          <select id="personaPageSizeSelect" onchange="renderPersonaCards()" style="padding:4px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:0.78rem;color:#374151;cursor:pointer;">
+            <option value="15" selected>15</option>
+            <option value="30">30</option>
+            <option value="45">45</option>
+            <option value="60">60</option>
+            <option value="75">75</option>
+            <option value="100">100</option>
+          </select>
+          <span style="font-size:0.74rem;color:var(--text-muted);">per page</span>
         </div>
       </div>
 
-      <!-- Ranking legend -->
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;font-size:0.74rem;color:#64748b;">
-        <span><span style="color:#15803d;font-weight:700;">A</span> ≥65/80 &nbsp;
-              <span style="color:#1d4ed8;font-weight:700;">B</span> 50–64 &nbsp;
-              <span style="color:#d97706;font-weight:700;">C</span> 35–49 &nbsp;
-              <span style="color:#b91c1c;font-weight:700;">D</span> &lt;35 &nbsp;
-              <span style="color:#6b7280;">—</span> No audit data (45d)
-        </span>
-        <span>⚑ = Red flag from audit</span>
+      <!-- Grade legend -->
+      <div style="display:flex;gap:1.25rem;flex-wrap:wrap;margin-bottom:1rem;font-size:0.74rem;color:#64748b;align-items:center;">
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#dcfce7;color:#15803d;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">A</span> ≥65/80</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">B</span> 50–64</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#fef3c7;color:#d97706;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">C</span> 35–49</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#fee2e2;color:#b91c1c;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">D</span> &lt;35</span>
+        <span style="color:#94a3b8;">⚑ = Red flag from audit</span>
       </div>
 
-      <div class="table-container">
-        <table class="data-table" style="font-size:0.83rem;">
-          <thead>
-            <tr>
-              <th style="width:28px;">#</th>
-              <th>Teacher</th>
-              <th>Age/Year</th>
-              <th>Slot</th>
-              <th>Available Slots (day)</th>
-              <th id="currentCourseHeader">Current Course</th>
-              <th>Future 1</th>
-              <th>Future 2</th>
-              <th>Future 3</th>
-              <th>Audit (45d)</th>
-              <th>Flags</th>
-              <th>Traits Gap</th>
-            </tr>
-          </thead>
-          <tbody id="personaResultsBody"></tbody>
-        </table>
-      </div>
+      <!-- 3-per-row card grid -->
+      <div id="personaCardsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;"></div>
+
+      <!-- Pagination -->
+      <div id="personaCardsPagination" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-top:1.25rem;flex-wrap:wrap;"></div>
     </div>
 
   </div>
@@ -3950,5 +4006,85 @@
   }
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════
+     NOTIFICATION DROPDOWN (fixed position, outside sidebar)
+     ═══════════════════════════════════════════════════════ -->
+<div id="notifDropdown" style="display:none;position:fixed;bottom:72px;left:16px;width:340px;background:#fff;border:1.5px solid #e2e8f0;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:99999;overflow:hidden;">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.1rem 0.75rem;border-bottom:1px solid #f1f5f9;">
+    <div style="display:flex;align-items:center;gap:0.5rem;">
+      <i class="fas fa-bell" style="color:#6366f1;font-size:0.9rem;"></i>
+      <span style="font-weight:700;font-size:0.9rem;color:#1e293b;">Notifications</span>
+      <span id="notifDropdownCount" style="background:#ede9fe;color:#5b21b6;border-radius:99px;padding:1px 7px;font-size:0.68rem;font-weight:700;">0</span>
+    </div>
+    <button onclick="markAllNotifRead()" style="font-size:0.7rem;color:#6366f1;background:none;border:none;cursor:pointer;font-weight:600;padding:2px 6px;border-radius:4px;">Mark all read</button>
+  </div>
+  <div id="notifList" style="max-height:360px;overflow-y:auto;padding:0.4rem 0;">
+    <div style="padding:1.5rem;text-align:center;color:#94a3b8;font-size:0.83rem;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+  </div>
+</div>
+<div id="notifBackdrop" onclick="toggleNotifDropdown()" style="display:none;position:fixed;inset:0;z-index:99998;"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     STUCK MIGRATIONS FULL-SCREEN MODAL
+     ═══════════════════════════════════════════════════════ -->
+<div id="stuckMigrationsModal" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:min(960px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.25);">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid #e2e8f0;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <div style="width:36px;height:36px;border-radius:10px;background:#fef2f2;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-exclamation-triangle" style="color:#ef4444;font-size:0.9rem;"></i>
+        </div>
+        <div>
+          <h2 style="margin:0;font-size:1.1rem;font-weight:700;color:#1e293b;">Stuck Migration Tracker</h2>
+          <p style="margin:0;font-size:0.78rem;color:#64748b;">WIP tickets &gt; 7 days — sort by urgency and escalate</p>
+        </div>
+        <span id="stuckModalCount" style="background:#fef2f2;color:#b91c1c;border-radius:99px;padding:2px 10px;font-size:0.75rem;font-weight:700;">0 tickets</span>
+      </div>
+      <button onclick="closeStuckMigrationsModal()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;padding:4px 8px;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'"><i class="fas fa-times"></i></button>
+    </div>
+    <!-- Filters -->
+    <div style="padding:0.75rem 1.5rem;border-bottom:1px solid #f1f5f9;display:flex;gap:0.75rem;align-items:center;flex-shrink:0;">
+      <input id="stuckModalSearch" type="text" placeholder="Search by learner, teacher, JLID…" style="flex:1;padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;outline:none;" oninput="filterStuckModal(this.value)">
+      <select id="stuckModalStageFilter" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;" onchange="filterStuckModal(document.getElementById('stuckModalSearch').value)">
+        <option value="">All Stages</option>
+        <option value="WIP">WIP</option>
+        <option value="TP Approval">WIP - TP Approval Pending</option>
+        <option value="CLS Approval">WIP - CLS Approval Pending</option>
+        <option value="Rejected">WIP - Rejected by CLS</option>
+        <option value="Approved">WIP - Approved by CLS</option>
+        <option value="PR Approval">WIP - PR Approval Pending</option>
+      </select>
+      <button onclick="refreshStuckMigrationsModal()" style="padding:7px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;color:#475569;display:flex;align-items:center;gap:5px;"><i class="fas fa-sync-alt"></i> Refresh</button>
+    </div>
+    <!-- Table -->
+    <div style="overflow-y:auto;flex:1;padding:0 0.5rem;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.83rem;" id="stuckModalTable">
+        <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+          <tr>
+            <th onclick="sortStuckModal('daysStuck')" style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;cursor:pointer;white-space:nowrap;">Days Stuck <i class="fas fa-sort" style="opacity:0.4;font-size:0.7rem;"></i></th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">JLID</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Learner</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">From Teacher</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">To Teacher</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Stage</th>
+            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Created</th>
+            <th style="padding:10px 12px;text-align:center;font-weight:600;color:#64748b;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="stuckModalBody">
+          <tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Footer -->
+    <div style="padding:0.85rem 1.5rem;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fafafa;">
+      <span id="stuckModalFooterText" style="font-size:0.78rem;color:#64748b;"></span>
+      <button onclick="closeStuckMigrationsModal()" style="padding:7px 20px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;color:#374151;font-weight:500;">Close</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

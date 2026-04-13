@@ -774,3 +774,91 @@ function toggleUserStatus(targetUsername, newStatus, actingUser) {
     return { success: false, message: e.message };
   }
 }
+
+// ── User Impact Score (30-day activity summary) ─────────────────────────────
+function getUserImpactScore(username) {
+  try {
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG);
+    if (!sheet) return { success: false, score: 0, message: 'Activity log not found' };
+
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return { success: false, score: 0, message: 'No activity data' };
+
+    var headers = data[0].map(function(h){ return String(h).trim().toLowerCase(); });
+    var tsIdx = headers.indexOf('timestamp');
+    var uIdx  = headers.indexOf('username');
+    var aIdx  = headers.indexOf('action');
+    if (tsIdx === -1 || uIdx === -1 || aIdx === -1) return { success: false, score: 0, message: 'Log headers missing' };
+
+    var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    var userLower = String(username || '').trim().toLowerCase();
+
+    var ACTION_POINTS = {
+      migration: 8, 'learner migration': 8, 'migration email': 8,
+      audit: 6, 'audit run': 6, 'onboarding audit': 6,
+      invoice: 5, 'invoice generated': 5,
+      task: 4, 'task completed': 4, 'task created': 3,
+      email: 3, 'email sent': 3, 'onboarding email': 3,
+      login: 1, 'successful login': 1
+    };
+
+    var totalRaw = 0, migrations = 0, emails = 0, audits = 0, tasks = 0;
+    var allUsers = {};
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var ts = row[tsIdx];
+      if (!ts || new Date(ts) < cutoff) continue;
+      var rowUser = String(row[uIdx] || '').trim().toLowerCase();
+      var action  = String(row[aIdx] || '').trim().toLowerCase();
+
+      var pts = 0;
+      Object.keys(ACTION_POINTS).forEach(function(k) {
+        if (action.indexOf(k) > -1) pts = Math.max(pts, ACTION_POINTS[k]);
+      });
+
+      if (!allUsers[rowUser]) allUsers[rowUser] = 0;
+      allUsers[rowUser] += pts;
+
+      if (rowUser === userLower) {
+        totalRaw += pts;
+        if (action.indexOf('migration') > -1) migrations++;
+        if (action.indexOf('email') > -1) emails++;
+        if (action.indexOf('audit') > -1) audits++;
+        if (action.indexOf('task') > -1) tasks++;
+      }
+    }
+
+    var MAX_RAW = 200;
+    var score = Math.min(100, Math.round((totalRaw / MAX_RAW) * 100));
+
+    var allScores = Object.values(allUsers).sort(function(a,b){ return a - b; });
+    var pos = allScores.filter(function(s){ return s < totalRaw; }).length;
+    var percentile = allScores.length > 1 ? Math.round((pos / (allScores.length - 1)) * 100) : 100;
+
+    var milestones = [
+      { pts: 50, label: 'Bronze Operator', icon: '🥉' },
+      { pts: 100, label: 'Silver Operator', icon: '🥈' },
+      { pts: 150, label: 'Gold Operator', icon: '🥇' },
+      { pts: 200, label: 'Platinum Operator', icon: '🏆' }
+    ];
+    var nextMilestone = null;
+    for (var m = 0; m < milestones.length; m++) {
+      if (totalRaw < milestones[m].pts) { nextMilestone = milestones[m]; break; }
+    }
+
+    return {
+      success: true, score: score, percentile: percentile,
+      raw: totalRaw, migrationsHandled: migrations, emailsSent: emails,
+      auditsRun: audits, tasksCompleted: tasks,
+      nextMilestone: nextMilestone,
+      insight: score >= 80 ? 'Outstanding performance this month!' :
+               score >= 50 ? 'Solid contribution — keep it up.' :
+               score >= 20 ? 'Good start — aim for more migrations & audits.' :
+               'Log in and start taking actions to build your score.'
+    };
+  } catch (e) {
+    Logger.log('[getUserImpactScore] Error: ' + e.message);
+    return { success: false, score: 0, message: e.message };
+  }
+}
