@@ -8,26 +8,37 @@ const CONFIG = {
   MIGRATION_SHEET_ID: '1xzprj2U6NpJwoevBMvM1DVfIj76wVjAd0ZcMjVC1xMM',
   PERSONA_SHEET_ID: '1rSweVyLKEwb1xThFHMLoH4xWnrLs8wbRM_61VtRjGww',
   AUDIT_SHEET_ID:   '1iNrejNX3HA01UqYEch94HuKLQCffSPofB8KbD4D9sI4',
+  APP_DATA_SHEET_ID: '1XxC8Y0sWkBqoOa0Ntw6zhd5EYXTvaTAN4XhIH1hOwDE',
   DRIVE_FOLDER_ID: '1K-Zb9BO2dm_dPg2AWTDT5t-ghkPoRNSW', 
   HUBSPOT_API_KEY: 'pat-na1-840cfb1a-acb3-45d6-8b0d-31f8c3f7cb34', 
   CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com',
   EXCHANGE_RATE_API_URL: 'https://v6.exchangerate-api.com/v6/YOUR_API_KEY/latest/EUR', // Ensure this is set if using live rates
 
+  // Sheets that live in the main Migration Spreadsheet (stable reference data)
   SHEETS: {
     TEACHER_DATA: 'Teacher Data',
     COURSE_NAME: 'Course Name',
-    AUDIT_LOG: 'Audit Log',
     USER_PROFILES: 'User Profiles',
     TEACHER_COURSES: 'Teacher Courses',
     COURSE_PROGRESS_SUMMARY: 'Course Summary',
-    USER_ACTIVITY_LOG: 'User Activity Log', 
-    TASKS: 'Tasks', 
     INVOICE_PRODUCTS: 'Invoice Products',
-    TEACHER_HS_DATA:'Teacher HS values', 
-    COURSE_HS_DATA : 'Course HS values', 
-    HS_USER_DATA : 'HS User Values', 
-    PERSONA_DATA: 'Main Sheet',
-    EMAIL_LOGS: 'Email Logs' 
+    TEACHER_HS_DATA: 'Teacher HS values',
+    COURSE_HS_DATA: 'Course HS values',
+    HS_USER_DATA: 'HS User Values',
+    PERSONA_DATA: 'Main Sheet'
+  },
+  // Sheets that live in JetLearn App Data spreadsheet (logs that grow over time)
+  APP_DATA_SHEETS: {
+    AUDIT_LOG: 'Audit Log',
+    USER_ACTIVITY_LOG: 'User Activity Log',
+    EMAIL_LOGS: 'Email Logs',
+    TASKS: 'Tasks',
+    TP_NOTES: 'TP Notes',
+    MIGRATION_LOG: 'Migration Log',
+    ALERT_LOG: 'Alert Log',
+    UPSKILL_TRACKER: 'Upskill Tracker',
+    AUDIT_SUMMARY_CACHE: 'Audit Summary Cache',
+    ONBOARDING_TRACKER: 'Onboarding Tracker'
   },
   EMAIL: {
     FROM: 'hello@jet-learn.com',
@@ -38,7 +49,7 @@ const CONFIG = {
     AUDIT_REPORT_RECIPIENTS: 'sourav.pal@jet-learn.com'
   },
   RANGES: { 
-    TEACHER_DATA: 'A2:K',
+    TEACHER_DATA: 'A2:L',
     COURSE_DATA: 'A2:A',
     PERSONA_DATA: 'A1:BR',
     TEACHER_COURSES: 'A2:D',
@@ -159,19 +170,22 @@ function initializeSystem() {
   Logger.log('Initializing Migration System');
 
   try {
+    // Migration Sheet — stable reference data
     getOrCreateSheet(CONFIG.SHEETS.TEACHER_DATA);
     getOrCreateSheet(CONFIG.SHEETS.COURSE_NAME);
-    const auditSheet = getOrCreateSheet(CONFIG.SHEETS.AUDIT_LOG);
     getOrCreateSheet(CONFIG.SHEETS.USER_PROFILES);
     getOrCreateSheet(CONFIG.SHEETS.TEACHER_COURSES);
     getOrCreateSheet(CONFIG.SHEETS.COURSE_PROGRESS_SUMMARY);
-    getOrCreateSheet(CONFIG.SHEETS.USER_ACTIVITY_LOG);
-    getOrCreateSheet(CONFIG.SHEETS.TASKS);
-    const invoiceProductsSheet = getOrCreateSheet(CONFIG.SHEETS.INVOICE_PRODUCTS); 
+    const invoiceProductsSheet = getOrCreateSheet(CONFIG.SHEETS.INVOICE_PRODUCTS);
+
+    // App Data Sheet — logs that grow over time
+    const auditSheet        = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
+    const userActivitySheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
+    const tasksSheet        = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.TASKS);
 
     const userProfilesData = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
-    if (userProfilesData.length <= 1) { 
-      createDefaultUsers(); 
+    if (userProfilesData.length <= 1) {
+      createDefaultUsers();
     }
 
     if (auditSheet.getLastRow() === 0 || auditSheet.getRange('A1').isBlank()) {
@@ -185,14 +199,12 @@ function initializeSystem() {
       courseProgressSheet.appendRow(['Course Name', 'Not Onboarded', '1-10%', '11-20%', '21-30%', '31-40%', '41-50%', '51-60%', '61-70%', '71-80%', '81-90%', '91-99%', '100%']);
     }
 
-    const userActivitySheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG);
     if (userActivitySheet.getLastRow() === 0 || userActivitySheet.getRange('A1').isBlank()) {
-        userActivitySheet.appendRow(['Timestamp', 'Username', 'Action', 'Details', 'UserEmail']);
+      userActivitySheet.appendRow(['Timestamp', 'Username', 'Action', 'Details', 'UserEmail']);
     }
 
-    const tasksSheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.TASKS);
     if (tasksSheet.getLastRow() === 0 || tasksSheet.getRange('A1').isBlank()) {
-        tasksSheet.appendRow(['Task ID', 'Created', 'Learner JLID', 'Learner Name', 'Task Description', 'Assigned To', 'Status', 'Due Date', 'Notes']);
+      tasksSheet.appendRow(['Task ID', 'Created', 'Learner JLID', 'Learner Name', 'Task Description', 'Assigned To', 'Status', 'Due Date', 'Notes']);
     }
 
     if (invoiceProductsSheet.getLastRow() === 0 || invoiceProductsSheet.getRange('A1').isBlank()) {
@@ -329,15 +341,18 @@ function getSystemHealth() {
       const migrationSpreadsheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID);
       health.spreadsheetAccess = true;
 
+      // Migration Sheet — stable reference data
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TEACHER_DATA)) health.sheets.teacherData = true;
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.COURSE_NAME)) health.sheets.courseName = true;
-      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.AUDIT_LOG)) health.sheets.auditLog = true;
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.USER_PROFILES)) health.sheets.userProfiles = true;
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TEACHER_COURSES)) health.sheets.teacherCourses = true;
       if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.COURSE_PROGRESS_SUMMARY)) health.sheets.courseProgressSummary = true;
-      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG)) health.sheets.userActivityLog = true;
-      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.TASKS)) health.sheets.tasks = true;
-      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.INVOICE_PRODUCTS)) health.sheets.invoiceProducts = true; 
+      if (migrationSpreadsheet.getSheetByName(CONFIG.SHEETS.INVOICE_PRODUCTS)) health.sheets.invoiceProducts = true;
+      // App Data Sheet — logs
+      const appDataSpreadsheet = _getSpreadsheet(CONFIG.APP_DATA_SHEET_ID);
+      if (appDataSpreadsheet && appDataSpreadsheet.getSheetByName(CONFIG.APP_DATA_SHEETS.AUDIT_LOG)) health.sheets.auditLog = true;
+      if (appDataSpreadsheet && appDataSpreadsheet.getSheetByName(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG)) health.sheets.userActivityLog = true;
+      if (appDataSpreadsheet && appDataSpreadsheet.getSheetByName(CONFIG.APP_DATA_SHEETS.TASKS)) health.sheets.tasks = true;
 
       try {
         const personaSpreadsheet = _getSpreadsheet(CONFIG.PERSONA_SHEET_ID);
@@ -364,7 +379,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "366";
+const APP_VERSION = "415";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -420,6 +435,82 @@ function debugCourseLabel() {
     }
   }
 }
+
+/**
+ * ONE-TIME TEST — Run from Apps Script editor to verify HubSpot task creation.
+ * Creates a test upskilling task assigned to sourav.pal@jet-learn.com on deal JL39611449152C2.
+ */
+function testCreateUpskillTask() {
+  var jlid          = 'JL39611449152C2';
+  var teacherName   = 'Demo Teacher';
+  // Pass your HubSpot Record ID from the HS User Values sheet directly
+  var tpManagerHsId = '594932888'; // Sourav Pal
+  var gapCourses    = ['Python 2.0: Beyond the Basics', 'Python Game Developer', 'Pro Game Developer in Python'];
+
+  // Fetch deal to get dealId and learner name
+  var hsResult    = fetchHubspotByJlid(jlid);
+  var dealId      = (hsResult.success && hsResult.data) ? hsResult.data.dealId      : '';
+  var learnerName = (hsResult.success && hsResult.data) ? hsResult.data.learnerName : 'Test Learner';
+
+  Logger.log('[testCreateUpskillTask] dealId=' + dealId + ', learner=' + learnerName + ', ownerId=' + tpManagerHsId);
+
+  createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsId, gapCourses, dealId);
+
+  Logger.log('[testCreateUpskillTask] Done. Check HubSpot tasks.');
+}
+
+function clearOldHiddenTeachers() {
+  PropertiesService.getScriptProperties().deleteProperty('HIDDEN_TEACHERS');
+  Logger.log('Cleared HIDDEN_TEACHERS from Script Properties');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE-TIME SETUP: Run this ONCE from the GAS editor to create the App Data spreadsheet.
+// After running, copy the logged Spreadsheet ID into CONFIG.APP_DATA_SHEET_ID above.
+// ─────────────────────────────────────────────────────────────────────────────
+function setupAppDataSpreadsheet() {
+  var ss = SpreadsheetApp.create('JetLearn App Data');
+
+  // ── TP Notes ──────────────────────────────────────────────────────────────
+  var tpNotes = ss.getActiveSheet();
+  tpNotes.setName('TP Notes');
+  tpNotes.appendRow(['ID', 'Teacher Name', 'TP Manager', 'Note', 'Created By', 'Created At', 'Updated At']);
+  tpNotes.setFrozenRows(1);
+
+  // ── Migration Log ─────────────────────────────────────────────────────────
+  var migLog = ss.insertSheet('Migration Log');
+  migLog.appendRow(['ID', 'JLID', 'Learner Name', 'Old Teacher', 'New Teacher', 'TP Manager', 'CLS Manager', 'Reason', 'Migrated By', 'Migrated At', 'HubSpot Deal ID', 'Status']);
+  migLog.setFrozenRows(1);
+
+  // ── Alert Log ─────────────────────────────────────────────────────────────
+  var alertLog = ss.insertSheet('Alert Log');
+  alertLog.appendRow(['ID', 'Alert Type', 'Teacher Name', 'TP Manager', 'JLID', 'Learner', 'Details', 'Sent At', 'Email Sent To']);
+  alertLog.setFrozenRows(1);
+
+  // ── Upskill Tracker ───────────────────────────────────────────────────────
+  var upskill = ss.insertSheet('Upskill Tracker');
+  upskill.appendRow(['ID', 'Teacher Name', 'TP Manager', 'JLID', 'Learner', 'Gap Courses', 'HubSpot Task ID', 'Status', 'Created At', 'Completed At', 'Notes']);
+  upskill.setFrozenRows(1);
+
+  // ── Audit Summary Cache ───────────────────────────────────────────────────
+  var auditCache = ss.insertSheet('Audit Summary Cache');
+  auditCache.appendRow(['Teacher Name', 'Audit Type', 'Latest Date', 'Latest Score', 'Latest Grade', 'Total Audits', 'Red Flag Count', 'Avg Score (All Time)', 'Last Updated']);
+  auditCache.setFrozenRows(1);
+
+  var id = ss.getId();
+  Logger.log('=======================================================');
+  Logger.log('JetLearn App Data spreadsheet created!');
+  Logger.log('Spreadsheet ID: ' + id);
+  Logger.log('URL: ' + ss.getUrl());
+  Logger.log('Copy the ID above into CONFIG.APP_DATA_SHEET_ID in Code.js');
+  Logger.log('=======================================================');
+
+  // Auto-save ID to Script Properties as backup
+  PropertiesService.getScriptProperties().setProperty('APP_DATA_SHEET_ID', id);
+
+  return id;
+}
+
 
 
 

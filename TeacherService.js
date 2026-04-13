@@ -17,7 +17,7 @@ function getTeacherData() {
         autoPrefix = 'Ms.';
       }
 
-      return { 
+      return {
         name: String(row[1] || '').trim(),
         email: String(row[8] || '').trim(),
         clsEmail: String(row[9] || '').trim(),
@@ -26,9 +26,8 @@ function getTeacherData() {
         clsManagerResponsible: String(row[7] || '').trim(),
         status: String(row[3] || 'Active').trim(),
         joinDate: row[2],
-        
-        // 2. Add the calculated prefix property
-        prefix: autoPrefix 
+        hiddenInSearch: String(row[11] || '').trim(),
+        prefix: autoPrefix
       };
     }).filter(person => person.name !== ''); 
 
@@ -135,6 +134,37 @@ function getTeacherDetailsForTable() {
       Logger.log('[getTeacherDetailsForTable] Persona map error: ' + e.message);
     }
 
+    // Load hidden teachers from Script Properties and merge with Persona sheet
+    const hiddenTeachersMap = getHiddenTeachersMap();
+
+
+    // ── Step 3b: Build Persona Traits map ──────────────────────────
+    const traitsMap = {};
+    try {
+      const personaTraitData = _getCachedSheetData('Teacher Persona Mapping');
+      if (personaTraitData && personaTraitData.length > 1) {
+        const ptHeaders = personaTraitData[0].map(h => String(h).trim());
+        const ptNameCol = ptHeaders.indexOf('Teacher Name');
+        const traitCols = [];
+        ptHeaders.forEach((h, i) => {
+          if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) traitCols.push(i);
+        });
+        personaTraitData.slice(1).forEach(row => {
+          const name = String(row[ptNameCol] || '').trim().toLowerCase();
+          if (!name) return;
+          const traits = [];
+          traitCols.forEach(i => { const t = String(row[i] || '').trim(); if (t) traits.push(t); });
+          traitsMap[name] = traits;
+        });
+      }
+    } catch(e) { Logger.log('[getTeacherDetailsForTable] traitsMap error: ' + e.message); }
+
+    // ── Step 3c: Build Audit Score map (45 days) ──────────────────────
+    let auditScoreMap45 = {};
+    try { auditScoreMap45 = _buildAuditScoreMapDays(45); } catch(ae) {
+      Logger.log('[getTeacherDetailsForTable] auditScoreMap45 error: ' + ae.message);
+    }
+
     // \u2500\u2500 Step 4: Build the final, enriched result array \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     const finalTeacherDetails = allTeachersFromDataSheet.map(teacher => {
       const teacherName = teacher.name;
@@ -170,10 +200,19 @@ function getTeacherDetailsForTable() {
         activeCourses:  (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.total  : 0),
         activeCoding:   (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.coding : 0),
         activeMath:     (['Active','EWS','Friendly'].includes(teacher.status) ? hsData.math   : 0),
-        hiddenInSearch: personaEntry.hiddenInSearch || '',
+        hiddenInSearch: personaEntry.hiddenInSearch || teacher.hiddenInSearch || '',
 
         // Get last activity from the audit log
-        lastActivity:  getTeacherLastActivity(teacherName)
+        lastActivity:  getTeacherLastActivity(teacherName),
+
+        // Traits & Audit grade — fed into allTeacherDetailsCache on the frontend
+        traits:     traitsMap[teacherNorm] || traitsMap[resolvedNorm] || [],
+        auditGrade: (() => {
+          const ad = auditScoreMap45[teacherNorm] || auditScoreMap45[resolvedNorm] || null;
+          if (!ad || ad.avgScore == null) return '—';
+          const sc = ad.avgScore;
+          return sc >= 65 ? 'A' : sc >= 50 ? 'B' : sc >= 35 ? 'C' : 'D';
+        })()
       };
     });
 
@@ -821,17 +860,21 @@ function searchMatchingTeachers(requestData) {
     });
     Logger.log('[SMT] calendarIdMap: ' + Object.keys(calendarIdMap).length + ' teachers with calendar IDs');
 
-    // ── 3c. Build name → jetlearn email map from Teacher Data ──
+    // ── 3c. Build name → jetlearn email map + hidden set from Teacher Data ──
     var teacherEmailMap = {}; // normalizedName → jetlearn email (row[8])
+    var hiddenTeacherSet = {};
     try {
       var tdRows = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
       tdRows.slice(1).forEach(function(row) {
         var n  = String(row[1] || '').trim();
         var em = String(row[8] || '').trim().toLowerCase();
         if (n && em) teacherEmailMap[normalizeTeacherName(n)] = em;
+        // Build hidden set from col L (index 11 = "Hide in Search")
+        var hideFlag = String(row[11] || '').trim().toLowerCase();
+        if (n && hideFlag === 'yes') hiddenTeacherSet[normalizeTeacherName(n)] = true;
       });
     } catch(tde) { Logger.log('[SMT] teacherEmailMap error: ' + tde.message); }
-    Logger.log('[SMT] teacherEmailMap: ' + Object.keys(teacherEmailMap).length + ' teachers with emails');
+    Logger.log('[SMT] teacherEmailMap: ' + Object.keys(teacherEmailMap).length + ' teachers | hiddenSet: ' + Object.keys(hiddenTeacherSet).length);
 
     // ── Calendar slot helpers ──
     var _calSlotCache  = {}; // key: calId+'_'+dateStr → [{startMs,endMs}] or null (error)
@@ -1105,15 +1148,7 @@ function searchMatchingTeachers(requestData) {
     }
 
     // ── 4. Load Teacher Persona Mapping — traits + age (join by name) ──
-    var personaMap       = {}; // normalizedName → { traits[], ageGroups[] }
-    // Load hidden teachers from Script Properties (set by "Hide" button on replacement page)
-    var hiddenTeacherSet = {};
-    try {
-      var rawHidden = getHiddenTeachersMap();
-      Object.keys(rawHidden).forEach(function(name) {
-        hiddenTeacherSet[normalizeTeacherName(name)] = true;
-      });
-    } catch(he) { Logger.log('[SMT] hiddenTeachers load error: ' + he.message); }
+    var personaMap = {}; // normalizedName → { traits[], ageGroups[] }
     Logger.log('[SMT] hiddenTeacherSet: ' + Object.keys(hiddenTeacherSet).length + ' teachers hidden');
     try {
       var personaData = _getCachedSheetData('Teacher Persona Mapping');
@@ -1331,7 +1366,8 @@ function searchMatchingTeachers(requestData) {
             if (!thisSlotMatched) {
               calSlots.forEach(function(cs) {
                 var lbl = utcMsToCetLabel(cs.startMs, cs.endMs, req.date);
-                if (allAlternate.indexOf(lbl) === -1) allAlternate.push(lbl);
+                var exists = allAlternate.some(function(x) { return (x.lbl || x) === lbl; });
+                if (!exists) allAlternate.push({ lbl: lbl, startMs: cs.startMs });
               });
             }
           }
@@ -1351,7 +1387,10 @@ function searchMatchingTeachers(requestData) {
               slotsMatched++;
             } else {
               // Only add alternates if this slot wasn't matched
-              slotArr.forEach(function(sv) { if (allAlternate.indexOf(sv) === -1) allAlternate.push(sv); });
+              slotArr.forEach(function(sv) {
+                var exists = allAlternate.some(function(x) { return (x.lbl || x) === sv; });
+                if (!exists) allAlternate.push({ lbl: sv, startMs: 0 });
+              });
             }
           }
         }
@@ -1432,7 +1471,7 @@ function searchMatchingTeachers(requestData) {
         ageYear               : candidateAgeGroups.join(', ') || 'N/A',
         slotMatch             : slotLabel,
         slotFullMatch         : isFullSlotMatch,
-        alternateSlots        : allAlternate.join(', '),
+        alternateSlots        : allAlternate.sort(function(a,b){ return (a.startMs||0)-(b.startMs||0); }).map(function(x){ return x.lbl||x; }).join(', '),
         currentCourseProgress : currentCourseProgress,
         futureCourse1Progress : fcProg(futureCourses[0]),
         futureCourse2Progress : fcProg(futureCourses[1]),
@@ -2090,6 +2129,41 @@ function getTeacherProfileData(teacherName) {
       coursesByCategory[cat].push(entry);
     });
 
+    // ── Extra fields from Teacher Persona Mapping sheet ──────────────────────
+    var gender = '', dateOfJoining = '', contactNumber = '';
+    try {
+      var personaMapData = _getCachedSheetData('Teacher Persona Mapping');
+      if (personaMapData && personaMapData.length > 1) {
+        var pmHeaders = personaMapData[0].map(function(h){ return String(h).trim(); });
+        var pmNameIdx    = pmHeaders.indexOf('Teacher Name');
+        var pmGenderIdx  = pmHeaders.indexOf('Gender');
+        var pmDojIdx     = pmHeaders.findIndex(function(h){ return /date.*join/i.test(h); });
+        if (pmDojIdx === -1) pmDojIdx = pmHeaders.indexOf('Date of Joining');
+        var pmContactIdx = pmHeaders.findIndex(function(h){ return /contact|phone|mobile/i.test(h); });
+        if (pmContactIdx === -1) pmContactIdx = pmHeaders.indexOf('Contact Number');
+
+        if (pmNameIdx > -1) {
+          var pmNameLower = String(teacherName).trim().toLowerCase();
+          for (var pr = 1; pr < personaMapData.length; pr++) {
+            var pmRow = personaMapData[pr];
+            if (String(pmRow[pmNameIdx] || '').trim().toLowerCase() === pmNameLower) {
+              if (pmGenderIdx  > -1) gender        = String(pmRow[pmGenderIdx]  || '').trim();
+              if (pmDojIdx     > -1) {
+                var doj = pmRow[pmDojIdx];
+                if (doj) {
+                  try { dateOfJoining = new Date(doj).toLocaleDateString('en-GB'); } catch(de) { dateOfJoining = String(doj).trim(); }
+                }
+              }
+              if (pmContactIdx > -1) contactNumber = String(pmRow[pmContactIdx] || '').trim();
+              break;
+            }
+          }
+        }
+      }
+    } catch(pe) {
+      Logger.log('[getTeacherProfileData] Persona enrichment error: ' + pe.message);
+    }
+
     return {
       success: true,
       profile: {
@@ -2098,7 +2172,10 @@ function getTeacherProfileData(teacherName) {
         status:            teacherInfo ? (teacherInfo.status  || 'N/A') : (loadData && loadData.status ? loadData.status : 'N/A'),
         manager:           teacherInfo ? (teacherInfo.manager || 'N/A') : 'N/A',
         clsManager:        teacherInfo ? (teacherInfo.clsManagerResponsible || 'N/A') : 'N/A',
-        joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : 'N/A',
+        joinDate:          teacherInfo && teacherInfo.joinDate ? new Date(teacherInfo.joinDate).toLocaleDateString('en-GB') : (dateOfJoining || 'N/A'),
+        gender:            gender || 'N/A',
+        dateOfJoining:     dateOfJoining || 'N/A',
+        contactNumber:     contactNumber || 'N/A',
         totalCourses:      courses.length,
         lastActivity:      loadData ? (loadData.lastActivity || 'N/A') : 'N/A',
         coursesByCategory: coursesByCategory,
@@ -2235,18 +2312,26 @@ function _buildAuditScoreMap() {
  */
 function setTeacherVisibility(teacherName, isHidden) {
   try {
-    // Store hidden set in Script Properties — no sheet write permission needed
-    var props  = PropertiesService.getScriptProperties();
-    var raw    = props.getProperty('HIDDEN_TEACHERS') || '{}';
-    var hidden = {};
-    try { hidden = JSON.parse(raw); } catch(e) {}
-    if (isHidden) {
-      hidden[teacherName.trim()] = true;
-    } else {
-      delete hidden[teacherName.trim()];
+    var ss    = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEETS.TEACHER_DATA);
+    if (!sheet) throw new Error('Teacher Data sheet not found');
+
+    // Sheet has a header row at row 1; data starts at row 2
+    // Columns: A=TeacherID, B=Name, ..., L=Hide in Search (index 11, col 12)
+    var data   = sheet.getDataRange().getValues();
+    var needle = teacherName.trim().toLowerCase();
+    var updated = false;
+
+    for (var r = 1; r < data.length; r++) { // row 0 = header
+      if (String(data[r][1] || '').trim().toLowerCase() === needle) {
+        sheet.getRange(r + 1, 12).setValue(isHidden ? 'Yes' : ''); // col L = 12
+        updated = true;
+        break;
+      }
     }
-    props.setProperty('HIDDEN_TEACHERS', JSON.stringify(hidden));
-    Logger.log('[setTeacherVisibility] Saved to Script Properties: ' + teacherName + ' hidden=' + isHidden);
+    if (!updated) throw new Error('Teacher "' + teacherName + '" not found in Teacher Data sheet');
+
+    Logger.log('[setTeacherVisibility] Teacher Data sheet updated: ' + teacherName + ' hidden=' + isHidden);
     return { success: true, message: teacherName + (isHidden ? ' hidden' : ' unhidden') + ' successfully.' };
   } catch(e) {
     Logger.log('[setTeacherVisibility] Error: ' + e.message);
@@ -2254,12 +2339,21 @@ function setTeacherVisibility(teacherName, isHidden) {
   }
 }
 
-// Helper: get all hidden teacher names from Script Properties
+// Helper: get all hidden teacher names from Teacher Data sheet (col L = Hide in Search)
 function getHiddenTeachersMap() {
   try {
-    var raw = PropertiesService.getScriptProperties().getProperty('HIDDEN_TEACHERS') || '{}';
-    return JSON.parse(raw);
-  } catch(e) { return {}; }
+    var data = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+    var map  = {};
+    for (var i = 1; i < data.length; i++) {
+      var name   = String(data[i][1] || '').trim();
+      var hidden = String(data[i][11] || '').trim().toLowerCase();
+      if (name && hidden === 'yes') map[name] = true;
+    }
+    return map;
+  } catch(e) {
+    Logger.log('[getHiddenTeachersMap] Error: ' + e.message);
+    return {};
+  }
 }
 
 /**
@@ -2517,4 +2611,644 @@ function testCalendarSlotAvailability() {
   });
 
   Logger.log('\n===== TEST COMPLETE =====');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TP MANAGER DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Reads all 3 audit sheets and returns records as an array of objects.
+ */
+function _getAllAuditRecords() {
+  var ss      = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+  var sheets  = ['Coding Audit\'26', 'Math Audit\'26', 'GCSE Audit\'26'];
+  var records = [];
+  sheets.forEach(function(sheetName) {
+    try {
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) return;
+      var data = sheet.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        var teacher = String(row[2] || '').trim();
+        if (!teacher) continue;
+        var fmtDate = function(v) {
+          if (!v) return '';
+          try { return Utilities.formatDate(new Date(v), Session.getScriptTimeZone(), 'yyyy-MM-dd'); } catch(e) { return String(v); }
+        };
+        records.push({
+          auditType       : sheetName,
+          date            : fmtDate(row[1]),
+          teacher         : teacher,
+          learner         : String(row[3]  || '').trim(),
+          course          : String(row[4]  || '').trim(),
+          classType       : String(row[5]  || '').trim(),
+          classDate       : fmtDate(row[6]),
+          recording       : String(row[8]  || '').trim(),
+          auditReason     : String(row[9]  || '').trim(),
+          priority        : String(row[10] || '').trim(),
+          auditor         : String(row[12] || '').trim(),
+          classScore      : (row[13] !== '' && row[13] !== null && row[13] !== undefined) ? Number(row[13]) : null,
+          warmUp          : (row[14] !== '' && row[14] !== null && row[14] !== undefined) ? Number(row[14]) : null,
+          activity        : (row[15] !== '' && row[15] !== null && row[15] !== undefined) ? Number(row[15]) : null,
+          wrapUp          : (row[16] !== '' && row[16] !== null && row[16] !== undefined) ? Number(row[16]) : null,
+          overallHygiene  : (row[17] !== '' && row[17] !== null && row[17] !== undefined) ? Number(row[17]) : null,
+          redFlags        : String(row[18] || '').trim(),
+          completionDate  : fmtDate(row[19])
+        });
+      }
+    } catch(e) {
+      Logger.log('[_getAllAuditRecords] Error reading ' + sheetName + ': ' + e.message);
+    }
+  });
+  return records;
+}
+
+/**
+ * Returns grade letter based on score out of 80.
+ */
+function _auditGrade(score) {
+  if (score === null || score === undefined || isNaN(score)) return '—';
+  if (score >= 65) return 'A';
+  if (score >= 50) return 'B';
+  if (score >= 35) return 'C';
+  return 'D';
+}
+
+/**
+ * Main server function for TP Manager Dashboard.
+ * Returns all teachers under the given TP manager with their audit summary.
+ */
+/**
+ * @param {string} tpManagerName
+ * @param {string} dateFrom  — ISO date string e.g. "2026-02-08" (optional, default 60 days ago)
+ * @param {string} dateTo    — ISO date string e.g. "2026-04-09" (optional, default today)
+ */
+function getTPManagerDashboard(tpManagerName, dateFrom, dateTo) {
+  try {
+    if (!tpManagerName) return { success: false, message: 'TP Manager name required.' };
+
+    // Date range — default last 60 days
+    var now    = new Date();
+    var toMs   = dateTo   ? new Date(dateTo).getTime()   : now.getTime();
+    var fromMs = dateFrom ? new Date(dateFrom).getTime() : (now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    // 1. Get all teachers under this TP
+    var allTeachers = getTeacherData();
+    var myTeachers  = allTeachers.filter(function(t) {
+      return t.manager && t.manager.trim().toLowerCase() === tpManagerName.trim().toLowerCase();
+    });
+    if (myTeachers.length === 0) return { success: true, teachers: [], summary: {} };
+
+    // 2. Get all audit records then filter by date range
+    var allAudits = _getAllAuditRecords();
+    var rangedAudits = allAudits.filter(function(a) {
+      if (!a.date) return false;
+      var d = new Date(a.date).getTime();
+      return d >= fromMs && d <= toMs;
+    });
+
+    // 3. Build per-teacher summary
+    var teacherRows = myTeachers.map(function(t) {
+      var tNameNorm = t.name.trim().toLowerCase();
+
+      // All audits for this teacher (ALL TIME for latest score)
+      var allMyAudits = allAudits.filter(function(a) {
+        return a.teacher.trim().toLowerCase() === tNameNorm;
+      }).sort(function(a, b) {
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+
+      // Date-ranged audits for this teacher
+      var rangedMyAudits = rangedAudits.filter(function(a) {
+        return a.teacher.trim().toLowerCase() === tNameNorm;
+      }).sort(function(a, b) {
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+
+      var latest      = allMyAudits.length > 0 ? allMyAudits[0] : null;
+      var lastScore   = latest ? latest.classScore : null;
+      var lastGrade   = _auditGrade(lastScore);
+      var lastDate    = latest ? latest.date : null;
+      var lastAuditor = latest ? latest.auditor : '';
+
+      // Red flag incidents within date range, per audit type
+      var redFlagIncidents = [];
+      rangedMyAudits.forEach(function(a) {
+        if (a.redFlags) {
+          redFlagIncidents.push({
+            auditType : a.auditType,
+            learner   : a.learner,
+            course    : a.course,
+            date      : a.date,
+            flags     : a.redFlags,
+            score     : a.classScore,
+            grade     : _auditGrade(a.classScore),
+            recording : a.recording,
+            auditor   : a.auditor,
+            warmUp    : a.warmUp,
+            activity  : a.activity,
+            wrapUp    : a.wrapUp,
+            hygiene   : a.overallHygiene
+          });
+        }
+      });
+
+      // Group ranged audits by audit type (Coding / Math / GCSE)
+      var byType = {};
+      rangedMyAudits.forEach(function(a) {
+        var type = a.auditType.replace(" Audit'26", '').trim(); // "Coding", "Math", "GCSE"
+        if (!byType[type]) byType[type] = [];
+        byType[type].push({
+          date      : a.date,
+          learner   : a.learner,
+          course    : a.course,
+          score     : a.classScore,
+          grade     : _auditGrade(a.classScore),
+          redFlags  : a.redFlags,
+          auditor   : a.auditor,
+          recording : a.recording,
+          warmUp    : a.warmUp,
+          activity  : a.activity,
+          wrapUp    : a.wrapUp,
+          hygiene   : a.overallHygiene
+        });
+      });
+
+      // Due for audit: no audit in last 30 days
+      var thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+      var dueForAudit = !lastDate || new Date(lastDate).getTime() < thirtyDaysAgo;
+
+      // Risk score: High / Medium / Low / Stable
+      var riskScore;
+      if (t.status === 'EWS' || lastGrade === 'D') {
+        riskScore = 'High';
+      } else if (lastGrade === 'C' || redFlagIncidents.length >= 2) {
+        riskScore = 'Medium';
+      } else if (lastGrade === 'B' || redFlagIncidents.length === 1) {
+        riskScore = 'Low';
+      } else {
+        riskScore = 'Stable';
+      }
+
+      return {
+        name            : t.name,
+        status          : t.status,
+        email           : t.email,
+        hiddenInSearch  : t.hiddenInSearch || '',
+        lastAuditDate   : lastDate,
+        lastScore       : lastScore,
+        lastGrade       : lastGrade,
+        lastAuditor     : lastAuditor,
+        auditCountAll   : allMyAudits.length,
+        auditCountRange : rangedMyAudits.length,
+        redFlagCount    : redFlagIncidents.length,
+        redFlagIncidents: redFlagIncidents,
+        auditsByType    : byType,
+        dueForAudit     : dueForAudit,
+        riskScore       : riskScore,
+        lastAuditDetail : latest ? {
+          course    : latest.course,
+          learner   : latest.learner,
+          classType : latest.classType,
+          recording : latest.recording,
+          warmUp    : latest.warmUp,
+          activity  : latest.activity,
+          wrapUp    : latest.wrapUp,
+          hygiene   : latest.overallHygiene,
+          redFlags  : latest.redFlags,
+          auditor   : latest.auditor
+        } : null
+      };
+    });
+
+    // 4. Summary stats (based on date range)
+    var ewsCount     = teacherRows.filter(function(t) { return t.status === 'EWS'; }).length;
+    var noAuditCount = teacherRows.filter(function(t) { return t.auditCountRange === 0; }).length;
+    var redFlagTotal = teacherRows.reduce(function(s, t) { return s + t.redFlagCount; }, 0);
+    var scores       = teacherRows.filter(function(t) { return t.lastScore !== null; }).map(function(t) { return t.lastScore; });
+    var avgScore     = scores.length > 0 ? Math.round(scores.reduce(function(a,b){return a+b;},0) / scores.length) : null;
+
+    return {
+      success  : true,
+      teachers : teacherRows,
+      dateFrom : new Date(fromMs).toISOString().substring(0, 10),
+      dateTo   : new Date(toMs).toISOString().substring(0, 10),
+      summary  : { total: teacherRows.length, ewsCount: ewsCount, noAudit: noAuditCount, redFlags: redFlagTotal, avgScore: avgScore }
+    };
+  } catch(e) {
+    Logger.log('[getTPManagerDashboard] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TP NOTES
+// ─────────────────────────────────────────────────────────────────────────────
+function saveTPNote(teacherName, tpManager, noteText, createdBy) {
+  try {
+    if (!teacherName || !noteText) return { success: false, message: 'Teacher and note required.' };
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.TP_NOTES);
+    var id = Utilities.getUuid();
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([id, teacherName, tpManager || '', noteText, createdBy || Session.getActiveUser().getEmail(), now, now]);
+    return { success: true, id: id };
+  } catch(e) {
+    Logger.log('[saveTPNote] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function getTPNotes(teacherName) {
+  try {
+    var data = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.TP_NOTES);
+    if (data.length < 2) return { success: true, notes: [] };
+    var nameLow = (teacherName || '').toLowerCase().trim();
+    var notes = data.slice(1).filter(function(r) {
+      return String(r[1] || '').toLowerCase().trim() === nameLow;
+    }).map(function(r) {
+      return { id: r[0], teacher: r[1], tpManager: r[2], note: r[3], createdBy: r[4], createdAt: r[5] };
+    }).reverse(); // newest first
+    return { success: true, notes: notes };
+  } catch(e) {
+    Logger.log('[getTPNotes] ' + e.message);
+    return { success: false, notes: [] };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UPSKILL TRACKER
+// ─────────────────────────────────────────────────────────────────────────────
+function logUpskillTask(teacherName, tpManager, jlid, learnerName, gapCourses, hsTaskId) {
+  try {
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.UPSKILL_TRACKER);
+    var id = Utilities.getUuid();
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([id, teacherName, tpManager || '', jlid || '', learnerName || '', gapCourses || '', hsTaskId || '', 'Pending', now, '', '']);
+    _clearAppDataCache(CONFIG.APP_DATA_SHEETS.UPSKILL_TRACKER);
+    Logger.log('[logUpskillTask] Logged upskill task for ' + teacherName);
+    return { success: true, id: id };
+  } catch(e) {
+    Logger.log('[logUpskillTask] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function updateUpskillStatus(id, status, notes) {
+  try {
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.UPSKILL_TRACKER);
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(id)) {
+        sheet.getRange(i + 1, 8).setValue(status); // Status col
+        if (notes) sheet.getRange(i + 1, 11).setValue(notes);
+        if (status === 'Done') sheet.getRange(i + 1, 10).setValue(
+          Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss')
+        );
+        _clearAppDataCache(CONFIG.APP_DATA_SHEETS.UPSKILL_TRACKER);
+        return { success: true };
+      }
+    }
+    return { success: false, message: 'Task not found.' };
+  } catch(e) {
+    Logger.log('[updateUpskillStatus] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function getUpskillTasksForTeacher(teacherName) {
+  try {
+    var data = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.UPSKILL_TRACKER);
+    if (data.length < 2) return { success: true, tasks: [] };
+    var nameLow = (teacherName || '').toLowerCase().trim();
+    var tasks = data.slice(1).filter(function(r) {
+      return String(r[1] || '').toLowerCase().trim() === nameLow;
+    }).map(function(r) {
+      return { id: r[0], teacher: r[1], tpManager: r[2], jlid: r[3], learner: r[4], gapCourses: r[5], hsTaskId: r[6], status: r[7], createdAt: r[8], completedAt: r[9], notes: r[10] };
+    }).reverse();
+    return { success: true, tasks: tasks };
+  } catch(e) {
+    Logger.log('[getUpskillTasksForTeacher] ' + e.message);
+    return { success: false, tasks: [] };
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// RED FLAG ALERT EMAIL
+// Runs on a daily trigger. Checks last 2 days of audits for red flags,
+// sends one email per teacher-per-flag to their TP manager. Logs to Alert Log
+// to prevent duplicates.
+// ─────────────────────────────────────────────────────────────────────────────
+function checkAndSendRedFlagAlerts() {
+  try {
+    var now      = new Date();
+    var cutoff   = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // last 2 days
+    var allAudits = _getAllAuditRecords();
+
+    // Load sent alert keys from Alert Log to avoid duplicates
+    var alertSheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.ALERT_LOG);
+    var alertData  = alertSheet.getDataRange().getValues();
+    var sentKeys   = {};
+    alertData.slice(1).forEach(function(r) { if (r[0]) sentKeys[String(r[0])] = true; });
+
+    var teacherMap = {};
+    try {
+      getTeacherData().forEach(function(t) {
+        if (t.name) teacherMap[t.name.toLowerCase().trim()] = t;
+      });
+    } catch(e) {}
+
+    var alertsSent = 0;
+    allAudits.forEach(function(a) {
+      if (!a.redFlags) return;
+      if (!a.date) return;
+      var auditDate = new Date(a.date);
+      if (auditDate < cutoff) return;
+
+      // Unique key: teacher + learner + date + auditType
+      var key = [a.teacher, a.learner, a.date, a.auditType].join('||');
+      if (sentKeys[key]) return; // already sent
+
+      // Find TP manager
+      var tMatch = teacherMap[(a.teacher || '').toLowerCase().trim()];
+      var tpManagerEmail = tMatch ? tMatch.tpManagerEmail : '';
+      var tpManagerName  = tMatch ? tMatch.manager        : '';
+      if (!tpManagerEmail) {
+        Logger.log('[RedFlagAlert] No TP manager email for ' + a.teacher + ', skipping.');
+        return;
+      }
+
+      // Send alert email
+      var subject = '⚑ Red Flag Alert — ' + a.teacher + ' (' + (a.auditType||'').replace(" Audit'26",'') + ' Audit)';
+      var body = 'Hi ' + (tpManagerName || 'TP Manager') + ',\n\n'
+        + 'A red flag was logged in a recent audit.\n\n'
+        + 'Teacher     : ' + a.teacher + '\n'
+        + 'Learner     : ' + a.learner + '\n'
+        + 'Course      : ' + a.course  + '\n'
+        + 'Audit Type  : ' + (a.auditType||'').replace(" Audit'26",'') + '\n'
+        + 'Audit Date  : ' + a.date + '\n'
+        + 'Score       : ' + (a.classScore !== null ? a.classScore + '/80' : 'N/A') + '\n'
+        + 'Red Flags   : ' + a.redFlags + '\n\n'
+        + 'Please review and take necessary action before the next session.\n\n'
+        + '— JetLearn Automated Alert';
+
+      try {
+        GmailApp.sendEmail(tpManagerEmail, subject, body, {
+          from: CONFIG.EMAIL.FROM,
+          name: 'JetLearn Alerts'
+        });
+        // Log to Alert Log
+        var logId = Utilities.getUuid();
+        alertSheet.appendRow([
+          key, 'Red Flag', a.teacher, tpManagerName, '', a.learner,
+          a.redFlags, Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'),
+          tpManagerEmail
+        ]);
+        sentKeys[key] = true;
+        alertsSent++;
+        Logger.log('[RedFlagAlert] Sent alert for ' + a.teacher + ' to ' + tpManagerEmail);
+      } catch(mailErr) {
+        Logger.log('[RedFlagAlert] Email failed for ' + a.teacher + ': ' + mailErr.message);
+      }
+    });
+
+    Logger.log('[RedFlagAlert] Done. Alerts sent: ' + alertsSent);
+    return { success: true, sent: alertsSent };
+  } catch(e) {
+    Logger.log('[checkAndSendRedFlagAlerts] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teaching Hours Distribution
+// Reads events from the class-schedule calendar (hello@jet-learn.com) for the
+// past N weeks and aggregates teaching hours per day of week for a given teacher.
+// ─────────────────────────────────────────────────────────────────────────────
+function getTeacherCalendarHours(teacherName, weeksBack) {
+  try {
+    weeksBack = weeksBack || 4;
+    var cal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
+    if (!cal) return { success: false, message: 'Calendar not accessible.' };
+
+    var now     = new Date();
+    var startDt = new Date(now.getTime() - weeksBack * 7 * 24 * 60 * 60 * 1000);
+
+    var events = cal.getEvents(startDt, now);
+    Logger.log('[CalHours] total events in range: ' + events.length);
+
+    // Normalise teacher name parts for matching (need all name parts ≥3 chars to appear in title)
+    var nameLower = String(teacherName || '').trim().toLowerCase();
+    var nameParts = nameLower.split(/\s+/).filter(function(p) { return p.length >= 3; });
+
+    // Also get teacher email for guest-list matching
+    var teacherEmail = '';
+    try {
+      var tdRows = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+      var nl = nameLower;
+      for (var ti = 1; ti < tdRows.length; ti++) {
+        if (String(tdRows[ti][1] || '').trim().toLowerCase() === nl) {
+          teacherEmail = String(tdRows[ti][8] || '').trim().toLowerCase();
+          break;
+        }
+      }
+    } catch(e) {}
+
+    // hoursByDow[0]=Sun … [6]=Sat; we re-index to Mon=0 … Sun=6 at return time
+    var hoursByDow  = [0, 0, 0, 0, 0, 0, 0];
+    var eventsByDow = [0, 0, 0, 0, 0, 0, 0];
+    var totalMinutes = 0;
+    var matched = 0;
+
+    events.forEach(function(ev) {
+      if (ev.isAllDayEvent()) return;
+
+      var title  = ev.getTitle().toLowerCase();
+      var inTitle = nameParts.length > 0 && nameParts.every(function(p) { return title.indexOf(p) > -1; });
+
+      var inGuests = false;
+      if (!inTitle && teacherEmail) {
+        try {
+          ev.getGuestList().forEach(function(g) {
+            if (g.getEmail().toLowerCase() === teacherEmail) inGuests = true;
+          });
+        } catch(e) {}
+      }
+
+      if (!inTitle && !inGuests) return;
+
+      matched++;
+      var durationMin = (ev.getEndTime().getTime() - ev.getStartTime().getTime()) / 60000;
+      if (durationMin <= 0 || durationMin > 480) return; // ignore all-day-like durations
+
+      var dow = ev.getStartTime().getDay(); // 0=Sun
+      hoursByDow[dow]  += durationMin / 60;
+      eventsByDow[dow] += 1;
+      totalMinutes     += durationMin;
+    });
+
+    Logger.log('[CalHours] matched events for "' + teacherName + '": ' + matched);
+
+    // Re-order to Mon(0)…Sun(6) for the chart
+    var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    // JS dow: 0=Sun,1=Mon,...,6=Sat → our index: Mon=0,...Sun=6
+    var dowMap = [6, 0, 1, 2, 3, 4, 5]; // dowMap[jsDow] → our index
+    var hoursArr  = [0, 0, 0, 0, 0, 0, 0];
+    var eventsArr = [0, 0, 0, 0, 0, 0, 0];
+    for (var d = 0; d < 7; d++) {
+      hoursArr[dowMap[d]]  = Math.round(hoursByDow[d]  * 10) / 10;
+      eventsArr[dowMap[d]] = eventsByDow[d];
+    }
+
+    var totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+    var avgPerWeek = Math.round(totalHours / weeksBack * 10) / 10;
+
+    // Peak day
+    var peakIdx  = hoursArr.indexOf(Math.max.apply(null, hoursArr));
+    var peakDay  = hoursArr[peakIdx] > 0 ? DAYS[peakIdx] : 'N/A';
+
+    return {
+      success:    true,
+      days:       DAYS,
+      hours:      hoursArr,
+      eventCount: eventsArr,
+      totalHours: totalHours,
+      avgPerWeek: avgPerWeek,
+      peakDay:    peakDay,
+      weeksBack:  weeksBack,
+      matched:    matched
+    };
+  } catch(e) {
+    Logger.log('[getTeacherCalendarHours] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// One-time setup: creates a daily trigger for red flag alerts.
+// Run once from the GAS editor.
+function setupRedFlagAlertTrigger() {
+  // Remove existing triggers for this function first
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkAndSendRedFlagAlerts') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('checkAndSendRedFlagAlerts')
+    .timeBased().everyDays(1).atHour(8).create();
+  Logger.log('[setupRedFlagAlertTrigger] Daily trigger created at 8AM.');
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teacher Onboarding Tracker — CRUD
+// Sheet: JetLearn App Data → "Onboarding Tracker"
+// Columns: ID | Teacher Name | Join Date | TP Manager | Primary Course |
+//          Training % | First Class Done | First Audit Done | 30-Day Review |
+//          Notes | Status | Created At
+// ─────────────────────────────────────────────────────────────────────────────
+var OB_HEADERS = ['ID','Teacher Name','Join Date','TP Manager','Primary Course',
+                  'Training %','First Class Done','First Audit Done','30-Day Review Done',
+                  'Notes','Status','Created At'];
+
+function getOnboardingTrackerData() {
+  try {
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.ONBOARDING_TRACKER);
+    // Ensure headers
+    if (sheet.getLastRow() === 0 || sheet.getRange('A1').getValue() !== 'ID') {
+      sheet.clearContents();
+      sheet.appendRow(OB_HEADERS);
+    }
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return { success: true, records: [] };
+
+    var fmt = function(v) {
+      if (!v) return '';
+      if (v instanceof Date) {
+        try { return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd'); } catch(e) { return String(v); }
+      }
+      return String(v);
+    };
+
+    var records = data.slice(1).map(function(row) {
+      return {
+        id:              String(row[0]  || ''),
+        teacherName:     String(row[1]  || ''),
+        joinDate:        fmt(row[2]),
+        tpManager:       String(row[3]  || ''),
+        primaryCourse:   String(row[4]  || ''),
+        trainingPct:     Number(row[5]  || 0),
+        firstClassDone:  String(row[6]  || 'No'),
+        firstAuditDone:  String(row[7]  || 'No'),
+        reviewDone:      String(row[8]  || 'No'),
+        notes:           String(row[9]  || ''),
+        status:          String(row[10] || 'Active'),
+        createdAt:       fmt(row[11])
+      };
+    }).filter(function(r) { return r.teacherName; });
+
+    return { success: true, records: records };
+  } catch(e) {
+    Logger.log('[getOnboardingTrackerData] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function addOnboardingRecord(data) {
+  try {
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.ONBOARDING_TRACKER);
+    if (sheet.getLastRow() === 0 || sheet.getRange('A1').getValue() !== 'ID') {
+      sheet.clearContents();
+      sheet.appendRow(OB_HEADERS);
+    }
+    var id  = 'OB-' + Utilities.getUuid().split('-')[0].toUpperCase();
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    sheet.appendRow([
+      id,
+      data.teacherName  || '',
+      data.joinDate     || '',
+      data.tpManager    || '',
+      data.primaryCourse|| '',
+      0,        // Training %
+      'No',     // First Class Done
+      'No',     // First Audit Done
+      'No',     // 30-Day Review Done
+      '',       // Notes
+      'Active', // Status
+      now
+    ]);
+    return { success: true, id: id };
+  } catch(e) {
+    Logger.log('[addOnboardingRecord] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function updateOnboardingRecord(id, field, value) {
+  try {
+    var sheet   = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.ONBOARDING_TRACKER);
+    var data    = sheet.getDataRange().getValues();
+    var colMap  = {};
+    OB_HEADERS.forEach(function(h, i) { colMap[h] = i; });
+    var fieldColMap = {
+      'trainingPct':    'Training %',
+      'firstClassDone': 'First Class Done',
+      'firstAuditDone': 'First Audit Done',
+      'reviewDone':     '30-Day Review Done',
+      'notes':          'Notes',
+      'status':         'Status'
+    };
+    var col = colMap[fieldColMap[field]];
+    if (col === undefined) return { success: false, message: 'Unknown field: ' + field };
+
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(id)) {
+        sheet.getRange(i + 1, col + 1).setValue(value);
+        SpreadsheetApp.flush();
+        return { success: true };
+      }
+    }
+    return { success: false, message: 'Record not found.' };
+  } catch(e) {
+    Logger.log('[updateOnboardingRecord] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
 }

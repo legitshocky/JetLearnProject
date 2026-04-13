@@ -1,292 +1,253 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Learner Migration Update — JetLearn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
   <style>
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-      background-color: #f8f9fa; 
-      margin: 0; 
-      padding: 40px 20px;
-      color: #1e293b;
-    }
-    .container { 
-      max-width: 600px; 
-      margin: 0 auto; 
-      background-color: #ffffff;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    .accent-bar {
-      height: 5px;
-      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
-    }
-    .header { 
-      padding: 40px 40px 32px 40px;
-    }
-    .brand {
-      font-size: 13px;
-      font-weight: 700;
-      color: #3b82f6;
-      letter-spacing: 1px;
-      margin-bottom: 24px;
-    }
-    .title {
-      font-size: 28px;
-      font-weight: 700;
-      color: #0f172a;
-      margin: 0 0 8px 0;
-      letter-spacing: -0.5px;
-    }
-    .subtitle {
-      font-size: 15px;
-      color: #64748b;
-      margin: 0;
-    }
-    .content { 
-      padding: 0 40px 40px 40px;
-    }
-    .message {
-      font-size: 15px;
-      line-height: 1.7;
-      color: #475569;
-      margin-bottom: 32px;
-    }
-    .section { 
-      margin: 32px 0;
-    }
-    .section-label {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: #94a3b8;
-      margin-bottom: 16px;
-    }
-    .card {
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: 24px;
-      border: 1px solid #e2e8f0;
-    }
-    .detail-row {
-      display: flex;
-      padding: 12px 0;
-      border-bottom: 1px solid #f1f5f9;
-    }
-    .detail-row:first-child {
-      padding-top: 0;
-    }
-    .detail-row:last-child {
-      padding-bottom: 0;
-      border-bottom: none;
-    }
-    .detail-label {
-      width: 130px;
-      font-size: 14px;
-      color: #64748b;
-      font-weight: 500;
-      flex-shrink: 0;
-    }
-    .detail-value {
-      flex: 1;
-      font-size: 14px;
-      color: #0f172a;
-      font-weight: 600;
-    }
-    .schedule-item {
-      padding: 18px 22px;
-      background: #ffffff;
-      border: 2px solid #e2e8f0;
-      border-left: 4px solid #3b82f6;
-      border-radius: 8px;
-      margin-bottom: 10px;
-      font-size: 14px;
-      color: #0f172a;
-      font-weight: 600;
-    }
-    .schedule-item:last-child {
-      margin-bottom: 0;
-    }
-    .list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .list li {
-      padding: 14px 0;
-      padding-left: 28px;
-      font-size: 14px;
-      color: #475569;
-      position: relative;
-      line-height: 1.6;
-      border-bottom: 1px solid #f1f5f9;
-    }
-    .list li:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-    .list li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      width: 8px;
-      height: 8px;
-      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-      border-radius: 50%;
-      top: 20px;
-    }
-    .notes {
-      margin-top: 20px;
-      padding: 22px;
-      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-      border-radius: 10px;
-      border: 2px solid #bae6fd;
-    }
-    .notes-label {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: #0369a1;
-      margin-bottom: 12px;
-    }
-    .notes-content {
-      font-size: 14px;
-      color: #0c4a6e;
-      line-height: 1.7;
-    }
-    .appreciation {
-      margin-top: 32px;
-      padding: 28px;
-      background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
-      border-radius: 12px;
-      text-align: center;
-      font-size: 15px;
-      color: #065f46;
-      line-height: 1.7;
-      border: 2px solid #86efac;
-    }
-    .appreciation strong {
-      color: #064e3b;
-      font-weight: 700;
-      display: block;
-      margin-bottom: 8px;
-      font-size: 16px;
-    }
-    .footer { 
-      padding: 32px 40px;
-      text-align: center;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
-    }
-    .footer-brand {
-      font-size: 16px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 6px;
-    }
-    .footer-text {
-      font-size: 13px;
-      color: #64748b;
-      margin-bottom: 16px;
-    }
-    .footer-note {
-      font-size: 12px;
-      color: #94a3b8;
-      line-height: 1.6;
+    * { box-sizing: border-box; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+    body { background-color: #f0ede8; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    .email-bg       { background-color: #f0ede8; }
+    .card-outer     { background-color: #ffffff; border-radius: 16px; border: 1px solid #e4e1dc; overflow: hidden; }
+    .rail-bg        { background-color: #f5f3ff; border-right: 1px solid #e4e1f8; }
+    .rail-brand     { color: #5a5888; }
+    .rail-heading   { color: #2d2a6e; }
+    .rail-lbl       { color: #5a5888; }
+    .rail-val       { color: #333355; }
+    .rail-divider   { background-color: #e0ddf8; }
+    .rail-footer    { color: #7068a8; }
+    .rail-icon-bg   { background-color: #ede9ff; }
+
+    .main-bg        { background-color: #ffffff; }
+    .action-tag     { color: #555555; background-color: #f5f5f5; border: 1px solid #dddddd; }
+    .header-text    { color: #666666; }
+    .header-strong  { color: #333333; }
+    .section-lbl    { color: #767370; }
+    .detail-lbl     { color: #767676; }
+    .detail-val     { color: #111111; }
+    .detail-link    { color: #5546d4; }
+    .detail-border  { border-bottom: 1px solid #f8f6f3; }
+    .schedule-bg    { background-color: #f8f7ff; border: 1px solid #ddd8fa; }
+    .schedule-val   { color: #3d3580; }
+    .schedule-dot   { background-color: #7c6ef0; }
+    .list-text      { color: #555555; }
+    .note-bg        { background-color: #f0f9ff; border: 1px solid #bae6fd; }
+    .note-lbl       { color: #0369a1; }
+    .note-text      { color: #0c4a6e; }
+    .closing-bg     { background-color: #f0fdf4; border: 1px solid #86efac; }
+    .closing-title  { color: #064e3b; }
+    .closing-text   { color: #065f46; }
+    .footer-sub     { color: #767676; }
+    .footer-note    { color: #767676; }
+
+    @media only screen and (max-width: 600px) {
+      .wrapper         { width: 100% !important; padding: 16px 12px !important; }
+      .card-outer      { border-radius: 12px !important; }
+      .rail-cell       { display: block !important; width: 100% !important; border-radius: 0 !important; padding: 20px 20px !important; }
+      .main-cell       { display: block !important; width: 100% !important; }
+      .rail-meta-row   { display: flex !important; flex-wrap: wrap !important; gap: 14px !important; }
+      .rail-meta-item  { flex: 1 1 80px !important; }
+      .rail-heading    { font-size: 14px !important; margin-bottom: 12px !important; }
+      .rail-icon-wrap  { display: none !important; }
+      .rail-spacer     { display: none !important; }
+      .rail-footer-row { display: none !important; }
+      .main-header     { padding: 18px 20px 16px !important; }
+      .main-body       { padding: 16px 20px 20px !important; }
+      .main-footer     { padding: 13px 20px !important; }
     }
   </style>
 </head>
-<body>
-  <div class="container">
-    <div class="accent-bar"></div>
-    
-    <div class="header">
-      <div class="brand">JETLEARN - MIGRATION SYSTEM</div>
-      <h1 class="title">Learner Migration Update – <?= data.learner ?></h1>
-      <p class="subtitle">Transition notification</p>
-    </div>
+<body class="email-bg">
 
-    <div class="content">
-      <div class="message">
-        Hi <strong><?= data.oldTeacher ?></strong>,<br><br>
-        We want to inform you that <strong><?= data.learner ?></strong> (JLID: <?= data.jlid || 'N/A' ?>) has been migrated to <strong><?= data.newTeacher ?></strong>, effective from <?= formatDateDDMMYYYY(data.startDate) ?>.
-      </div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg">
+  <tr>
+    <td align="center" style="padding: 40px 16px;" class="wrapper">
 
-      <div class="section">
-        <div class="section-label">Migration Details</div>
-        <div class="card">
-          <div class="detail-row">
-            <div class="detail-label">Learner Name</div>
-            <div class="detail-value"><?= data.learner ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Learner ID</div>
-            <div class="detail-value"><?= data.jlid || '—' ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Course</div>
-            <div class="detail-value"><?= data.course ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">New Teacher</div>
-            <div class="detail-value"><?= data.newTeacher ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Effective Date</div>
-            <div class="detail-value"><?= formatDateDDMMYYYY(data.startDate) ?></div>
-          </div>
-        </div>
-      </div>
+      <!-- Top label -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px; margin-bottom:14px;">
+        <tr>
+          <td>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="width:6px; height:6px; border-radius:50%; background-color:#7c6ef0; vertical-align:middle;"></td>
+                <td style="padding-left:8px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase;" class="rail-lbl">JetLearn &mdash; Migration System</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
 
-      <? if (data.classSessions && data.classSessions.length > 0) { ?>
-      <div class="section">
-        <div class="section-label">Previous Class Schedule</div>
-        <? for (let i = 0; i < data.classSessions.length; i++) { 
-             let timeDisplay = data.classSessions[i].time;
-        ?>
-          <div class="schedule-item">
-            <!-- Explicitly adding (CET) as requested -->
-            <?= data.classSessions[i].day ?> at <?= timeDisplay ?> (CET)
-          </div>
-        <? } ?>
-      </div>
-      <? } ?>
+      <!-- Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;" class="card-outer">
+        <tr valign="top">
 
+          <!-- RAIL -->
+          <td width="210" class="rail-bg rail-cell" style="padding:32px 24px; vertical-align:top; border-radius:16px 0 0 16px;">
+            <p style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 24px;" class="rail-brand">JetLearn</p>
 
-      <div class="section">
-        <div class="section-label">Action Items</div>
-        <ul class="list">
-          <li>Complete and update any pending CPR details for <?= data.learner ?> in Athena AI</li>
-          <li>Share key transition notes and insights with the CLS Manager (<?= data.clsManager || 'N/A' ?>)</li>
-          <li>Document any important learner preferences or learning patterns that would help the transition</li>
-        </ul>
-      </div>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rail-icon-wrap" style="margin-bottom:18px;">
+              <tr>
+                <td style="width:32px; height:32px; border-radius:8px; text-align:center; vertical-align:middle;" class="rail-icon-bg">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="8" cy="8" r="6" stroke="#7c6ef0" stroke-width="1.4"/>
+                    <path d="M8 5v3l2 2" stroke="#7c6ef0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </td>
+              </tr>
+            </table>
 
-      <? if (comments) { ?>
-        <div class="notes">
-          <div class="notes-label">Additional Comments</div>
-          <div class="notes-content"><?= comments.replace(/\n/g, '<br>') ?></div>
-        </div>
-      <? } ?>
+            <p style="font-size:15px; font-weight:500; line-height:1.45; margin:0 0 22px;" class="rail-heading">Learner<br/>migration update</p>
 
-      <div class="appreciation">
-        <strong>Thank You</strong>
-        We truly appreciate your dedication and the positive impact you've had on <?= data.learner ?>'s learning journey. Your efforts have been invaluable.
-      </div>
-    </div>
+            <div class="rail-divider" style="height:1px; margin-bottom:22px;"></div>
 
-    <div class="footer">
-      <div class="footer-brand">JetLearn</div>
-      <div class="footer-text">Empowering educators, inspiring learners</div>
-      <div class="footer-note">
-        This is an automated notification. For questions, contact your CLS Manager.
-      </div>
-    </div>
-  </div>
+            <div class="rail-meta-row">
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Learner</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.learner ?></p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">JLID</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.jlid || '—' ?></p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Moved to</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.newTeacher ?></p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:0;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Effective</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= formatDateDDMMYYYY(data.startDate) ?></p>
+              </div>
+            </div>
+
+            <div class="rail-spacer" style="height:40px;"></div>
+
+            <p class="rail-footer rail-footer-row" style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; line-height:1.6; margin:0;">Automated<br/>migration alert</p>
+          </td>
+
+          <!-- MAIN -->
+          <td class="main-bg main-cell" style="vertical-align:top; border-radius:0 16px 16px 0;">
+
+            <!-- Header -->
+            <div class="main-header" style="padding:28px 28px 22px; border-bottom:1px solid #f2efea;">
+              <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 9px; margin:0 0 14px;" class="action-tag">Transition notification</p>
+              <p style="font-size:13px; line-height:1.7; margin:0;" class="header-text">
+                Hi <strong class="header-strong"><?= data.oldTeacher ?></strong>, <strong class="header-strong"><?= data.learner ?></strong> (<?= data.jlid || 'N/A' ?>) has been migrated to <strong class="header-strong"><?= data.newTeacher ?></strong>, effective from <?= formatDateDDMMYYYY(data.startDate) ?>.
+              </p>
+            </div>
+
+            <!-- Body -->
+            <div class="main-body" style="padding:22px 28px;">
+
+              <!-- Migration details -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Migration details</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Learner name</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.learner ?></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Learner ID</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.jlid || '—' ?></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Course</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.course ?></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">New teacher</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.newTeacher ?></td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Effective date</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= formatDateDDMMYYYY(data.startDate) ?></td>
+                </tr>
+              </table>
+
+              <!-- Previous schedule -->
+              <? if (data.classSessions && data.classSessions.length > 0) { ?>
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Previous class schedule</p>
+              <? for (let i = 0; i < data.classSessions.length; i++) {
+                   let timeDisplay = data.classSessions[i].time;
+              ?>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:7px; border-radius:9px; overflow:hidden;" class="schedule-bg">
+                <tr>
+                  <td style="padding:12px 16px; border-radius:9px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="width:10px; vertical-align:middle;">
+                          <div style="width:6px; height:6px; border-radius:50%;" class="schedule-dot"></div>
+                        </td>
+                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= data.classSessions[i].day ?> at <?= timeDisplay ?> (CET)</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <? } ?>
+              <? } ?>
+
+              <!-- Action items -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:20px 0 12px;" class="section-lbl">Action items</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+                <tr><td style="padding:9px 0 9px 18px; font-size:13px; line-height:1.6; border-bottom:1px solid #f8f6f3;" class="list-text detail-border">Complete and update any pending CPR details for <?= data.learner ?> in Athena AI</td></tr>
+                <tr><td style="padding:9px 0 9px 18px; font-size:13px; line-height:1.6; border-bottom:1px solid #f8f6f3;" class="list-text detail-border">Share key transition notes and insights with the CLS Manager (<?= data.clsManager || 'N/A' ?>)</td></tr>
+                <tr><td style="padding:9px 0 9px 18px; font-size:13px; line-height:1.6;" class="list-text">Document any important learner preferences or learning patterns that would help the transition</td></tr>
+              </table>
+
+              <!-- Comments -->
+              <? if (comments) { ?>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="note-bg">
+                <tr><td style="padding:14px 16px; border-radius:9px;">
+                  <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 8px;" class="note-lbl">Additional comments</p>
+                  <p style="font-size:13px; line-height:1.7; margin:0;" class="note-text"><?= comments.replace(/\n/g, '<br>') ?></p>
+                </td></tr>
+              </table>
+              <? } ?>
+
+              <!-- Closing / Thank you -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-radius:9px; overflow:hidden;" class="closing-bg">
+                <tr><td style="padding:18px 20px; text-align:center; border-radius:9px;">
+                  <p style="font-size:14px; font-weight:500; margin:0 0 6px;" class="closing-title">Thank you</p>
+                  <p style="font-size:13px; line-height:1.7; margin:0;" class="closing-text">We truly appreciate your dedication and the positive impact you've had on <?= data.learner ?>'s learning journey. Your efforts have been invaluable.</p>
+                </td></tr>
+              </table>
+
+            </div>
+
+            <!-- Footer -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f2efea;">
+              <tr>
+                <td style="padding:14px 28px;" class="main-footer">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="font-size:12px; font-weight:500;" class="footer-sub">JetLearn</td>
+                      <td style="text-align:right; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase;" class="footer-note">Automated alert</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+
 </body>
 </html>

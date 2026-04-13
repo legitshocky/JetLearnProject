@@ -207,7 +207,7 @@ function _collectSystemSnapshot() {
     const cutoff90 = new Date(); cutoff90.setDate(now.getDate() - 90);
     const cutoff30 = new Date(); cutoff30.setDate(now.getDate() - 30);
 
-    const auditData           = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const auditData           = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     const recentMigrations    = [];
     const onboardings30       = [];
     const migrationsByJlid    = {};

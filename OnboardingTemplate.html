@@ -1,416 +1,314 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>New Learner Onboarding — JetLearn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
   <style>
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-      background-color: #f8f9fa; 
-      margin: 0; 
-      padding: 40px 20px;
-      color: #1e293b;
-    }
-    .container { 
-      max-width: 600px; 
-      margin: 0 auto; 
-      background-color: #ffffff;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-    .accent-bar {
-      height: 5px;
-      background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #ec4899 100%);
-    }
-    .header { 
-      padding: 40px 40px 32px 40px;
-    }
-    .brand {
-      font-size: 13px;
-      font-weight: 700;
-      color: #3b82f6;
-      letter-spacing: 1px;
-      margin-bottom: 24px;
-    }
-    .title {
-      font-size: 28px;
-      font-weight: 700;
-      color: #0f172a;
-      margin: 0 0 8px 0;
-      letter-spacing: -0.5px;
-    }
-    .subtitle {
-      font-size: 15px;
-      color: #64748b;
-      margin: 0;
-    }
-    .content { 
-      padding: 0 40px 40px 40px;
-    }
-    .message {
-      font-size: 15px;
-      line-height: 1.7;
-      color: #475569;
-      margin-bottom: 32px;
-    }
-    .message p {
-      margin: 0 0 16px 0;
-    }
-    .message p:last-child {
-      margin-bottom: 0;
-    }
-    .section { 
-      margin: 32px 0;
-    }
-    .section-label {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: #94a3b8;
-      margin-bottom: 16px;
-    }
-    .highlight-box {
-      background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
-      border-left: 4px solid #3b82f6;
-      padding: 24px;
-      border-radius: 10px;
-      margin-bottom: 32px;
-    }
-    .highlight-box h3 {
-      margin: 0 0 12px 0;
-      color: #1e40af;
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .highlight-box p {
-      margin: 0;
-      font-size: 14px;
-      color: #1e40af;
-      line-height: 1.6;
-    }
-    .card {
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: 24px;
-      border: 1px solid #e2e8f0;
-    }
-    .detail-row {
-      display: flex;
-      padding: 12px 0;
-      border-bottom: 1px solid #f1f5f9;
-    }
-    .detail-row:first-child {
-      padding-top: 0;
-    }
-    .detail-row:last-child {
-      padding-bottom: 0;
-      border-bottom: none;
-    }
-    .detail-label {
-      width: 130px;
-      font-size: 14px;
-      color: #64748b;
-      font-weight: 500;
-      flex-shrink: 0;
-    }
-    .detail-value {
-      flex: 1;
-      font-size: 14px;
-      color: #0f172a;
-      font-weight: 600;
-    }
-    .schedule-box {
-      margin-top: 12px;
-    }
-    .schedule-item {
-      padding: 18px 22px;
-      background: #ffffff;
-      border: 2px solid #e2e8f0;
-      border-left: 4px solid #3b82f6;
-      border-radius: 8px;
-      margin-bottom: 10px;
-      font-size: 14px;
-      color: #0f172a;
-      font-weight: 600;
-    }
-    .schedule-item:last-child {
-      margin-bottom: 0;
-    }
-    .info-box {
-      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-      border-left: 4px solid #0ea5e9;
-      padding: 20px 24px;
-      border-radius: 10px;
-      margin: 32px 0;
-    }
-    .info-box-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #075985;
-      margin-bottom: 8px;
-    }
-    .info-box-content {
-      font-size: 14px;
-      color: #0c4a6e;
-      line-height: 1.7;
-      margin: 0;
-    }
-    .support-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 16px;
-    }
-    .support-card {
-      background: #ffffff;
-      padding: 16px;
-      border-radius: 8px;
-      border: 2px solid #e2e8f0;
-    }
-    .support-role {
-      font-size: 12px;
-      color: #64748b;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-    .support-name {
-      font-size: 14px;
-      color: #0f172a;
-      font-weight: 600;
-    }
-    .steps-box {
-      background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
-      border-left: 4px solid #22c55e;
-      padding: 24px;
-      border-radius: 10px;
-      margin: 32px 0;
-    }
-    .steps-box h3 {
-      margin: 0 0 12px 0;
-      color: #15803d;
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .steps-box p {
-      margin: 0 0 16px 0;
-      font-size: 14px;
-      color: #166534;
-      line-height: 1.6;
-    }
-    .steps-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .steps-list li {
-      padding: 12px 0;
-      padding-left: 28px;
-      font-size: 14px;
-      color: #166534;
-      position: relative;
-      line-height: 1.6;
-      border-bottom: 1px solid rgba(34, 197, 94, 0.2);
-    }
-    .steps-list li:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-    .steps-list li::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      width: 8px;
-      height: 8px;
-      background: #22c55e;
-      border-radius: 50%;
-      top: 18px;
-    }
-    .notes {
-      margin-top: 32px;
-      padding: 22px;
-      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-      border-radius: 10px;
-      border: 2px solid #fcd34d;
-    }
-    .notes-label {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: #92400e;
-      margin-bottom: 12px;
-    }
-    .notes-content {
-      font-size: 14px;
-      color: #78350f;
-      line-height: 1.7;
-    }
-    .closing {
-      margin-top: 32px;
-      padding: 28px;
-      background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);
-      border-radius: 12px;
-      text-align: center;
-      font-size: 15px;
-      color: #9f1239;
-      line-height: 1.7;
-      border: 2px solid #f9a8d4;
-    }
-    .closing strong {
-      display: block;
-      margin-top: 12px;
-      font-weight: 700;
-      color: #881337;
-    }
-    .footer { 
-      padding: 32px 40px;
-      text-align: center;
-      background: #f8fafc;
-      border-top: 1px solid #e2e8f0;
-    }
-    .footer-brand {
-      font-size: 16px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 6px;
-    }
-    .footer-text {
-      font-size: 13px;
-      color: #64748b;
-      margin-bottom: 16px;
-    }
-    .footer-note {
-      font-size: 12px;
-      color: #94a3b8;
-      line-height: 1.6;
+    * { box-sizing: border-box; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+
+    body { background-color: #f0ede8; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+    .email-bg       { background-color: #f0ede8; }
+    .card-outer     { background-color: #ffffff; border-radius: 16px; border: 1px solid #e4e1dc; overflow: hidden; }
+    .rail-bg        { background-color: #f5f3ff; border-right: 1px solid #e4e1f8; }
+    .rail-brand     { color: #5a5888; }
+    .rail-heading   { color: #2d2a6e; }
+    .rail-lbl       { color: #5a5888; }
+    .rail-val       { color: #333355; }
+    .rail-divider   { background-color: #e0ddf8; }
+    .rail-footer    { color: #7068a8; }
+    .rail-icon-bg   { background-color: #ede9ff; }
+
+    .main-bg        { background-color: #ffffff; }
+    .action-tag     { color: #1e40af; background-color: #eff6ff; border: 1px solid #93c5fd; }
+    .header-text    { color: #666666; }
+    .header-strong  { color: #333333; }
+    .section-lbl    { color: #767370; }
+    .detail-lbl     { color: #767676; }
+    .detail-val     { color: #111111; }
+    .detail-link    { color: #5546d4; }
+    .detail-border  { border-bottom: 1px solid #f8f6f3; }
+    .schedule-bg    { background-color: #f8f7ff; border: 1px solid #ddd8fa; }
+    .schedule-val   { color: #3d3580; }
+    .schedule-dot   { background-color: #7c6ef0; }
+    .highlight-bg   { background-color: #eff6ff; border: 1px solid #bfdbfe; }
+    .highlight-title { color: #1e3a8a; }
+    .highlight-text { color: #1e40af; }
+    .info-bg        { background-color: #f0f9ff; border: 1px solid #bae6fd; }
+    .info-title     { color: #0369a1; }
+    .info-text      { color: #0c4a6e; }
+    .steps-bg       { background-color: #f0fdf4; border: 1px solid #bbf7d0; }
+    .steps-title    { color: #15803d; }
+    .steps-text     { color: #166534; }
+    .steps-dot      { background-color: #22c55e; }
+    .note-bg        { background-color: #fffbeb; border: 1px solid #fcd34d; }
+    .note-lbl       { color: #92400e; }
+    .note-text      { color: #78350f; }
+    .closing-bg     { background-color: #f5f3ff; border: 1px solid #ddd8fa; }
+    .closing-text   { color: #4c1d95; }
+    .support-card-bg { background-color: #f8fafc; border: 1px solid #e2e8f0; }
+    .support-role   { color: #5a5888; }
+    .support-name   { color: #111111; }
+    .list-text      { color: #555555; }
+    .footer-sub     { color: #767676; }
+    .footer-note    { color: #767676; }
+
+    @media only screen and (max-width: 600px) {
+      .wrapper         { width: 100% !important; padding: 16px 12px !important; }
+      .card-outer      { border-radius: 12px !important; }
+      .rail-cell       { display: block !important; width: 100% !important; border-radius: 0 !important; padding: 20px 20px !important; }
+      .main-cell       { display: block !important; width: 100% !important; }
+      .rail-meta-row   { display: flex !important; flex-wrap: wrap !important; gap: 14px !important; }
+      .rail-meta-item  { flex: 1 1 80px !important; }
+      .rail-heading    { font-size: 14px !important; margin-bottom: 12px !important; }
+      .rail-icon-wrap  { display: none !important; }
+      .rail-spacer     { display: none !important; }
+      .rail-footer-row { display: none !important; }
+      .main-header     { padding: 18px 20px 16px !important; }
+      .main-body       { padding: 16px 20px 20px !important; }
+      .main-footer     { padding: 13px 20px !important; }
+      .support-grid-cell { display: block !important; width: 100% !important; padding: 0 0 10px 0 !important; }
     }
   </style>
 </head>
-<body>
-  <div class="container">
-    <div class="accent-bar"></div>
-    
-    <div class="header">
-      <div class="brand">JETLEARN</div>
-      <h1 class="title">New Learner Onboarding</h1>
-      <p class="subtitle">Welcome a new learner to JetLearn</p>
-    </div>
+<body class="email-bg">
 
-    <div class="content">
-      <div class="message">
-        <p>Dear <strong><?= data.teacherName ?></strong>,</p>
-        
-        <p>We're excited to introduce you to <strong><?= data.learnerName ?></strong>,A new learner joining JetLearn. Your expertise will make a meaningful difference in their learning journey.</p>
-        
-        <p>Here's everything you need to create the best possible learning environment from day one.</p>
-      </div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg">
+  <tr>
+    <td align="center" style="padding: 40px 16px;" class="wrapper">
 
-      <div class="highlight-box">
-        <h3>About <?= data.learnerName ?></h3>
-        <p><?= data.learnerName ?> is <?= data.age || 'a young' ?> <?= data.age ? 'year old' : '' ?> learner who will be starting the <strong><?= data.course ?></strong> course with you. Their first session is scheduled for <strong><?= new Date(data.startDate).toLocaleDateString('en-GB') ?></strong>.</p>
-      </div>
+      <!-- Top label -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px; margin-bottom:14px;">
+        <tr>
+          <td>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="width:6px; height:6px; border-radius:50%; background-color:#7c6ef0; vertical-align:middle;"></td>
+                <td style="padding-left:8px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase;" class="rail-lbl">JetLearn &mdash; Teacher Partnership</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
 
-      <div class="section">
-        <div class="section-label">Learner Profile</div>
-        <div class="card">
-          <div class="detail-row">
-            <div class="detail-label">Learner ID</div>
-            <div class="detail-value"><?= data.jlid || '—' ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Full Name</div>
-            <div class="detail-value"><?= data.learnerName ?></div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Age</div>
-            <div class="detail-value"><?= data.age || 'N/A' ?> years</div>
-          </div>
-          <div class="detail-row">
-            <div class="detail-label">Course</div>
-            <div class="detail-value"><?= data.course ?></div>
-          </div>
-          <? if (data.specialNeeds && data.specialNeeds !== 'None') { ?>
-          <div class="detail-row">
-            <div class="detail-label">Special Notes</div>
-            <div class="detail-value"><?= data.specialNeeds ?></div>
-          </div>
-          <? } ?>
-          <div class="detail-row">
-            <div class="detail-label">JetGuide</div>
-            <div class="detail-value"><?= data.jetGuide || '—' ?></div>
-          </div>
-        </div>
-      </div>
+      <!-- Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;" class="card-outer">
+        <tr valign="top">
 
-      <div class="section">
-<div class="section-label">Class Schedule</div>
-      <div class="schedule-box">
-        <? for (let i = 0; i < data.classSessions.length; i++) { ?>
-          <div class="schedule-item">
-            <?= data.classSessions[i].day ?> at <?= data.classSessions[i].time ?> (which is <strong><?= data.classSessions[i].timeCET ?></strong>)
-          </div>
-        <? } ?>
-      </div>
-        </div>
-      </div>
+          <!-- RAIL -->
+          <td width="210" class="rail-bg rail-cell" style="padding:32px 24px; vertical-align:top; border-radius:16px 0 0 16px;">
+            <p style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 24px;" class="rail-brand">JetLearn</p>
 
-      <div class="info-box">
-        <div class="info-box-title">A Note on First Impressions</div>
-        <p class="info-box-content">The first class sets the tone for the entire learning journey. Take a moment to understand <?= data.learnerName ?>'s interests and learning style. Building rapport early helps create a comfortable space where curiosity can flourish.</p>
-      </div>
+            <!-- Icon -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rail-icon-wrap" style="margin-bottom:18px;">
+              <tr>
+                <td style="width:32px; height:32px; border-radius:8px; text-align:center; vertical-align:middle;" class="rail-icon-bg">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 1.5C4.41 1.5 1.5 4.41 1.5 8s2.91 6.5 6.5 6.5S14.5 11.59 14.5 8 11.59 1.5 8 1.5Z" stroke="#7c6ef0" stroke-width="1.4"/>
+                    <path d="M8 5v3.5l2.5 1.5" stroke="#7c6ef0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </td>
+              </tr>
+            </table>
 
-      <div class="section">
-        <div class="section-label">Your Support Team</div>
-        <p style="margin: 0 0 16px 0; font-size: 14px; color: #475569;">You're not alone in this journey. Here's your dedicated support team:</p>
-        
-        <div class="support-grid">
-          <div class="support-card">
-            <div class="support-role">CLS Manager</div>
-            <div class="support-name"><?= data.clsManager || 'To be assigned' ?></div>
-          </div>
-          <div class="support-card">
-            <div class="support-role">TP Manager</div>
-            <div class="support-name"><?= data.tpManager || 'To be assigned' ?></div>
-          </div>
-        </div>
-      </div>
+            <p style="font-size:15px; font-weight:500; line-height:1.45; margin:0 0 22px;" class="rail-heading">New learner<br/>onboarding</p>
 
-      <div class="steps-box">
-        <h3>Preparing for Success</h3>
-        <p>Here are some steps to ensure a smooth start:</p>
-        <ul class="steps-list">
-          <li>Review the course curriculum and learning objectives in Athena AI</li>
-          <li>Prepare engaging activities for the first session</li>
-          <li>Note any special considerations mentioned above</li>
-          <li>Reach out to your support team with any questions</li>
-        </ul>
-      </div>
+            <div class="rail-divider" style="height:1px; margin-bottom:22px;"></div>
 
-      <? if (data.comments) { ?>
-        <div class="notes">
-          <div class="notes-label">Additional Context</div>
-          <div class="notes-content"><?= data.comments.replace(/\n/g, '<br>') ?></div>
-        </div>
-      <? } ?>
+            <!-- Meta -->
+            <div class="rail-meta-row">
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Learner</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.learnerName ?></p>
+              </div>
 
-      <div class="closing">
-        We're confident that <?= data.learnerName ?> will thrive under your guidance. Thank you for bringing your passion and expertise to this new teaching relationship.
-        <strong>Here's to an inspiring learning journey ahead!</strong>
-      </div>
-    </div>
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Teacher</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.teacherName ?></p>
+              </div>
 
-    <div class="footer">
-      <div class="footer-brand">JetLearn</div>
-      <div class="footer-text">Empowering educators, inspiring learners</div>
-      <div class="footer-note">
-        Questions or need support? Contact your CLS or TP Manager anytime.
-      </div>
-    </div>
-  </div>
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Course</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= data.course ?></p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:0;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Start date</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val"><?= new Date(data.startDate).toLocaleDateString('en-GB') ?></p>
+              </div>
+            </div>
+
+            <div class="rail-spacer" style="height:40px;"></div>
+
+            <p class="rail-footer rail-footer-row" style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; line-height:1.6; margin:0;">Automated<br/>onboarding alert</p>
+          </td>
+
+          <!-- MAIN -->
+          <td class="main-bg main-cell" style="vertical-align:top; border-radius:0 16px 16px 0;">
+
+            <!-- Header -->
+            <div class="main-header" style="padding:28px 28px 22px; border-bottom:1px solid #f2efea;">
+              <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 9px; margin:0 0 14px;" class="action-tag">New assignment</p>
+              <p style="font-size:13px; line-height:1.7; margin:0;" class="header-text">
+                Hi <strong class="header-strong"><?= data.teacherName ?></strong>, <strong class="header-strong"><?= data.learnerName ?></strong> is joining JetLearn and has been assigned to your class. Their first session starts <strong class="header-strong"><?= new Date(data.startDate).toLocaleDateString('en-GB') ?></strong>.
+              </p>
+            </div>
+
+            <!-- Body -->
+            <div class="main-body" style="padding:22px 28px;">
+
+              <!-- About learner highlight -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="highlight-bg">
+                <tr><td style="padding:16px 18px; border-radius:9px; border-left:3px solid #3b82f6;">
+                  <p style="font-size:12px; font-weight:500; margin:0 0 6px;" class="highlight-title">About <?= data.learnerName ?></p>
+                  <p style="font-size:13px; line-height:1.65; margin:0;" class="highlight-text"><?= data.learnerName ?> is<?= data.age ? ' ' + data.age + ' years old and' : '' ?> starting the <strong><?= data.course ?></strong> course with you. This is the beginning of their JetLearn journey.</p>
+                </td></tr>
+              </table>
+
+              <!-- Learner Profile -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Learner profile</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Learner ID</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.jlid || '—' ?></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Full name</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.learnerName ?></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Age</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.age || 'N/A' ?> years</td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Course</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.course ?></td>
+                </tr>
+                <? if (data.specialNeeds && data.specialNeeds !== 'None') { ?>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">Special notes</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.specialNeeds ?></td>
+                </tr>
+                <? } ?>
+                <tr>
+                  <td style="font-size:13px; padding:9px 0;" class="detail-lbl">JetGuide</td>
+                  <td style="font-size:13px; font-weight:500; padding:9px 0; text-align:right;" class="detail-val"><?= data.jetGuide || '—' ?></td>
+                </tr>
+              </table>
+
+              <!-- Class Schedule -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Class schedule</p>
+              <? for (let i = 0; i < data.classSessions.length; i++) { ?>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:7px; border-radius:9px; overflow:hidden;" class="schedule-bg">
+                <tr>
+                  <td style="padding:12px 16px; border-radius:9px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="width:10px; vertical-align:middle;">
+                          <div style="width:6px; height:6px; border-radius:50%;" class="schedule-dot"></div>
+                        </td>
+                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= data.classSessions[i].day ?> at <?= data.classSessions[i].time ?> (<?= data.classSessions[i].timeCET ?> CET)</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <? } ?>
+
+              <!-- First impressions note -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0; border-radius:9px; overflow:hidden;" class="info-bg">
+                <tr><td style="padding:14px 16px; border-radius:9px;">
+                  <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 6px;" class="info-title">A note on first impressions</p>
+                  <p style="font-size:13px; line-height:1.7; margin:0;" class="info-text">The first class sets the tone for the entire journey. Take a moment to understand <?= data.learnerName ?>'s interests and learning style — building rapport early helps create a space where curiosity can flourish.</p>
+                </td></tr>
+              </table>
+
+              <!-- Support Team -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 8px;" class="section-lbl">Your support team</p>
+              <p style="font-size:13px; color:#555555; margin:0 0 12px;">You're not alone — here's your dedicated support team:</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+                <tr>
+                  <td class="support-grid-cell" style="padding-right:6px; width:50%; vertical-align:top;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-radius:9px; overflow:hidden;" class="support-card-bg">
+                      <tr><td style="padding:14px 16px; border-radius:9px;">
+                        <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 6px;" class="support-role">CLS Manager</p>
+                        <p style="font-size:13px; font-weight:500; margin:0;" class="support-name"><?= data.clsManager || 'To be assigned' ?></p>
+                      </td></tr>
+                    </table>
+                  </td>
+                  <td class="support-grid-cell" style="padding-left:6px; width:50%; vertical-align:top;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-radius:9px; overflow:hidden;" class="support-card-bg">
+                      <tr><td style="padding:14px 16px; border-radius:9px;">
+                        <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 6px;" class="support-role">TP Manager</p>
+                        <p style="font-size:13px; font-weight:500; margin:0;" class="support-name"><?= data.tpManager || 'To be assigned' ?></p>
+                      </td></tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Prep steps -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Preparing for success</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="steps-bg">
+                <tr><td style="padding:16px 18px; border-radius:9px; border-left:3px solid #22c55e;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr><td style="padding:8px 0 8px 18px; font-size:13px; line-height:1.6; border-bottom:1px solid rgba(34,197,94,0.2); position:relative;" class="steps-text">Review the course curriculum and learning objectives in Athena AI</td></tr>
+                    <tr><td style="padding:8px 0 8px 18px; font-size:13px; line-height:1.6; border-bottom:1px solid rgba(34,197,94,0.2);" class="steps-text">Prepare engaging activities for the first session</td></tr>
+                    <tr><td style="padding:8px 0 8px 18px; font-size:13px; line-height:1.6; border-bottom:1px solid rgba(34,197,94,0.2);" class="steps-text">Note any special considerations mentioned above</td></tr>
+                    <tr><td style="padding:8px 0 0 18px; font-size:13px; line-height:1.6;" class="steps-text">Reach out to your support team with any questions</td></tr>
+                  </table>
+                </td></tr>
+              </table>
+
+              <!-- Additional notes -->
+              <? if (data.comments) { ?>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="note-bg">
+                <tr><td style="padding:14px 16px; border-radius:9px; border-left:3px solid #f59e0b;">
+                  <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 8px;" class="note-lbl">Additional context</p>
+                  <p style="font-size:13px; line-height:1.7; margin:0;" class="note-text"><?= data.comments.replace(/\n/g, '<br>') ?></p>
+                </td></tr>
+              </table>
+              <? } ?>
+
+              <!-- Closing -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-radius:9px; overflow:hidden;" class="closing-bg">
+                <tr><td style="padding:18px 20px; text-align:center; border-radius:9px;">
+                  <p style="font-size:14px; font-weight:500; line-height:1.7; margin:0;" class="closing-text">We're confident that <strong><?= data.learnerName ?></strong> will thrive under your guidance. Thank you for bringing your passion and expertise to this new teaching relationship. Here's to an inspiring learning journey ahead!</p>
+                </td></tr>
+              </table>
+
+            </div>
+
+            <!-- Footer -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f2efea;">
+              <tr>
+                <td style="padding:14px 28px;" class="main-footer">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="font-size:12px; font-weight:500;" class="footer-sub">JetLearn</td>
+                      <td style="text-align:right; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase;" class="footer-note">Automated alert</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+
 </body>
 </html>

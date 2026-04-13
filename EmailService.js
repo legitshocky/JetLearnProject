@@ -245,18 +245,98 @@ function sendMigrationEmail(data, attachments = []) {
         if (!newTeacherInfo || !isValidEmail(newTeacherInfo.email)) {
             throw new Error(`New teacher email invalid: ${data.newTeacher}`);
         }
-        
+
+        // Enrich with HubSpot learner data + future courses from ticket
+        let hsLearnerData = {};
+        let futureCourseLabels = [];
+        let upskillGaps = [];
+        try {
+          const hsResult = fetchHubspotByJlid(data.jlid);
+          if (hsResult.success) hsLearnerData = hsResult.data;
+        } catch(he) { Logger.log('[sendMigrationEmail] HS enrich failed: ' + he.message); }
+        try {
+          const tcResult = fetchLatestMigrationTicket(data.jlid);
+          if (tcResult.found) {
+            const rp = tcResult.rawProperties || {};
+            [rp.future_course_1, rp.future_course_2, rp.future_course_3].forEach(function(raw) {
+              if (!raw) return;
+              try { futureCourseLabels.push(getCourseLabel(raw) || raw); } catch(e) { futureCourseLabels.push(raw); }
+            });
+            // Check upskill gaps for TP Manager email
+            const loadResult = getTeacherSpecificLoad(data.newTeacher);
+            const teacherCourses = (loadResult && loadResult.success) ? (loadResult.courses || []) : [];
+            const upskilledNames = teacherCourses.map(c => (c.course || '').toLowerCase().trim());
+            futureCourseLabels.forEach(function(label) {
+              if (upskilledNames.indexOf(label.toLowerCase().trim()) === -1) upskillGaps.push(label);
+            });
+          }
+        } catch(te) { Logger.log('[sendMigrationEmail] Ticket enrich failed: ' + te.message); }
+
+        const enrichedData = Object.assign({}, data, {
+          learnerHealth:           hsLearnerData.learnerHealth || '',
+          learnerHealthReasonCode: hsLearnerData.learnerHealthReasonCode || '',
+          currentSubscriptionTakenClasses: hsLearnerData.currentSubscriptionTakenClasses || '',
+          moduleStartDate:         hsLearnerData.moduleStartDate || '',
+          totalClassesJourney:     hsLearnerData.totalClassesJourney || '',
+          practiceDocumentLink:    hsLearnerData.practiceDocumentLink || '',
+          age:                     hsLearnerData.age || data.age || '',
+          futureCourses:           futureCourseLabels
+        });
+
         const finalClsEmailForCC = findClsEmailByManagerName(data.clsManager);
-        
+
         const newTeacherResult = sendTrackedEmail({
-          to: newTeacherInfo.email, 
-          cc: finalClsEmailForCC, 
+          to: newTeacherInfo.email,
+          cc: finalClsEmailForCC,
           subject: `Migration Notice - ${data.learner} Assigned`,
-          htmlBody: getNewTeacherEmailHTML(data, data.newTeacherComments || ''), 
-          jlid: data.jlid, 
+          htmlBody: getNewTeacherEmailHTML(enrichedData, data.newTeacherComments || ''),
+          jlid: data.jlid,
           attachments: attachments
         });
         notes.push(`Teacher Email Sent (TID: ${newTeacherResult.trackingId})`);
+
+        // --- TP MANAGER UPSKILLING GAP EMAIL + HUBSPOT TASK ---
+        if (upskillGaps.length > 0) {
+          const tpEmail = newTeacherInfo.tpManagerEmail || '';
+          // Email
+          try {
+            if (tpEmail && isValidEmail(tpEmail)) {
+              sendTrackedEmail({
+                to: tpEmail,
+                cc: finalClsEmailForCC,
+                subject: `Upskilling Required — ${data.newTeacher} assigned to ${data.learner}`,
+                htmlBody: getTPUpskillEmailHTML(enrichedData, upskillGaps),
+                jlid: data.jlid
+              });
+              notes.push(`TP Upskilling Email Sent to ${tpEmail}`);
+            } else {
+              notes.push('TP Upskilling Email Skipped — no TP Manager email found.');
+            }
+          } catch(tpe) {
+            Logger.log('[sendMigrationEmail] TP upskill email failed: ' + tpe.message);
+            notes.push('TP Upskilling Email Failed: ' + tpe.message);
+          }
+          // HubSpot Task
+          try {
+            const dealId = hsLearnerData.dealId || '';
+            // Resolve TP Manager HubSpot owner ID by the teacher's manager name
+            const tpManagerName  = newTeacherInfo.manager || '';
+            const tpManagerHsId  = getHubSpotOwnerIdByName(tpManagerName) || '';
+            Logger.log('[sendMigrationEmail] TP Manager: ' + tpManagerName + ' → HsId: ' + tpManagerHsId);
+            createUpskillTaskOnHubSpot(
+              data.jlid,
+              data.newTeacher,
+              data.learner,
+              tpManagerHsId,
+              upskillGaps,
+              dealId
+            );
+            notes.push('HubSpot Upskill Task Created for TP Manager: ' + (tpManagerName || 'unknown'));
+          } catch(hte) {
+            Logger.log('[sendMigrationEmail] HubSpot task failed: ' + hte.message);
+            notes.push('HubSpot Upskill Task Failed: ' + hte.message);
+          }
+        }
         
         // --- B. OLD TEACHER (Moved Here to ensure it runs) ---
         if (oldTeacherInfo && isValidEmail(oldTeacherInfo.email)) {
@@ -394,7 +474,7 @@ function handleTrackingPixel(trackingId) {
   const transparentPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
   try {
     if (trackingId) {
-      const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.EMAIL_LOGS);
+      const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       const trackingIdCol = headers.indexOf('Tracking ID') + 1;
       const openedAtCol = headers.indexOf('Opened At') + 1;
@@ -424,7 +504,7 @@ function handleTrackingPixel(trackingId) {
 
 function logEmail(logData) {
   try {
-    const sheet = getOrCreateSheet(CONFIG.SHEETS.EMAIL_LOGS);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
     if (sheet.getLastRow() === 0) {
         const headers = ['Timestamp', 'Tracking ID', 'Recipient', 'Subject', 'Related JLID', 'Status', 'Sent At', 'Opened At', 'Replied At', 'HTML File URL', 'Headers (JSON)', 'Attachments (JSON)', 'Reply Content', 'Raw Payload'];
         sheet.appendRow(headers);
@@ -474,7 +554,7 @@ function logEmail(logData) {
 function checkReplies() {
   Logger.log('Starting reply check job...');
   try {
-    const sheet = getOrCreateSheet(CONFIG.SHEETS.EMAIL_LOGS);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
     const data = sheet.getDataRange().getValues();
     if (data.length < 2) return;
 
@@ -550,7 +630,7 @@ function getEmailActivities(params = {}) {
   Logger.log('getEmailActivities called with params: ' + JSON.stringify(params));
 
   try {
-    const sheet = getOrCreateSheet(CONFIG.SHEETS.EMAIL_LOGS);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
     // Safety check for empty sheet
     if (sheet.getLastRow() < 2) {
       return { success: true, data: [], pagination: { currentPage: 1, pageSize: 25, totalItems: 0, totalPages: 0 } };
@@ -623,7 +703,7 @@ function getEmailLogDetails(trackingId) {
   if (!trackingId) return { success: false, message: "Invalid ID." };
 
   try {
-    const sheet = getOrCreateSheet(CONFIG.SHEETS.EMAIL_LOGS);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
     const headerMap = headers.map(h => String(h).replace(/\s/g, ''));
@@ -768,6 +848,13 @@ function getNewTeacherEmailHTML(data, comments) {
   const template = HtmlService.createTemplateFromFile('NewTeacherTemplate');
   template.data = data;
   template.comments = comments;
+  return template.evaluate().getContent();
+}
+
+function getTPUpskillEmailHTML(data, gapCourses) {
+  const template = HtmlService.createTemplateFromFile('TPUpskillTemplate');
+  template.data = data;
+  template.gapCourses = gapCourses;
   return template.evaluate().getContent();
 }
 

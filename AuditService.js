@@ -8,7 +8,7 @@ function getAuditLog(params = {}) {
   let currentPage = params.page || 1;
 
   try {
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     
     // Check if data exists and has more than just headers
     if (sheetData && sheetData.length > 1) { 
@@ -84,7 +84,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
   try {
     lock.waitLock(10000); 
     
-    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.AUDIT_LOG);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     const timestamp = new Date();
     const sessionId = Utilities.getUuid();
     sheet.appendRow([
@@ -103,7 +103,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
     ]);
     SpreadsheetApp.flush();    
     if(typeof _sheetDataCache !== 'undefined') {
-        delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.AUDIT_LOG}`];
+        _clearAppDataCache(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     }
     Logger.log('Action logged successfully: ' + action);
   } catch (error) {
@@ -116,7 +116,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
 
 function logUserActivity(username, action, details) {
   try {
-    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_ACTIVITY_LOG);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
     if (sheet.getLastRow() === 0 || sheet.getRange('A1').isBlank()) {
       sheet.appendRow(['Timestamp', 'Username', 'Action', 'Details', 'UserEmail']);
     }
@@ -130,7 +130,7 @@ function logUserActivity(username, action, details) {
       details || '',
       Session.getActiveUser().getEmail() 
     ]);
-    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_ACTIVITY_LOG}`];
+    _clearAppDataCache(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
   } catch (error) {
     Logger.log('Error logging user activity: ' + error.message);
   }
@@ -140,7 +140,7 @@ function exportAuditData(startDate, endDate) {
   Logger.log('exportAuditData called');
 
   try {
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG); 
+    const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG); 
 
     if (sheetData.length <= 1) { 
       return sheetData;
@@ -174,7 +174,7 @@ function cleanupOldAuditLogs(daysToKeep = 90) {
   Logger.log('cleanupOldAuditLogs called for ' + daysToKeep + ' days');
 
   try {
-    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.AUDIT_LOG);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     const data = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG); 
 
     if (data.length <= 1) return { success: true, message: 'No data to cleanup' };
@@ -495,9 +495,9 @@ function getComprehensiveLearnerHistory(jlid) {
 function getTasks() {
     Logger.log('getTasks called');
     try {
-        const sheetData = _getCachedSheetData(CONFIG.SHEETS.TASKS); 
+        const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.TASKS); 
         if (sheetData.length === 0) { 
-            const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.TASKS);
+            const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.TASKS);
             sheet.appendRow(['Task ID', 'Created', 'Learner JLID', 'Learner Name', 'Task Description', 'Assigned To', 'Status', 'Due Date', 'Notes']);
             return []; 
         }
@@ -547,7 +547,7 @@ function updateTaskStatus(taskId, newStatus) {
                 sheet.getRange(i + 1, statusCol + 1).setValue(newStatus);
                 updated = true;
                 logAction('Task Updated', '', '', '', '', '', 'Success', `Task ${taskId} status changed to ${newStatus}`);
-                delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.TASKS}`];
+                _clearAppDataCache(CONFIG.APP_DATA_SHEETS.TASKS);
                 break;
             }
         }

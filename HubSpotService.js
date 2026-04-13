@@ -26,7 +26,8 @@ function fetchHubspotByJlid(jlid) {
     'installment_months', 'installment_received_months__cloned_', 'payment_due_date',
     'full_payment_received__y_n_', 'jet_guide', 'cls_manager', 'teacher_manager',
     'parent_email', 'parent_name', 'phone_number_deal_',
-    'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date'
+    'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date',
+    'current_subscription_taken_classes', 'learner_health', 'learner_health_reason_code'
   ];
 
   const requestBody = {
@@ -151,6 +152,7 @@ function fetchHubspotByJlid(jlid) {
         jetGuideName: getHSUserLabel(contactProperties.jet_guide) || '',
         clsManagerName: getHSUserLabel(contactProperties.cls_manager) || '',
         tpManagerName: getHSUserLabel(contactProperties.teacher_manager) || '',
+        tpManagerHsId: contactProperties.teacher_manager || '',
         currency: contactProperties.deal_currency_code || 'EUR', 
         sessionsPerWeek: contactProperties.frequency_of_classes || '',
         timezone: contactProperties.time_zone || '',
@@ -159,7 +161,14 @@ function fetchHubspotByJlid(jlid) {
         discount: calculatedDiscount,
         
         // Pass the alert object
-        churnAlert: churnAlert 
+        churnAlert: churnAlert,
+
+        // Learner health & subscription detail
+        learnerHealth:           contactProperties.learner_health || '',
+        learnerHealthReasonCode: contactProperties.learner_health_reason_code || '',
+        currentSubscriptionTakenClasses: contactProperties.current_subscription_taken_classes || '',
+        moduleStartDate:         contactProperties.module_start_date || '',
+        totalClassesJourney:     contactProperties.total_classes_committed_through_learner_s_journey || ''
       };
       
       return { success: true, data: data };
@@ -1762,7 +1771,7 @@ function getMigrationHistoryStats(jlid) {
  * Returns migration frequency alerts, teacher-learner history,
  * escalation events, and affinity detection.
  */
-function checkNewTeacherForLearner(jlid, newTeacherName) {
+function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
   try {
     var resolvedNew   = resolveTeacherName(newTeacherName);
     var normalizedNew = normalizeTeacherName(resolvedNew);
@@ -1879,31 +1888,41 @@ function checkNewTeacherForLearner(jlid, newTeacherName) {
     // ── 7. Future courses + upskill check ─────────────────────────────────────
     var futureCourses = [];
     var mipTicketId   = null;
+    var teacherUpskilledNames = []; // flat lowercase list — sent to client for override re-check
     try {
       var tcResult = fetchLatestMigrationTicket(jlid);
       if (tcResult.found) {
         mipTicketId = tcResult.ticketId;
         var rawProps = tcResult.rawProperties || {};
-        var allTeacherCourses = {};
-        try { allTeacherCourses = getTeacherCourses(); } catch(te) {}
-        var resolvedNewLow = resolvedNew.toLowerCase().trim();
-        var matchedKey = Object.keys(allTeacherCourses).find(function(k) {
-          return k.toLowerCase().trim() === resolvedNewLow;
-        });
-        var teacherCourseList = matchedKey ? allTeacherCourses[matchedKey] : [];
+        // Use getTeacherSpecificLoad — correctly reads wide-format Teacher Courses sheet
+        var teacherLoadResult = {};
+        try { teacherLoadResult = getTeacherSpecificLoad(resolvedNew); } catch(te) {
+          Logger.log('[checkNewTeacherForLearner] getTeacherSpecificLoad error: ' + te.message);
+        }
+        var teacherCourseList = (teacherLoadResult && teacherLoadResult.success) ? (teacherLoadResult.courses || []) : [];
+        teacherUpskilledNames = teacherCourseList.map(function(tc) { return (tc.course || '').toLowerCase().trim(); });
         [rawProps.future_course_1, rawProps.future_course_2, rawProps.future_course_3].forEach(function(raw, idx) {
           if (!raw) return;
           var label = '';
           try { label = getCourseLabel(raw) || raw; } catch(ce) { label = raw; }
           var labelLow = label.toLowerCase().trim();
-          var upskilled = teacherCourseList.some(function(tc) {
-            return (tc.course || '').toLowerCase().trim() === labelLow;
-          });
+          var upskilled = teacherUpskilledNames.indexOf(labelLow) > -1;
           futureCourses.push({ index: idx + 1, courseLabel: label, rawValue: raw, isUpskilled: upskilled });
         });
       }
     } catch(fcErr) {
       Logger.log('[checkNewTeacherForLearner] Future courses error: ' + fcErr.message);
+    }
+
+    // ── 8. Teacher slot availability in CET ───────────────────────────────────
+    var slotCheck = { checked: false, reason: 'No schedule provided.' };
+    if (slotParams && slotParams.day && slotParams.hour && slotParams.timezone) {
+      try {
+        slotCheck = checkTeacherSlotForMigration(resolvedNew, slotParams);
+      } catch(scErr) {
+        Logger.log('[checkNewTeacherForLearner] Slot check error: ' + scErr.message);
+        slotCheck = { checked: false, reason: 'Slot check failed: ' + scErr.message };
+      }
     }
 
     return {
@@ -1927,12 +1946,390 @@ function checkNewTeacherForLearner(jlid, newTeacherName) {
       riskLevel:   timeline.journeyAnalysis ? timeline.journeyAnalysis.riskLevel   : 'Unknown',
       riskMessage: timeline.journeyAnalysis ? timeline.journeyAnalysis.riskMessage : '',
       alerts:      alerts,
-      futureCourses: futureCourses
+      futureCourses:           futureCourses,
+      teacherUpskilledCourses: teacherUpskilledNames,
+      slotCheck:               slotCheck
     };
 
   } catch (e) {
     Logger.log('[checkNewTeacherForLearner] Error: ' + e.message + '\n' + e.stack);
     return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Checks whether the new teacher is free at the learner's class slot (converted to CET).
+ * @param {string} teacherName
+ * @param {{day,hour,min,meridiem,timezone}} slotParams  — from migration form first session
+ * @returns {{checked,cetDate,cetTime,isAvailable,reason}}
+ */
+function checkTeacherSlotForMigration(teacherName, slotParams) {
+  try {
+    if (!slotParams || !slotParams.day || !slotParams.hour || !slotParams.timezone) {
+      return { checked: false, reason: 'Class schedule not filled in the form.' };
+    }
+
+    // ── 1. Parse GMT offset from string like "(GMT+05:30) Chennai…" ──────────
+    var tzStr   = String(slotParams.timezone);
+    var tzMatch = tzStr.match(/GMT([+-])(\d{1,2}):(\d{2})/i);
+    if (!tzMatch) return { checked: false, reason: 'Unrecognised timezone: ' + tzStr };
+    var tzSign       = tzMatch[1] === '+' ? 1 : -1;
+    var tzOffsetMins = tzSign * (parseInt(tzMatch[2], 10) * 60 + parseInt(tzMatch[3], 10));
+
+    // ── 2. Convert 12-hour class time → minutes since midnight in learner TZ ─
+    var h   = parseInt(slotParams.hour, 10);
+    var m   = parseInt(slotParams.min  || '0', 10);
+    var mer = (slotParams.meridiem || 'AM').toUpperCase();
+    if (mer === 'PM' && h !== 12) h += 12;
+    if (mer === 'AM' && h === 12) h = 0;
+    var classMinsTZ = h * 60 + m;
+
+    // ── 3. Convert to UTC then to CET ─────────────────────────────────────────
+    var utcMins = classMinsTZ - tzOffsetMins;
+    // Determine CET offset: UTC+2 Apr–Sep (CEST), UTC+1 Oct–Mar (CET)
+    var now       = new Date();
+    var mon       = now.getMonth() + 1; // 1-12
+    var cetOffMin = (mon >= 4 && mon <= 9) ? 120 : 60; // minutes
+    var cetMins   = utcMins + cetOffMin;
+
+    // Day boundary shift (how many calendar days CET date differs from learner's day)
+    var dayShift = 0;
+    if (cetMins >= 1440) { cetMins -= 1440; dayShift =  1; }
+    if (cetMins <     0) { cetMins += 1440; dayShift = -1; }
+    var cetH = Math.floor(cetMins / 60);
+    var cetM = cetMins % 60;
+
+    // ── 4. Find next occurrence of the weekday (in CET-adjusted terms) ────────
+    var DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    // The learner's day — we need to account for dayShift to find the CET date
+    var learnerDayIdx = DAY_NAMES.indexOf(slotParams.day);
+    if (learnerDayIdx === -1) return { checked: false, reason: 'Unrecognised day: ' + slotParams.day };
+    var cetDayIdx = ((learnerDayIdx + dayShift) % 7 + 7) % 7;
+
+    var checkDate = new Date(now);
+    var todayIdx  = checkDate.getDay();
+    var diff      = cetDayIdx - todayIdx;
+    if (diff < 0) diff += 7;
+    if (diff === 0 && now.getHours() >= cetH) diff = 7; // slot already passed today
+    checkDate.setDate(checkDate.getDate() + diff);
+    var cetDateStr = Utilities.formatDate(checkDate, 'Europe/Paris', 'yyyy-MM-dd');
+    var cetTimeStr = (cetH < 10 ? '0' : '') + cetH + ':' + (cetM < 10 ? '0' : '') + cetM;
+
+    // ── 5. Look up teacher's calendar ID from Migration Teacher sheet ──────────
+    var calId       = null;
+    var teacherEmailLower = '';
+    try {
+      var migSS    = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+      var migSheet = migSS.getSheetByName('Migration Teacher');
+      if (migSheet) {
+        var migRows = migSheet.getDataRange().getValues();
+        var resolvedNew = teacherName;
+        try { resolvedNew = resolveTeacherName(teacherName); } catch(e) {}
+        var normNew = normalizeTeacherName(resolvedNew);
+        for (var ri = 1; ri < migRows.length; ri++) {
+          var rName = String(migRows[ri][0] || '').trim();
+          var rCal  = String(migRows[ri][1] || '').trim();
+          if (rCal.indexOf('@') > -1 && normalizeTeacherName(rName) === normNew) {
+            calId = rCal; break;
+          }
+        }
+      }
+      // Also get jetlearn email for master-cal matching
+      var tdRows = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+      var normNew2 = normalizeTeacherName(resolveTeacherName(teacherName));
+      for (var ti = 1; ti < tdRows.length; ti++) {
+        if (normalizeTeacherName(String(tdRows[ti][1] || '')) === normNew2) {
+          teacherEmailLower = String(tdRows[ti][8] || '').trim().toLowerCase(); break;
+        }
+      }
+    } catch(le) {
+      Logger.log('[slotCheck] lookup error: ' + le.message);
+    }
+
+    var resolvedTeacher = teacherName;
+    try { resolvedTeacher = resolveTeacherName(teacherName); } catch(e) {}
+    var nameParts = resolvedTeacher.trim().toLowerCase().split(/\s+/).filter(function(p){ return p.length >= 3; });
+
+    // Slot window in milliseconds (UTC) for the 1-hour class slot
+    var dp         = cetDateStr.split('-');
+    var cetOffHr   = cetOffMin / 60;
+    var slotStartMs = Date.UTC(parseInt(dp[0]), parseInt(dp[1])-1, parseInt(dp[2]), cetH - cetOffHr, cetM, 0);
+    var slotEndMs   = slotStartMs + 3600000;
+
+    // ── 6. Check master calendar (hello@jet-learn.com) via REST API ───────────
+    var oauthToken  = ScriptApp.getOAuthToken();
+    var masterCalId = 'hello@jet-learn.com';
+    var tMinStr     = new Date(slotStartMs).toISOString();
+    var tMaxStr     = new Date(slotEndMs).toISOString();
+    var masterUrl   = 'https://www.googleapis.com/calendar/v3/calendars/'
+                    + encodeURIComponent(masterCalId)
+                    + '/events?timeMin=' + encodeURIComponent(tMinStr)
+                    + '&timeMax=' + encodeURIComponent(tMaxStr)
+                    + '&singleEvents=true&maxResults=50';
+    var masterResp  = UrlFetchApp.fetch(masterUrl, {
+      headers: { 'Authorization': 'Bearer ' + oauthToken },
+      muteHttpExceptions: true
+    });
+    if (masterResp.getResponseCode() === 200) {
+      var masterData = JSON.parse(masterResp.getContentText());
+      var booked = (masterData.items || []).some(function(ev) {
+        if (ev.status === 'cancelled') return false;
+        var guestEmails = (ev.attendees || []).map(function(a){ return (a.email || '').toLowerCase(); });
+        var calIdLow = calId ? calId.toLowerCase() : '';
+        var guestMatch = (calIdLow && guestEmails.indexOf(calIdLow) > -1)
+                      || (teacherEmailLower && guestEmails.indexOf(teacherEmailLower) > -1);
+        var titleLow  = (ev.summary || '').toLowerCase();
+        var nameMatch = nameParts.length > 0 && nameParts.every(function(p){ return titleLow.indexOf(p) > -1; });
+        return guestMatch || nameMatch;
+      });
+      if (booked) {
+        return { checked: true, cetDate: cetDateStr, cetTime: cetTimeStr,
+                 isAvailable: false, reason: 'Booked on class calendar at ' + cetTimeStr + ' CET' };
+      }
+    }
+
+    // ── 7. Check teacher's personal calendar ──────────────────────────────────
+    if (calId) {
+      var persUrl  = 'https://www.googleapis.com/calendar/v3/calendars/'
+                   + encodeURIComponent(calId)
+                   + '/events?timeMin=' + encodeURIComponent(tMinStr)
+                   + '&timeMax=' + encodeURIComponent(tMaxStr)
+                   + '&singleEvents=true&maxResults=20';
+      var persResp = UrlFetchApp.fetch(persUrl, {
+        headers: { 'Authorization': 'Bearer ' + oauthToken },
+        muteHttpExceptions: true
+      });
+      if (persResp.getResponseCode() === 200) {
+        var persData = JSON.parse(persResp.getContentText());
+        var persEvents = (persData.items || []).filter(function(ev){
+          return ev.status !== 'cancelled' && !ev.transparency; // transparent = free
+        });
+        if (persEvents.length > 0) {
+          return { checked: true, cetDate: cetDateStr, cetTime: cetTimeStr,
+                   isAvailable: false, reason: (persEvents[0].summary || 'Busy') + ' (personal calendar)' };
+        }
+      }
+    } else {
+      return { checked: true, cetDate: cetDateStr, cetTime: cetTimeStr,
+               isAvailable: null, reason: 'Calendar ID not found — cannot verify' };
+    }
+
+    return { checked: true, cetDate: cetDateStr, cetTime: cetTimeStr,
+             isAvailable: true, reason: 'Free at ' + cetTimeStr + ' CET on ' + cetDateStr };
+
+  } catch(e) {
+    Logger.log('[checkTeacherSlotForMigration] Error: ' + e.message);
+    return { checked: false, reason: 'Error: ' + e.message };
+  }
+}
+
+/**
+ * Finds teachers who are upskilled in all the specified course labels.
+ * Reads the Teacher Courses sheet in wide format.
+ * @param {string[]} courseLabels  — display names of courses to check
+ * @param {string}   excludeTeacher — the current new teacher to exclude from results
+ * @param {string}   jlid — learner JLID to check teacher history against
+ * @returns {{success, alternatives: [{teacherName, courses, wasEverAssigned, escalationCount, isAffinityCase}]}}
+ */
+function findUpskillAlternatives(courseLabels, excludeTeacher, jlid) {
+  try {
+    var sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    if (!sheetData || sheetData.length < 2) return { success: false, alternatives: [] };
+
+    // Find header row
+    var headerRowIndex = 0;
+    for (var i = 0; i < Math.min(sheetData.length, 10); i++) {
+      if (String(sheetData[i][0]).trim().toLowerCase() === 'teacher') { headerRowIndex = i; break; }
+    }
+    var headers = sheetData[headerRowIndex];
+    var COURSE_START = 4; // Teacher, Email, Manager, Health
+
+    var requiredLow = (courseLabels || []).map(function(c) { return c.toLowerCase().trim(); });
+    var excludeLow  = normalizeTeacherName(resolveTeacherName(excludeTeacher || ''));
+
+    var alternatives = [];
+
+    for (var r = headerRowIndex + 1; r < sheetData.length; r++) {
+      var row         = sheetData[r];
+      var teacherName = String(row[0] || '').trim();
+      if (!teacherName) continue;
+      if (normalizeTeacherName(teacherName) === excludeLow) continue;
+
+      // Collect upskilled courses for this teacher
+      var upskilledMap = {};
+      for (var c = COURSE_START; c < headers.length; c++) {
+        var colName     = String(headers[c] || '').trim();
+        var proficiency = String(row[c]     || '').trim();
+        if (colName && proficiency && proficiency.toLowerCase() !== 'not onboarded') {
+          upskilledMap[colName.toLowerCase().trim()] = { course: colName, proficiency: proficiency };
+        }
+      }
+
+      // Check if teacher covers every required course
+      var coversAll = requiredLow.every(function(req) { return !!upskilledMap[req]; });
+      if (!coversAll) continue;
+
+      // Build course details for the required courses only
+      var courseDetails = requiredLow.map(function(req) {
+        return upskilledMap[req] || { course: req, proficiency: '?' };
+      });
+      alternatives.push({ teacherName: teacherName, courses: courseDetails });
+    }
+
+    // Sort: fully 100%-proficient teachers first
+    alternatives.sort(function(a, b) {
+      var aAll = a.courses.every(function(c) { return c.proficiency === '100%'; });
+      var bAll = b.courses.every(function(c) { return c.proficiency === '100%'; });
+      return (bAll ? 1 : 0) - (aAll ? 1 : 0);
+    });
+
+    // Enrich with learner history if jlid provided
+    if (jlid) {
+      var timeline = null;
+      try { timeline = getComprehensiveLearnerHistory(jlid); } catch(he) {}
+      var migrations = (timeline && timeline.migrationTimeline) ? timeline.migrationTimeline : [];
+
+      alternatives.forEach(function(alt) {
+        var normAlt = normalizeTeacherName(alt.teacherName);
+        var wasEverAssigned = migrations.some(function(m) {
+          return normalizeTeacherName(m.toTeacher || '') === normAlt;
+        });
+        var escalations = migrations.filter(function(m) {
+          var r = (m.reason || '').toLowerCase();
+          return r.includes('escalation') && (
+            normalizeTeacherName(m.fromTeacher || '') === normAlt ||
+            normalizeTeacherName(m.toTeacher   || '') === normAlt
+          );
+        });
+        var isAffinity = migrations.some(function(m) {
+          return normalizeTeacherName(m.toTeacher || '') === normAlt &&
+                 (m.reason || '').toLowerCase().includes('affinity');
+        });
+        var lastAssigned = null;
+        if (wasEverAssigned) {
+          var periods = migrations.filter(function(m) { return normalizeTeacherName(m.toTeacher || '') === normAlt; });
+          periods.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+          lastAssigned = periods[0] ? periods[0].date : null;
+        }
+        alt.wasEverAssigned  = wasEverAssigned;
+        alt.escalationCount  = escalations.length;
+        alt.isAffinityCase   = isAffinity;
+        alt.lastAssignedDate = lastAssigned;
+      });
+    }
+
+    return { success: true, alternatives: alternatives };
+  } catch(e) {
+    Logger.log('[findUpskillAlternatives] Error: ' + e.message);
+    return { success: false, alternatives: [], message: e.message };
+  }
+}
+
+/**
+ * Looks up a HubSpot owner ID by name from the HS User Values sheet.
+ * Case-insensitive, trims whitespace.
+ * @param {string} name  — TP Manager name (e.g. "Naureen Fatima")
+ * @returns {string|null} Record ID or null
+ */
+function getHubSpotOwnerIdByName(name) {
+  try {
+    if (!name) return null;
+    var needle = name.trim().toLowerCase();
+    var data = _getCachedSheetData(CONFIG.SHEETS.HS_USER_DATA);
+    for (var i = 1; i < data.length; i++) {
+      var label = String(data[i][1] || '').trim().toLowerCase();
+      if (label === needle) {
+        Logger.log('[getHubSpotOwnerIdByName] ' + name + ' → ' + data[i][0]);
+        return String(data[i][0]);
+      }
+    }
+    Logger.log('[getHubSpotOwnerIdByName] No match for: ' + name);
+    return null;
+  } catch(e) {
+    Logger.log('[getHubSpotOwnerIdByName] Error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Looks up a HubSpot owner ID by email address (legacy — kept for reference).
+ * @param {string} email
+ * @returns {string|null} owner ID or null
+ */
+function getHubSpotOwnerIdByEmail(email) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var url = 'https://api.hubapi.com/crm/v3/owners?email=' + encodeURIComponent(email) + '&limit=1';
+    var resp = UrlFetchApp.fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) return null;
+    var data = JSON.parse(resp.getContentText());
+    return (data.results && data.results.length > 0) ? String(data.results[0].id) : null;
+  } catch(e) {
+    Logger.log('[getHubSpotOwnerIdByEmail] Error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Creates a HubSpot task assigned to the TP Manager for teacher upskilling.
+ * Associates the task with the learner's deal.
+ * @param {string} jlid
+ * @param {string} teacherName
+ * @param {string} learnerName
+ * @param {string} tpManagerHsId  — HubSpot internal owner ID (Record ID from HS User Values sheet)
+ * @param {string[]} gapCourses
+ * @param {string} dealId   — HubSpot deal object ID (hs_object_id)
+ */
+function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsId, gapCourses, dealId) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token) { Logger.log('[createUpskillTask] No API token'); return; }
+
+    // Use the HS internal owner ID directly (from teacher_manager property / HS User Values sheet)
+    var ownerId = tpManagerHsId ? String(tpManagerHsId) : null;
+
+    // Due date: 7 days from now
+    var dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 7);
+
+    var subject = 'Upskilling Required: ' + teacherName + ' → ' + gapCourses.join(', ');
+    var body = 'Teacher ' + teacherName + ' has been assigned learner ' + learnerName + ' (' + jlid + ').\n\n'
+      + 'Upskilling needed before learner reaches the following courses:\n'
+      + gapCourses.map(function(c, i) { return '• Future ' + (i + 1) + ': ' + c; }).join('\n')
+      + '\n\nPlease arrange upskilling sessions promptly.';
+
+    var properties = {
+      hs_task_subject:   subject,
+      hs_task_body:      body,
+      hs_task_status:    'NOT_STARTED',
+      hs_task_priority:  'HIGH',
+      hs_task_type:      'TODO',
+      hs_timestamp:      dueDate.getTime()
+    };
+    if (ownerId) properties.hubspot_owner_id = ownerId;
+
+    var payload = { properties: properties };
+
+    // Add deal association if dealId available
+    if (dealId) {
+      payload.associations = [{
+        to: { id: String(dealId) },
+        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }] // task → deal
+      }];
+    }
+
+    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tasks', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    Logger.log('[createUpskillTask] HTTP ' + resp.getResponseCode() + ' — ' + resp.getContentText().substring(0, 200));
+  } catch(e) {
+    Logger.log('[createUpskillTask] Error: ' + e.message);
   }
 }
 
@@ -1994,15 +2391,12 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
       return;
     }
 
-    // Check upskilling server-side (authoritative)
-    var allTC = {};
-    try { allTC = getTeacherCourses(); } catch(e) {}
+    // Check upskilling server-side (authoritative) — use wide-format loader
     var resolvedNew = newTeacherName;
     try { resolvedNew = resolveTeacherName(newTeacherName); } catch(e) {}
-    var matchedKey = Object.keys(allTC).find(function(k) {
-      return k.toLowerCase().trim() === resolvedNew.toLowerCase().trim();
-    });
-    var teacherCourseList = matchedKey ? allTC[matchedKey] : [];
+    var teacherLoadResult2 = {};
+    try { teacherLoadResult2 = getTeacherSpecificLoad(resolvedNew); } catch(e) {}
+    var teacherCourseList = (teacherLoadResult2 && teacherLoadResult2.success) ? (teacherLoadResult2.courses || []) : [];
 
     var results = courseLabels.map(function(label) {
       var labelLow = label.toLowerCase().trim();
@@ -2011,6 +2405,21 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
       });
       return { label: label, upskilled: upskilled };
     });
+
+    // Resolve TP manager name for this teacher
+    var tpManagerTag = 'Teacher Partner';
+    try {
+      var teacherList = getTeacherData();
+      var resolvedLow = resolvedNew.toLowerCase().trim();
+      var matchedTeacher = teacherList.filter(function(t) {
+        return t.name && t.name.toLowerCase().trim() === resolvedLow;
+      })[0];
+      if (matchedTeacher && matchedTeacher.manager && matchedTeacher.manager.trim()) {
+        tpManagerTag = matchedTeacher.manager.trim();
+      }
+    } catch(e) {
+      Logger.log('[upskillNote] Could not resolve TP manager: ' + e.message);
+    }
 
     var gapped = results.filter(function(r) { return !r.upskilled; });
     var note;
@@ -2024,11 +2433,28 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
       note = '⚠️ Teacher Upskilling Gap — Action Required\n'
         + resolvedNew + ' needs upskilling:\n' + allList
         + '\n\nGap courses: ' + gapped.map(function(r) { return r.label; }).join(', ')
-        + '\n\n@Teacher Partner — please arrange upskilling before new sessions begin.';
+        + '\n\n@' + tpManagerTag + ' — please arrange upskilling before new sessions begin.';
     }
 
     addNoteToHubSpotTicket(ticketId, note);
     Logger.log('[upskillNote] Note written to ticket ' + ticketId + ' for ' + jlid);
+
+    // Log to Upskill Tracker if there are gaps
+    if (gapped.length > 0) {
+      try {
+        var learnerNameForLog = (ticketResult.rawProperties && ticketResult.rawProperties.subject) || jlid;
+        logUpskillTask(
+          resolvedNew,
+          tpManagerTag,
+          jlid,
+          learnerNameForLog,
+          gapped.map(function(r) { return r.label; }).join(', '),
+          '' // HubSpot task ID not available here; updated separately if needed
+        );
+      } catch(logErr) {
+        Logger.log('[upskillNote] Tracker log failed: ' + logErr.message);
+      }
+    }
   } catch(e) {
     Logger.log('[checkAndWriteUpskillNote] Error: ' + e.message);
   }
@@ -2094,7 +2520,7 @@ function getTeacherAttritionReport(teacherName) {
  
     Logger.log('[getTeacherAttritionReport] Found ' + data.results.length + ' learners for "' + resolvedName + '"');
  
-    var auditData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    var auditData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
  
     var students = data.results.map(function(deal) {
       var jlid           = deal.properties.jetlearner_id;
@@ -2576,28 +3002,10 @@ if (migrationsLast30d && migrationsLast30d.topUnstableLearners && migrationsLast
   });
 }
 
-// --- AI BRIEFING GENERATION (FIXED) ---
-let briefing = "Review key metrics to identify today's priorities.";
-try {
-    const aiPrompt = `As a JetLearn Ops Manager, give a 1-sentence daily briefing based on this data: Active learners: ${activeLearnerCount}, New learners this week: ${onboardings.thisWeek}, Migrations (30d): ${migrationCount30d}, Overloaded teachers: ${overloadedTeachersCount}, High-risk new learners: ${highChurnRiskLearnersCount}.`;
-    const aiResponse = getAIAgentAnalysis({}, {}, {}, aiPrompt);
-    if (aiResponse && aiResponse.summary) {
-        briefing = aiResponse.summary;
-    }
-} catch (e) {
-    Logger.log("[getNewDashboardData] AI Briefing generation failed: " + e.message);
-    // Use a smart fallback if AI fails but actions exist
-    briefing = actionCards.length > 0
-        ? `Priority Focus: ${actionCards[0].title}. Please investigate.`
-        : "All systems normal. Review key metrics below.";
-}
-
-
     // --- 4. Assemble Payload ---
     const result = {
       success: true,
       data: {
-        briefing: briefing,
         kpiData: {
           activeLearners: {
             value:  activeLearnerCount,
@@ -2683,4 +3091,318 @@ function fetchPersonaSmartData(jlid) {
     mode: mode,
     data: contextData
   };
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teacher Replacement History
+// Returns all migration tickets where this teacher was involved as
+// "from" (learner left) or "to" (learner joined), newest first.
+// ─────────────────────────────────────────────────────────────────────────────
+function getTeacherReplacementHistory(teacherName) {
+  try {
+    if (!teacherName) return { success: false, message: 'Teacher name required.' };
+
+    var token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var PORTAL_ID  = '7729491';
+    var PIPELINE   = '66161281';
+    var EXCLUDED   = ['133821818', '153457301'];
+    var headers    = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    // Look up teacher HS internal ID from Teacher HS Values sheet
+    var resolvedName = resolveTeacherName(teacherName);
+    var hsId = null;
+    try {
+      var hsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+      var nl = resolvedName.trim().toLowerCase();
+      for (var i = 1; i < hsData.length; i++) {
+        if (String(hsData[i][2] || '').trim().toLowerCase() === nl) {
+          hsId = String(hsData[i][1] || '').trim();
+          break;
+        }
+      }
+    } catch(e) { Logger.log('[RepHistory] HS ID lookup error: ' + e.message); }
+
+    var filterValue = hsId || resolvedName;
+    Logger.log('[RepHistory] teacher="' + teacherName + '" → resolved="' + resolvedName + '" hsId="' + hsId + '"');
+
+    var TICKET_PROPS = [
+      'subject', 'createdate', 'reason_of_migration__t_',
+      'new_teacher', 'current_teacher__t_', 'hs_pipeline_stage',
+      'learner_uid', 'hs_ticket_id'
+    ];
+
+    function fetchTickets(filterProp) {
+      var body = {
+        filterGroups: [{ filters: [
+          { propertyName: filterProp,    operator: 'EQ', value: filterValue },
+          { propertyName: 'hs_pipeline', operator: 'EQ', value: PIPELINE }
+        ]}],
+        properties: TICKET_PROPS,
+        sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+        limit: 100
+      };
+      var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+        method: 'post', headers: headers,
+        payload: JSON.stringify(body), muteHttpExceptions: true
+      });
+      var data = JSON.parse(res.getContentText());
+      return (data && data.results) ? data.results : [];
+    }
+
+    var leftTickets   = fetchTickets('current_teacher__t_'); // learner left this teacher
+    var joinedTickets = fetchTickets('new_teacher');         // learner joined this teacher
+
+    var IGNORE_KW = ['PRM', 'Renewal', 'Feedback', 'Review', 'Kit', 'Laptop', 'Device', 'Tab'];
+    var STAGE_LABELS = {
+      '128913747': 'Migration Triggered', '128913748': 'WIP',
+      '128913750': 'WIP - TP Approval', '128913752': 'WIP - CLS Approval',
+      '133755411': 'Approved by CLS',   '128913749': 'WIP - PR Approval',
+      '128913753': 'Migration Completed'
+    };
+
+    function processTicket(t, direction) {
+      var props   = t.properties || {};
+      var stage   = String(props.hs_pipeline_stage || '').trim();
+      if (EXCLUDED.indexOf(stage) !== -1) return null;
+      var subject = String(props.subject || '').trim();
+      if (IGNORE_KW.some(function(kw) { return subject.indexOf(kw) !== -1; })) return null;
+      var reason  = String(props.reason_of_migration__t_ || '').trim();
+      if (!reason && subject.indexOf('Migration') === -1) return null;
+
+      var dateMs   = props.createdate ? new Date(props.createdate).getTime() : 0;
+      var jlid     = String(props.learner_uid || '').trim();
+      return {
+        direction:   direction, // 'left' or 'joined'
+        date:        props.createdate ? new Date(props.createdate).toISOString().split('T')[0] : '',
+        dateMs:      dateMs,
+        jlid:        jlid,
+        learnerName: subject || jlid,
+        reason:      reason || 'Unspecified',
+        fromTeacher: getTeacherLabel(props.current_teacher__t_) || 'Unknown',
+        toTeacher:   getTeacherLabel(props.new_teacher)         || 'Not assigned',
+        stage:       STAGE_LABELS[stage] || stage || 'Unknown',
+        hubspotLink: 'https://app.hubspot.com/contacts/' + PORTAL_ID + '/ticket/' + t.id
+      };
+    }
+
+    var results = [];
+    leftTickets.forEach(function(t) {
+      var r = processTicket(t, 'left');
+      if (r) results.push(r);
+    });
+    joinedTickets.forEach(function(t) {
+      var r = processTicket(t, 'joined');
+      if (r) {
+        // Deduplicate: if same ticket already added as 'left' (edge case), skip
+        var dup = results.some(function(x) {
+          return x.jlid === r.jlid && x.date === r.date && x.direction !== r.direction;
+        });
+        if (!dup) results.push(r);
+      }
+    });
+
+    // Sort newest first
+    results.sort(function(a, b) { return b.dateMs - a.dateMs; });
+
+    var leftCount   = results.filter(function(r) { return r.direction === 'left';   }).length;
+    var joinedCount = results.filter(function(r) { return r.direction === 'joined'; }).length;
+
+    return {
+      success:     true,
+      teacherName: teacherName,
+      total:       results.length,
+      leftCount:   leftCount,
+      joinedCount: joinedCount,
+      history:     results
+    };
+  } catch(e) {
+    Logger.log('[getTeacherReplacementHistory] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stuck Migration Tracker
+// Returns open HubSpot migration tickets that have been in a WIP stage
+// for more than `thresholdDays` days (default 7).
+// ─────────────────────────────────────────────────────────────────────────────
+function getStuckMigrations(thresholdDays) {
+  try {
+    thresholdDays = thresholdDays || 7;
+    var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var PORTAL_ID = '7729491';
+    var PIPELINE  = '66161281';
+    var headers   = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    // WIP stage IDs (not completed/cancelled)
+    var WIP_STAGES = ['128913748','128913750','128913752','1030980247','133755411','128913749','1065336836'];
+    var STAGE_LABELS = {
+      '128913748': 'WIP',
+      '128913750': 'WIP - TP Approval Pending',
+      '128913752': 'WIP - CLS Approval Pending',
+      '1030980247': 'WIP - Rejected by CLS',
+      '133755411': 'WIP - Approved by CLS',
+      '128913749': 'WIP - PR Approval Pending',
+      '1065336836': 'Execution Pending'
+    };
+
+    var cutoffMs = Date.now() - thresholdDays * 86400000;
+    var stuck    = [];
+
+    // Fetch open tickets per WIP stage in one search
+    var body = {
+      filterGroups: [{ filters: [
+        { propertyName: 'hs_pipeline',       operator: 'EQ', value: PIPELINE },
+        { propertyName: 'hs_pipeline_stage', operator: 'IN', values: WIP_STAGES }
+      ]}],
+      properties: ['subject','createdate','hs_pipeline_stage','current_teacher__t_',
+                   'new_teacher','reason_of_migration__t_','learner_uid'],
+      sorts: [{ propertyName: 'createdate', direction: 'ASCENDING' }],
+      limit: 100
+    };
+    var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+      method: 'post', headers: headers, payload: JSON.stringify(body), muteHttpExceptions: true
+    });
+    var data = JSON.parse(res.getContentText());
+    var tickets = (data && data.results) ? data.results : [];
+
+    tickets.forEach(function(t) {
+      var props     = t.properties || {};
+      var createdMs = props.createdate ? new Date(props.createdate).getTime() : 0;
+      if (createdMs > cutoffMs) return; // not stuck yet
+      var daysStuck = Math.floor((Date.now() - createdMs) / 86400000);
+      stuck.push({
+        ticketId:    t.id,
+        hubspotLink: 'https://app.hubspot.com/contacts/' + PORTAL_ID + '/ticket/' + t.id,
+        subject:     props.subject || 'Migration',
+        jlid:        props.learner_uid || '',
+        stage:       STAGE_LABELS[props.hs_pipeline_stage] || props.hs_pipeline_stage,
+        fromTeacher: getTeacherLabel(props.current_teacher__t_) || 'Unknown',
+        toTeacher:   getTeacherLabel(props.new_teacher)         || 'Not assigned',
+        reason:      props.reason_of_migration__t_ || 'Unspecified',
+        createdDate: props.createdate ? new Date(props.createdate).toISOString().split('T')[0] : '',
+        daysStuck:   daysStuck
+      });
+    });
+
+    // Sort by most stuck first
+    stuck.sort(function(a, b) { return b.daysStuck - a.daysStuck; });
+
+    return { success: true, count: stuck.length, tickets: stuck, threshold: thresholdDays };
+  } catch(e) {
+    Logger.log('[getStuckMigrations] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications Aggregator
+// Collects actionable alerts across all modules for the current user.
+// ─────────────────────────────────────────────────────────────────────────────
+function getNotifications(username) {
+  try {
+    var items = [];
+
+    // 1. Stuck migrations (>7 days in WIP)
+    try {
+      var stuck = getStuckMigrations(7);
+      if (stuck.success && stuck.count > 0) {
+        items.push({
+          type:     'stuck_migration',
+          icon:     'fa-hourglass-half',
+          color:    '#f59e0b',
+          title:    stuck.count + ' stuck migration' + (stuck.count > 1 ? 's' : ''),
+          body:     'In WIP for >7 days. Escalation needed.',
+          action:   'openStuckMigrations',
+          priority: 1
+        });
+      }
+    } catch(e) {}
+
+    // 2. New red flags (last 2 days) — from alert log
+    try {
+      var alertData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.ALERT_LOG);
+      var cutoff2   = new Date(); cutoff2.setDate(cutoff2.getDate() - 2);
+      var newAlerts = 0;
+      if (alertData && alertData.length > 1) {
+        alertData.slice(1).forEach(function(row) {
+          var ts = row[7] ? new Date(row[7]) : null;
+          if (ts && ts >= cutoff2) newAlerts++;
+        });
+      }
+      if (newAlerts > 0) {
+        items.push({
+          type:     'red_flag',
+          icon:     'fa-flag',
+          color:    '#ef4444',
+          title:    newAlerts + ' new red flag' + (newAlerts > 1 ? 's' : ''),
+          body:     'Raised in the last 2 days across audit sheets.',
+          action:   'openAuditCenter',
+          priority: 0
+        });
+      }
+    } catch(e) {}
+
+    // 3. Overdue tasks (due date passed, status not Done)
+    try {
+      var taskData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.TASKS);
+      var now      = new Date();
+      var overdue  = 0;
+      if (taskData && taskData.length > 1) {
+        var th = taskData[0].map(function(h){ return String(h||'').trim().toLowerCase(); });
+        var dueCol    = th.indexOf('due date');
+        var statusCol = th.indexOf('status');
+        var assignCol = th.indexOf('assigned to');
+        if (dueCol !== -1 && statusCol !== -1) {
+          taskData.slice(1).forEach(function(row) {
+            var dueDate = row[dueCol] ? new Date(row[dueCol]) : null;
+            var status  = String(row[statusCol] || '').trim().toLowerCase();
+            var assignee = assignCol !== -1 ? String(row[assignCol]||'').trim().toLowerCase() : '';
+            var isMyTask = !assignee || assignee === username.trim().toLowerCase();
+            if (dueDate && dueDate < now && status !== 'done' && status !== 'completed' && isMyTask) overdue++;
+          });
+        }
+      }
+      if (overdue > 0) {
+        items.push({
+          type:     'overdue_task',
+          icon:     'fa-exclamation-circle',
+          color:    '#dc2626',
+          title:    overdue + ' overdue task' + (overdue > 1 ? 's' : ''),
+          body:     'Past due date. Review your task list.',
+          action:   'openTasks',
+          priority: 2
+        });
+      }
+    } catch(e) {}
+
+    // 4. Teachers due for audit (no audit in 30+ days) — quick count
+    try {
+      var tpDash = getTPManagerDashboard('');
+      if (tpDash && tpDash.success) {
+        var dueCount = (tpDash.teachers || []).filter(function(t){ return t.dueForAudit; }).length;
+        if (dueCount > 0) {
+          items.push({
+            type:     'due_audit',
+            icon:     'fa-clipboard-check',
+            color:    '#6366f1',
+            title:    dueCount + ' teacher' + (dueCount > 1 ? 's' : '') + ' due for audit',
+            body:     'No audit recorded in the last 30 days.',
+            action:   'openAuditCenter',
+            priority: 3
+          });
+        }
+      }
+    } catch(e) {}
+
+    items.sort(function(a, b) { return a.priority - b.priority; });
+
+    return { success: true, count: items.length, items: items };
+  } catch(e) {
+    Logger.log('[getNotifications] Error: ' + e.message);
+    return { success: false, count: 0, items: [] };
+  }
 }

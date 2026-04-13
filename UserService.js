@@ -512,54 +512,219 @@ function sendWelcomeEmail(toEmail, username, tempPassword) {
     const subject = `Your account is ready`;
 
     const htmlBody = `
-    <div style="background:#f4f4f0;padding:40px 24px;font-family:Inter,Arial,sans-serif;">
-      <div style="background:#ffffff;border-radius:4px;overflow:hidden;max-width:560px;margin:0 auto;">
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Account Created — JetLearn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-        <div style="padding:40px 48px 0;">
+  <style>
+    * { box-sizing: border-box; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
 
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:48px;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4a3c8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
-            <span style="font-size:15px;font-weight:600;color:#1a1a1a;">JetLearn</span>
-          </div>
+    body { background-color: #f0ede8; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
-          <p style="font-size:26px;font-weight:600;color:#1a1a1a;margin:0 0 12px;letter-spacing:-0.5px;line-height:1.2;">You're in, ${username}.</p>
-          <p style="font-size:15px;color:#6b6b6b;margin:0 0 40px;line-height:1.6;">Your JetLearn Operations account has been created. Use the details below to sign in for the first time.</p>
+    .email-bg       { background-color: #f0ede8; }
+    .card-outer     { background-color: #ffffff; border-radius: 16px; border: 1px solid #e4e1dc; overflow: hidden; }
+    .rail-bg        { background-color: #f5f3ff; border-right: 1px solid #e4e1f8; }
+    .rail-brand     { color: #5a5888; }
+    .rail-heading   { color: #2d2a6e; }
+    .rail-lbl       { color: #5a5888; }
+    .rail-val       { color: #333355; }
+    .rail-divider   { background-color: #e0ddf8; }
+    .rail-footer    { color: #7068a8; }
+    .rail-icon-bg   { background-color: #ede9ff; }
 
-          <div style="border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;padding:24px 0;margin-bottom:32px;">
+    .main-bg        { background-color: #ffffff; }
+    .action-tag     { color: #1e40af; background-color: #eff6ff; border: 1px solid #93c5fd; }
+    .header-text    { color: #666666; }
+    .header-strong  { color: #333333; }
+    .section-lbl    { color: #767370; }
+    .detail-lbl     { color: #767676; }
+    .detail-val     { color: #111111; }
+    .detail-border  { border-bottom: 1px solid #f8f6f3; }
+    .notice-bg      { background-color: #fffbeb; border: 1px solid #fcd34d; }
+    .notice-title   { color: #92400e; }
+    .notice-text    { color: #78350f; }
+    .closing-bg     { background-color: #f5f3ff; border: 1px solid #ddd8fa; }
+    .closing-text   { color: #4c1d95; }
+    .footer-sub     { color: #767676; }
+    .footer-note    { color: #767676; }
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Platform</span>
-              <a href="${platformUrl}" style="font-size:14px;color:#4a3c8a;text-decoration:none;font-weight:500;">${platformLabel}</a>
+    .btn-primary {
+      background-color: #7c6ef0;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 500;
+      border-radius: 8px;
+      display: inline-block;
+    }
+
+    @media only screen and (max-width: 600px) {
+      .wrapper         { width: 100% !important; padding: 16px 12px !important; }
+      .card-outer      { border-radius: 12px !important; }
+      .rail-cell       { display: block !important; width: 100% !important; border-radius: 0 !important; padding: 20px 20px !important; }
+      .main-cell       { display: block !important; width: 100% !important; }
+      .rail-meta-row   { display: flex !important; flex-wrap: wrap !important; gap: 14px !important; }
+      .rail-meta-item  { flex: 1 1 80px !important; }
+      .rail-heading    { font-size: 14px !important; margin-bottom: 12px !important; }
+      .rail-icon-wrap  { display: none !important; }
+      .rail-spacer     { display: none !important; }
+      .rail-footer-row { display: none !important; }
+      .main-header     { padding: 18px 20px 16px !important; }
+      .main-body       { padding: 16px 20px 20px !important; }
+      .main-footer     { padding: 13px 20px !important; }
+    }
+  </style>
+</head>
+<body class="email-bg">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg">
+  <tr>
+    <td align="center" style="padding: 40px 16px;" class="wrapper">
+
+      <!-- Top label -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px; margin-bottom:14px;">
+        <tr>
+          <td>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="width:6px; height:6px; border-radius:50%; background-color:#7c6ef0; vertical-align:middle;"></td>
+                <td style="padding-left:8px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase;" class="rail-lbl">JetLearn &mdash; Operations System</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;" class="card-outer">
+        <tr valign="top">
+
+          <!-- RAIL -->
+          <td width="210" class="rail-bg rail-cell" style="padding:32px 24px; vertical-align:top; border-radius:16px 0 0 16px;">
+            <p style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 24px;" class="rail-brand">JetLearn</p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rail-icon-wrap" style="margin-bottom:18px;">
+              <tr>
+                <td style="width:32px; height:32px; border-radius:8px; text-align:center; vertical-align:middle;" class="rail-icon-bg">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="3" y="3" width="10" height="10" rx="2" stroke="#7c6ef0" stroke-width="1.5"/>
+                    <path d="M8 6v4M6 8h4" stroke="#7c6ef0" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                </td>
+              </tr>
+            </table>
+
+            <p style="font-size:15px; font-weight:500; line-height:1.45; margin:0 0 22px;" class="rail-heading">Account<br/>provisioning</p>
+
+            <div class="rail-divider" style="height:1px; margin-bottom:22px;"></div>
+
+            <div class="rail-meta-row">
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Username</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val">${username}</p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:16px;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 4px;" class="rail-lbl">Platform</p>
+                <p style="font-size:12px; font-weight:500; margin:0; line-height:1.4;" class="rail-val">${platformLabel}</p>
+              </div>
+
+              <div class="rail-meta-item rail-item" style="margin-bottom:0;">
+                <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; text-transform:uppercase; letter-spacing:0.12em; margin:0 0 6px;" class="rail-lbl">Status</p>
+                <div style="display:inline-block; width:30px; height:30px; border-radius:50%; text-align:center; line-height:30px; font-size:11px; font-weight:500; background-color:#edfaf3; border:1px solid #7dd4a8; color:#0f6630;">NEW</div>
+              </div>
             </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
-              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Username</span>
-              <span style="font-size:14px;color:#1a1a1a;font-weight:500;">${username}</span>
+            <div class="rail-spacer" style="height:40px;"></div>
+
+            <p class="rail-footer rail-footer-row" style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; line-height:1.6; margin:0;">Automated<br/>system alert</p>
+          </td>
+
+          <!-- MAIN -->
+          <td class="main-bg main-cell" style="vertical-align:top; border-radius:0 16px 16px 0;">
+
+            <!-- Header -->
+            <div class="main-header" style="padding:28px 28px 22px; border-bottom:1px solid #f2efea;">
+              <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 9px; margin:0 0 8px;" class="action-tag">Account Ready</p>
+              <p style="font-size:13px; line-height:1.7; margin:0;" class="header-text">
+                Hi <strong class="header-strong">${username}</strong>, your JetLearn Operations account has been successfully created. You can now access the platform using the credentials below.
+              </p>
             </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <span style="font-size:12px;color:#9a9a9a;text-transform:uppercase;letter-spacing:0.6px;">Password</span>
-              <code style="font-size:14px;color:#1a1a1a;background:#f6f4ff;padding:4px 12px;border-radius:4px;letter-spacing:1.5px;">${tempPassword}</code>
+            <!-- Body -->
+            <div class="main-body" style="padding:22px 28px;">
+
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Access credentials</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:12px 0;" class="detail-lbl">Platform URL</td>
+                  <td style="font-size:13px; font-weight:500; padding:12px 0; text-align:right;"><a href="${platformUrl}" style="text-decoration:none; color:#5546d4;">${platformUrl} &rarr;</a></td>
+                </tr>
+                <tr class="detail-border" style="border-bottom:1px solid #f8f6f3;">
+                  <td style="font-size:13px; padding:12px 0;" class="detail-lbl">Username</td>
+                  <td style="font-size:13px; font-weight:500; padding:12px 0; text-align:right;" class="detail-val">${username}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:13px; padding:12px 0;" class="detail-lbl">Temporary Password</td>
+                  <td style="font-size:13px; font-weight:500; padding:12px 0; text-align:right; font-family:'DM Mono',monospace; background:#f6f4ff; padding-right:8px; border-radius:4px;" class="detail-val">${tempPassword}</td>
+                </tr>
+              </table>
+
+              <!-- Action Button -->
+              <div style="text-align:center; margin-bottom:24px;">
+                <a href="${platformUrl}" class="btn-primary" style="padding:14px 32px; font-size:14px;">Sign in to your account</a>
+              </div>
+
+              <!-- Notice -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="notice-bg">
+                <tr><td style="padding:14px 16px; border-radius:9px; border-left:3px solid #f59e0b;">
+                  <p style="font-size:12px; font-weight:500; margin:0 0 4px;" class="notice-title">Security Note</p>
+                  <p style="font-size:13px; line-height:1.65; margin:0;" class="notice-text">This is a temporary password. For your security, you will be required to change it immediately after your first login.</p>
+                </td></tr>
+              </table>
+
+              <!-- Closing -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-radius:9px; overflow:hidden;" class="closing-bg">
+                <tr><td style="padding:18px 20px; text-align:center; border-radius:9px;">
+                  <p style="font-size:14px; font-weight:500; line-height:1.7; margin:0;" class="closing-text">Welcome aboard! We're excited to have you on the JetLearn Operations team.</p>
+                </td></tr>
+              </table>
+
             </div>
 
-          </div>
+            <!-- Footer -->
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f2efea;">
+              <tr>
+                <td style="padding:14px 28px;" class="main-footer">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="font-size:12px; font-weight:500;" class="footer-sub">JetLearn</td>
+                      <td style="text-align:right; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase;" class="footer-note">Automated alert</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
 
-          <a href="${platformUrl}" style="display:block;background:#4a3c8a;color:white;text-decoration:none;font-size:14px;font-weight:500;padding:14px 24px;border-radius:4px;text-align:center;margin-bottom:24px;">Sign in to your account</a>
+          </td>
+        </tr>
+      </table>
 
-          <p style="font-size:13px;color:#9a9a9a;margin:0 0 40px;line-height:1.6;">This is a temporary password. You will be required to change it after your first login.</p>
+    </td>
+  </tr>
+</table>
 
-        </div>
-
-        <div style="background:#fafafa;border-top:1px solid #f0f0f0;padding:24px 48px;">
-          <p style="font-size:12px;color:#b0b0b0;margin:0;line-height:1.7;">
-            Sent by JetLearn Operations System &nbsp;·&nbsp;
-            <a href="mailto:${CONFIG.EMAIL.FROM}" style="color:#b0b0b0;text-decoration:none;">${CONFIG.EMAIL.FROM}</a><br>
-            If you didn't expect this email, you can safely ignore it.
-          </p>
-        </div>
-
-      </div>
-    </div>
+</body>
+</html>
     `;
 
     sendTrackedEmail({
@@ -656,7 +821,7 @@ function getUserProfile(username) {
     let migrationCount = 0;
     let onboardingCount = 0;
     try {
-      const auditLog = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+      const auditLog = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
       if (auditLog && auditLog.length > 1) {
         // Find the index for "Action" and "Intervened By" columns
         const headers = auditLog[0].map(h => String(h).trim());
@@ -746,7 +911,7 @@ function updateOwnProfile(data) {
 
 function getEmailLogs() {
   try {
-    const data = _getCachedSheetData(CONFIG.SHEETS.EMAIL_LOGS);
+    const data = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
     if (data.length <= 1) return [];
 
     const headers = data[0];
@@ -763,7 +928,7 @@ function getEmailLogs() {
 
 function logAuditAction(action, notes) {
   try {
-    const sheet = getOrCreateSheet(CONFIG.SHEETS.AUDIT_LOG);
+    const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     sheet.appendRow([
       new Date(),   // Timestamp
       action,       // Action
@@ -811,6 +976,129 @@ function toggleUserStatus(targetUsername, newStatus, actingUser) {
     return { success: false, message: 'User not found.' };
   } catch (e) {
     logError('toggleUserStatus', e);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global Impact Score
+// Computes a per-user performance score (0–100) from the last 30 days of
+// User Activity Log entries, benchmarked against all other users.
+// ─────────────────────────────────────────────────────────────────────────────
+function getUserImpactScore(username) {
+  try {
+    if (!username) return { success: false, message: 'No username.' };
+
+    var POINTS = {
+      'Successful Login':         0,
+      'Migration Email Sent':     8,
+      'Migration Processed':      8,
+      'Email Sent':               3,
+      'Batch Email Sent':         5,
+      'Audit Completed':          6,
+      'Audit Submitted':          6,
+      'TP Note Added':            4,
+      'Upskill Task Created':     5,
+      'Invoice Generated':        5,
+      'Invoice Sent':             5,
+      'Task Completed':           4,
+      'User Created':             6,
+      'WhatsApp Sent':            2,
+      'Report Generated':         3
+    };
+
+    var actData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
+    if (!actData || actData.length < 2) {
+      return { success: true, score: 0, percentile: 0, migrationsHandled: 0,
+               emailsSent: 0, auditsRun: 0, tasksCompleted: 0,
+               nextMilestone: 10, insight: 'No activity data yet.', team: '' };
+    }
+
+    var cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+
+    // Col 0=Timestamp, 1=Username, 2=Action, 3=Details
+    var userScores = {};  // username → { points, migrations, emails, audits, tasks }
+
+    actData.slice(1).forEach(function(row) {
+      var ts     = row[0] ? new Date(row[0]) : null;
+      if (!ts || ts < cutoff) return;
+      var uname  = String(row[1] || '').trim().toLowerCase();
+      var action = String(row[2] || '').trim();
+      if (!uname) return;
+
+      if (!userScores[uname]) userScores[uname] = { points:0, migrations:0, emails:0, audits:0, tasks:0 };
+      var pts = POINTS[action] || 0;
+      userScores[uname].points += pts;
+      if (action.indexOf('Migration') !== -1) userScores[uname].migrations++;
+      if (action.indexOf('Email') !== -1 || action.indexOf('WhatsApp') !== -1) userScores[uname].emails++;
+      if (action.indexOf('Audit') !== -1) userScores[uname].audits++;
+      if (action.indexOf('Task') !== -1 || action.indexOf('Invoice') !== -1) userScores[uname].tasks++;
+    });
+
+    var nameLower = username.trim().toLowerCase();
+    var myData    = userScores[nameLower] || { points:0, migrations:0, emails:0, audits:0, tasks:0 };
+
+    // Normalise to 0–100 (cap at 200 raw points = 100)
+    var MAX_RAW = 200;
+    var rawScore = Math.min(myData.points, MAX_RAW);
+    var score    = Math.round((rawScore / MAX_RAW) * 100 * 10) / 10;
+
+    // Percentile: proportion of other users with lower score
+    var allScores = Object.values(userScores).map(function(u) { return Math.min(u.points, MAX_RAW); });
+    var below     = allScores.filter(function(s) { return s < rawScore; }).length;
+    var percentile = allScores.length > 1 ? Math.round((below / (allScores.length - 1)) * 100) : 100;
+
+    // Next milestone: next multiple of 5 above score
+    var nextMilestone = Math.ceil((score + 0.1) / 5) * 5;
+    if (nextMilestone > 100) nextMilestone = 100;
+
+    // Team label from User Profiles (col 11 = Team if it exists)
+    var team = '';
+    try {
+      var profiles = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
+      if (profiles && profiles.length > 1) {
+        var hdr = profiles[0].map(function(h) { return String(h||'').trim().toLowerCase(); });
+        var uCol = hdr.indexOf('username');
+        var tCol = hdr.indexOf('team');
+        if (uCol !== -1 && tCol !== -1) {
+          for (var i = 1; i < profiles.length; i++) {
+            if (String(profiles[i][uCol]||'').trim().toLowerCase() === nameLower) {
+              team = String(profiles[i][tCol]||'').trim();
+              break;
+            }
+          }
+        }
+      }
+    } catch(te) {}
+
+    // Personalised insight
+    var insight = '';
+    if (percentile >= 99)      insight = 'Top 1% of operational managers this month. Exceptional performance.';
+    else if (percentile >= 90) insight = 'Top 10% this month. Your efficiency is driving team outcomes.';
+    else if (percentile >= 75) insight = 'Strong performance. You are above 75% of the team this month.';
+    else if (percentile >= 50) insight = 'Solid work. Push on migrations and audits to climb the leaderboard.';
+    else                       insight = 'Getting started. Complete migrations and audits to boost your score.';
+
+    // Improvement hint
+    if (myData.migrations < 3)  insight += ' Try completing more migrations.';
+    else if (myData.audits < 2) insight += ' Running more audits will increase your score.';
+
+    return {
+      success:          true,
+      score:            score,
+      percentile:       percentile,
+      migrationsHandled: myData.migrations,
+      emailsSent:       myData.emails,
+      auditsRun:        myData.audits,
+      tasksCompleted:   myData.tasks,
+      nextMilestone:    nextMilestone,
+      insight:          insight,
+      team:             team
+    };
+  } catch(e) {
+    Logger.log('[getUserImpactScore] Error: ' + e.message);
     return { success: false, message: e.message };
   }
 }

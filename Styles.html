@@ -2883,6 +2883,26 @@ body.dark-mode .app-footer a { color: rgba(255,255,255,0.35) !important; }
 
 /* main-content padding handled in main definition above */
 
+/* ── Support & Documentation overlays ── */
+.doc-link-list { display:flex; flex-direction:column; gap:2px; }
+.doc-link-item {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:11px 14px; border-radius:10px; cursor:pointer;
+  font-size:0.85rem; color:#374151; transition:background .15s;
+}
+.doc-link-item:hover { background:#f1f5f9; color:var(--primary); }
+.doc-link-item i { font-size:0.65rem; color:#cbd5e1; }
+.doc-section {
+  background:#fff; border-radius:16px; padding:1.5rem;
+  border:1.5px solid #e2e8f0;
+}
+body.dark-mode #supportOverlay,
+body.dark-mode #documentationOverlay,
+body.dark-mode #docArticleOverlay { background:#0d1117 !important; }
+body.dark-mode .doc-section { background:#161b27 !important; border-color:rgba(255,255,255,0.08) !important; }
+body.dark-mode .doc-link-item { color:#cbd5e1; }
+body.dark-mode .doc-link-item:hover { background:rgba(255,255,255,0.06); }
+
 /* --- HubSpot-style Dropdown CSS --- */
 .hs-dropdown-container {
     position: relative;
@@ -3770,5 +3790,22 @@ body.dark-mode .filter-label { color: rgba(255,255,255,0.5) !important; }
       .ai-dashboard-grid { grid-template-columns: 1fr; }
       .ai-kpi-row { grid-template-columns: repeat(2, 1fr); }
     }
+
+    /* ── Persona Card Grid ─────────────────────────────── */
+    #personaCardsGrid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 1100px) { #personaCardsGrid { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 700px)  { #personaCardsGrid { grid-template-columns: 1fr; } }
+
+    /* ── Stuck Migrations Modal dark mode ──────────────── */
+    body.dark-mode #stuckMigrationsModal > div {
+      background: #1e1e3a !important;
+      color: #e2e8f0;
+    }
+    body.dark-mode #stuckModalTable thead { background: #16162e !important; }
+    body.dark-mode #stuckModalTable tr { border-color: rgba(255,255,255,0.06) !important; }
 
   </style>

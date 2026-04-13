@@ -6,7 +6,7 @@ function calculateDashboardStats() {
   };
 
   try {
-    const rawSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const rawSheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     const auditData = (rawSheetData && Array.isArray(rawSheetData) && rawSheetData.length > 1) ? rawSheetData.slice(1) :[];
 
     const now = new Date();
@@ -73,7 +73,7 @@ function calculateDashboardStats() {
     }
     
     try {
-      const emailLogs = _getCachedSheetData(CONFIG.SHEETS.EMAIL_LOGS);
+      const emailLogs = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.EMAIL_LOGS);
       if (emailLogs && Array.isArray(emailLogs) && emailLogs.length > 1) {
           const headers = emailLogs[0];
           const trackingIdCol = headers.findIndex(h => h.trim() === 'Tracking ID'); 
@@ -718,7 +718,7 @@ function getAIGeneratedInsights(currentData, previousData) {
 
 function getDoubleMigrationReport(params) {
   try {
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     
     if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
         Logger.log("Audit Log empty or null.");
@@ -823,7 +823,7 @@ function getDoubleMigrationReport(params) {
 
 function getMultiMigrationReport(params) {
   try {
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     
     if (!sheetData || !Array.isArray(sheetData) || sheetData.length < 2) {
         return [];

@@ -712,7 +712,8 @@ function switchPage(pageId, context = null) {
         invoicesPage: loadInvoicePage,
         emailActivitiesPage: loadEmailActivitiesPage,
         aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); },
-        profilePage: loadProfilePage
+        profilePage: loadProfilePage,
+        onboardingTrackerPage: loadOnboardingTracker
     };
 
     if (pageLoaders[pageId]) {
@@ -781,6 +782,7 @@ function switchPage(pageId, context = null) {
                 populateSelect(document.getElementById('onboardingParentTeacher'), globalTeachers, false, "Select a teacher");
                 populateSelect(document.getElementById('onboardingParentClsManager'), globalClsManagers, false, "Select CLS");
                 populateSelect(document.getElementById('onboardingParentTpManager'), globalTpManagers, false, "Select TP Manager");
+                populateSelect(document.getElementById('tpManagerSelect'), globalTpManagers, false, "— Select TP Manager —");
                 populateSelect(minecraftCourse, globalCourses, false, "Select a course");
                 populateSelect(robloxCourse, globalCourses, false, "Select a course");
 
@@ -872,7 +874,7 @@ function updateNewDashboard(response) {
     const data = response.data;
 
     // 1. AI Briefing
-    document.getElementById('aiBriefingText').textContent = data.briefing;
+    // AI briefing removed
 
     // 2. KPIs & Sparklines
     document.getElementById('kpiActiveLearnersValue').textContent = data.kpiData.activeLearners.value.toLocaleString();
@@ -1960,17 +1962,37 @@ tr.innerHTML = `
                     const profile = data.profile;
 
                     // –– Header –––––––––––––––––––––––––––––––––––––––––––––
-                    const avatar = `<div class="teacher-profile-avatar">${profile.name.substring(0, 2).toUpperCase()}</div>`;
-                    const info   = `<div class="teacher-profile-info">
-                        <h2>${profile.name}</h2>
-                        <p><strong>Email:</strong> ${profile.email || 'N/A'}</p>
-                        <p><strong>Status:</strong> <span class="status-badge ${profile.status === 'Active' ? 'status-success' : 'status-pending'}">${profile.status}</span></p>
-                        <p><strong>Manager:</strong> ${profile.manager || 'N/A'}</p>
-                        <p><strong>CLS Manager:</strong> ${profile.clsManager || 'N/A'}</p>
-                        <p><strong>Joined:</strong> ${profile.joinDate || 'N/A'}</p>
-                        <p><strong>Total Upskilled Courses:</strong> ${profile.totalCourses}</p>
-                    </div>`;
-                    contentEl.innerHTML = `<div class="teacher-profile-header">${avatar}${info}</div>`;
+                    const initials    = profile.name.substring(0,2).toUpperCase();
+                    const statusColor = profile.status === 'Active' ? '#15803d' : '#d97706';
+                    const statusBg    = profile.status === 'Active' ? '#dcfce7' : '#fef3c7';
+                    const infoRows = [
+                      { icon:'fa-envelope',     label:'Email',           val: profile.email || 'N/A' },
+                      { icon:'fa-venus-mars',   label:'Gender',          val: profile.gender || 'N/A' },
+                      { icon:'fa-phone',        label:'Contact',         val: profile.contactNumber || 'N/A' },
+                      { icon:'fa-calendar-plus',label:'Date of Joining', val: profile.dateOfJoining || profile.joinDate || 'N/A' },
+                      { icon:'fa-user-tie',     label:'TP Manager',      val: profile.manager || 'N/A' },
+                      { icon:'fa-user-check',   label:'CLS Manager',     val: profile.clsManager || 'N/A' },
+                      { icon:'fa-book-open',    label:'Courses Upskilled', val: profile.totalCourses },
+                      { icon:'fa-clock',        label:'Last Activity',   val: profile.lastActivity || 'N/A' }
+                    ].map(r =>
+                      `<div style="display:flex;align-items:flex-start;gap:0.6rem;font-size:0.83rem;padding:5px 0;border-bottom:1px solid #f1f5f9;">
+                        <i class="fas ${r.icon}" style="color:#94a3b8;width:14px;margin-top:2px;flex-shrink:0;"></i>
+                        <span style="color:#64748b;min-width:130px;flex-shrink:0;">${r.label}</span>
+                        <span style="color:#1e293b;font-weight:500;">${escapeHtml(String(r.val))}</span>
+                      </div>`
+                    ).join('');
+                    contentEl.innerHTML = `
+                      <div style="display:grid;grid-template-columns:220px 1fr;gap:1.5rem;align-items:start;margin-bottom:1.5rem;">
+                        <div style="background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.5rem;text-align:center;">
+                          <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:700;color:#fff;margin:0 auto 0.75rem;">${initials}</div>
+                          <div style="font-size:1rem;font-weight:700;color:#1e293b;margin-bottom:4px;">${escapeHtml(profile.name)}</div>
+                          <span style="background:${statusBg};color:${statusColor};border-radius:99px;padding:2px 12px;font-size:0.72rem;font-weight:700;">${escapeHtml(profile.status)}</span>
+                        </div>
+                        <div style="background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.25rem 1.5rem;">
+                          <h3 style="font-size:0.8rem;font-weight:700;color:#64748b;letter-spacing:.05em;margin:0 0 0.75rem;">TEACHER DETAILS</h3>
+                          ${infoRows}
+                        </div>
+                      </div>`;
 
                     // –– Escalation Summary ––––––––––––––––––––––––––––––––––––––
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
@@ -2584,34 +2606,11 @@ function updatePersonaResults(result) {
     return;
   }
 
-  var personaResults = result.results || [];
-  var count      = personaResults.length;
-  var countEl    = document.getElementById('personaResultsCount');
-  var tbody      = document.getElementById('personaResultsBody');
+  personaResults = result.results || [];
+  _personaCurrentPage = 1;
   var container  = document.getElementById('personaResultsContainer');
-  var courseHdr  = document.getElementById('personaCurrentCourseHeader');
 
-  // Set dynamic column headers to actual course names
-  var courseName = document.getElementById('pInpCourse') ? document.getElementById('pInpCourse').value : '';
-  if (courseHdr) courseHdr.textContent = courseName || 'Current Course';
-  var f1Val = document.getElementById('pInpFuture1') ? document.getElementById('pInpFuture1').value : '';
-  var f2Val = document.getElementById('pInpFuture2') ? document.getElementById('pInpFuture2').value : '';
-  var f3Val = document.getElementById('pInpFuture3') ? document.getElementById('pInpFuture3').value : '';
-  var f1Hdr = document.getElementById('personaFuture1Header');
-  var f2Hdr = document.getElementById('personaFuture2Header');
-  var f3Hdr = document.getElementById('personaFuture3Header');
-  if (f1Hdr) f1Hdr.textContent = (f1Val && f1Val !== 'None') ? f1Val : 'Future 1';
-  if (f2Hdr) f2Hdr.textContent = (f2Val && f2Val !== 'None') ? f2Val : 'Future 2';
-  if (f3Hdr) f3Hdr.textContent = (f3Val && f3Val !== 'None') ? f3Val : 'Future 3';
-
-  if (countEl) countEl.textContent = count + ' match' + (count !== 1 ? 'es' : '');
-  if (tbody)   tbody.innerHTML = '';
-
-  if (count === 0) {
-    if (tbody) tbody.innerHTML =
-      '<tr><td colspan="13" style="text-align:center;padding:2rem;color:var(--text-muted);">'
-      + 'No teachers match the criteria. Try different slots or courses.</td></tr>';
-  } else {
+  if (false && personaResults.length === 0) { // legacy table path — kept for reference, never runs
     personaResults.forEach(function(t, idx) {
 
       // ── Slot match ──
@@ -2718,33 +2717,14 @@ function updatePersonaResults(result) {
         // Future 1 / 2 / 3
         + '<td>' + pCell(t.futureCourse1Progress) + '</td>'
         + '<td>' + pCell(t.futureCourse2Progress) + '</td>'
-        + '<td>' + pCell(t.futureCourse3Progress) + '</td>'
-
-        // Audit
-        + '<td>' + auditHtml + '</td>'
-
-        // Flags
-        + '<td style="text-align:center;">' + rfHtml + '</td>'
-
-        // Traits Gap
-        + '<td style="max-width:150px;">' + traitsHtml + '</td>'
-
-        // Action
-        + '<td style="text-align:right;">'
-          + '<button class="btn btn-outline btn-sm p-profile-btn" data-name="' + escapeHtml(t.teacherName) + '">Profile</button>'
-        + '</td>';
-
-      tr.querySelector('.p-profile-btn').addEventListener('click', function() {
-        switchPage('teacherProfilePage', this.dataset.name);
-      });
-      tbody.appendChild(tr);
+        + '</td>'; // end legacy block — never executes (guarded by false &&)
     });
   }
 
-  if (container) {
-    container.style.display = 'block';
-    container.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  // ── Render as card grid ──
+  if (container) container.style.display = 'block';
+  renderPersonaCards();
+  if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 
@@ -2969,15 +2949,164 @@ function mipToggleOverride(idx) {
 
 function mipApplyOverride(idx, newCourse) {
   if (!newCourse) return;
+  // Re-check upskill for the new course
+  var upskilledList = window.mipTeacherUpskilledCourses || [];
+  var isNowUpskilled = upskilledList.indexOf(newCourse.toLowerCase().trim()) > -1;
+
+  // Update label
   var labelEl = document.getElementById('mip_fc_label_' + idx);
   if (labelEl) labelEl.textContent = newCourse;
+
+  // Update badge
+  var badgeEl = document.getElementById('mip_fc_badge_' + idx);
+  if (badgeEl) {
+    badgeEl.textContent = isNowUpskilled ? '✓ Upskilled' : '✗ Not upskilled';
+    badgeEl.style.color           = isNowUpskilled ? '#15803d' : '#b91c1c';
+    badgeEl.style.background      = isNowUpskilled ? '#f0fdf4' : '#fef2f2';
+    badgeEl.style.borderColor     = isNowUpskilled ? '#86efac' : '#fca5a5';
+  }
+
+  // Update confirmed store
   if (window.mipConfirmedCourses && window.mipConfirmedCourses[idx]) {
     window.mipConfirmedCourses[idx].courseLabel = newCourse;
-    window.mipConfirmedCourses[idx].isUpskilled = false;
+    window.mipConfirmedCourses[idx].isUpskilled = isNowUpskilled;
   }
+
   var sel = document.getElementById('mip_fc_override_' + idx);
   if (sel) sel.style.display = 'none';
-  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' set to: ' + newCourse);
+  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' → ' + newCourse + (isNowUpskilled ? ' ✓' : ' ✗ Not upskilled'));
+
+  // Re-evaluate summary and replacement button based on all current badge states
+  mipRefreshSummary();
+}
+
+function mipRefreshSummary() {
+  var confirmed = window.mipConfirmedCourses || [];
+  if (confirmed.length === 0) return;
+  var allUpskilled = confirmed.every(function(fc) { return fc.isUpskilled; });
+
+  // Update summary text
+  var summaryEl = document.getElementById('mip_fc_summary');
+  if (summaryEl) {
+    if (allUpskilled) {
+      var name = (typeof newTeacherSelect !== 'undefined' && newTeacherSelect && newTeacherSelect.selectedIndex >= 0)
+        ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text : '';
+      summaryEl.innerHTML = '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher &ldquo;' + escapeHtml(name) + '&rdquo; is upskilled in current and future courses</span>';
+    } else {
+      summaryEl.innerHTML = '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found — note will be added to ticket on submission</span>';
+    }
+  }
+
+  // Show/hide replacement button
+  var btnWrap = document.getElementById('mip_findAltBtnWrap');
+  if (btnWrap) btnWrap.style.display = allUpskilled ? 'none' : 'block';
+}
+
+function mipFindAlternatives() {
+  var btn = document.getElementById('mip_findAltBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:5px;"></i>Searching…'; }
+
+  // Send ALL future course labels — replacement must cover current + all future courses
+  var gappedCourses = (window.mipConfirmedCourses || [])
+    .map(function(fc) { return fc.courseLabel; });
+
+  var currentTeacher = (typeof newTeacherSelect !== 'undefined' && newTeacherSelect) ? newTeacherSelect.value : '';
+  var currentJlid    = (typeof jlidInput !== 'undefined' && jlidInput) ? jlidInput.value.trim() : '';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search" style="margin-right:5px;"></i>Find Upskilled Replacement'; }
+      var altSec     = document.getElementById('mip_alternativesSection');
+      var altContent = document.getElementById('mip_alternativesContent');
+      if (!altSec || !altContent) return;
+
+      if (!result || !result.success || result.alternatives.length === 0) {
+        altSec.style.display = 'block';
+        altContent.innerHTML = '<span style="color:#92400e;font-size:0.83rem;">No teacher found who is upskilled in all gapped courses.</span>';
+        return;
+      }
+
+      var html = '<div style="display:flex;flex-direction:column;gap:0.5rem;">';
+      result.alternatives.forEach(function(alt) {
+        var profHtml = alt.courses.map(function(c) {
+          var color = c.proficiency === '100%' ? '#15803d' : '#d97706';
+          return '<span style="font-size:0.7rem;color:' + color + ';background:' + (c.proficiency === '100%' ? '#f0fdf4' : '#fefce8')
+            + ';border-radius:3px;padding:1px 6px;border:1px solid ' + (c.proficiency === '100%' ? '#86efac' : '#fcd34d') + ';">'
+            + escapeHtml(c.course) + ' · ' + escapeHtml(c.proficiency) + '</span>';
+        }).join(' ');
+
+        // History badges
+        var historyHtml = '';
+        if (alt.isAffinityCase) {
+          historyHtml += '<span style="font-size:0.68rem;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:3px;padding:1px 6px;"><i class="fas fa-heart" style="margin-right:2px;"></i>Affinity</span> ';
+        }
+        if (alt.wasEverAssigned && !alt.isAffinityCase) {
+          var lastDate = alt.lastAssignedDate ? new Date(alt.lastAssignedDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '';
+          historyHtml += '<span style="font-size:0.68rem;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;"><i class="fas fa-history" style="margin-right:2px;"></i>Was teacher' + (lastDate ? ' · ' + lastDate : '') + '</span> ';
+        }
+        if (alt.escalationCount > 0) {
+          historyHtml += '<span style="font-size:0.68rem;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:3px;padding:1px 6px;"><i class="fas fa-exclamation-triangle" style="margin-right:2px;"></i>' + alt.escalationCount + ' escalation(s)</span> ';
+        }
+        if (!alt.wasEverAssigned) {
+          historyHtml += '<span style="font-size:0.68rem;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:3px;padding:1px 6px;"><i class="fas fa-user-plus" style="margin-right:2px;"></i>New to learner</span>';
+        }
+
+        html += '<div style="padding:0.55rem 0.7rem;background:#fff;border-radius:6px;border:1px solid #fde68a;">'
+          + '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.3rem;">'
+          +   '<span style="font-weight:700;font-size:0.85rem;flex:1;">' + escapeHtml(alt.teacherName) + '</span>'
+          +   '<button type="button" data-teacher="' + escapeHtml(alt.teacherName) + '" onclick="mipSelectAlternativeTeacher(this.dataset.teacher)" '
+          +     'style="font-size:0.75rem;padding:3px 10px;border:1px solid #6366f1;border-radius:4px;background:#6366f1;color:#fff;cursor:pointer;white-space:nowrap;">'
+          +     '<i class="fas fa-check" style="margin-right:3px;"></i>Use Teacher</button>'
+          + '</div>'
+          + '<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:0.3rem;">' + profHtml + '</div>'
+          + '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + historyHtml + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      altContent.innerHTML = html;
+      altSec.style.display = 'block';
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-search" style="margin-right:5px;"></i>Find Upskilled Replacement'; }
+      showToast('error', 'Search Failed', String(err));
+    })
+    .findUpskillAlternatives(gappedCourses, currentTeacher, currentJlid);
+}
+
+function mipSelectAlternativeTeacher(teacherName) {
+  var sel = typeof newTeacherSelect !== 'undefined' ? newTeacherSelect : document.getElementById('newTeacher');
+  if (!sel) { showToast('error', 'Error', 'New Teacher field not found.'); return; }
+
+  var nameLow = teacherName.toLowerCase().trim();
+  var bestIdx = -1;
+
+  // Pass 1: exact case-insensitive match on value or text
+  for (var i = 0; i < sel.options.length; i++) {
+    var optVal  = sel.options[i].value.toLowerCase().trim();
+    var optText = sel.options[i].text.toLowerCase().trim();
+    if (optVal === nameLow || optText === nameLow) { bestIdx = i; break; }
+  }
+
+  // Pass 2: one name contains the other (handles "Subhasish" vs "Subhasish Karmakar")
+  if (bestIdx === -1) {
+    for (var j = 0; j < sel.options.length; j++) {
+      var optV = sel.options[j].value.toLowerCase().trim();
+      if (optV && (optV.indexOf(nameLow) > -1 || nameLow.indexOf(optV) > -1)) { bestIdx = j; break; }
+    }
+  }
+
+  if (bestIdx === -1) {
+    showToast('warning', 'Not Found', '"' + teacherName + '" not matched in teacher dropdown. Check spelling in Teacher Courses sheet.');
+    return;
+  }
+
+  sel.value = sel.options[bestIdx].value;
+  // Trigger change so any listeners fire
+  sel.dispatchEvent(new Event('change'));
+
+  var altSec = document.getElementById('mip_alternativesSection');
+  if (altSec) altSec.style.display = 'none';
+  showToast('success', 'Teacher Updated', sel.options[bestIdx].text + ' selected as new teacher.');
 }
 
     /* wire filter buttons once */
@@ -3977,6 +4106,10 @@ function loadTeacherSpecificDetails(teacherName) {
     const existing = document.getElementById('attritionRiskSection');
     if (existing) existing.remove();
 
+    // Reset calendar hours & replacement history panels
+    _resetCalHoursPanel();
+    _resetReplacementHistoryPanel();
+
     // –– CALL 1: Basic Load Stats & Proficiency (Google Sheets) –––––––––––
     google.script.run
         .withSuccessHandler(data => {
@@ -4014,6 +4147,11 @@ function loadTeacherSpecificDetails(teacherName) {
             }
 
             if (resultsContainer) resultsContainer.style.display = 'block';
+
+            // –– CALL 2a: Teaching Hours Distribution (Calendar) ––––––––––
+            _loadCalendarHours(teacherName);
+            // –– CALL 2b: Replacement History (HubSpot) ––––––––––––––––––
+            _loadReplacementHistory(teacherName);
 
             // –– CALL 2: Attrition Risk & Active Pool (HubSpot) ––––––––––––
             google.script.run
@@ -4170,6 +4308,204 @@ function loadTeacherSpecificDetails(teacherName) {
         })
         .getTeacherSpecificLoad(teacherName);
 }
+
+// ── Calendar Hours helpers ────────────────────────────────────────────────────
+var _calHoursChart = null;   // Chart.js instance — destroyed on re-render
+var _calHoursCurrentTeacher = '';
+var _calHoursCurrentWeeks   = 4;
+
+function _resetCalHoursPanel() {
+    const loading = document.getElementById('calHoursLoading');
+    const wrap    = document.getElementById('calHoursChartWrap');
+    const empty   = document.getElementById('calHoursEmpty');
+    if (loading) { loading.style.display = 'block'; }
+    if (wrap)    { wrap.style.display    = 'none';  }
+    if (empty)   { empty.style.display   = 'none';  }
+    ['calHoursTotalHours','calHoursAvgWeek','calHoursPeakDay','calHoursMatched'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+    });
+    if (_calHoursChart) { try { _calHoursChart.destroy(); } catch(e) {} _calHoursChart = null; }
+}
+
+function _loadCalendarHours(teacherName, weeksBack) {
+    weeksBack = weeksBack || parseInt(document.getElementById('calHoursWeeksSelect')?.value || '4', 10);
+    _calHoursCurrentTeacher = teacherName;
+    _calHoursCurrentWeeks   = weeksBack;
+
+    const weeksLabel = document.getElementById('calHoursWeekLabel');
+    if (weeksLabel) weeksLabel.textContent = `last ${weeksBack} wks`;
+
+    google.script.run
+        .withSuccessHandler(data => _renderCalHours(data))
+        .withFailureHandler(err => {
+            const loading = document.getElementById('calHoursLoading');
+            if (loading) loading.style.display = 'none';
+            console.error('[CalHours] Error:', err);
+        })
+        .getTeacherCalendarHours(teacherName, weeksBack);
+}
+
+function reloadCalendarHours() {
+    if (!_calHoursCurrentTeacher) return;
+    _resetCalHoursPanel();
+    _loadCalendarHours(_calHoursCurrentTeacher);
+}
+
+function _renderCalHours(data) {
+    const loading = document.getElementById('calHoursLoading');
+    const wrap    = document.getElementById('calHoursChartWrap');
+    const empty   = document.getElementById('calHoursEmpty');
+    if (loading) loading.style.display = 'none';
+
+    if (!data || !data.success || !data.hours || data.matched === 0) {
+        if (empty) empty.style.display = 'block';
+        ['calHoursTotalHours','calHoursAvgWeek','calHoursPeakDay','calHoursMatched'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.textContent = '0';
+        });
+        return;
+    }
+
+    document.getElementById('calHoursTotalHours').textContent = data.totalHours + 'h';
+    document.getElementById('calHoursAvgWeek').textContent    = data.avgPerWeek + 'h';
+    document.getElementById('calHoursPeakDay').textContent    = data.peakDay;
+    document.getElementById('calHoursMatched').textContent    = data.matched;
+
+    if (wrap) wrap.style.display = 'block';
+
+    const canvas = document.getElementById('calHoursChart');
+    if (!canvas) return;
+    if (_calHoursChart) { try { _calHoursChart.destroy(); } catch(e) {} }
+
+    const maxHours = Math.max(...data.hours);
+    _calHoursChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: data.days,
+            datasets: [{
+                label: 'Teaching Hours',
+                data:  data.hours,
+                backgroundColor: data.hours.map(h =>
+                    h === maxHours && h > 0 ? 'rgba(99,102,241,0.85)' : 'rgba(99,102,241,0.35)'
+                ),
+                borderColor: 'rgba(99,102,241,0.9)',
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: ctx => {
+                            const h = ctx.parsed.y;
+                            const events = data.eventCount[ctx.dataIndex];
+                            return ` ${h}h  (${events} session${events !== 1 ? 's' : ''})`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: v => v + 'h' },
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+
+// ── Replacement History helpers ───────────────────────────────────────────────
+function _resetReplacementHistoryPanel() {
+    const loading = document.getElementById('replacementHistoryLoading');
+    const wrap    = document.getElementById('replacementHistoryTableWrap');
+    const empty   = document.getElementById('replacementHistoryEmpty');
+    const badges  = document.getElementById('replacementHistoryBadges');
+    if (loading) loading.style.display = 'block';
+    if (wrap)    wrap.style.display    = 'none';
+    if (empty)   empty.style.display   = 'none';
+    if (badges)  badges.innerHTML      = '';
+}
+
+function _loadReplacementHistory(teacherName) {
+    google.script.run
+        .withSuccessHandler(data => _renderReplacementHistory(data))
+        .withFailureHandler(err => {
+            const loading = document.getElementById('replacementHistoryLoading');
+            if (loading) loading.style.display = 'none';
+            console.error('[RepHistory] Error:', err);
+        })
+        .getTeacherReplacementHistory(teacherName);
+}
+
+function _renderReplacementHistory(data) {
+    const loading = document.getElementById('replacementHistoryLoading');
+    const wrap    = document.getElementById('replacementHistoryTableWrap');
+    const empty   = document.getElementById('replacementHistoryEmpty');
+    const badges  = document.getElementById('replacementHistoryBadges');
+    const tbody   = document.getElementById('replacementHistoryBody');
+    if (loading) loading.style.display = 'none';
+
+    if (!data || !data.success || !data.history || data.history.length === 0) {
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+
+    // KPI badges
+    if (badges) {
+        badges.innerHTML = `
+            <span class="status-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;">
+                <i class="fas fa-user-plus" style="margin-right:4px;"></i>${data.joinedCount} Joined
+            </span>
+            <span class="status-badge" style="background:#ffebee;color:#d32f2f;border:1px solid #f48fb1;">
+                <i class="fas fa-user-minus" style="margin-right:4px;"></i>${data.leftCount} Left
+            </span>
+            <span class="status-badge status-info">${data.total} Total</span>`;
+    }
+
+    if (tbody) {
+        tbody.innerHTML = '';
+        data.history.forEach(r => {
+            const isLeft     = r.direction === 'left';
+            const dirBadge   = isLeft
+                ? `<span class="status-badge" style="background:#ffebee;color:#d32f2f;border:1px solid #f48fb1;"><i class="fas fa-sign-out-alt" style="margin-right:3px;"></i>Left</span>`
+                : `<span class="status-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;"><i class="fas fa-sign-in-alt" style="margin-right:3px;"></i>Joined</span>`;
+
+            const stageColor = r.stage === 'Migration Completed' ? '#10b981' : '#f59e0b';
+            const stageBadge = `<span class="status-badge" style="background:rgba(0,0,0,0.05);color:${stageColor};font-size:0.7rem;">${escapeHtml(r.stage)}</span>`;
+
+            const tr = document.createElement('tr');
+            if (isLeft) tr.style.backgroundColor = '#fff8f8';
+            tr.innerHTML = `
+                <td style="white-space:nowrap;">${escapeHtml(r.date)}</td>
+                <td>${dirBadge}</td>
+                <td>
+                    <strong>${escapeHtml(r.learnerName)}</strong>
+                    ${r.jlid ? `<br><small style="color:#6366f1;">${escapeHtml(r.jlid)}</small>` : ''}
+                </td>
+                <td style="font-size:0.8em;">${escapeHtml(r.fromTeacher)}</td>
+                <td style="font-size:0.8em;">${escapeHtml(r.toTeacher)}</td>
+                <td style="font-size:0.8em;color:#555;">${escapeHtml(r.reason)}</td>
+                <td>${stageBadge}</td>
+                <td>
+                    <a href="${escapeHtml(r.hubspotLink)}" target="_blank" class="btn btn-sm btn-outline"
+                       style="color:#ff7a59;border-color:#ff7a59;" title="Open Ticket">
+                        <i class="fab fa-hubspot"></i>
+                    </a>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    if (wrap) wrap.style.display = 'block';
+}
+
 
 // Helper to copy text (Add if missing in JavaScript.html)
 function copyToClipboardText(text) {
@@ -4444,6 +4780,13 @@ google.script.run
 
     showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
     switchPage('dashboardPage');
+
+    // Load impact score + notifications after login
+    setTimeout(() => {
+        loadImpactScore(user.username);
+        loadNotifications(user.username);
+        loadStuckMigrations();
+    }, 800);
 }
 
 
@@ -5601,6 +5944,28 @@ function triggerMigrationIntelligence() {
           var histEl = document.getElementById('mip_teacherHistoryContent');
           if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading…</span>';
 
+          // Read first class session slot from the migration form
+          var slotParams = null;
+          try {
+            var firstSession = document.querySelector('#classSessionsContainer .class-session-group');
+            if (firstSession) {
+              var tzEl  = firstSession.querySelector('.class-timezone-select');
+              var dayEl = firstSession.querySelector('.class-day-select');
+              var hrEl  = firstSession.querySelector('.class-hour-select');
+              var minEl = firstSession.querySelector('.class-minute-select');
+              var merEl = firstSession.querySelector('.class-meridiem-select');
+              if (tzEl && tzEl.value && dayEl && dayEl.value && hrEl && hrEl.value) {
+                slotParams = {
+                  timezone: tzEl.value,
+                  day:      dayEl.value,
+                  hour:     hrEl.value,
+                  min:      minEl ? minEl.value : '0',
+                  meridiem: merEl ? merEl.value : 'AM'
+                };
+              }
+            }
+          } catch(spErr) {}
+
           google.script.run
             .withSuccessHandler(renderMigrationIntelPanel)
             .withFailureHandler(function(err) {
@@ -5608,7 +5973,7 @@ function triggerMigrationIntelligence() {
                 '<div style="padding:0.6rem 1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;font-size:0.83rem;">'
                 + '<i class="fas fa-times-circle" style="margin-right:6px;"></i>Intelligence check failed: ' + escapeHtml(String(err)) + '</div>';
             })
-            .checkNewTeacherForLearner(jlid, newTeacher);
+            .checkNewTeacherForLearner(jlid, newTeacher, slotParams);
         }, 600);
       }
 
@@ -5706,6 +6071,8 @@ function triggerMigrationIntelligence() {
       var fcSection = document.getElementById('mip_futureCoursesSection');
       var fcContent = document.getElementById('mip_futureCoursesContent');
       var fcs = result.futureCourses || [];
+      // Store teacher's upskilled courses for live badge refresh on override
+      window.mipTeacherUpskilledCourses = (result.teacherUpskilledCourses || []);
       // Initialise the confirmed courses store (used on form submit)
       window.mipConfirmedCourses = fcs.map(function(fc) {
         return { courseLabel: fc.courseLabel, isUpskilled: fc.isUpskilled };
@@ -5718,20 +6085,23 @@ function triggerMigrationIntelligence() {
         if (fcContent) {
           var allUpskilled = fcs.every(function(fc) { return fc.isUpskilled; });
           var summaryColor = allUpskilled ? '#15803d' : '#b91c1c';
+          var displayedTeacherName = (newTeacherSelect && newTeacherSelect.selectedIndex >= 0)
+            ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text
+            : (result.newTeacherName || '');
           var summaryText  = allUpskilled
-            ? '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher is upskilled in all future courses</span>'
+            ? '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher &ldquo;' + escapeHtml(displayedTeacherName) + '&rdquo; is upskilled in current and future courses</span>'
             : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found — note will be added to ticket on submission</span>';
-          var fcHtml = '<div style="margin-bottom:0.6rem;">' + summaryText + '</div>'
+          var fcHtml = '<div id="mip_fc_summary" style="margin-bottom:0.6rem;">' + summaryText + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
 
           fcs.forEach(function(fc, i) {
             var upBadge = fc.isUpskilled
-              ? '<span style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">✓ Upskilled</span>'
-              : '<span style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">✗ Not upskilled</span>';
+              ? '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">✓ Upskilled</span>'
+              : '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">✗ Not upskilled</span>';
 
             // Build course options from globalCourses
             var opts = '<option value="">— select course —</option>'
-              + (window.globalCourses || []).map(function(c) {
+              + (globalCourses || []).map(function(c) {
                   return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
                 }).join('');
 
@@ -5746,8 +6116,52 @@ function triggerMigrationIntelligence() {
               + '</div>';
           });
 
-          fcHtml += '</div>';
+          fcHtml += '</div>'; // close courses flex column
           fcContent.innerHTML = fcHtml;
+
+          // Show/hide the replacement button (lives in DOM, not injected)
+          var btnWrap = document.getElementById('mip_findAltBtnWrap');
+          if (btnWrap) btnWrap.style.display = allUpskilled ? 'none' : 'block';
+
+          // Reset alternatives section when results refresh
+          var altSec = document.getElementById('mip_alternativesSection');
+          if (altSec) altSec.style.display = 'none';
+        }
+      }
+
+      // ── Class Slot Availability ──────────────────────────────────────────────
+      var scSection = document.getElementById('mip_slotCheckSection');
+      var scContent = document.getElementById('mip_slotCheckContent');
+      var sc = result.slotCheck || {};
+      if (scSection && scContent) {
+        if (!sc.checked) {
+          // No slot info — hide section unless we have a reason worth showing
+          if (sc.reason && sc.reason !== 'No schedule provided.') {
+            scSection.style.display = 'block';
+            scContent.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">' + escapeHtml(sc.reason) + '</span>';
+          } else {
+            scSection.style.display = 'none';
+          }
+        } else {
+          scSection.style.display = 'block';
+          var cetLabel = '<strong>' + escapeHtml(sc.cetTime || '') + ' CET</strong>'
+            + (sc.cetDate ? ' &nbsp;·&nbsp; <span style="color:#64748b;">' + escapeHtml(sc.cetDate) + '</span>' : '');
+          var statusHtml = '';
+          if (sc.isAvailable === true) {
+            statusHtml = '<span style="font-size:0.82rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:2px 10px;">'
+              + '<i class="fas fa-check-circle" style="margin-right:4px;"></i>Free</span>';
+          } else if (sc.isAvailable === false) {
+            statusHtml = '<span style="font-size:0.82rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:5px;padding:2px 10px;">'
+              + '<i class="fas fa-times-circle" style="margin-right:4px;"></i>Booked</span>';
+          } else {
+            statusHtml = '<span style="font-size:0.82rem;font-weight:700;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:5px;padding:2px 10px;">'
+              + '<i class="fas fa-question-circle" style="margin-right:4px;"></i>Unknown</span>';
+          }
+          scContent.innerHTML = '<div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">'
+            + '<span style="font-size:0.84rem;">' + cetLabel + '</span>'
+            + statusHtml
+            + (sc.reason ? '<span style="font-size:0.75rem;color:#94a3b8;margin-left:4px;">' + escapeHtml(sc.reason) + '</span>' : '')
+            + '</div>';
         }
       }
     }
@@ -6949,7 +7363,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
                 .withFailureHandler(function(err) {
                     hideLoading();
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:1rem;color:var(--danger);">Failed to load teacher data.</td></tr>';
+                    tbody.innerHTML = '<p style="text-align:center;padding:2rem;color:var(--text-muted);">No teachers found.</p>';
                 })
                 .getTeacherDetailsForTable();
             return;
@@ -6970,87 +7384,138 @@ document.addEventListener('DOMContentLoaded', () => {
         }
  
         filtered.forEach(function(teacher) {
-            var totalLearners = teacher.activeCourses || 0;
-            var coding        = teacher.activeCoding  || 0;
-            var math          = teacher.activeMath    || 0;
-            var loadColor     = totalLearners > 20 ? '#b91c1c' : totalLearners < 5 ? '#d97706' : '#15803d';
- 
-            var learnerHtml =
-                '<span style="font-weight:700;color:' + loadColor + ';font-size:1rem;">' + totalLearners + '</span>'
-                + ' <span style="font-size:0.75rem;color:var(--text-muted);">total</span>'
-                + '&nbsp;&nbsp;'
-                + '<span style="font-size:0.75rem;background:#eff6ff;color:#1d4ed8;'
-                + 'border:1px solid #bfdbfe;padding:2px 7px;border-radius:4px;margin-right:4px;">'
-                + '<i class="fas fa-code" style="margin-right:3px;"></i>' + coding + ' Coding</span>'
-                + '<span style="font-size:0.75rem;background:#fdf4ff;color:#7e22ce;'
-                + 'border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
-                + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>';
- 
-            var isHidden = teacher.hiddenInSearch === 'Yes' || teacher.hiddenInSearch === true;
-            var tr = document.createElement('tr');
-            if (isHidden) tr.style.opacity = '0.55';
-            tr.innerHTML =
-                '<td><strong>' + escapeHtml(teacher.name) + '</strong>'
-                + (isHidden ? ' <span style="font-size:0.68rem;background:#fee2e2;color:#b91c1c;'
-                    + 'border-radius:4px;padding:1px 6px;margin-left:4px;">Hidden</span>' : '')
-                + '</td>'
-                + '<td><span class="status-badge status-'
-                + teacher.status.toLowerCase().replace(/ /g, '-') + '">'
-                + escapeHtml(teacher.status) + '</span></td>'
-                + '<td>' + learnerHtml + '</td>'
-                + '<td style="text-align:right;display:flex;gap:6px;justify-content:flex-end;">'
-                    + '<button class="btn btn-outline btn-sm view-profile-btn">'
-                    + '<i class="fas fa-user"></i> View Profile'
-                    + '</button>'
-                    + '<button class="btn btn-primary btn-sm find-replacement-btn">'
-                    + '<i class="fas fa-robot"></i> Find Replacement'
-                    + '</button>'
-                    + '<button class="btn btn-sm toggle-visibility-btn" style="'
-                    + (isHidden
-                        ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;'
-                        : 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;')
-                    + '">'
-                    + (isHidden ? '<i class="fas fa-eye"></i> Show' : '<i class="fas fa-eye-slash"></i> Hide')
-                    + '</button>'
-                + '</td>';
-            tr.querySelector('.view-profile-btn').dataset.teacherName = teacher.name;
-            tr.querySelector('.view-profile-btn').addEventListener('click', function() {
-                switchPage('teacherProfilePage', this.dataset.teacherName);
-            });
-            tr.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
-            tr.querySelector('.find-replacement-btn').addEventListener('click', function() {
-                openCloneModal(this.dataset.teacherName);
-            });
-            tr.querySelector('.toggle-visibility-btn').dataset.teacherName = teacher.name;
-            tr.querySelector('.toggle-visibility-btn').dataset.hidden = isHidden ? 'Yes' : '';
-            tr.querySelector('.toggle-visibility-btn').addEventListener('click', function() {
-                var btn = this;
-                var tName = btn.dataset.teacherName;
-                var nowHidden = btn.dataset.hidden === 'Yes';
-                var makeHidden = !nowHidden;
-                btn.disabled = true;
-                btn.textContent = 'Saving…';
-                google.script.run
-                    .withSuccessHandler(function(res) {
-                        if (res && res.success) {
-                            allTeacherDetailsCache = null; // force reload
-                            renderPersonaTable();
-                            showToast('success', 'Visibility Updated',
-                                tName + (makeHidden ? ' hidden from search.' : ' visible in search.'));
-                        } else {
-                            showToast('error', 'Error', (res && res.message) || 'Could not update visibility.');
-                            btn.disabled = false;
-                        }
-                    })
-                    .withFailureHandler(function(err) {
-                        showToast('error', 'Error', err.message || 'Server error.');
-                        btn.disabled = false;
-                    })
-                    .setTeacherVisibility(tName, makeHidden);
-            });
-            tbody.appendChild(tr);
+    var isHidden   = teacher.hiddenInSearch === 'Yes' || teacher.hiddenInSearch === true;
+    var totalLearners = teacher.activeCourses || 0;
+    var coding     = teacher.activeCoding  || 0;
+    var math       = teacher.activeMath    || 0;
+    var loadColor  = totalLearners > 20 ? '#b91c1c' : totalLearners < 5 ? '#d97706' : '#15803d';
+    var grade      = teacher.auditGrade || '—';
+    var gradeColor = {'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c'}[grade] || '#94a3b8';
+    var traits     = teacher.traits || [];
 
+    // Build trait pills (max 3 visible)
+    var traitHtml = '';
+    if (traits.length > 0) {
+        var visible = traits.slice(0, 3);
+        traitHtml = visible.map(function(tr) {
+            var s = tr.indexOf('(') > -1 ? tr.substring(0, tr.indexOf('(')).trim() : tr;
+            s = s.length > 18 ? s.substring(0, 17) + '…' : s;
+            return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;'
+                 + 'border-radius:20px;padding:2px 9px;font-size:0.68rem;margin:2px 3px 2px 0;">'
+                 + escapeHtml(s) + '</span>';
+        }).join('');
+        if (traits.length > 3) traitHtml += '<span style="font-size:0.68rem;color:#64748b;">+' + (traits.length - 3) + ' more</span>';
+    } else {
+        traitHtml = '<span style="font-size:0.75rem;color:#94a3b8;">No traits recorded</span>';
+    }
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--card-bg,#fff);border:1px solid var(--border-color,#e2e8f0);'
+        + 'border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;'
+        + 'box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:box-shadow 0.2s;'
+        + (isHidden ? 'opacity:0.55;' : '');
+
+    card.innerHTML =
+      // ── Header row: avatar + name + grade + status ──
+      '<div style="display:flex;align-items:center;gap:12px;">'
+        + '<div style="width:44px;height:44px;border-radius:10px;background:#eef2ff;'
+        + 'display:flex;align-items:center;justify-content:center;font-weight:700;'
+        + 'font-size:1.1rem;color:#4f46e5;flex-shrink:0;">'
+        + escapeHtml(teacher.name.charAt(0).toUpperCase()) + '</div>'
+        + '<div style="flex:1;min-width:0;">'
+          + '<div style="font-weight:700;font-size:0.95rem;color:var(--text-primary,#1e293b);'
+          + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+          + escapeHtml(teacher.name)
+          + (isHidden ? ' <span style="font-size:0.62rem;background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 5px;" class="hidden-badge">Hidden</span>' : '')
+          + '</div>'
+          + '<span class="status-badge status-' + teacher.status.toLowerCase().replace(/ /g,'-') + '" style="font-size:0.68rem;margin-top:3px;display:inline-block;">'
+          + escapeHtml(teacher.status) + '</span>'
+        + '</div>'
+        // Audit grade pill
+        + '<div style="text-align:center;flex-shrink:0;">'
+          + '<div style="font-size:0.6rem;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">Audit</div>'
+          + '<div style="font-size:1.4rem;font-weight:800;color:' + gradeColor + ';line-height:1;">' + escapeHtml(grade) + '</div>'
+        + '</div>'
+      + '</div>'
+
+      // ── Learner load ──
+      + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
+        + '<span style="font-weight:700;color:' + loadColor + ';font-size:1.05rem;">' + totalLearners + '</span>'
+        + '<span style="font-size:0.72rem;color:#94a3b8;">active learners</span>'
+        + '<span style="font-size:0.72rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 7px;border-radius:4px;">'
+        + '<i class="fas fa-code" style="margin-right:3px;"></i>' + coding + ' Coding</span>'
+        + '<span style="font-size:0.72rem;background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;padding:2px 7px;border-radius:4px;">'
+        + '<i class="fas fa-square-root-alt" style="margin-right:3px;"></i>' + math + ' Math</span>'
+      + '</div>'
+
+      // ── Trait pills ──
+      + '<div style="min-height:28px;">' + traitHtml + '</div>'
+
+      // ── Action buttons ──
+      + '<div style="display:flex;gap:6px;margin-top:2px;">'
+        + '<button class="btn btn-outline btn-sm view-profile-btn" style="flex:1;font-size:0.78rem;">'
+        + '<i class="fas fa-user"></i> Profile</button>'
+        + '<button class="btn btn-primary btn-sm find-replacement-btn" style="flex:1.4;font-size:0.78rem;">'
+        + '<i class="fas fa-robot"></i> Find Replacement</button>'
+        + '<button class="btn btn-sm toggle-visibility-btn" style="flex:0.6;font-size:0.78rem;'
+        + (isHidden ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;'
+                    : 'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;') + '">'
+        + (isHidden ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>')
+        + '</button>'
+      + '</div>';
+
+    // Wire up buttons
+    card.querySelector('.view-profile-btn').dataset.teacherName = teacher.name;
+    card.querySelector('.view-profile-btn').addEventListener('click', function() {
+        switchPage('teacherProfilePage', this.dataset.teacherName);
     });
+    card.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
+    card.querySelector('.find-replacement-btn').addEventListener('click', function() {
+        openCloneModal(this.dataset.teacherName);
+    });
+    // Toggle visibility (same logic as before, adapted for cards)
+    card.querySelector('.toggle-visibility-btn').dataset.teacherName = teacher.name;
+    card.querySelector('.toggle-visibility-btn').dataset.hidden = isHidden ? 'Yes' : '';
+    card.querySelector('.toggle-visibility-btn').addEventListener('click', function() {
+        var btn = this; var cardEl = btn.closest('div[style*="border-radius:12px"]');
+        var tName = btn.dataset.teacherName;
+        var nowHidden = btn.dataset.hidden === 'Yes';
+        var makeHidden = !nowHidden;
+        btn.disabled = true;
+        google.script.run
+            .withSuccessHandler(function(res) {
+                if (res && res.success) {
+                    btn.dataset.hidden = makeHidden ? 'Yes' : '';
+                    btn.disabled = false;
+                    if (makeHidden) {
+                        btn.innerHTML = '<i class="fas fa-eye"></i>';
+                        btn.style.cssText = 'flex:0.6;font-size:0.78rem;background:#dcfce7;color:#15803d;border:1px solid #86efac;';
+                        cardEl.style.opacity = '0.55';
+                    } else {
+                        btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+                        btn.style.cssText = 'flex:0.6;font-size:0.78rem;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
+                        cardEl.style.opacity = '1';
+                    }
+                    if (allTeacherDetailsCache) {
+                        var cached = allTeacherDetailsCache.find(function(t) { return t.name === tName; });
+                        if (cached) cached.hiddenInSearch = makeHidden ? 'Yes' : '';
+                    }
+                    showToast('success', 'Visibility Updated', tName + (makeHidden ? ' hidden.' : ' visible.'));
+                } else {
+                    showToast('error', 'Error', (res && res.message) || 'Could not update.');
+                    btn.disabled = false;
+                }
+            })
+            .withFailureHandler(function(err) {
+                showToast('error', 'Error', err.message || 'Server error.');
+                btn.disabled = false;
+            })
+            .setTeacherVisibility(tName, makeHidden);
+    });
+
+    tbody.appendChild(card);
+});
+
 }
 
 var filterEl = document.getElementById('personaStatusFilter');
@@ -7630,5 +8095,1555 @@ function filterMigrationReport(countFilter) {
     renderMultiMigrationReport(filteredData, false); // false = don't reset global data
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TP MANAGER DASHBOARD
+// ─────────────────────────────────────────────────────────────────────────────
 
+function initTPDashboard() {
+  var sel = document.getElementById('tpManagerSelect');
+  if (!sel) return;
+
+  // Default date range: last 60 days
+  var today = new Date();
+  var ago60 = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
+  document.getElementById('tpDateTo').value   = today.toISOString().substring(0, 10);
+  document.getElementById('tpDateFrom').value = ago60.toISOString().substring(0, 10);
+  document.getElementById('tpLoadBtn').addEventListener('click', loadTPDashboard);
+
+  function fillTPSelect(managers) {
+    sel.innerHTML = '<option value="" disabled selected>— Select TP Manager —</option>';
+    managers.slice().sort().forEach(function(name) {
+      var opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  }
+
+  // Use cached global if available, otherwise fetch from server
+  if (window.globalTpManagers && window.globalTpManagers.length) {
+    fillTPSelect(window.globalTpManagers);
+  } else {
+    sel.innerHTML = '<option value="" disabled selected>Loading…</option>';
+    google.script.run
+      .withSuccessHandler(function(names) {
+        window.globalTpManagers = names || [];
+        fillTPSelect(window.globalTpManagers);
+      })
+      .withFailureHandler(function() {
+        sel.innerHTML = '<option value="" disabled selected>— Select TP Manager —</option>';
+      })
+      .getTPManagers();
+  }
+}
+
+function loadTPDashboard() {
+  var name      = document.getElementById('tpManagerSelect').value;
+  var dateFrom  = document.getElementById('tpDateFrom').value;
+  var dateTo    = document.getElementById('tpDateTo').value;
+  if (!name) { showToast('error', 'Select a TP Manager first', ''); return; }
+  window._tpGradeFilter = document.getElementById('tpGradeFilter').value;
+  showLoading('Loading TP Dashboard...');
+  google.script.run
+    .withSuccessHandler(renderTPDashboard)
+    .withFailureHandler(function(e) { hideLoading(); showToast('error', 'Error', e.message); })
+    .getTPManagerDashboard(name, dateFrom, dateTo);
+}
+
+function renderTPDashboard(result) {
+  hideLoading();
+  if (!result || !result.success) { showToast('error', 'Error', (result && result.message) || 'Failed'); return; }
+
+  var s = result.summary;
+  var gradeFilter = window._tpGradeFilter || '';
+  var teachers = (result.teachers || []).filter(function(t) {
+    if (!gradeFilter) return true;
+    return t.lastGrade === gradeFilter;
+  });
+
+  // Summary cards
+  var cards = document.getElementById('tpSummaryCards');
+  cards.style.display = 'grid';
+  var gradeColor = function(avg) {
+    if (!avg) return '#94a3b8';
+    if (avg >= 65) return '#16a34a';
+    if (avg >= 50) return '#2563eb';
+    if (avg >= 35) return '#d97706';
+    return '#dc2626';
+  };
+  cards.innerHTML = [
+    { label: 'Total Teachers', value: s.total,    icon: 'fa-users',          color: '#6366f1' },
+    { label: 'EWS Teachers',   value: s.ewsCount, icon: 'fa-exclamation-triangle', color: '#f59e0b' },
+    { label: 'Avg Audit Score',value: s.avgScore ? s.avgScore + '/80' : '—', icon: 'fa-star', color: gradeColor(s.avgScore) },
+    { label: 'Red Flag Incidents', value: s.redFlags, icon: 'fa-flag', color: '#dc2626' }
+  ].map(function(c) {
+    return '<div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'
+      + '<div style="width:40px;height:40px;border-radius:10px;background:' + c.color + '22;display:flex;align-items:center;justify-content:center;">'
+      + '<i class="fas ' + c.icon + '" style="color:' + c.color + ';font-size:1rem;"></i></div>'
+      + '<div><div style="font-size:1.4rem;font-weight:700;color:var(--dark);">' + c.value + '</div>'
+      + '<div style="font-size:0.72rem;color:var(--text-muted);">' + c.label + '</div></div></div>';
+  }).join('');
+
+  // Teacher rows
+  var tbody = document.getElementById('tpTeacherTableBody');
+  tbody.innerHTML = '';
+  document.getElementById('tpTeacherTableWrap').style.display = 'block';
+  document.getElementById('tpEmptyState').style.display = 'none';
+
+  // Store for CSV export
+  window._tpDashboardData = { teachers: teachers, result: result };
+  var countEl = document.getElementById('tpTableCount');
+  if (countEl) countEl.textContent = teachers.length + ' teacher' + (teachers.length !== 1 ? 's' : '');
+
+  teachers.forEach(function(t, idx) {
+    var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '—': '#94a3b8' };
+    var riskColors  = { High: '#dc2626', Medium: '#d97706', Low: '#2563eb', Stable: '#16a34a' };
+    var gc = gradeColors[t.lastGrade] || '#94a3b8';
+    var rc = riskColors[t.riskScore]  || '#94a3b8';
+    var tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background 0.15s;';
+    tr.onmouseover = function() { this.style.background = '#f8fafc'; };
+    tr.onmouseout  = function() { this.style.background = ''; };
+
+    var scoreStr = t.lastScore !== null && t.lastScore !== undefined ? t.lastScore + '/80' : '—';
+    var dateStr  = t.lastAuditDate ? String(t.lastAuditDate).substring(0,10) : '—';
+    var dueBadge = t.dueForAudit
+      ? ' <span style="font-size:0.6rem;background:#fef3c7;color:#b45309;border-radius:4px;padding:1px 5px;vertical-align:middle;">Due</span>'
+      : '';
+    var hiddenBadge = t.hiddenInSearch === 'Yes'
+      ? '<span style="font-size:0.65rem;background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 6px;">Hidden</span>'
+      : '<span style="font-size:0.65rem;background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 6px;">Visible</span>';
+    var statusBadge = '<span class="status-badge status-' + (t.status||'').toLowerCase().replace(/ /g,'-') + '">' + t.status + '</span>';
+    var flagBadge = t.redFlagCount > 0
+      ? '<span style="background:#fee2e2;color:#dc2626;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:600;">⚑ ' + t.redFlagCount + '</span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
+    var riskBadge = '<span style="font-size:0.72rem;font-weight:700;color:' + rc + ';">' + (t.riskScore||'—') + '</span>';
+
+    tr.innerHTML = '<td style="padding:10px 16px;font-size:0.8rem;color:var(--text-muted);">' + (idx+1) + '</td>'
+      + '<td style="padding:10px 16px;font-weight:600;font-size:0.875rem;">' + escapeHtml(t.name) + dueBadge + '</td>'
+      + '<td style="padding:10px 16px;">' + statusBadge + '</td>'
+      + '<td style="padding:10px 16px;font-size:0.8rem;color:var(--text-muted);">' + dateStr + '</td>'
+      + '<td style="padding:10px 16px;font-size:0.875rem;font-weight:600;">' + scoreStr + '</td>'
+      + '<td style="padding:10px 16px;"><span style="font-weight:700;color:' + gc + ';">' + (t.lastGrade||'—') + '</span></td>'
+      + '<td style="padding:10px 16px;">' + riskBadge + '</td>'
+      + '<td style="padding:10px 16px;">' + flagBadge + '</td>'
+      + '<td style="padding:10px 16px;">' + hiddenBadge + '</td>';
+
+    // Expandable detail row
+    var detailTr = document.createElement('tr');
+    detailTr.style.display = 'none';
+    detailTr.style.background = '#f8fafc';
+    detailTr.innerHTML = '<td colspan="9" style="padding:0 16px 16px 48px;">' + buildTPDetailHTML(t) + '</td>';
+
+    tr.addEventListener('click', function() {
+      var isOpen = detailTr.style.display !== 'none';
+      tbody.querySelectorAll('tr[data-detail]').forEach(function(r) { r.style.display = 'none'; });
+      detailTr.style.display = isOpen ? 'none' : 'table-row';
+      // Load upskill tasks + notes lazily when expanded
+      if (detailTr.style.display !== 'none' && !detailTr.dataset.loaded) {
+        detailTr.dataset.loaded = '1';
+        loadTPTeacherExtras(t.name, detailTr);
+      }
+    });
+
+    detailTr.setAttribute('data-detail', '1');
+    tbody.appendChild(tr);
+    tbody.appendChild(detailTr);
+  });
+
+  document.getElementById('tpLastUpdated').textContent = 'Last loaded: ' + new Date().toLocaleTimeString();
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportTPDashboardCSV() {
+  var data = window._tpDashboardData;
+  if (!data || !data.teachers || !data.teachers.length) { showToast('error', 'No data', 'Load the dashboard first.'); return; }
+  var rows = [['#','Teacher','Status','Last Audit','Score','Grade','Risk','Red Flags','Hidden','Due for Audit']];
+  data.teachers.forEach(function(t, i) {
+    rows.push([
+      i+1, t.name, t.status, t.lastAuditDate||'', t.lastScore !== null ? t.lastScore+'/80' : '',
+      t.lastGrade||'', t.riskScore||'', t.redFlagCount||0,
+      t.hiddenInSearch === 'Yes' ? 'Hidden' : 'Visible',
+      t.dueForAudit ? 'Yes' : 'No'
+    ]);
+  });
+  var csv = rows.map(function(r) { return r.map(function(c) { return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a'); a.href = url; a.download = 'TP_Dashboard_' + new Date().toISOString().substring(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── Load upskill tasks + TP notes lazily when detail row opens ────────────────
+function loadTPTeacherExtras(teacherName, detailTr) {
+  var upskillEl = detailTr.querySelector('[data-upskill-wrap]');
+  var notesEl   = detailTr.querySelector('[data-notes-wrap]');
+  if (!upskillEl && !notesEl) return;
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (upskillEl) upskillEl.innerHTML = buildUpskillHTML(res.tasks || []);
+    })
+    .withFailureHandler(function() {})
+    .getUpskillTasksForTeacher(teacherName);
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (notesEl) notesEl.innerHTML = buildNotesHTML(teacherName, res.notes || []);
+    })
+    .withFailureHandler(function() {})
+    .getTPNotes(teacherName);
+}
+
+function buildUpskillHTML(tasks) {
+  var statusColors = { Pending: '#f59e0b', 'In Progress': '#2563eb', Done: '#16a34a' };
+  var html = '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-tasks" style="color:#6366f1;margin-right:5px;"></i>Upskilling Tasks</div>';
+  if (!tasks.length) return html + '<p style="font-size:0.8rem;color:var(--text-muted);">No upskill tasks logged yet.</p>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:0.76rem;">'
+    + '<tr style="background:#f8fafc;"><th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Learner</th><th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Gap Courses</th><th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Created</th><th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Status</th><th style="padding:5px 8px;"></th></tr>';
+  tasks.forEach(function(task) {
+    var sc = statusColors[task.status] || '#94a3b8';
+    html += '<tr style="border-top:1px solid #f1f5f9;">'
+      + '<td style="padding:5px 8px;">' + escapeHtml(task.learner||task.jlid||'—') + '</td>'
+      + '<td style="padding:5px 8px;color:#6366f1;">' + escapeHtml(task.gapCourses||'—') + '</td>'
+      + '<td style="padding:5px 8px;color:var(--text-muted);">' + String(task.createdAt||'').substring(0,10) + '</td>'
+      + '<td style="padding:5px 8px;"><span style="font-weight:700;color:' + sc + ';">' + (task.status||'—') + '</span></td>'
+      + '<td style="padding:5px 8px;">'
+        + (task.status !== 'Done' ? '<button onclick="markUpskillDone(\'' + task.id + '\',this)" style="font-size:0.7rem;padding:2px 8px;background:#dcfce7;color:#15803d;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Mark Done</button>' : '')
+      + '</td></tr>';
+  });
+  return html + '</table>';
+}
+
+function markUpskillDone(taskId, btn) {
+  btn.textContent = '...'; btn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function() { btn.closest('tr').querySelector('td:nth-child(4) span').textContent = 'Done'; btn.remove(); showToast('success', 'Done', 'Upskill task marked as complete.'); })
+    .withFailureHandler(function() { btn.textContent = 'Mark Done'; btn.disabled = false; })
+    .updateUpskillStatus(taskId, 'Done', '');
+}
+
+function buildNotesHTML(teacherName, notes) {
+  var html = '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-sticky-note" style="color:#f59e0b;margin-right:5px;"></i>TP Notes</div>';
+  if (notes.length) {
+    html += '<div style="max-height:120px;overflow-y:auto;margin-bottom:8px;">';
+    notes.forEach(function(n) {
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-bottom:5px;font-size:0.78rem;">'
+        + '<div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:2px;">' + String(n.createdAt||'').substring(0,10) + ' · ' + escapeHtml(n.createdBy||'') + '</div>'
+        + '<div>' + escapeHtml(n.note||'') + '</div></div>';
+    });
+    html += '</div>';
+  }
+  html += '<div style="display:flex;gap:6px;margin-top:4px;">'
+    + '<textarea id="tpNoteInput_' + encodeURIComponent(teacherName) + '" placeholder="Add a note..." rows="2" style="flex:1;font-size:0.78rem;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;resize:none;"></textarea>'
+    + '<button onclick="submitTPNote(\'' + encodeURIComponent(teacherName) + '\',this)" style="padding:6px 12px;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.78rem;font-weight:600;align-self:flex-end;">Save</button>'
+    + '</div>';
+  return html;
+}
+
+function submitTPNote(encodedName, btn) {
+  var teacherName = decodeURIComponent(encodedName);
+  var input = document.getElementById('tpNoteInput_' + encodedName);
+  var text  = input ? input.value.trim() : '';
+  if (!text) { showToast('error', 'Empty note', 'Write something first.'); return; }
+  btn.textContent = '...'; btn.disabled = true;
+  var tpMgr = document.getElementById('tpManagerSelect') ? document.getElementById('tpManagerSelect').value : '';
+  google.script.run
+    .withSuccessHandler(function() {
+      btn.textContent = 'Save'; btn.disabled = false; input.value = '';
+      showToast('success', 'Saved', 'Note saved for ' + teacherName + '.');
+      // Reload notes
+      var notesEl = btn.closest('[data-notes-wrap]');
+      if (notesEl) google.script.run.withSuccessHandler(function(res) { notesEl.innerHTML = buildNotesHTML(teacherName, res.notes||[]); }).getTPNotes(teacherName);
+    })
+    .withFailureHandler(function(e) { btn.textContent = 'Save'; btn.disabled = false; showToast('error', 'Error', e.message); })
+    .saveTPNote(teacherName, tpMgr, text, '');
+}
+
+function buildTPDetailHTML(t) {
+  var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '—': '#94a3b8' };
+  var typeColors  = { Coding: '#6366f1', Math: '#0ea5e9', GCSE: '#f59e0b' };
+  var html = '<div style="margin-top:8px;">';
+
+  // ── Grade Legend ──
+  html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:7px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:0.72rem;">'
+    + '<span style="font-weight:700;color:var(--dark);margin-right:2px;"><i class="fas fa-info-circle" style="color:#6366f1;margin-right:4px;"></i>Grade Scale (out of 80):</span>'
+    + '<span style="background:#dcfce7;color:#16a34a;font-weight:700;padding:1px 9px;border-radius:99px;">A &nbsp;≥ 65 — Excellent</span>'
+    + '<span style="background:#dbeafe;color:#2563eb;font-weight:700;padding:1px 9px;border-radius:99px;">B &nbsp;50–64 — Good</span>'
+    + '<span style="background:#fef3c7;color:#d97706;font-weight:700;padding:1px 9px;border-radius:99px;">C &nbsp;35–49 — Needs Improvement</span>'
+    + '<span style="background:#fee2e2;color:#dc2626;font-weight:700;padding:1px 9px;border-radius:99px;">D &nbsp;&lt;35 — Critical</span>'
+    + '<span style="color:var(--text-muted);margin-left:4px;">· Covers Warm-up, Activity, Wrap-up &amp; Hygiene</span>'
+    + '</div>';
+
+  // ── Audits grouped by type (within date range) ──
+  var byType = t.auditsByType || {};
+  var types  = Object.keys(byType);
+
+  if (types.length > 0) {
+    html += '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Audits in Selected Period</div>';
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+
+    types.forEach(function(type) {
+      var audits = byType[type];
+      var tc = typeColors[type] || '#6366f1';
+      html += '<div style="flex:1;min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">';
+      html += '<div style="background:' + tc + '18;padding:8px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">'
+        + '<span style="font-size:0.78rem;font-weight:700;color:' + tc + ';">' + type + ' Audit</span>'
+        + '<span style="font-size:0.72rem;color:var(--text-muted);">' + audits.length + ' session' + (audits.length > 1 ? 's' : '') + '</span>'
+        + '</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:0.76rem;">'
+        + '<tr style="background:#f8fafc;">'
+        + '<th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Date</th>'
+        + '<th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Learner</th>'
+        + '<th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Score</th>'
+        + '<th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Grade</th>'
+        + '<th style="padding:5px 8px;text-align:left;color:var(--text-muted);font-weight:600;">Flags</th>'
+        + '<th style="padding:5px 8px;"></th>'
+        + '</tr>';
+
+      audits.forEach(function(a) {
+        var gc = gradeColors[a.grade] || '#94a3b8';
+        var dateStr = a.date ? String(a.date).substring(0, 10) : '—';
+        var hasFlags = a.redFlags && a.redFlags.trim();
+        html += '<tr style="border-bottom:1px solid #f1f5f9;">'
+          + '<td style="padding:5px 8px;color:var(--text-muted);">' + dateStr + '</td>'
+          + '<td style="padding:5px 8px;font-weight:500;">' + escapeHtml(a.learner||'—') + '</td>'
+          + '<td style="padding:5px 8px;">' + (a.score !== null ? a.score + '/80' : '—') + '</td>'
+          + '<td style="padding:5px 8px;font-weight:700;color:' + gc + ';">' + a.grade + '</td>'
+          + '<td style="padding:5px 8px;color:#dc2626;font-size:0.72rem;">' + (hasFlags ? escapeHtml(a.redFlags) : '<span style="color:#94a3b8;">—</span>') + '</td>'
+          + '<td style="padding:5px 8px;">' + (a.recording ? '<a href="' + escapeHtml(a.recording) + '" target="_blank" style="color:#6366f1;font-size:0.7rem;"><i class="fas fa-video"></i></a>' : '') + '</td>'
+          + '</tr>';
+      });
+      html += '</table></div>';
+    });
+
+    html += '</div>'; // end flex
+  }
+
+  // ── Red flag summary (if any) ──
+  if (t.redFlagIncidents && t.redFlagIncidents.length > 0) {
+    html += '<div style="margin-top:14px;">'
+      + '<div style="font-size:0.75rem;font-weight:700;color:#dc2626;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">⚑ Red Flag Summary</div>'
+      + '<table style="font-size:0.76rem;border-collapse:collapse;width:100%;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #fee2e2;">'
+      + '<tr style="background:#fee2e2;">'
+      + '<th style="padding:5px 10px;text-align:left;">Type</th>'
+      + '<th style="padding:5px 10px;text-align:left;">Learner</th>'
+      + '<th style="padding:5px 10px;text-align:left;">Course</th>'
+      + '<th style="padding:5px 10px;text-align:left;">Score</th>'
+      + '<th style="padding:5px 10px;text-align:left;">Flags</th>'
+      + '</tr>';
+    t.redFlagIncidents.forEach(function(f) {
+      var type = (f.auditType || '').replace(" Audit'26",'').trim();
+      var tc = typeColors[type] || '#6366f1';
+      html += '<tr style="border-bottom:1px solid #fee2e2;">'
+        + '<td style="padding:5px 10px;"><span style="font-size:0.68rem;font-weight:600;background:' + tc + '22;color:' + tc + ';border-radius:4px;padding:1px 6px;">' + type + '</span></td>'
+        + '<td style="padding:5px 10px;font-weight:600;">' + escapeHtml(f.learner||'—') + '</td>'
+        + '<td style="padding:5px 10px;">' + escapeHtml(f.course||'—') + '</td>'
+        + '<td style="padding:5px 10px;">' + (f.score !== null ? f.score + '/80' : '—') + '</td>'
+        + '<td style="padding:5px 10px;color:#dc2626;">' + escapeHtml(f.flags||'—') + '</td>'
+        + '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  if (types.length === 0 && (!t.redFlagIncidents || t.redFlagIncidents.length === 0)) {
+    html += '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No audits in the selected date range.</div>';
+  }
+
+  // ── Upskill Tracker + TP Notes (lazy-loaded) ─────────────────────────────
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">';
+
+  // Upskill Tracker panel
+  html += '<div data-upskill-wrap style="flex:1;min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">'
+    + '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-tasks" style="color:#6366f1;margin-right:5px;"></i>Upskilling Tasks</div>'
+    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading…</div>'
+    + '</div>';
+
+  // TP Notes panel
+  html += '<div data-notes-wrap style="flex:1;min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">'
+    + '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-sticky-note" style="color:#f59e0b;margin-right:5px;"></i>TP Notes</div>'
+    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading…</div>'
+    + '</div>';
+
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+// Init when tab is clicked
+document.addEventListener('DOMContentLoaded', function() {
+  var tpBtn = document.getElementById('tpDashboardTabBtn');
+  if (tpBtn) {
+    tpBtn.addEventListener('click', function() {
+      if (!tpBtn.dataset.inited) {
+        initTPDashboard();
+        tpBtn.dataset.inited = '1';
+      }
+    });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GLOBAL IMPACT SCORE
+// ══════════════════════════════════════════════════════════════════════════════
+function loadImpactScore(username) {
+    if (!username) return;
+    google.script.run
+        .withSuccessHandler(renderImpactScore)
+        .withFailureHandler(err => console.error('[ImpactScore]', err))
+        .getUserImpactScore(username);
+}
+
+function renderImpactScore(data) {
+    if (!data || !data.success) return;
+
+    const scoreEl     = document.getElementById('impactScoreValue');
+    const insightEl   = document.getElementById('impactScoreInsight');
+    const milestoneEl = document.getElementById('impactNextMilestone');
+    const teamBadge   = document.getElementById('impactTeamBadge');
+    const miniStats   = document.getElementById('impactMiniStats');
+
+    if (scoreEl)     scoreEl.textContent     = data.score;
+    if (insightEl)   insightEl.textContent   = data.insight;
+    if (milestoneEl) milestoneEl.textContent = data.nextMilestone + ' Score';
+
+    if (teamBadge && data.team) {
+        teamBadge.textContent    = data.team.toUpperCase();
+        teamBadge.style.display  = 'inline-flex';
+    }
+
+    if (miniStats) {
+        miniStats.style.display = 'flex';
+        document.getElementById('impactMigrations').textContent = data.migrationsHandled;
+        document.getElementById('impactEmails').textContent     = data.emailsSent;
+        document.getElementById('impactAudits').textContent     = data.auditsRun;
+        document.getElementById('impactTasks').textContent      = data.tasksCompleted;
+    }
+
+    // Animate score count-up
+    if (scoreEl && data.score > 0) {
+        let current = 0;
+        const target = data.score;
+        const step   = target / 40;
+        const timer  = setInterval(() => {
+            current = Math.min(current + step, target);
+            scoreEl.textContent = Math.round(current * 10) / 10;
+            if (current >= target) clearInterval(timer);
+        }, 30);
+    }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STUCK MIGRATIONS WIDGET
+// ══════════════════════════════════════════════════════════════════════════════
+function loadStuckMigrations() {
+    google.script.run
+        .withSuccessHandler(renderStuckMigrations)
+        .withFailureHandler(err => {
+            const el = document.getElementById('stuckMigrationsList');
+            if (el) el.innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:0.8rem;">Could not load data.</div>';
+        })
+        .getStuckMigrations(7);
+}
+
+function refreshStuckMigrations() {
+    const el = document.getElementById('stuckMigrationsList');
+    if (el) el.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:0.82rem;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    loadStuckMigrations();
+}
+
+function renderStuckMigrations(data) {
+    const listEl  = document.getElementById('stuckMigrationsList');
+    const countEl = document.getElementById('stuckMigrationCount');
+
+    if (!listEl) return;
+
+    if (!data || !data.success) {
+        listEl.innerHTML = '<div style="text-align:center;padding:1rem;color:#94a3b8;font-size:0.8rem;">Could not load.</div>';
+        return;
+    }
+
+    if (countEl) {
+        countEl.textContent = data.count;
+        countEl.style.background = data.count > 0 ? '#fef3c7' : '#dcfce7';
+        countEl.style.color      = data.count > 0 ? '#d97706'  : '#15803d';
+        countEl.style.borderColor= data.count > 0 ? '#fcd34d'  : '#86efac';
+    }
+
+    if (data.count === 0) {
+        listEl.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#15803d;font-size:0.82rem;">
+            <i class="fas fa-check-circle" style="font-size:1.5rem;display:block;margin-bottom:6px;"></i>
+            All migrations are moving. No blockers found.
+        </div>`;
+        return;
+    }
+
+    listEl.innerHTML = data.tickets.map(t => {
+        const urgency = t.daysStuck >= 14 ? '#dc2626' : t.daysStuck >= 10 ? '#d97706' : '#6b7280';
+        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+            <div style="width:36px;height:36px;background:#fef3c7;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="fas fa-hourglass-half" style="color:#d97706;font-size:0.75rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:0.8rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.subject || t.jlid || 'Migration')}</div>
+                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">${escapeHtml(t.stage)} · ${escapeHtml(t.fromTeacher)} → ${escapeHtml(t.toTeacher)}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+                <span style="font-size:0.7rem;font-weight:700;color:${urgency};">${t.daysStuck}d</span>
+                <a href="${escapeHtml(t.hubspotLink)}" target="_blank" style="font-size:0.65rem;color:#6366f1;text-decoration:none;font-weight:600;">Open ›</a>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION BELL
+// ══════════════════════════════════════════════════════════════════════════════
+let _notifData = [];
+let _notifOpen = false;
+
+function loadNotifications(username) {
+    google.script.run
+        .withSuccessHandler(data => renderNotifications(data, username))
+        .withFailureHandler(err => console.error('[Notif]', err))
+        .getNotifications(username || (currentUser && currentUser.username) || '');
+}
+
+function renderNotifications(data, username) {
+    _notifData = (data && data.items) ? data.items : [];
+    const badge = document.getElementById('notifBadge');
+    const count = _notifData.length;
+
+    if (badge) {
+        badge.textContent    = count > 9 ? '9+' : count;
+        badge.style.display  = count > 0 ? 'flex' : 'none';
+    }
+
+    const list = document.getElementById('notifList');
+    if (!list) return;
+
+    if (count === 0) {
+        list.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:0.82rem;">
+            <i class="fas fa-check-circle" style="font-size:1.5rem;display:block;margin-bottom:6px;color:#10b981;"></i>
+            You're all caught up!
+        </div>`;
+        return;
+    }
+
+    list.innerHTML = _notifData.map(n => `
+        <div onclick="handleNotifAction('${n.action}')" style="display:flex;align-items:flex-start;gap:10px;padding:10px 16px;cursor:pointer;transition:background .15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+            <div style="width:32px;height:32px;background:${n.color}18;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;">
+                <i class="fas ${n.icon}" style="color:${n.color};font-size:0.8rem;"></i>
+            </div>
+            <div>
+                <div style="font-size:0.82rem;font-weight:600;color:#0f172a;">${escapeHtml(n.title)}</div>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">${escapeHtml(n.body)}</div>
+            </div>
+        </div>`).join('');
+}
+
+function toggleNotifDropdown() {
+    const dd = document.getElementById('notifDropdown');
+    if (!dd) return;
+    _notifOpen = !_notifOpen;
+    dd.style.display = _notifOpen ? 'block' : 'none';
+
+    if (_notifOpen && currentUser) {
+        // Refresh on open
+        loadNotifications(currentUser.username);
+    }
+}
+
+function markAllNotifRead() {
+    _notifData = [];
+    const badge = document.getElementById('notifBadge');
+    if (badge) badge.style.display = 'none';
+    const list  = document.getElementById('notifList');
+    if (list)   list.innerHTML = `<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:0.82rem;">
+        <i class="fas fa-check-circle" style="font-size:1.5rem;display:block;margin-bottom:6px;color:#10b981;"></i>
+        You're all caught up!
+    </div>`;
+    toggleNotifDropdown();
+}
+
+function handleNotifAction(action) {
+    toggleNotifDropdown();
+    if (action === 'openAuditCenter') {
+        document.querySelector('.menu-item[data-page="auditCenter"]')?.click();
+    } else if (action === 'openTasks') {
+        document.querySelector('.menu-item[data-page="tasks"]')?.click();
+    } else if (action === 'openStuckMigrations') {
+        document.querySelector('.menu-item[data-page="dashboard"]')?.click();
+        setTimeout(() => {
+            document.getElementById('stuckMigrationsList')?.scrollIntoView({ behavior: 'smooth' });
+        }, 300);
+    }
+}
+
+// Close notif dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    if (_notifOpen && !document.getElementById('notifBellBtn')?.contains(e.target)
+                   && !document.getElementById('notifDropdown')?.contains(e.target)) {
+        _notifOpen = false;
+        const dd = document.getElementById('notifDropdown');
+        if (dd) dd.style.display = 'none';
+    }
+});
+
+// Refresh notifications every 5 minutes
+setInterval(() => {
+    if (currentUser) loadNotifications(currentUser.username);
+}, 5 * 60 * 1000);
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SUPPORT & DOCUMENTATION OVERLAY SYSTEM
+// ══════════════════════════════════════════════════════════════════════════════
+
+function showHelpPage(page) {
+  document.getElementById('supportOverlay').style.display       = 'none';
+  document.getElementById('documentationOverlay').style.display = 'none';
+  document.getElementById('docArticleOverlay').style.display    = 'none';
+
+  if (page === 'support') {
+    document.getElementById('supportOverlay').style.display = 'block';
+    document.getElementById('supportOverlay').scrollTop = 0;
+  } else {
+    const el = document.getElementById('documentationOverlay');
+    el.style.display = 'block';
+    el.scrollTop = 0;
+    // Populate current version badge
+    const vv = document.getElementById('docCurrentVersion');
+    const vl = document.getElementById('versionLink');
+    if (vv && vl) vv.textContent = vl.textContent.trim();
+  }
+  document.body.style.overflow = 'hidden';
+}
+
+function hideHelpPage() {
+  document.getElementById('supportOverlay').style.display       = 'none';
+  document.getElementById('documentationOverlay').style.display = 'none';
+  document.getElementById('docArticleOverlay').style.display    = 'none';
+  document.body.style.overflow = '';
+}
+
+// FAQ accordion
+function toggleFaq(btn) {
+  const answer = btn.nextElementSibling;
+  const icon   = btn.querySelector('i.fa-chevron-down, i.fa-chevron-up');
+  const open   = answer.style.display === 'block';
+  answer.style.display = open ? 'none' : 'block';
+  if (icon) { icon.classList.toggle('fa-chevron-down', open); icon.classList.toggle('fa-chevron-up', !open); }
+  btn.style.borderRadius = open ? '12px' : '12px 12px 0 0';
+}
+
+// Filter FAQ by search
+function filterSupportFAQ(val) {
+  const q = val.toLowerCase();
+  document.querySelectorAll('.support-faq-item').forEach(item => {
+    const text = item.dataset.q + ' ' + item.textContent.toLowerCase();
+    item.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+// Filter doc articles
+function filterDocSearch(val) {
+  const q = val.toLowerCase();
+  document.querySelectorAll('.doc-link-item').forEach(item => {
+    const text = item.textContent.toLowerCase();
+    const wrap = item.closest('.doc-section');
+    item.style.display = text.includes(q) ? '' : 'none';
+    if (wrap) {
+      const visible = [...wrap.querySelectorAll('.doc-link-item')].some(i => i.style.display !== 'none');
+      wrap.style.display = visible ? '' : 'none';
+    }
+  });
+  if (!val) document.querySelectorAll('.doc-section').forEach(s => s.style.display = '');
+}
+
+// ── Doc article content ───────────────────────────────────────────────────────
+const DOC_ARTICLES = {
+  'system-overview': {
+    title: 'System Overview',
+    body: `<p>JetLearn Operational Intelligence is a Google Apps Script web app that centralises all teacher, learner, and migration operations for JetLearn tutoring operations.</p>
+<h4>Core Modules</h4>
+<ul>
+  <li><strong>Command Center (Dashboard)</strong> — KPI snapshot: active learners, migrations, revenue, success rate. Live HubSpot data.</li>
+  <li><strong>Communication Center</strong> — Send migration emails, welcome emails, renewal notices, and WhatsApp messages per learner.</li>
+  <li><strong>Audit Center</strong> — Log and review teaching audits for Coding, Math, and GCSE. TP Dashboard with risk scoring.</li>
+  <li><strong>Teacher Intelligence</strong> — Per-teacher load, replacement history, teaching hours distribution, attrition risk pool, AI dashboard.</li>
+  <li><strong>Persona & Replacement Engine</strong> — Find best-matched replacement teachers using proficiency, availability, traits, and audit scores.</li>
+  <li><strong>Invoices</strong> — Generate PDF invoices, installment plans, renewal invoices with HubSpot line items.</li>
+  <li><strong>Reports</strong> — Monthly migration, attrition, and performance reports exportable to PDF.</li>
+  <li><strong>System Health</strong> — Live check of all Google Sheets connections, API keys, and App Data logs.</li>
+</ul>
+<h4>Data Stores</h4>
+<ul>
+  <li><strong>Migration Sheet</strong> — Audit Log, User Activity, Tasks, Persona Mapping.</li>
+  <li><strong>JetLearn App Data Sheet</strong> — TP Notes, Upskill Tracker, Alert Log, Email Logs (separate from operational sheets for performance).</li>
+  <li><strong>Audit Sheet</strong> — Coding Audit'26, Math Audit'26, GCSE Audit'26.</li>
+</ul>`
+  },
+  'dashboard-nav': {
+    title: 'Dashboard Navigation',
+    body: `<p>The left sidebar contains all navigation items. Click any item to switch pages. The active page is highlighted.</p>
+<h4>Page Map</h4>
+<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+  <thead><tr style="background:#f1f5f9;"><th style="padding:8px;text-align:left;">Page</th><th style="padding:8px;text-align:left;">Purpose</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Dashboard</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">KPI cards, recent activity, quick actions</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>New Communication</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Send emails and WhatsApp per learner</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Audit Center</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Audit search, TP Dashboard, red flag alerts</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Learner History</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Full timeline for any learner by JLID</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Invoices</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Invoice generation and renewal</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Teacher Intelligence</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Load, replacement history, calendar hours, attrition</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>System Health</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Check all sheet connections and API keys</td></tr>
+  </tbody>
+</table>`
+  },
+  'roles-permissions': {
+    title: 'User Roles & Permissions',
+    body: `<p>Access is controlled by four roles assigned in the User Profiles sheet.</p>
+<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+  <thead><tr style="background:#f1f5f9;"><th style="padding:8px;">Role</th><th style="padding:8px;">Access</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Super Admin</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Full access including manage users, create users, send reset emails</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>Admin</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">All features except user management. Can manage settings.</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><strong>User</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Dashboard, communications, audit, persona tool, invoices, reports</td></tr>
+    <tr><td style="padding:8px;"><strong>Guest</strong></td><td style="padding:8px;">Dashboard view only</td></tr>
+  </tbody>
+</table>
+<p style="margin-top:1rem;font-size:0.85rem;color:#64748b;">Roles are set in the <strong>User Profiles</strong> sheet (Column: Role). Changes take effect on next login.</p>`
+  },
+  'quick-start': {
+    title: 'Quick Start Guide',
+    body: `<ol style="font-size:0.88rem;line-height:2;">
+  <li>Log in with your JetLearn email and password.</li>
+  <li>On the <strong>Dashboard</strong>, verify the 4 KPI cards are loading (active learners, migrations, revenue, success rate).</li>
+  <li>To process a migration: go to <strong>New Communication</strong> → enter JLID → select Migration tab → fill in new teacher, course, reason → Send.</li>
+  <li>To find a replacement teacher: go to <strong>Teacher Intelligence</strong> → <em>Persona & Replacement Engine</em> tab → select a teacher → click <em>Find Replacement</em>.</li>
+  <li>To run an audit: go to <strong>Audit Center</strong> → enter teacher name, date range → view results and grades.</li>
+  <li>To generate an invoice: go to <strong>Invoices</strong> → enter JLID → select plan type → Generate & Send.</li>
+</ol>`
+  },
+  'learner-onboarding': {
+    title: 'New Learner Onboarding',
+    body: `<p>New learners are onboarded via the Communication Center. The system sends a welcome email and WhatsApp message to the learner and parent.</p>
+<h4>Steps</h4>
+<ol style="font-size:0.88rem;line-height:2;">
+  <li>Go to <strong>New Communication</strong> and enter the learner's JLID.</li>
+  <li>Select the <strong>Onboarding</strong> tab.</li>
+  <li>Review auto-filled learner details from HubSpot.</li>
+  <li>Confirm teacher assignment and first class slot.</li>
+  <li>Click <strong>Send Welcome Email</strong> — emails old teacher (if reassigned) and new teacher simultaneously.</li>
+  <li>A WhatsApp message is queued via WATI to the parent's registered number.</li>
+</ol>
+<p style="color:#64748b;font-size:0.82rem;">All sent emails are logged in <strong>Email Activities</strong> with timestamp and recipients.</p>`
+  },
+  'migration-wizard': {
+    title: 'Learner Migration Wizard',
+    body: `<p>The migration wizard handles teacher reassignments. It creates a HubSpot ticket, sends notification emails to old teacher, new teacher, parent, and TP manager, and logs the action.</p>
+<h4>Migration Flow</h4>
+<ol style="font-size:0.88rem;line-height:2;">
+  <li>Enter JLID in New Communication → select <strong>Migration</strong> tab.</li>
+  <li>System auto-detects if an active migration ticket exists for this learner.</li>
+  <li>Select new teacher, reason for migration, and new course (if changing).</li>
+  <li>Click Send — system validates all required fields before dispatching.</li>
+</ol>
+<h4>Reason Categories</h4>
+<ul style="font-size:0.85rem;">
+  <li><strong>Inbound</strong>: Slot change (learner request), Teacher Affinity, Pause Request, Course Change</li>
+  <li><strong>Outbound</strong>: Performance issue, Teacher attrition, Schedule conflict, EWS action</li>
+</ul>`
+  },
+  'teacher-matching': {
+    title: 'Teacher Matching Logic',
+    body: `<p>The Persona & Replacement Engine scores teachers on 6 factors:</p>
+<table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+  <thead><tr style="background:#f1f5f9;"><th style="padding:8px;">Factor</th><th style="padding:8px;">Weight</th><th style="padding:8px;">Source</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Course Proficiency</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Required ≥71%</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Teacher Courses sheet</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Slot Availability</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">High</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Google Calendar</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Audit Grade (45d)</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">High</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Audit sheets</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Trait Match</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Medium</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Persona sheet</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Age Group Fit</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Medium</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Persona sheet</td></tr>
+    <tr><td style="padding:8px;">Current Load</td><td style="padding:8px;">Low</td><td style="padding:8px;">HubSpot active deals</td></tr>
+  </tbody>
+</table>`
+  },
+  'audit-log': {
+    title: 'Audit Log Management',
+    body: `<p>The Audit Center reads from three sheets: <strong>Coding Audit'26</strong>, <strong>Math Audit'26</strong>, and <strong>GCSE Audit'26</strong>.</p>
+<h4>Grade Scale</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li><strong style="color:#16a34a;">A (≥65)</strong> — Excellent performance</li>
+  <li><strong style="color:#2563eb;">B (50–64)</strong> — Good, minor improvements needed</li>
+  <li><strong style="color:#d97706;">C (35–49)</strong> — Needs Improvement</li>
+  <li><strong style="color:#dc2626;">D (&lt;35)</strong> — Critical — triggers EWS</li>
+</ul>
+<h4>Risk Scoring (TP Dashboard)</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li><strong>High Risk</strong> — EWS status or D grade</li>
+  <li><strong>Medium Risk</strong> — C grade or 2+ red flags</li>
+  <li><strong>Low Risk</strong> — B grade or 1 flag</li>
+  <li><strong>Stable</strong> — A grade, no flags</li>
+</ul>
+<p style="font-size:0.82rem;color:#64748b;">Red flag alerts are emailed to the TP Manager daily at 8 AM for any new flags in the past 2 days.</p>`
+  },
+  'tp-dashboard': {
+    title: 'TP Dashboard Guide',
+    body: `<p>The TP Dashboard (Audit Center → TP Dashboard tab) shows a TP manager's full teacher portfolio.</p>
+<h4>Features</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li>Filter by TP Manager name to see all assigned teachers</li>
+  <li>Each row shows latest grade, risk badge, and Due for Audit indicator (no audit in 30 days)</li>
+  <li>Expand any row to view Upskill Tracker tasks and TP Notes</li>
+  <li>Add notes directly from the detail panel — tagged with the correct manager name</li>
+  <li>Export all data as CSV via the toolbar button</li>
+</ul>
+<h4>Due for Audit</h4>
+<p style="font-size:0.85rem;color:#64748b;">A teacher is marked "Due" if their last audit across all three sheets was more than 30 days ago.</p>`
+  },
+  'upskill-tracker': {
+    title: 'Upskill Tracker',
+    body: `<p>The Upskill Tracker records HubSpot tasks created when a learner has course gaps (e.g. learner studying GCSE but teacher only has 60% proficiency).</p>
+<h4>How it works</h4>
+<ol style="font-size:0.88rem;line-height:2;">
+  <li>When an audit note is written for a learner with gaps, a HubSpot task is auto-created for the TP manager.</li>
+  <li>The task is logged to the Upskill Tracker sheet in App Data.</li>
+  <li>In the TP Dashboard detail panel, all upskill tasks for that teacher are visible.</li>
+  <li>Click <strong>Mark Done</strong> to update the status to Completed.</li>
+</ol>
+<p style="font-size:0.82rem;color:#64748b;">Stored in: JetLearn App Data → Upskill Tracker sheet.</p>`
+  },
+  'hubspot-sync': {
+    title: 'HubSpot Sync',
+    body: `<p>HubSpot is the source of truth for learner deal data. The system connects via the HubSpot API (Private App token stored in Script Properties).</p>
+<h4>What syncs</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li>Deal properties: learner name, JLID, current teacher, course, status, deal amount, currency, tenure</li>
+  <li>Migration tickets: reason, stage, old/new teacher, completion date</li>
+  <li>Active learner pool for attrition risk analysis</li>
+</ul>
+<h4>API Key</h4>
+<p style="font-size:0.85rem;">Stored as <code>HUBSPOT_API_KEY</code> in GAS Script Properties. Rotate via Settings page → API Keys tab. Portal ID: <strong>7729491</strong>.</p>`
+  },
+  'wati-whatsapp': {
+    title: 'WATI WhatsApp Integration',
+    body: `<p>WATI sends templated WhatsApp messages to learner parents. The system does not support automatic contact search — details must be copied manually.</p>
+<h4>How to send</h4>
+<ol style="font-size:0.88rem;line-height:2;">
+  <li>In Communication Center → WhatsApp tab, enter JLID to fetch learner data.</li>
+  <li>The system pre-fills the WATI template with learner name, teacher, and course.</li>
+  <li>Copy the generated message and send via your WATI dashboard.</li>
+</ol>
+<p style="font-size:0.82rem;color:#64748b;">WATI API key stored as <code>WATI_API_KEY</code> in Script Properties.</p>`
+  },
+  'email-service': {
+    title: 'Email Service Configuration',
+    body: `<p>All emails are sent via GmailApp from <strong>hello@jet-learn.com</strong>. The system supports multiple email types:</p>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li>Migration notification (old teacher, new teacher, parent)</li>
+  <li>Welcome / Onboarding email</li>
+  <li>Renewal invoice</li>
+  <li>Red Flag alert (to TP Manager)</li>
+  <li>Upskill notification (HubSpot task + email)</li>
+  <li>Generic email (free-text from Communication Center)</li>
+</ul>
+<h4>Email Logs</h4>
+<p style="font-size:0.85rem;">All sent emails are recorded in <strong>JetLearn App Data → Email Logs</strong> sheet with timestamp, recipients, subject, and status. View in Email Activities page.</p>`
+  },
+  'google-sheets': {
+    title: 'Google Sheets Data Model',
+    body: `<h4>Main Migration Sheet</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li><strong>Teacher Data</strong> — name, email, CLS email, TP manager email, status, join date</li>
+  <li><strong>Teacher Courses</strong> — proficiency per course per teacher</li>
+  <li><strong>User Profiles</strong> — login credentials and roles</li>
+  <li><strong>Course Name</strong> — master list of courses</li>
+</ul>
+<h4>JetLearn App Data Sheet (ID: 1XxC8Y0sWkBqoOa0Ntw6zhd5EYXTvaTAN4XhIH1hOwDE)</h4>
+<ul style="font-size:0.85rem;line-height:2;">
+  <li>Audit Log, User Activity Log, Email Logs, Tasks</li>
+  <li>TP Notes, Upskill Tracker, Alert Log</li>
+</ul>
+<h4>Persona Sheet (separate Spreadsheet)</h4>
+<p style="font-size:0.85rem;">Contains teacher traits, age preferences, slot availability columns. Used exclusively by the Persona Engine.</p>`
+  },
+  'google-calendar': {
+    title: 'Google Calendar Integration',
+    body: `<p>The system reads from Google Calendar using the built-in <strong>CalendarApp</strong> service (no API key required, uses GAS OAuth).</p>
+<h4>Class Schedule Calendar</h4>
+<p style="font-size:0.85rem;">Calendar ID: <code>hello@jet-learn.com</code>. All class events are created here. Teacher names must appear in the event title for the Teaching Hours Distribution chart to match them.</p>
+<h4>Teacher Availability Calendars</h4>
+<p style="font-size:0.85rem;">Each teacher has their own Google Calendar. Create events titled <strong>"Availability"</strong> or <strong>"Teaching Hours"</strong> to mark open slots. The Persona Engine reads these to check availability on a given date.</p>
+<h4>Quota</h4>
+<p style="font-size:0.85rem;color:#64748b;">CalendarApp has a 20,000 read quota per day. The system caches calendar results in ScriptCache (1 hour TTL) to minimise calls.</p>`
+  },
+  'api-reference': {
+    title: 'API Reference — GAS Server Functions',
+    body: `<p>All client-server calls use <code>google.script.run.functionName(args)</code>. Key functions:</p>
+<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+  <thead><tr style="background:#f1f5f9;"><th style="padding:8px;">Function</th><th style="padding:8px;">Returns</th></tr></thead>
+  <tbody>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getTeacherSpecificLoad(name)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Load stats, courses, manager info</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getTeacherAttritionReport(name)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Active learner pool with risk scores</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getTeacherCalendarHours(name, weeks)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Hours by day of week from Google Calendar</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getTeacherReplacementHistory(name)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">All HubSpot migration tickets for teacher</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getTPManagerDashboard(managerName)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">TP teacher portfolio with grades & risk</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>searchMatchingTeachers(requestData)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Scored teacher matches for persona engine</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>getComprehensiveLearnerHistory(jlid)</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Full learner timeline: deals, tickets, audits</td></tr>
+    <tr><td style="padding:8px;"><code>checkAndSendRedFlagAlerts()</code></td><td style="padding:8px;">Scans audits, emails TP managers, deduplicates</td></tr>
+  </tbody>
+</table>`
+  },
+  'data-schema': {
+    title: 'Data Schema',
+    body: `<h4>Audit Log (App Data)</h4>
+<p style="font-size:0.82rem;color:#64748b;">Columns: Date | Action | JLID | Learner | Old Teacher | New Teacher | Course | Reason | Performed By | Notes</p>
+<h4>TP Notes (App Data)</h4>
+<p style="font-size:0.82rem;color:#64748b;">Columns: ID | Teacher Name | TP Manager | Note | Created By | Timestamp</p>
+<h4>Upskill Tracker (App Data)</h4>
+<p style="font-size:0.82rem;color:#64748b;">Columns: ID | Teacher Name | TP Manager | JLID | Learner Name | Gap Courses | HS Task ID | Status | Created At | Updated At</p>
+<h4>Alert Log (App Data)</h4>
+<p style="font-size:0.82rem;color:#64748b;">Columns: Key | Type | Teacher | Manager | Learner | Red Flags | Sent At | Email</p>
+<h4>Email Logs (App Data)</h4>
+<p style="font-size:0.82rem;color:#64748b;">Columns: Timestamp | Action | JLID | Learner | Teacher | Course | Reason | To | Cc | Subject | Status | Error</p>`
+  },
+  'security': {
+    title: 'Security & Compliance',
+    body: `<ul style="font-size:0.85rem;line-height:2;">
+  <li>All data stored in Google Workspace (Sheets, Drive) — no third-party databases.</li>
+  <li>Session tokens hashed and stored in GAS ScriptProperties — never exposed client-side.</li>
+  <li>Role-based access enforced server-side on every function call.</li>
+  <li>API keys (HubSpot, WATI, Exchange Rate) stored in ScriptProperties — never in code.</li>
+  <li>All emails sent from verified Google Workspace domain (jet-learn.com).</li>
+  <li>Audit log tracks every action with timestamp and user.</li>
+  <li>No personal data leaves Google infrastructure except via HubSpot/WATI API calls.</li>
+</ul>`
+  },
+  'release-notes': {
+    title: 'Release Notes',
+    body: `<p style="color:#64748b;font-size:0.85rem;">Most recent versions first.</p>
+<div style="border-left:3px solid #6366f1;padding-left:1rem;margin-bottom:1.25rem;">
+  <div style="font-size:0.72rem;color:#6366f1;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v382 — Current</div>
+  <ul style="font-size:0.85rem;line-height:2;margin:0.25rem 0 0;">
+    <li>Teaching Hours Distribution chart in Teacher Intelligence (CalendarApp, day-of-week bar chart)</li>
+    <li>Teacher Replacement History table — all migration tickets per teacher, joined/left direction</li>
+    <li>Support Center and Documentation pages with real JetLearn content</li>
+    <li>Footer updated with SUPPORT and DOCUMENTATION links</li>
+  </ul>
+</div>
+<div style="border-left:3px solid #10b981;padding-left:1rem;margin-bottom:1.25rem;">
+  <div style="font-size:0.72rem;color:#10b981;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v381</div>
+  <ul style="font-size:0.85rem;line-height:2;margin:0.25rem 0 0;">
+    <li>JetLearn App Data spreadsheet — all logs moved out of Migration Sheet</li>
+    <li>AI response caching (6-hour TTL via CacheService)</li>
+    <li>AI Daily Briefing removed from Command Center</li>
+    <li>Grade legend (A/B/C/D) added to TP Dashboard</li>
+    <li>Red Flag Alert emails — daily 8AM trigger to TP managers</li>
+    <li>Upskill Tracker — logs HubSpot tasks for course gaps</li>
+    <li>TP Notes — saved per teacher with correct manager tagging</li>
+    <li>CSV export for TP Dashboard</li>
+    <li>Risk Score and Due for Audit badges</li>
+  </ul>
+</div>
+<div style="border-left:3px solid #f59e0b;padding-left:1rem;margin-bottom:1.25rem;">
+  <div style="font-size:0.72rem;color:#f59e0b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v366</div>
+  <ul style="font-size:0.85rem;line-height:2;margin:0.25rem 0 0;">
+    <li>Migration intelligence with audit ranking</li>
+    <li>Improved Teacher Persona UI/UX</li>
+    <li>JLID auto-fetch in Persona Engine</li>
+  </ul>
+</div>`
+  }
+};
+
+function openDocArticle(id) {
+  const article = DOC_ARTICLES[id];
+  const content = document.getElementById('docArticleContent');
+  if (!content) return;
+
+  if (!article) {
+    content.innerHTML = '<p style="color:#64748b;">Article coming soon.</p>';
+  } else {
+    content.innerHTML = `
+      <h1 style="font-size:1.6rem;font-weight:800;color:#0f172a;margin:0 0 0.5rem;">${article.title}</h1>
+      <hr style="border:none;border-top:1.5px solid #e2e8f0;margin:1rem 0 1.5rem;">
+      <div style="font-size:0.88rem;line-height:1.8;color:#374151;">${article.body}</div>`;
+  }
+
+  document.getElementById('docArticleOverlay').style.display = 'block';
+  document.getElementById('docArticleOverlay').scrollTop = 0;
+}
+
+function closeDocArticle() {
+  document.getElementById('docArticleOverlay').style.display = 'none';
+}
+
+// Close overlays on Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (document.getElementById('docArticleOverlay').style.display === 'block') {
+      closeDocArticle();
+    } else {
+      hideHelpPage();
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SMART SLOT SUGGESTER
+// Reads the first session's day+time from the migration form, then calls
+// searchMatchingTeachers with that slot and the selected course.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Show the suggester panel once course + slot are both filled
+function _checkShowSlotSuggester() {
+    const course  = document.getElementById('migrationCourse')?.value;
+    const session = document.querySelector('#classSessionsContainer .class-session-group');
+    if (!session) return;
+    const day  = session.querySelector('[class*="session-day"], select')?.value;
+    const wrap = document.getElementById('slotSuggesterWrap');
+    if (wrap) wrap.style.display = (course && day) ? 'block' : 'none';
+}
+
+// Hook into course + slot changes
+document.addEventListener('change', function(e) {
+    if (e.target && (e.target.id === 'migrationCourse' ||
+        e.target.closest('#classSessionsContainer'))) {
+        _checkShowSlotSuggester();
+    }
+});
+
+function runSlotSuggester() {
+    const course   = document.getElementById('migrationCourse')?.value;
+    const startDate= document.getElementById('startDate')?.value;
+    const session  = document.querySelector('#classSessionsContainer .class-session-group');
+    if (!session) { showToast('error', 'Slot Suggester', 'Add a class session first.'); return; }
+
+    // Read day + time from session selects
+    const selects  = session.querySelectorAll('select');
+    let day='', hr='', min='', ampm='';
+    selects.forEach(sel => {
+        const val = sel.value || '';
+        const opts = [...sel.options].map(o => o.value);
+        if (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].includes(val)) day = val;
+        else if (opts.includes('AM') || opts.includes('PM')) ampm = val;
+        else if (val && !isNaN(val) && Number(val) <= 12 && Number(val) >= 1) hr = val;
+        else if (val && !isNaN(val) && Number(val) < 60) min = val;
+    });
+
+    if (!day || !hr || !ampm) {
+        showToast('error', 'Slot Suggester', 'Please fill in the class day and time first.');
+        return;
+    }
+
+    const slot       = `${day} ${hr}:${min || '00'} ${ampm}`;
+    const useDate    = startDate || new Date().toISOString().split('T')[0];
+
+    document.getElementById('slotSuggesterLoading').style.display = 'block';
+    document.getElementById('slotSuggesterResults').style.display = 'none';
+    document.getElementById('slotSuggesterEmpty').style.display   = 'none';
+
+    google.script.run
+        .withSuccessHandler(data => _renderSlotSuggestions(data, slot))
+        .withFailureHandler(err => {
+            document.getElementById('slotSuggesterLoading').style.display = 'none';
+            showToast('error', 'Slot Suggester', 'Error: ' + (err.message || err));
+        })
+        .searchMatchingTeachers({
+            requestedDate:    useDate,
+            requestedSlot:    slot,
+            currentCourse:    course,
+            futureCourse1:    '',
+            futureCourse2:    '',
+            futureCourse3:    '',
+            mathTraits:       '',
+            techTraits:       ''
+        });
+}
+
+function _renderSlotSuggestions(data, slot) {
+    document.getElementById('slotSuggesterLoading').style.display = 'none';
+    const results = data && data.results ? data.results : (Array.isArray(data) ? data : []);
+
+    if (!results.length) {
+        document.getElementById('slotSuggesterEmpty').style.display = 'block';
+        return;
+    }
+
+    const listEl = document.getElementById('slotSuggesterList');
+    listEl.innerHTML = results.slice(0, 8).map((t, i) => {
+        const score     = t.matchScore || t.score || 0;
+        const scorePct  = Math.round(score * 100) / 100;
+        const barColor  = scorePct >= 80 ? '#10b981' : scorePct >= 60 ? '#6366f1' : '#f59e0b';
+        const grade     = t.auditGrade || '—';
+        const available = t.available !== false;
+        return `<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:border-color .15s;"
+                     onclick="applySlotTeacher('${escapeHtml(t.name)}')"
+                     onmouseover="this.style.borderColor='#6366f1'" onmouseout="this.style.borderColor='#e2e8f0'">
+            <div style="width:28px;height:28px;background:${barColor}18;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;color:${barColor};flex-shrink:0;">${i+1}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:0.85rem;font-weight:700;color:#0f172a;">${escapeHtml(t.name)}</div>
+                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">
+                    Audit: <strong style="color:${grade==='A'?'#16a34a':grade==='B'?'#2563eb':grade==='C'?'#d97706':'#dc2626'}">${grade}</strong>
+                    ${available ? '<span style="color:#10b981;margin-left:8px;"><i class="fas fa-calendar-check"></i> Free at slot</span>' : '<span style="color:#94a3b8;margin-left:8px;"><i class="fas fa-calendar-times"></i> Calendar N/A</span>'}
+                </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:1rem;font-weight:800;color:${barColor};">${scorePct}%</div>
+                <div style="font-size:0.65rem;color:#94a3b8;">match</div>
+            </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('slotSuggesterResults').style.display = 'block';
+}
+
+function applySlotTeacher(name) {
+    const sel = document.getElementById('newTeacher');
+    if (!sel) return;
+    for (let i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].text.trim().toLowerCase() === name.toLowerCase() ||
+            sel.options[i].value.trim().toLowerCase() === name.toLowerCase()) {
+            sel.selectedIndex = i;
+            sel.dispatchEvent(new Event('change'));
+            showToast('success', 'Teacher Selected', name + ' applied as new teacher.');
+            return;
+        }
+    }
+    showToast('error', 'Not Found', name + ' not found in teacher dropdown.');
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TEACHER ONBOARDING TRACKER
+// ══════════════════════════════════════════════════════════════════════════════
+
+function loadOnboardingTracker() {
+    const grid = document.getElementById('onboardingTrackerGrid');
+    if (grid) grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-muted);">
+        <i class="fas fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:1rem;"></i>Loading...</div>`;
+
+    google.script.run
+        .withSuccessHandler(_renderOnboardingTracker)
+        .withFailureHandler(err => showToast('error', 'Onboarding Tracker', err.message || err))
+        .getOnboardingTrackerData();
+
+    // Populate modal dropdowns
+    _populateOnboardingModalDropdowns();
+}
+
+function _renderOnboardingTracker(data) {
+    const grid = document.getElementById('onboardingTrackerGrid');
+    if (!grid) return;
+
+    const records = (data && data.success) ? (data.records || []) : [];
+
+    // KPIs
+    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('obKpiTotal',      records.length);
+    setKpi('obKpiFirstClass', records.filter(r => r.firstClassDone === 'Yes').length);
+    setKpi('obKpiFirstAudit', records.filter(r => r.firstAuditDone === 'Yes').length);
+    setKpi('obKpi30Day',      records.filter(r => r.reviewDone     === 'Yes').length);
+
+    if (records.length === 0) {
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:4rem;color:var(--text-muted);">
+            <i class="fas fa-user-plus" style="font-size:3rem;opacity:.3;display:block;margin-bottom:1rem;"></i>
+            No teachers in onboarding yet. Click <strong>Add Teacher</strong> to get started.
+        </div>`;
+        return;
+    }
+
+    grid.innerHTML = records.map(r => _buildOnboardingCard(r)).join('');
+}
+
+function _buildOnboardingCard(r) {
+    const steps = [
+        { key: 'trainingPct',    label: 'Course Training',    done: r.trainingPct >= 100, pct: r.trainingPct, isProgress: true },
+        { key: 'firstClassDone', label: 'First Class Logged', done: r.firstClassDone === 'Yes' },
+        { key: 'firstAuditDone', label: 'First Audit Done',   done: r.firstAuditDone === 'Yes' },
+        { key: 'reviewDone',     label: '30-Day Review',      done: r.reviewDone === 'Yes' }
+    ];
+    const doneCount = steps.filter(s => s.done).length;
+    const overallPct = Math.round((doneCount / steps.length) * 100);
+    const barColor = overallPct === 100 ? '#10b981' : overallPct >= 50 ? '#6366f1' : '#f59e0b';
+
+    const stepsHtml = steps.map(s => {
+        if (s.isProgress) {
+            return `<div style="margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="font-size:0.75rem;color:#475569;">${s.label}</span>
+                    <span style="font-size:0.75rem;font-weight:700;color:#6366f1;">${s.pct}%</span>
+                </div>
+                <div style="background:#e2e8f0;border-radius:99px;height:6px;">
+                    <div style="background:#6366f1;height:6px;border-radius:99px;width:${Math.min(s.pct,100)}%;transition:width .5s;"></div>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                    ${[25,50,75,100].map(v => `<button type="button" onclick="updateOnboardingField('${r.id}','trainingPct',${v},this)"
+                        style="font-size:0.65rem;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;background:${s.pct>=v?'#6366f1':'#fff'};color:${s.pct>=v?'#fff':'#6b7280'};cursor:pointer;">${v}%</button>`).join('')}
+                </div>
+            </div>`;
+        }
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+            <span style="font-size:0.78rem;color:#475569;">${s.label}</span>
+            <button type="button" onclick="toggleOnboardingStep('${r.id}','${s.key}','${s.done?'No':'Yes'}',this)"
+                style="font-size:0.7rem;padding:3px 12px;border-radius:99px;border:1px solid ${s.done?'#86efac':'#e2e8f0'};background:${s.done?'#dcfce7':'#f8fafc'};color:${s.done?'#15803d':'#94a3b8'};cursor:pointer;font-weight:600;">
+                ${s.done ? '<i class="fas fa-check" style="margin-right:3px;"></i>Done' : 'Mark Done'}
+            </button>
+        </div>`;
+    }).join('');
+
+    const daysIn = r.joinDate ? Math.floor((Date.now() - new Date(r.joinDate).getTime()) / 86400000) : '?';
+
+    return `<div style="background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.25rem;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+            <div>
+                <div style="font-weight:700;font-size:0.95rem;color:#0f172a;">${escapeHtml(r.teacherName)}</div>
+                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">
+                    ${escapeHtml(r.tpManager || '—')} · Joined ${escapeHtml(r.joinDate || '—')} · Day ${daysIn}
+                </div>
+            </div>
+            <span style="font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:99px;background:${overallPct===100?'#dcfce7':'rgba(99,102,241,0.1)'};color:${overallPct===100?'#15803d':'#6366f1'};white-space:nowrap;">${overallPct}%</span>
+        </div>
+        <div style="background:#e2e8f0;border-radius:99px;height:5px;margin-bottom:4px;">
+            <div style="background:${barColor};height:5px;border-radius:99px;width:${overallPct}%;transition:width .5s;"></div>
+        </div>
+        ${stepsHtml}
+        <div style="margin-top:4px;">
+            <input type="text" placeholder="Add note..." value="${escapeHtml(r.notes || '')}"
+                onblur="updateOnboardingField('${r.id}','notes',this.value,this)"
+                style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.78rem;box-sizing:border-box;color:#374151;">
+        </div>
+    </div>`;
+}
+
+function toggleOnboardingStep(id, field, newVal, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    google.script.run
+        .withSuccessHandler(() => loadOnboardingTracker())
+        .withFailureHandler(err => { btn.disabled = false; showToast('error', 'Update Failed', err.message || err); })
+        .updateOnboardingRecord(id, field, newVal);
+}
+
+function updateOnboardingField(id, field, value, el) {
+    if (el) el.disabled = true;
+    google.script.run
+        .withSuccessHandler(() => {
+            if (el) el.disabled = false;
+            loadOnboardingTracker();
+        })
+        .withFailureHandler(err => {
+            if (el) el.disabled = false;
+            showToast('error', 'Update Failed', err.message || err);
+        })
+        .updateOnboardingRecord(id, field, value);
+}
+
+function openAddOnboardingModal() {
+    _populateOnboardingModalDropdowns();
+    document.getElementById('addOnboardingModal').classList.add('active');
+}
+
+function _populateOnboardingModalDropdowns() {
+    // Teachers
+    const tSel = document.getElementById('obTeacherSelect');
+    if (tSel && allTeacherDetailsCache.length > 0) {
+        const existing = tSel.querySelectorAll('option:not([disabled])');
+        if (!existing.length) {
+            allTeacherDetailsCache.forEach(t => {
+                const o = document.createElement('option');
+                o.value = t.name || t;
+                o.textContent = t.name || t;
+                tSel.appendChild(o);
+            });
+        }
+    }
+    // TP Managers
+    const mSel = document.getElementById('obTpManager');
+    if (mSel && window.globalTpManagers && window.globalTpManagers.length) {
+        if (!mSel.querySelectorAll('option:not([disabled])').length) {
+            window.globalTpManagers.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m; o.textContent = m;
+                mSel.appendChild(o);
+            });
+        }
+    }
+    // Courses
+    const cSel = document.getElementById('obCourse');
+    if (cSel) {
+        const courseSrc = document.getElementById('migrationCourse');
+        if (courseSrc && !cSel.querySelectorAll('option:not([disabled])').length) {
+            [...courseSrc.options].forEach(opt => {
+                if (!opt.disabled && opt.value) {
+                    const o = document.createElement('option');
+                    o.value = opt.value; o.textContent = opt.text;
+                    cSel.appendChild(o);
+                }
+            });
+        }
+    }
+}
+
+// Submit new onboarding record
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('addOnboardingForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const data = {
+                teacherName:   document.getElementById('obTeacherSelect').value,
+                joinDate:      document.getElementById('obJoinDate').value,
+                tpManager:     document.getElementById('obTpManager').value,
+                primaryCourse: document.getElementById('obCourse').value
+            };
+            if (!data.teacherName || !data.joinDate) {
+                showToast('error', 'Validation', 'Teacher name and join date are required.');
+                return;
+            }
+            showLoading('Adding teacher to tracker...');
+            google.script.run
+                .withSuccessHandler(() => {
+                    hideLoading();
+                    document.getElementById('addOnboardingModal').classList.remove('active');
+                    form.reset();
+                    showToast('success', 'Added', data.teacherName + ' added to onboarding tracker.');
+                    loadOnboardingTracker();
+                })
+                .withFailureHandler(err => { hideLoading(); showToast('error', 'Error', err.message || err); })
+                .addOnboardingRecord(data);
+        });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PERSONA CARD GRID (3-per-row, grade badges, pagination)
+// ═══════════════════════════════════════════════════════════════════
+var _personaCurrentPage = 1;
+
+function renderPersonaCards() {
+  var grid    = document.getElementById('personaCardsGrid');
+  var pageEl  = document.getElementById('personaCardsPagination');
+  var countEl = document.getElementById('personaResultsCount');
+  if (!grid) return;
+
+  if (!personaResults || personaResults.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:#94a3b8;font-size:0.85rem;">No teachers match the criteria. Try different slots or courses.</div>';
+    if (countEl) countEl.textContent = '0 matches';
+    if (pageEl)  pageEl.innerHTML = '';
+    return;
+  }
+
+  var pageSize   = parseInt((document.getElementById('personaPageSizeSelect') || {}).value || '15');
+  var total      = personaResults.length;
+  var totalPages = Math.ceil(total / pageSize);
+  if (_personaCurrentPage > totalPages) _personaCurrentPage = 1;
+
+  var start = (_personaCurrentPage - 1) * pageSize;
+  var slice = personaResults.slice(start, start + pageSize);
+
+  if (countEl) countEl.textContent = total + ' match' + (total !== 1 ? 'es' : '');
+
+  var gradeColors = {
+    A: { bg:'#dcfce7', text:'#15803d' },
+    B: { bg:'#dbeafe', text:'#1d4ed8' },
+    C: { bg:'#fef3c7', text:'#d97706' },
+    D: { bg:'#fee2e2', text:'#b91c1c' }
+  };
+
+  grid.innerHTML = slice.map(function(t, i) {
+    var rank = start + i;
+    var gc   = gradeColors[t.auditGrade] || { bg:'#f1f5f9', text:'#64748b' };
+
+    var slotRaw  = String(t.slotMatch || '');
+    var isMatch  = slotRaw.indexOf('\u2714') !== -1;
+    var isPartial= slotRaw.indexOf('\u26A0') !== -1;
+
+    function pColor(v) {
+      if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '—') return '#94a3b8';
+      var n = parseInt(v); return isNaN(n) ? '#94a3b8' : n >= 80 ? '#15803d' : n >= 50 ? '#d97706' : '#b91c1c';
+    }
+
+    var topBadge = rank === 0
+      ? '<span style="background:#fbbf24;color:#78350f;border-radius:99px;padding:1px 7px;font-size:0.6rem;font-weight:700;margin-left:4px;">Top Pick</span>'
+      : '';
+    var rfCount = Number(t.redFlagCount) || 0;
+    var rfBadge = rfCount > 0
+      ? '<span style="background:#fee2e2;color:#b91c1c;border-radius:99px;padding:1px 7px;font-size:0.6rem;font-weight:700;margin-left:4px;">⚑ ' + rfCount + '</span>'
+      : '';
+
+    var slotHtml = isMatch
+      ? '<span style="color:#15803d;font-weight:700;">✔ Matches</span>'
+      : isPartial
+        ? '<span style="color:#d97706;font-size:0.78rem;">' + escapeHtml(slotRaw) + '</span>'
+        : '<span style="color:#94a3b8;">✗ No match</span>';
+
+    var hasAudit = t.avgClassScore && t.avgClassScore !== 'No data';
+    var auditVal = hasAudit
+      ? escapeHtml(t.avgClassScore) + (t.auditCount45 ? ' <span style="font-size:0.65rem;color:#94a3b8;">(' + t.auditCount45 + ' sessions)</span>' : '')
+      : 'No data';
+
+    var traitLine = (t.traitsMissing && t.traitsMissing.length > 0)
+      ? '<div style="font-size:0.7rem;background:#fff7ed;border-radius:6px;padding:4px 8px;color:#92400e;">Missing: ' + escapeHtml(t.traitsMissing.slice(0,2).join(', ')) + (t.traitsMissing.length > 2 ? ' +' + (t.traitsMissing.length-2) + ' more' : '') + '</div>'
+      : '<div style="font-size:0.7rem;background:#f0fdf4;border-radius:6px;padding:4px 8px;color:#15803d;">All traits matched ✔</div>';
+
+    return '<div style="background:#fff;border-radius:14px;border:1.5px solid #e2e8f0;padding:1.1rem;display:flex;flex-direction:column;gap:0.55rem;transition:box-shadow .15s,border-color .15s;cursor:default;" onmouseover="this.style.boxShadow=\'0 4px 18px rgba(99,102,241,0.12)\';this.style.borderColor=\'#c7d2fe\'" onmouseout="this.style.boxShadow=\'\';this.style.borderColor=\'#e2e8f0\'">'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">'
+        + '<div style="display:flex;align-items:center;gap:0.55rem;min-width:0;">'
+          + '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;color:#fff;flex-shrink:0;">' + escapeHtml((t.teacherName||'').substring(0,2).toUpperCase()) + '</div>'
+          + '<div style="min-width:0;">'
+            + '<div style="font-weight:700;font-size:0.86rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t.teacherName||'') + topBadge + rfBadge + '</div>'
+            + '<div style="font-size:0.7rem;color:#64748b;">' + escapeHtml(t.ageYear||'—') + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<div style="background:' + gc.bg + ';color:' + gc.text + ';border-radius:8px;padding:4px 10px;text-align:center;flex-shrink:0;">'
+          + '<div style="font-size:1rem;font-weight:800;line-height:1;">' + (t.auditGrade||'—') + '</div>'
+          + '<div style="font-size:0.55rem;font-weight:600;opacity:0.7;">GRADE</div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">'
+        + '<span style="font-size:0.65rem;color:#94a3b8;background:#f8fafc;border-radius:4px;padding:1px 6px;">#' + (rank+1) + '</span>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border-radius:8px;padding:5px 10px;">'
+        + '<span style="font-size:0.72rem;color:#64748b;">Slot Match</span>'
+        + '<span style="font-size:0.8rem;">' + slotHtml + '</span>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+        + '<span style="font-size:0.72rem;color:#64748b;">Audit (45d)</span>'
+        + '<span style="font-size:0.8rem;font-weight:600;color:' + gc.text + ';">' + auditVal + '</span>'
+      + '</div>'
+      + '<div style="border-top:1px solid #f1f5f9;padding-top:0.45rem;display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:0.72rem;">'
+        + '<div style="color:#64748b;">Current: <span style="font-weight:600;color:' + pColor(t.currentCourseProgress) + ';">' + escapeHtml(t.currentCourseProgress||'N/A') + '</span></div>'
+        + '<div style="color:#64748b;">Future 1: <span style="font-weight:600;color:' + pColor(t.futureCourse1Progress) + ';">' + escapeHtml(t.futureCourse1Progress||'—') + '</span></div>'
+      + '</div>'
+      + traitLine
+      + '<button onclick="switchPage(\'teacherProfilePage\',\'' + escapeHtml(t.teacherName||'') + '\')" style="margin-top:2px;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile →</button>'
+      + '</div>';
+  }).join('');
+
+  // Pagination
+  if (pageEl) {
+    if (totalPages <= 1) { pageEl.innerHTML = ''; return; }
+    var pHtml = '';
+    for (var p = 1; p <= totalPages; p++) {
+      var active = p === _personaCurrentPage;
+      pHtml += '<button onclick="_goPersonaPage(' + p + ')" style="width:32px;height:32px;border-radius:8px;border:1.5px solid '+(active?'#6366f1':'#e2e8f0')+';background:'+(active?'#6366f1':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:0.8rem;font-weight:'+(active?'700':'400')+';cursor:pointer;">' + p + '</button>';
+    }
+    pageEl.innerHTML = pHtml;
+  }
+}
+
+function _goPersonaPage(p) {
+  _personaCurrentPage = p;
+  renderPersonaCards();
+  var c = document.getElementById('personaResultsContainer');
+  if (c) c.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STUCK MIGRATIONS MODAL
+// ═══════════════════════════════════════════════════════════════════
+var _stuckModalData = null;
+
+function openStuckMigrationsModal() {
+  var modal = document.getElementById('stuckMigrationsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  if (_stuckModalData) {
+    _renderStuckModalTable(_stuckModalData);
+  } else {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        _stuckModalData = (data && data.tickets) ? data.tickets : [];
+        _renderStuckModalTable(_stuckModalData);
+      })
+      .withFailureHandler(function() {
+        var tb = document.getElementById('stuckModalBody');
+        if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;">Failed to load. Please try again.</td></tr>';
+      })
+      .getStuckMigrations(7);
+  }
+}
+
+function closeStuckMigrationsModal() {
+  var modal = document.getElementById('stuckMigrationsModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function refreshStuckMigrationsModal() {
+  _stuckModalData = null;
+  var tb = document.getElementById('stuckModalBody');
+  if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Refreshing…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      _stuckModalData = (data && data.tickets) ? data.tickets : [];
+      _renderStuckModalTable(_stuckModalData);
+      // also refresh the widget
+      if (typeof refreshStuckMigrations === 'function') refreshStuckMigrations();
+    })
+    .withFailureHandler(function() {})
+    .getStuckMigrations(7);
+}
+
+function _renderStuckModalTable(tickets) {
+  var tbody  = document.getElementById('stuckModalBody');
+  var cntEl  = document.getElementById('stuckModalCount');
+  var footEl = document.getElementById('stuckModalFooterText');
+  if (!tbody) return;
+  if (cntEl)  cntEl.textContent  = (tickets.length) + ' ticket' + (tickets.length !== 1 ? 's' : '');
+  if (footEl) footEl.textContent = 'Showing ' + tickets.length + ' WIP tickets older than 7 days';
+
+  if (tickets.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#10b981;"><i class="fas fa-check-circle"></i> No stuck migrations — all clear!</td></tr>';
+    return;
+  }
+  tbody.innerHTML = tickets.map(function(t) {
+    var days    = t.daysStuck || 0;
+    var urgency = days >= 14 ? '#b91c1c' : days >= 10 ? '#d97706' : '#15803d';
+    var urgBg   = days >= 14 ? '#fef2f2' : days >= 10 ? '#fffbeb' : '#f0fdf4';
+    return '<tr style="border-bottom:1px solid #f1f5f9;">'
+      + '<td style="padding:10px 12px;"><span style="background:'+urgBg+';color:'+urgency+';border-radius:6px;padding:3px 10px;font-size:0.8rem;font-weight:700;">'+days+'d</span></td>'
+      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.jlid||t.learnerUid||'—')+'</td>'
+      + '<td style="padding:10px 12px;font-weight:500;font-size:0.84rem;">'+escapeHtml(t.learnerName||t.subject||'—')+'</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;">'+escapeHtml(t.fromTeacher||t.current_teacher||'—')+'</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;color:#6366f1;font-weight:500;">'+escapeHtml(t.toTeacher||t.new_teacher||'—')+'</td>'
+      + '<td style="padding:10px 12px;"><span style="background:#f1f5f9;border-radius:6px;padding:2px 8px;font-size:0.73rem;color:#475569;">'+escapeHtml(t.stage||t.stageLabel||'—')+'</span></td>'
+      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.createdDate||'—')+'</td>'
+      + '<td style="padding:10px 12px;text-align:center;"><a href="'+(t.hubspotLink||t.ticketUrl||'#')+'" target="_blank" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:4px 10px;font-size:0.73rem;font-weight:600;text-decoration:none;white-space:nowrap;"><i class="fas fa-external-link-alt"></i> Escalate</a></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function filterStuckModal(searchVal) {
+  if (!_stuckModalData) return;
+  var stageFilter = (document.getElementById('stuckModalStageFilter')||{}).value || '';
+  var q = (searchVal||'').toLowerCase();
+  var filtered = _stuckModalData.filter(function(t) {
+    var hay = [t.jlid||t.learnerUid, t.learnerName||t.subject, t.fromTeacher||t.current_teacher, t.toTeacher||t.new_teacher, t.stage||t.stageLabel].join(' ').toLowerCase();
+    var matchQ     = !q || hay.indexOf(q) > -1;
+    var matchStage = !stageFilter || (t.stage||t.stageLabel||'').indexOf(stageFilter) > -1;
+    return matchQ && matchStage;
+  });
+  _renderStuckModalTable(filtered);
+}
+
+function sortStuckModal(key) {
+  if (!_stuckModalData) return;
+  var sorted = _stuckModalData.slice().sort(function(a,b){ return (b[key]||0)-(a[key]||0); });
+  _renderStuckModalTable(sorted);
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('stuckMigrationsModal');
+    if (modal && modal.style.display === 'flex') closeStuckMigrationsModal();
+  }
+});
 </script>

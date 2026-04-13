@@ -40,12 +40,10 @@ function getOrCreateSheet(sheetName) {
   try {
     const spreadsheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID);
     let sheet = spreadsheet.getSheetByName(sheetName);
-
     if (!sheet) {
       sheet = spreadsheet.insertSheet(sheetName);
       Logger.log('Created new sheet: ' + sheetName);
     }
-
     return sheet;
   } catch (error) {
     Logger.log('Error getting/creating sheet: ' + error.message);
@@ -53,41 +51,99 @@ function getOrCreateSheet(sheetName) {
   }
 }
 
+// Opens (or creates) a sheet in the JetLearn App Data spreadsheet
+function getOrCreateAppDataSheet(sheetName) {
+  try {
+    const spreadsheet = _getSpreadsheet(CONFIG.APP_DATA_SHEET_ID);
+    let sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(sheetName);
+      Logger.log('Created App Data sheet: ' + sheetName);
+    }
+    return sheet;
+  } catch (error) {
+    Logger.log('Error getting/creating App Data sheet: ' + error.message);
+    throw error;
+  }
+}
+
+// Cached read from JetLearn App Data spreadsheet
+function _getAppDataCachedSheetData(sheetName) {
+  return _getCachedSheetData(sheetName, CONFIG.APP_DATA_SHEET_ID);
+}
+
+// Clears the in-memory cache for an App Data sheet
+function _clearAppDataCache(sheetName) {
+  if (typeof _sheetDataCache !== 'undefined') {
+    delete _sheetDataCache[CONFIG.APP_DATA_SHEET_ID + '_' + sheetName];
+  }
+}
+
 //AI Wrapper:
+// AI response cache TTL in seconds (6 hours)
+var AI_CACHE_TTL = 21600;
+
 function callGenerativeAIWithRetry(endpoint, payload) {
   const MAX_RETRIES = 3;
-  let lastError = null;
 
-  for (let i = 0; i < MAX_RETRIES; i++) {
+  // ── Cache check ──────────────────────────────────────────────────────────
+  // Key = digest of endpoint + stringified payload (same prompt = same key)
+  var cacheKey = 'ai_' + Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5,
+    endpoint + JSON.stringify(payload)
+  ).map(function(b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+
+  try {
+    var scriptCache = CacheService.getScriptCache();
+    var cached = scriptCache.get(cacheKey);
+    if (cached) {
+      Logger.log('[AI Cache] HIT — returning cached response, no token used.');
+      // Return a mock response object with the cached text
+      return { getResponseCode: function() { return 200; }, getContentText: function() { return cached; } };
+    }
+  } catch(cacheErr) {
+    Logger.log('[AI Cache] Cache read error: ' + cacheErr.message);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  var lastError = null;
+  for (var i = 0; i < MAX_RETRIES; i++) {
     try {
-      const options = {
+      var options = {
         method: 'post',
         contentType: 'application/json',
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
       };
-      
-      const response = UrlFetchApp.fetch(endpoint, options);
-      const responseCode = response.getResponseCode();
+      var response = UrlFetchApp.fetch(endpoint, options);
+      var responseCode = response.getResponseCode();
 
       if (responseCode === 200) {
-        return response; // Success
+        // Store result in cache before returning
+        try {
+          var responseText = response.getContentText();
+          CacheService.getScriptCache().put(cacheKey, responseText, AI_CACHE_TTL);
+          Logger.log('[AI Cache] MISS — response cached for ' + (AI_CACHE_TTL / 3600) + 'h.');
+        } catch(putErr) {
+          Logger.log('[AI Cache] Cache write error: ' + putErr.message);
+        }
+        return response;
       } else if (responseCode === 429) {
-        Logger.log(`[AI API] Rate limit hit (429). Retry ${i + 1}/${MAX_RETRIES}...`);
-        lastError = new Error(`API rate limit exceeded. Response: ${response.getContentText()}`);
-        Utilities.sleep((i + 1) * 1000); // Wait 1s, then 2s, etc.
+        Logger.log('[AI API] Rate limit hit (429). Retry ' + (i+1) + '/' + MAX_RETRIES + '...');
+        lastError = new Error('API rate limit exceeded. Response: ' + response.getContentText());
+        Utilities.sleep((i + 1) * 1000);
       } else {
-        throw new Error(`AI API Error (${responseCode}): ${response.getContentText()}`);
+        throw new Error('AI API Error (' + responseCode + '): ' + response.getContentText());
       }
-    } catch (e) {
+    } catch(e) {
       lastError = e;
-      Logger.log(`[AI API] Connection error on retry ${i + 1}/${MAX_RETRIES}: ${e.message}`);
-      Utilities.sleep((i + 1) * 1000); // Also wait on connection errors
+      Logger.log('[AI API] Connection error on retry ' + (i+1) + '/' + MAX_RETRIES + ': ' + e.message);
+      Utilities.sleep((i + 1) * 1000);
     }
   }
-  
-  Logger.log(`[AI API] Final failure after ${MAX_RETRIES} retries.`);
-  throw lastError; // Throw the last captured error after all retries fail
+
+  Logger.log('[AI API] Final failure after ' + MAX_RETRIES + ' retries.');
+  throw lastError;
 }
 
 //Formatting & Validation:
