@@ -2418,7 +2418,7 @@
         color: var(--text-light);
     }
 
-        .course-catalog-grid {
+    .course-catalog-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 1rem;
@@ -2468,7 +2468,6 @@
     body.dark-mode #courseDetailPanel {
       background: var(--gray-900) !important;
     }
-
 
     /* Batch Processing Page */
     .upload-area {
@@ -3868,5 +3867,30 @@ body.dark-mode .filter-label { color: rgba(255,255,255,0.5) !important; }
     }
     body.dark-mode #stuckModalTable thead { background: #16162e !important; }
     body.dark-mode #stuckModalTable tr { border-color: rgba(255,255,255,0.06) !important; }
+
+    /* ── Notification bell dropdown animation ── */
+    @keyframes notifSlideIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes bellShake {
+      0%,100% { transform: rotate(0deg); }
+      15%     { transform: rotate(12deg); }
+      30%     { transform: rotate(-10deg); }
+      45%     { transform: rotate(8deg); }
+      60%     { transform: rotate(-6deg); }
+      75%     { transform: rotate(4deg); }
+    }
+
+    /* ── Teacher Browse Card hover ── */
+    .teacher-browse-card {
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+      cursor: pointer;
+    }
+    .teacher-browse-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 28px rgba(99,102,241,0.15) !important;
+      border-color: #c4b5fd !important;
+    }
 
   </style>

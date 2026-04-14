@@ -93,9 +93,11 @@ function getCourseTeacherDetails(courseName) {
     const searchUrl      = 'https://api.hubapi.com/crm/v3/objects/deals/search';
     const activeStatuses = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
  
-    const teacherTotals   = {}; // teacherName (normalised) -> total active learners
-    const teacherOnCourse = {}; // teacherName (normalised) -> learners on THIS course
- 
+    const teacherTotals   = {}; // normalised key -> total active learners
+    const teacherOnCourse = {}; // normalised key -> learners on THIS course
+    const teacherLearners = {}; // normalised key -> [ {name, daysOnCourse, status} ]
+    const nowMs = new Date().getTime();
+
     let after = undefined, page = 0;
     do {
       var body = {
@@ -106,11 +108,11 @@ function getCourseTeacherDetails(courseName) {
             values:       activeStatuses
           }]
         }],
-        properties: ['current_teacher', 'current_course'],
+        properties: ['current_teacher', 'current_course', 'dealname', 'createdate', 'learner_status'],
         limit: 100
       };
       if (after) body.after = after;
- 
+
       var resp = UrlFetchApp.fetch(searchUrl, {
         method:             'post',
         headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -119,42 +121,57 @@ function getCourseTeacherDetails(courseName) {
       });
       var data = JSON.parse(resp.getContentText());
       if (!data.results) break;
- 
+
       data.results.forEach(function(deal) {
         var rawTeacher = deal.properties.current_teacher || '';
         var rawCourse  = deal.properties.current_course  || '';
         var teacher    = getTeacherLabel(rawTeacher);
         if (!teacher) return;
- 
+
         var teacherKey  = teacher.trim().toLowerCase().replace(/\s+/g, ' ');
         var courseLabel = getCourseLabel(rawCourse);
- 
-        // Accumulate totals
+
+        // Total active learners for this teacher
         if (!teacherTotals[teacherKey]) teacherTotals[teacherKey] = 0;
         teacherTotals[teacherKey]++;
- 
-        // Check if this learner is on the selected course
+
+        // If this learner is on the selected course — collect details
         if (courseLabel && courseLabel.trim().toLowerCase() === courseName.trim().toLowerCase()) {
-          if (!teacherOnCourse[teacherKey]) teacherOnCourse[teacherKey] = 0;
+          if (!teacherOnCourse[teacherKey])  teacherOnCourse[teacherKey]  = 0;
+          if (!teacherLearners[teacherKey])  teacherLearners[teacherKey]  = [];
           teacherOnCourse[teacherKey]++;
+
+          // Days on course: use createdate as proxy
+          var createdMs   = deal.properties.createdate ? new Date(deal.properties.createdate).getTime() : null;
+          var daysOnCourse = createdMs ? Math.floor((nowMs - createdMs) / 86400000) : null;
+
+          teacherLearners[teacherKey].push({
+            name:         (deal.properties.dealname || 'Learner').trim(),
+            daysOnCourse: daysOnCourse,
+            status:       (deal.properties.learner_status || '').trim()
+          });
         }
       });
- 
+
       after = data.paging && data.paging.next ? data.paging.next.after : undefined;
       page++;
     } while (after && page < 30);
- 
+
     // ── 3. Build result array ──────────────────────────────────────────────
     var teachers = Object.keys(proficiencyMap).map(function(teacherName) {
-      var key        = teacherName.trim().toLowerCase().replace(/\s+/g, ' ');
-      var total      = teacherTotals[key]   || 0;
-      var onCourse   = teacherOnCourse[key] || 0;
- 
+      var key      = teacherName.trim().toLowerCase().replace(/\s+/g, ' ');
+      var total    = teacherTotals[key]   || 0;
+      var onCourse = teacherOnCourse[key] || 0;
+      var learners = teacherLearners[key] || [];
+      // Sort learners: longest tenure first
+      learners.sort(function(a, b) { return (b.daysOnCourse || 0) - (a.daysOnCourse || 0); });
+
       return {
         name:             teacherName,
         proficiency:      proficiencyMap[teacherName],
         totalLearners:    total,
-        learnersOnCourse: onCourse
+        learnersOnCourse: onCourse,
+        learners:         learners
       };
     });
  
@@ -295,10 +312,21 @@ function getTeacherDetailsForTable() {
       }
     } catch(e) { Logger.log('[getTeacherDetailsForTable] traitsMap error: ' + e.message); }
 
-    // ── Step 3c: Build Audit Score map (45 days) ──────────────────────
-    let auditScoreMap45 = {};
-    try { auditScoreMap45 = _buildAuditScoreMapDays(45); } catch(ae) {
-      Logger.log('[getTeacherDetailsForTable] auditScoreMap45 error: ' + ae.message);
+    // ── Step 3c: Build latest audit grade map (most-recent score, all-time) ──────────────────────
+    // Using all-time latest instead of 45-day window so grades show for teachers
+    // who haven't been audited recently (audits are periodic, not daily).
+    let latestGradeMap = {};
+    try {
+      const allAuditRecs = _getAllAuditRecords();
+      allAuditRecs.forEach(function(a) {
+        if (!a.teacher || a.classScore === null || a.classScore === undefined) return;
+        const key = normalizeTeacherName(a.teacher);
+        if (!latestGradeMap[key] || (a.date && (!latestGradeMap[key].date || a.date > latestGradeMap[key].date))) {
+          latestGradeMap[key] = { score: a.classScore, date: a.date };
+        }
+      });
+    } catch(ae) {
+      Logger.log('[getTeacherDetailsForTable] latestGradeMap error: ' + ae.message);
     }
 
     // \u2500\u2500 Step 4: Build the final, enriched result array \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -344,10 +372,9 @@ function getTeacherDetailsForTable() {
         // Traits & Audit grade — fed into allTeacherDetailsCache on the frontend
         traits:     traitsMap[teacherNorm] || traitsMap[resolvedNorm] || [],
         auditGrade: (() => {
-          const ad = auditScoreMap45[teacherNorm] || auditScoreMap45[resolvedNorm] || null;
-          if (!ad || ad.avgScore == null) return '—';
-          const sc = ad.avgScore;
-          return sc >= 65 ? 'A' : sc >= 50 ? 'B' : sc >= 35 ? 'C' : 'D';
+          const ad = latestGradeMap[teacherNorm] || latestGradeMap[resolvedNorm] || null;
+          if (!ad || ad.score === null || ad.score === undefined) return '—';
+          return _auditGrade(ad.score);
         })()
       };
     });

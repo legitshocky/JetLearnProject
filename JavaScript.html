@@ -2160,9 +2160,9 @@ function renderCourseCatalog(courses) {
       var cards = courses.map(function(course) {
         var count = course.activeTeachersCount || 0;
         var safe  = escapeHtml(course.name);
-        // Use JSON.stringify to safely embed the name in the onclick attribute
-        var jsonName = JSON.stringify(course.name);
-        return '<div class="course-catalog-card" onclick="openCourseDetail(' + jsonName + ')">' +
+        // Use single-quote wrapping; escape backslashes and single quotes in name
+        var onclickName = course.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return '<div class="course-catalog-card" onclick="openCourseDetail(\'' + onclickName + '\')">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
             '<div class="course-catalog-icon"><i class="fas fa-laptop-code"></i></div>' +
             '<i class="fas fa-chevron-right" style="color:var(--text-light);font-size:0.72rem;margin-top:4px;"></i>' +
@@ -2194,22 +2194,6 @@ function wireCourseCatalogSearch() {
         if (container) container.innerHTML = buildCourseGrid(filtered);
       });
     }
-
-function bindCourseSearch() {
-  const input = document.getElementById('courseSearchInput');
-  if (!input) return;
-  // Remove old listener by replacing node
-  const newInput = input.cloneNode(true);
-  input.parentNode.replaceChild(newInput, input);
-  newInput.addEventListener('input', function() {
-    const q = this.value.trim().toLowerCase();
-    const filtered = q
-      ? (window._allCourses || []).filter(c => c.name.toLowerCase().includes(q))
-      : (window._allCourses || []);
-    document.getElementById('coursesTableContainer').innerHTML = buildCourseGrid(filtered);
-    // Re-bind search since we replaced the container
-  });
-}
 
 function openCourseDetail(courseName) {
       var panel    = document.getElementById('courseDetailPanel');
@@ -2260,64 +2244,115 @@ function renderCourseDetailPanel(data) {
         ? Math.round(teachers.reduce(function(s, t) { return s + (parseFloat(t.proficiency) || 0); }, 0) / totalUpskilled)
         : 0;
  
-      // \u2500\u2500 Stats row \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      // ── Stats row ──
       stats.innerHTML =
-        '<div style="flex:1;background:var(--secondary);border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
-          '<div style="font-size:1.35rem;font-weight:700;color:var(--primary);">' + totalUpskilled + '</div>' +
-          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Teachers Upskilled</div>' +
+        '<div style="flex:1;background:#ede9fe;border-radius:10px;padding:0.75rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.5rem;font-weight:800;color:#6366f1;">' + totalUpskilled + '</div>' +
+          '<div style="font-size:0.68rem;color:#64748b;margin-top:2px;font-weight:500;">Teachers Upskilled</div>' +
         '</div>' +
-        '<div style="flex:1;background:#f0fdf4;border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
-          '<div style="font-size:1.35rem;font-weight:700;color:#16a34a;">' + totalOnCourse + '</div>' +
-          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Active Learners on Course</div>' +
+        '<div style="flex:1;background:#dcfce7;border-radius:10px;padding:0.75rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.5rem;font-weight:800;color:#16a34a;">' + totalOnCourse + '</div>' +
+          '<div style="font-size:0.68rem;color:#64748b;margin-top:2px;font-weight:500;">Active on Course</div>' +
         '</div>' +
-        '<div style="flex:1;background:#fff7ed;border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
-          '<div style="font-size:1.35rem;font-weight:700;color:#ea580c;">' + avgProf + '%</div>' +
-          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Avg Proficiency</div>' +
+        '<div style="flex:1;background:#fff7ed;border-radius:10px;padding:0.75rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.5rem;font-weight:800;color:#ea580c;">' + avgProf + '%</div>' +
+          '<div style="font-size:0.68rem;color:#64748b;margin-top:2px;font-weight:500;">Avg Proficiency</div>' +
         '</div>';
- 
-      // \u2500\u2500 Teacher list \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+      // ── Teacher list ──
       if (teachers.length === 0) {
         list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:2rem;">No teachers are upskilled on this course yet.</p>';
         return;
       }
- 
-      var header = '<div style="font-size:0.72rem;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem;">' +
-        teachers.length + ' Teacher' + (teachers.length !== 1 ? 's' : '') +
-      '</div>';
- 
-      var rows = teachers.map(function(t) {
-        var prof       = parseFloat(t.proficiency) || 0;
-        var profColor  = prof >= 90 ? '#16a34a' : prof >= 71 ? '#ca8a04' : '#dc2626';
-        var barWidth   = Math.min(Math.max(prof, 0), 100);
-        var total      = t.totalLearners    || 0;
-        var onCourse   = t.learnersOnCourse || 0;
-        var bandwidth  = total > 0 ? Math.round((onCourse / total) * 100) : 0;
-        var bwColor    = bandwidth > 60 ? '#dc2626' : bandwidth > 30 ? '#ca8a04' : '#16a34a';
- 
-        return '<div style="background:#fafafa;border:1px solid var(--gray);border-radius:10px;padding:0.85rem 1rem;margin-bottom:0.55rem;">' +
-          // Name + proficiency
-          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">' +
-            '<div style="font-weight:600;font-size:0.875rem;color:var(--dark);">' + escapeHtml(t.name) + '</div>' +
-            '<div style="text-align:right;flex-shrink:0;margin-left:0.5rem;">' +
-              '<span style="font-size:0.82rem;font-weight:700;color:' + profColor + ';">' + escapeHtml(t.proficiency || 'N/A') + '</span>' +
-              '<div style="font-size:0.65rem;color:var(--text-light);">Proficiency</div>' +
-            '</div>' +
-          '</div>' +
-          // Progress bar
-          '<div style="background:var(--gray);border-radius:99px;height:4px;margin-bottom:0.65rem;">' +
-            '<div style="background:' + profColor + ';height:4px;border-radius:99px;width:' + barWidth + '%;"></div>' +
-          '</div>' +
-          // Learner counts
-          '<div style="display:flex;align-items:center;font-size:0.74rem;color:var(--text-light);">' +
-            '<i class="fas fa-users" style="font-size:0.65rem;color:var(--primary);margin-right:0.3rem;"></i>' +
-            '<span><strong style="color:var(--dark);">' + onCourse + '</strong> / ' + total + ' learners on this course</span>' +
-            '<span style="margin-left:auto;">Bandwidth: <strong style="color:' + bwColor + ';">' + bandwidth + '%</strong></span>' +
-          '</div>' +
-        '</div>';
+
+      var rows = teachers.map(function(t, idx) {
+        var prof      = parseFloat(t.proficiency) || 0;
+        var profColor = prof >= 90 ? '#16a34a' : prof >= 71 ? '#ca8a04' : '#dc2626';
+        var profBg    = prof >= 90 ? '#f0fdf4'  : prof >= 71 ? '#fffbeb' : '#fef2f2';
+        var barWidth  = Math.min(Math.max(prof, 0), 100);
+        var total     = t.totalLearners    || 0;
+        var onCourse  = t.learnersOnCourse || 0;
+        var bandwidth = total > 0 ? Math.round((onCourse / total) * 100) : 0;
+        var bwColor   = bandwidth > 60 ? '#dc2626' : bandwidth > 30 ? '#ca8a04' : '#16a34a';
+        var bwBg      = bandwidth > 60 ? '#fef2f2' : bandwidth > 30 ? '#fffbeb' : '#f0fdf4';
+        var learners  = t.learners || [];
+        var panelId   = 'cdl_' + idx;
+        var initials  = escapeHtml((t.name || '').substring(0, 2).toUpperCase());
+
+        var statusColors = {
+          'Active Learner':   '#16a34a',
+          'Friendly Learner': '#2563eb',
+          'VIP':              '#7c3aed',
+          'Break & Return':   '#d97706'
+        };
+
+        var learnerRows = learners.map(function(l) {
+          var days    = l.daysOnCourse != null ? l.daysOnCourse + 'd' : '\u2014';
+          var stCol   = statusColors[l.status] || '#64748b';
+          var daysCol = (l.daysOnCourse || 0) > 180 ? '#b91c1c'
+                      : (l.daysOnCourse || 0) > 90  ? '#d97706' : '#16a34a';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f8fafc;">'
+            + '<i class="fas fa-user-circle" style="color:#c7d2fe;font-size:0.88rem;flex-shrink:0;"></i>'
+            + '<span style="flex:1;font-size:0.78rem;color:#374151;font-weight:500;">' + escapeHtml(l.name) + '</span>'
+            + '<span style="font-size:0.7rem;font-weight:700;color:' + daysCol + ';background:' + bwBg + ';padding:2px 8px;border-radius:5px;min-width:32px;text-align:center;">' + days + '</span>'
+            + '<span style="font-size:0.67rem;background:#f8fafc;color:' + stCol + ';padding:2px 9px;border-radius:5px;border:1px solid #e2e8f0;font-weight:600;white-space:nowrap;">' + escapeHtml(l.status || '\u2014') + '</span>'
+            + '</div>';
+        }).join('');
+
+        // onclick toggle uses a data-target to avoid quoting hell
+        var card =
+          '<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;margin-bottom:0.65rem;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.04);">'
+          // Teacher header (clickable)
+          + '<div class="cdl-header" data-panel="' + panelId + '" style="display:flex;align-items:center;gap:10px;padding:0.85rem 1rem;cursor:pointer;transition:background .12s;" onmouseover="this.style.background=\'#fafafa\'" onmouseout="this.style.background=\'\'">'
+            + '<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.88rem;color:#fff;flex-shrink:0;">' + initials + '</div>'
+            + '<div style="flex:1;min-width:0;">'
+              + '<div style="font-weight:700;font-size:0.88rem;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t.name) + '</div>'
+              + '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;">'
+                + '<div style="background:#f1f5f9;border-radius:99px;height:4px;flex:1;overflow:hidden;max-width:80px;"><div style="background:' + profColor + ';height:4px;border-radius:99px;width:' + barWidth + '%;"></div></div>'
+                + '<span style="font-size:0.7rem;font-weight:700;color:' + profColor + ';background:' + profBg + ';padding:1px 7px;border-radius:5px;">' + escapeHtml(t.proficiency || 'N/A') + '</span>'
+              + '</div>'
+            + '</div>'
+            + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
+              + '<span style="font-size:0.78rem;font-weight:700;color:#6366f1;background:#ede9fe;padding:3px 10px;border-radius:8px;">' + onCourse + ' / ' + total + '</span>'
+              + '<span style="font-size:0.65rem;color:#94a3b8;">BW: <strong style="color:' + bwColor + ';">' + bandwidth + '%</strong></span>'
+            + '</div>'
+            + '<i class="fas fa-chevron-right cdl-chevron" style="color:#cbd5e1;font-size:0.75rem;flex-shrink:0;transition:transform .2s;margin-left:4px;"></i>'
+          + '</div>';
+
+        if (learners.length > 0) {
+          card += '<div id="' + panelId + '" style="display:none;padding:0 1rem 0.8rem;border-top:1px solid #f1f5f9;">'
+            + '<div style="display:flex;gap:6px;padding:7px 0 6px;">'
+              + '<span style="font-size:0.67rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;flex:1;">Learner</span>'
+              + '<span style="font-size:0.67rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;min-width:38px;text-align:center;">Since</span>'
+              + '<span style="font-size:0.67rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;min-width:90px;text-align:center;">Stage</span>'
+            + '</div>'
+            + learnerRows
+            + '</div>';
+        } else {
+          card += '<div style="padding:5px 1rem 0.65rem;font-size:0.74rem;color:#94a3b8;border-top:1px solid #f1f5f9;">No active learners on this course yet.</div>';
+        }
+        card += '</div>';
+        return card;
       }).join('');
- 
-      list.innerHTML = header + rows;
+
+      list.innerHTML = '<div style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:0.75rem;">'
+        + teachers.length + ' Teacher' + (teachers.length !== 1 ? 's' : '') + ' \u2014 click to expand learners</div>'
+        + rows;
+
+      // Wire toggle clicks
+      list.querySelectorAll('.cdl-header').forEach(function(hdr) {
+        hdr.addEventListener('click', function() {
+          var pid = this.getAttribute('data-panel');
+          var panel = document.getElementById(pid);
+          if (!panel) return;
+          var open = panel.style.display !== 'none';
+          panel.style.display = open ? 'none' : 'block';
+          var ic = this.querySelector('.cdl-chevron');
+          if (ic) ic.style.transform = open ? '' : 'rotate(90deg)';
+        });
+      });
     }
+
 
 
     function updateCoursesTable(courses) {
@@ -3449,19 +3484,13 @@ function mipSelectAlternativeTeacher(teacherName) {
     } else {
         filteredTickets.forEach(t => {
             const dateStr = t.date ? new Date(t.date).toLocaleDateString() : 'N/A';
-            const ticketUrl = `https://app.hubspot.com/contacts/7729491/ticket/${t.id}`;            
+            const ticketUrl = 'https://app.hubspot.com/contacts/7729491/ticket/' + t.id;
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${dateStr}</td>
-                <td style="font-weight:500;">${escapeHtml(t.reason || 'Migration')}</td>
-                <td>${escapeHtml(t.from || '-')}</td>
-                <td>${escapeHtml(t.to || '-')}</td>
-                <td>
-                    <a href="${ticketUrl}" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none; padding: 4px 10px; font-size: 0.8rem;">
-                        <i class="fas fa-external-link-alt"></i> Open
-                    </a>
-                </td>
-            `;
+            tr.innerHTML = '<td>' + escapeHtml(dateStr) + '</td>'
+              + '<td style="font-weight:500;">' + escapeHtml(t.reason || 'Migration') + '</td>'
+              + '<td>' + escapeHtml(t.from || '-') + '</td>'
+              + '<td>' + escapeHtml(t.to || '-') + '</td>'
+              + '<td><a href="' + escapeHtml(ticketUrl) + '" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;padding:4px 10px;font-size:0.8rem;"><i class="fas fa-external-link-alt"></i> Open</a></td>';
             tbody.appendChild(tr);
         });
     }
@@ -3476,7 +3505,7 @@ function mipSelectAlternativeTeacher(teacherName) {
     function populateSessionsPerWeekOptions(targetSelect = invoiceSessionsPerWeek) {
         const sessionsOptions = [];
         for (let i = 0; i <= 20; i++) {
-            sessionsOptions.push(`${i} Session${i === 1 ? '' : 's'}/week`);
+            sessionsOptions.push(i + ' Session' + (i === 1 ? '' : 's') + '/week');
         }
         // Add month options to match potential backend mapping
         sessionsOptions.push('1 Session/month');
@@ -3488,7 +3517,7 @@ function mipSelectAlternativeTeacher(teacherName) {
     function populateSubscriptionTenureOptions() {
         const tenureOptions = [];
         for (let i = 0; i <= 100; i++) {
-            tenureOptions.push(`${i}`);
+            tenureOptions.push(String(i));
         }
         tenureOptions.push('101+');
         populateSelect(invoiceSubscriptionTenure, tenureOptions, false, "Select tenure");
@@ -3594,7 +3623,7 @@ function mipSelectAlternativeTeacher(teacherName) {
         const fixedClassesPerPlan = parseInt(selectedPlan['Fixed Classes'] || '0');
 
         if (planChanged) {
-            invoiceSessionsPerWeek.value = `${defaultSessions} Session${defaultSessions === 1 ? '' : 's'}/week`;
+            invoiceSessionsPerWeek.value = defaultSessions + ' Session' + (defaultSessions === 1 ? '' : 's') + '/week';
             invoiceNumberOfInstallments.value = defaultNumberOfInstallments;
         }
 
@@ -3655,9 +3684,9 @@ function mipSelectAlternativeTeacher(teacherName) {
     }
     const balanceDue = Math.max(0, pricingDetails.finalTotal - amountPaid);
 
-    totalPayableDisplay.value = `${sym}${pricingDetails.finalTotal.toFixed(2)}`;
-    amountPaidDisplay.value   = `${sym}${amountPaid.toFixed(2)}`;
-    balanceDueDisplay.value   = `${sym}${balanceDue.toFixed(2)}`;
+    totalPayableDisplay.value = sym + pricingDetails.finalTotal.toFixed(2);
+    amountPaidDisplay.value   = sym + amountPaid.toFixed(2);
+    balanceDueDisplay.value   = sym + balanceDue.toFixed(2);
 
     const balanceCard = document.getElementById('balanceDueCard');
     const balanceDot  = document.getElementById('balanceDueDot');
@@ -3829,7 +3858,7 @@ function calculateInvoicePricingClient(formData) {
       const rateFromBase = EUR_BASE_RATES_CLIENT[fromCurrency];
       const rateToBase = EUR_BASE_RATES_CLIENT[toCurrency];
       if (rateFromBase === undefined || rateToBase === undefined) {
-        console.warn(`No live or fallback rate for ${fromCurrency} to ${toCurrency}. Returning 1.`);
+        console.warn('No live or fallback rate for ' + fromCurrency + ' to ' + toCurrency + '. Returning 1.');
         return 1;
       }
       return rateToBase / rateFromBase;
@@ -3840,7 +3869,7 @@ function calculateInvoicePricingClient(formData) {
       const day = String(dateObj.getDate()).padStart(2, '0');
       const month = String(dateObj.getMonth() + 1).padStart(2, '0');
       const year = dateObj.getFullYear();
-      return `${day}/${month}/${year}`;
+      return day + '/' + month + '/' + year;
     }
 
 
@@ -3935,7 +3964,7 @@ function collectInvoiceFormData() {
                     emailPreviewModal.classList.add('active');
                 } else {
                     showToast('error', 'Preview Error', (result && result.message) ? result.message : 'Unknown error generating invoice preview.');
-                    emailPreviewFrame.srcdoc = `<div style="padding: 20px; text-align: center; color: #f44336; font-family: sans-serif;"><h3>Preview Error</h3><p>${(result && result.message) ? result.message : 'Unknown error generating preview.'}</p></div>`;
+                    emailPreviewFrame.srcdoc = '<div style="padding: 20px; text-align: center; color: #f44336; font-family: sans-serif;"><h3>Preview Error</h3><p>' + escapeHtml((result && result.message) ? result.message : 'Unknown error generating preview.') + '</p></div>';
                     previewComments.textContent = 'N/A';
                     previewAttachments.textContent = 'N/A';
                 }
@@ -4057,9 +4086,9 @@ function collectInvoiceFormData() {
 
         const balanceDue = pricingDetails.finalTotal - amountPaid;
 
-        if(totalPayableEl) totalPayableEl.value = `${pricingDetails.currencySymbol}${pricingDetails.finalTotal.toFixed(2)}`;
-        if(amountPaidEl) amountPaidEl.value = `${pricingDetails.currencySymbol}${amountPaid.toFixed(2)}`;
-        if(balanceDueEl) balanceDueEl.value = `${pricingDetails.currencySymbol}${balanceDue.toFixed(2)}`;
+        if(totalPayableEl) totalPayableEl.value = pricingDetails.currencySymbol + pricingDetails.finalTotal.toFixed(2);
+        if(amountPaidEl) amountPaidEl.value = pricingDetails.currencySymbol + amountPaid.toFixed(2);
+        if(balanceDueEl) balanceDueEl.value = pricingDetails.currencySymbol + balanceDue.toFixed(2);
         
         // Update label
         const amountPaidLabel = document.getElementById('onboardingParentAmountPaidLabel');
@@ -4158,18 +4187,18 @@ function collectInvoiceFormData() {
             .withSuccessHandler(tasks => {
                 hideLoading();
                 if (!tasks) {
-                    tasksTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">Failed to load tasks.</td></tr>`;
+                    tasksTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Failed to load tasks.</td></tr>';
                     showToast('error', 'Task Load Error', 'Failed to retrieve tasks data from server.');
                     return;
                 }
                 tasksTableBody.innerHTML = '';
                 if (tasks.length === 0) {
-                    tasksTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No tasks found.</td></tr>`;
+                    tasksTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No tasks found.</td></tr>';
                     return;
                 }
                 tasks.forEach(task => {
                     const statusClass = task.status === 'Completed' ? 'status-success' : task.status === 'Pending' ? 'status-pending' : '';
-                    const tr = `<tr><td>${new Date(task.created).toLocaleDateString()}</td><td>${task.learner}</td><td>${task.description}</td><td>${task.assignedTo}</td><td><span class="status-badge ${statusClass}">${task.status}</span></td><td>${task.status === 'Pending' ? `<button class="btn btn-sm btn-primary complete-task-btn" data-id="${task.id}"><i class="fas fa-check"></i> Mark Complete</button>` : ''}</td></tr>`;
+                    const tr = '<tr><td>' + new Date(task.created).toLocaleDateString() + '</td><td>' + escapeHtml(task.learner) + '</td><td>' + escapeHtml(task.description) + '</td><td>' + escapeHtml(task.assignedTo) + '</td><td><span class="status-badge ' + statusClass + '">' + escapeHtml(task.status) + '</span></td><td>' + (task.status === 'Pending' ? '<button class="btn btn-sm btn-primary complete-task-btn" data-id="' + escapeHtml(task.id) + '"><i class="fas fa-check"></i> Mark Complete</button>' : '') + '</td></tr>';
                     tasksTableBody.innerHTML += tr;
                 });
                 document.querySelectorAll('.complete-task-btn').forEach(btn => {
@@ -4266,7 +4295,7 @@ function renderTeacherOptions(teachers) {
     safeList.forEach(teacherName => {
         const div = document.createElement('div');
         div.className = 'hs-option';
-        div.innerHTML = `<div class="hs-option-name">${teacherName}</div>`;
+        div.innerHTML = '<div class="hs-option-name">' + escapeHtml(teacherName) + '</div>';
         div.addEventListener('click', () => {
             inputEl.value = teacherName; 
             listEl.classList.remove('show'); 
@@ -4280,7 +4309,7 @@ function renderTeacherOptions(teachers) {
 
 // 2. Display Details when Teacher Selected
 function loadTeacherSpecificDetails(teacherName) {
-    showLoading(`Fetching detailed analysis for ${teacherName}...`);
+    showLoading('Fetching detailed analysis for ' + teacherName + '...');
 
     const emptyState       = document.getElementById('teacherLoadEmptyState');
     const resultsContainer = document.getElementById('teacherLoadResults');
@@ -4326,10 +4355,7 @@ function loadTeacherSpecificDetails(teacherName) {
                         let badgeClass = 'status-info';
                         if (c.proficiency === '100%' || c.proficiency === '91-99%') badgeClass = 'status-success';
                         else if (c.proficiency.includes('51-60'))                   badgeClass = 'status-warning';
-                        tbody.innerHTML += `<tr>
-                            <td style="font-weight:500;">${escapeHtml(c.course)}</td>
-                            <td><span class="status-badge ${badgeClass}">${escapeHtml(c.proficiency)}</span></td>
-                        </tr>`;
+                        tbody.innerHTML += '<tr><td style="font-weight:500;">' + escapeHtml(c.course) + '</td><td><span class="status-badge ' + badgeClass + '">' + escapeHtml(c.proficiency) + '</span></td></tr>';
                     });
                 }
             }
@@ -4399,7 +4425,7 @@ function loadTeacherSpecificDetails(teacherName) {
                         let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                         if (s.recentMoves >= 2) {
                             rowStyle  = 'background-color:#ffebee;';
-                            riskBadge = `<span class="status-badge status-failed">${s.recentMoves} Moves</span>`;
+                            riskBadge = '<span class="status-badge status-failed">' + s.recentMoves + ' Moves</span>';
                         } else if (s.recentMoves === 1) {
                             riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
                         }
@@ -4408,19 +4434,19 @@ function loadTeacherSpecificDetails(teacherName) {
                         const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
                         const dealValueBadge = isUnknown
                             ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
-                            : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
+                            : '<span class="status-badge" style="background-color:' + escapeHtml(s.dealValueBg) + '; color:' + escapeHtml(s.dealValueColor) + '; border:1px solid ' + escapeHtml(s.dealValueColor) + ';">' + escapeHtml(s.dealValueLabel) + '</span>';
 
                         // \u2013\u2013 Amount display \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         // Show local currency amount; if non-EUR also show ~EUR equivalent
                         let amountDisplay = '';
                         if (s.dealAmountLocal > 0) {
                             const localStr = s.dealCurrency !== 'EUR'
-                                ? `${escapeHtml(s.dealCurrency)} ${s.dealAmountLocal.toLocaleString()}`
-                                : `\u20AC${s.dealAmountLocal.toLocaleString()}`;
+                                ? escapeHtml(s.dealCurrency) + ' ' + s.dealAmountLocal.toLocaleString()
+                                : '\u20AC' + s.dealAmountLocal.toLocaleString();
                             const eurNote  = (s.dealCurrency !== 'EUR' && s.dealAmountEur > 0)
-                                ? ` <small style="color:#888;">(~\u20AC${s.dealAmountEur.toLocaleString()})</small>`
+                                ? ' <small style="color:#888;">(~\u20AC' + s.dealAmountEur.toLocaleString() + ')</small>'
                                 : '';
-                            amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
+                            amountDisplay = '<div style="font-size:0.85em; margin-top:3px; font-weight:600;">' + localStr + eurNote + '</div>';
                         }
 
                         // \u2013\u2013 Payment tag: Upfront (green) / Installment (blue) \u2013\u2013
@@ -4430,7 +4456,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
                         // \u2013\u2013 Tenure label \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         const tenureLabel = s.dealTenureMonths > 0
-                            ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
+                            ? '<small style="color:#999; display:block; margin-top:2px;">' + s.dealTenureMonths + '-month plan</small>'
                             : '';
 
                         // \u2013\u2013 Previous teacher \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
@@ -4445,41 +4471,20 @@ function loadTeacherSpecificDetails(teacherName) {
 
                         const tr = document.createElement('tr');
                         tr.style.cssText = rowStyle;
-                        tr.innerHTML = `
-                            <td>
-                                <strong>${escapeHtml(s.name)}</strong><br>
-                                <small style="color:#666;">${escapeHtml(s.jlid)}</small><br>
-                                <small style="color:#4a3c8a;" title="${escapeHtml(s.course || '')}">${escapeHtml(courseDisplay)}</small>
-                            </td>
-                            <td>
-                                <span class="status-badge status-info">${escapeHtml(s.status)}</span>
-                            </td>
-                            <td>
-                                ${dealValueBadge}
-                                ${amountDisplay}
-                                ${paymentTagBadge}
-                                ${tenureLabel}
-                            </td>
-                            <td>${prevTeacherDisplay}</td>
-                            <td>${escapeHtml(s.lastMoveDate)}</td>
-                            <td style="font-size:0.85em;">${escapeHtml(s.moveReason)}</td>
-                            <td>${riskBadge}</td>
-                            <td>
-                                <div style="display:flex; gap:5px;">
-                                    <a href="${escapeHtml(s.hubspotLink)}" target="_blank"
-                                       class="btn btn-sm btn-outline"
-                                       title="Open HubSpot Deal"
-                                       style="color:#ff7a59; border-color:#ff7a59;">
-                                        <i class="fab fa-hubspot"></i>
-                                    </a>
-                                    <button class="btn btn-sm btn-outline"
-                                            onclick="copyToClipboardText('${escapeHtml(s.jlid)}')"
-                                            title="Copy JLID">
-                                        <i class="fas fa-copy"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        `;
+                        tr.innerHTML =
+                          '<td><strong>' + escapeHtml(s.name) + '</strong><br>'
+                          + '<small style="color:#666;">' + escapeHtml(s.jlid) + '</small><br>'
+                          + '<small style="color:#4a3c8a;" title="' + escapeHtml(s.course||'') + '">' + escapeHtml(courseDisplay) + '</small></td>'
+                          + '<td><span class="status-badge status-info">' + escapeHtml(s.status) + '</span></td>'
+                          + '<td>' + dealValueBadge + amountDisplay + paymentTagBadge + tenureLabel + '</td>'
+                          + '<td>' + prevTeacherDisplay + '</td>'
+                          + '<td>' + escapeHtml(s.lastMoveDate) + '</td>'
+                          + '<td style="font-size:0.85em;">' + escapeHtml(s.moveReason) + '</td>'
+                          + '<td>' + riskBadge + '</td>'
+                          + '<td><div style="display:flex;gap:5px;">'
+                          + '<a href="' + escapeHtml(s.hubspotLink) + '" target="_blank" class="btn btn-sm btn-outline" title="Open HubSpot Deal" style="color:#ff7a59;border-color:#ff7a59;"><i class="fab fa-hubspot"></i></a>'
+                          + '<button class="btn btn-sm btn-outline" onclick="copyToClipboardText(\'' + escapeHtml(s.jlid) + '\')" title="Copy JLID"><i class="fas fa-copy"></i></button>'
+                          + '</div></td>';
                         riskTbody.appendChild(tr);
                     });
                 })
@@ -4522,7 +4527,7 @@ function _loadCalendarHours(teacherName, weeksBack) {
     _calHoursCurrentWeeks   = weeksBack;
 
     const weeksLabel = document.getElementById('calHoursWeekLabel');
-    if (weeksLabel) weeksLabel.textContent = `last ${weeksBack} wks`;
+    if (weeksLabel) weeksLabel.textContent = 'last ' + weeksBack + ' wks';
 
     google.script.run
         .withSuccessHandler(data => _renderCalHours(data))
@@ -4591,7 +4596,7 @@ function _renderCalHours(data) {
                         label: ctx => {
                             const h = ctx.parsed.y;
                             const events = data.eventCount[ctx.dataIndex];
-                            return ` ${h}h  (${events} session${events !== 1 ? 's' : ''})`;
+                            return ' ' + h + 'h  (' + events + ' session' + (events !== 1 ? 's' : '') + ')';
                         }
                     }
                 }
@@ -4647,14 +4652,10 @@ function _renderReplacementHistory(data) {
 
     // KPI badges
     if (badges) {
-        badges.innerHTML = `
-            <span class="status-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;">
-                <i class="fas fa-user-plus" style="margin-right:4px;"></i>${data.joinedCount} Joined
-            </span>
-            <span class="status-badge" style="background:#ffebee;color:#d32f2f;border:1px solid #f48fb1;">
-                <i class="fas fa-user-minus" style="margin-right:4px;"></i>${data.leftCount} Left
-            </span>
-            <span class="status-badge status-info">${data.total} Total</span>`;
+        badges.innerHTML =
+            '<span class="status-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;"><i class="fas fa-user-plus" style="margin-right:4px;"></i>' + data.joinedCount + ' Joined</span>'
+          + '<span class="status-badge" style="background:#ffebee;color:#d32f2f;border:1px solid #f48fb1;"><i class="fas fa-user-minus" style="margin-right:4px;"></i>' + data.leftCount + ' Left</span>'
+          + '<span class="status-badge status-info">' + data.total + ' Total</span>';
     }
 
     if (tbody) {
@@ -4666,27 +4667,19 @@ function _renderReplacementHistory(data) {
                 : `<span class="status-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;"><i class="fas fa-sign-in-alt" style="margin-right:3px;"></i>Joined</span>`;
 
             const stageColor = r.stage === 'Migration Completed' ? '#10b981' : '#f59e0b';
-            const stageBadge = `<span class="status-badge" style="background:rgba(0,0,0,0.05);color:${stageColor};font-size:0.7rem;">${escapeHtml(r.stage)}</span>`;
+            const stageBadge = '<span class="status-badge" style="background:rgba(0,0,0,0.05);color:' + stageColor + ';font-size:0.7rem;">' + escapeHtml(r.stage) + '</span>';
 
             const tr = document.createElement('tr');
             if (isLeft) tr.style.backgroundColor = '#fff8f8';
-            tr.innerHTML = `
-                <td style="white-space:nowrap;">${escapeHtml(r.date)}</td>
-                <td>${dirBadge}</td>
-                <td>
-                    <strong>${escapeHtml(r.learnerName)}</strong>
-                    ${r.jlid ? `<br><small style="color:#6366f1;">${escapeHtml(r.jlid)}</small>` : ''}
-                </td>
-                <td style="font-size:0.8em;">${escapeHtml(r.fromTeacher)}</td>
-                <td style="font-size:0.8em;">${escapeHtml(r.toTeacher)}</td>
-                <td style="font-size:0.8em;color:#555;">${escapeHtml(r.reason)}</td>
-                <td>${stageBadge}</td>
-                <td>
-                    <a href="${escapeHtml(r.hubspotLink)}" target="_blank" class="btn btn-sm btn-outline"
-                       style="color:#ff7a59;border-color:#ff7a59;" title="Open Ticket">
-                        <i class="fab fa-hubspot"></i>
-                    </a>
-                </td>`;
+            var jlidHtml = r.jlid ? '<br><small style="color:#6366f1;">' + escapeHtml(r.jlid) + '</small>' : '';
+            tr.innerHTML = '<td style="white-space:nowrap;">' + escapeHtml(r.date) + '</td>' +
+                '<td>' + dirBadge + '</td>' +
+                '<td><strong>' + escapeHtml(r.learnerName) + '</strong>' + jlidHtml + '</td>' +
+                '<td style="font-size:0.8em;">' + escapeHtml(r.fromTeacher) + '</td>' +
+                '<td style="font-size:0.8em;">' + escapeHtml(r.toTeacher) + '</td>' +
+                '<td style="font-size:0.8em;color:#555;">' + escapeHtml(r.reason) + '</td>' +
+                '<td>' + stageBadge + '</td>' +
+                '<td><a href="' + escapeHtml(r.hubspotLink) + '" target="_blank" class="btn btn-sm btn-outline" style="color:#ff7a59;border-color:#ff7a59;" title="Open Ticket"><i class="fab fa-hubspot"></i></a></td>';
             tbody.appendChild(tr);
         });
     }
@@ -4704,7 +4697,7 @@ function copyToClipboardText(text) {
 
 // 2. ADD THIS NEW FUNCTION
 function viewTeacherLoadDetails(teacherName) {
-    showLoading(`Fetching courses for ${teacherName}...`);
+    showLoading('Fetching courses for ' + teacherName + '...');
     
     google.script.run
         .withSuccessHandler(result => {
@@ -4715,7 +4708,7 @@ function viewTeacherLoadDetails(teacherName) {
             }
 
             const modalBody = document.getElementById('teacherLoadModalBody');
-            document.getElementById('teacherLoadModalTitle').textContent = `${result.teacherName} - Active Courses`;
+            document.getElementById('teacherLoadModalTitle').textContent = result.teacherName + ' - Active Courses';
             modalBody.innerHTML = '';
 
             if (result.courses.length === 0) {
@@ -4798,7 +4791,7 @@ function viewTeacherLoadDetails(teacherName) {
             });
         }
         auditCenterResultsContainer.style.display = 'block';
-        showToast('success', 'Audit Complete', `Analyzed ${response.data.length} onboardings.`);
+        showToast('success', 'Audit Complete', 'Analyzed ' + response.data.length + ' onboardings.');
         
         document.querySelectorAll('.view-audit-details-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -4810,8 +4803,8 @@ function viewTeacherLoadDetails(teacherName) {
     }
 
     function showAuditDetails(dealId, learnerName) {
-        showLoading(`Fetching details for ${learnerName}...`);
-        auditDetailsTitle.textContent = `Audit Details: ${learnerName}`;
+        showLoading('Fetching details for ' + learnerName + '...');
+        auditDetailsTitle.textContent = 'Audit Details: ' + learnerName;
 google.script.run
     .withSuccessHandler(resultString => { 
         hideLoading();
@@ -4966,8 +4959,12 @@ google.script.run
         return; 
     }
 
-    showToast('success', 'Login Successful', `Welcome, ${user.username}!`);
+    showToast('success', 'Login Successful', 'Welcome, ' + user.username + '!');
     switchPage('dashboardPage');
+
+    // Show notification bell (fixed top-right)
+    var bellWrapper = document.getElementById('notifBellWrapper');
+    if (bellWrapper) bellWrapper.style.display = 'block';
 
     // Load impact score + notifications after login
     setTimeout(() => {
@@ -5049,6 +5046,8 @@ document.addEventListener('DOMContentLoaded', () => {
           loginPage.style.display = 'flex';
           switchLoginView('loginView');
           loginForm.reset();
+          var bw = document.getElementById('notifBellWrapper');
+          if (bw) bw.style.display = 'none';
         }
       });
     }
@@ -7627,63 +7626,87 @@ document.addEventListener('DOMContentLoaded', () => {
         traitHtml = '<span style="font-size:0.75rem;color:#94a3b8;">No traits recorded</span>';
     }
 
-    var gradeBg = {'A':'#dcfce7','B':'#dbeafe','C':'#fef3c7','D':'#fee2e2'}[grade] || '#f1f5f9';
+    // Grade — use '?' when no audit data instead of plain dash
+    var gradeDisplay = (grade === '\u2014' || !grade || grade === '-') ? '?' : grade;
+    var gradeBg      = {'A':'#dcfce7','B':'#dbeafe','C':'#fef3c7','D':'#fee2e2','?':'#f1f5f9'}[gradeDisplay] || '#f1f5f9';
+    var gradeClr     = {'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c','?':'#94a3b8'}[gradeDisplay] || '#94a3b8';
+    var gradeBorder  = {'A':'#86efac','B':'#93c5fd','C':'#fcd34d','D':'#fca5a5','?':'#cbd5e1'}[gradeDisplay] || '#cbd5e1';
+    // Gradient strip & load bar
+    var stripGrad = totalLearners > 20 ? 'linear-gradient(135deg,#b91c1c,#ef4444)'
+                  : totalLearners < 5  ? 'linear-gradient(135deg,#d97706,#f59e0b)'
+                  :                      'linear-gradient(135deg,#6366f1,#8b5cf6)';
+    var loadPct = Math.min(Math.round((totalLearners / 30) * 100), 100);
 
     var card = document.createElement('div');
-    card.style.cssText = 'background:#fff;border:1.5px solid #e2e8f0;border-radius:16px;'
-        + 'padding:1.1rem;display:flex;flex-direction:column;gap:0.6rem;'
-        + 'box-shadow:0 1px 4px rgba(0,0,0,0.05);transition:box-shadow .15s,border-color .15s;'
-        + (isHidden ? 'opacity:0.55;' : '');
-    card.onmouseover = function() { this.style.boxShadow='0 4px 18px rgba(99,102,241,0.12)'; this.style.borderColor='#c7d2fe'; };
-    card.onmouseout  = function() { this.style.boxShadow='0 1px 4px rgba(0,0,0,0.05)'; this.style.borderColor='#e2e8f0'; };
+    card.className = 'teacher-browse-card';
+    card.style.cssText = 'background:#fff;border:1.5px solid #e2e8f0;border-radius:18px;'
+        + 'overflow:hidden;display:flex;flex-direction:column;'
+        + 'box-shadow:0 2px 8px rgba(0,0,0,0.06);'
+        + (isHidden ? 'opacity:0.6;' : '');
 
     card.innerHTML =
-      // \u2500\u2500 Header: avatar + name + status + grade badge \u2500\u2500
-      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">'
+      // ── Gradient top strip: avatar + name + grade badge ──
+      '<div style="background:' + stripGrad + ';padding:1rem 1rem 0.75rem;display:flex;align-items:flex-start;justify-content:space-between;">'
         + '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
-          + '<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);'
-          + 'display:flex;align-items:center;justify-content:center;font-weight:700;'
-          + 'font-size:1rem;color:#fff;flex-shrink:0;">'
+          + '<div style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.22);border:2px solid rgba(255,255,255,0.55);'
+          + 'display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;color:#fff;flex-shrink:0;letter-spacing:.5px;">'
           + escapeHtml((teacher.name||'').substring(0,2).toUpperCase()) + '</div>'
           + '<div style="min-width:0;">'
-            + '<div style="font-weight:700;font-size:0.9rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-            + escapeHtml(teacher.name)
-            + (isHidden ? ' <span style="font-size:0.58rem;background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 5px;margin-left:3px;">Hidden</span>' : '')
-            + '</div>'
-            + '<span class="status-badge status-' + teacher.status.toLowerCase().replace(/ /g,'-') + '" style="font-size:0.65rem;margin-top:2px;display:inline-block;">'
+            + '<div style="font-weight:700;font-size:0.88rem;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;text-shadow:0 1px 3px rgba(0,0,0,0.18);">'
+            + escapeHtml(teacher.name) + '</div>'
+            + '<span class="status-badge status-' + teacher.status.toLowerCase().replace(/ /g,'-')
+            + '" style="font-size:0.6rem;margin-top:3px;display:inline-block;background:rgba(255,255,255,0.22);color:#fff;border:1px solid rgba(255,255,255,0.35);">'
             + escapeHtml(teacher.status) + '</span>'
+            + (isHidden ? '<span style="margin-left:4px;font-size:0.56rem;background:#fee2e2;color:#b91c1c;border-radius:4px;padding:1px 5px;">Hidden</span>' : '')
           + '</div>'
         + '</div>'
-        // Grade badge
-        + '<div style="background:' + gradeBg + ';color:' + gradeColor + ';border-radius:10px;padding:5px 10px;text-align:center;flex-shrink:0;">'
-          + '<div style="font-size:1.15rem;font-weight:800;line-height:1;">' + escapeHtml(grade) + '</div>'
-          + '<div style="font-size:0.55rem;font-weight:600;opacity:0.7;letter-spacing:.04em;">GRADE</div>'
+        // ── Grade badge — always visible, coloured ──
+        + '<div class="grade-badge" style="background:' + gradeBg + ';border:2.5px solid ' + gradeBorder + ';border-radius:12px;'
+          + 'padding:6px 11px;text-align:center;flex-shrink:0;min-width:42px;box-shadow:0 2px 10px rgba(0,0,0,0.15);">'
+          + '<div style="font-size:1.3rem;font-weight:900;color:' + gradeClr + ';line-height:1;">' + gradeDisplay + '</div>'
+          + '<div style="font-size:0.5rem;font-weight:700;color:' + gradeClr + ';opacity:0.75;letter-spacing:.06em;margin-top:1px;">GRADE</div>'
         + '</div>'
       + '</div>'
 
-      // \u2500\u2500 Learner load stats \u2500\u2500
-      + '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:6px 10px;background:#f8fafc;border-radius:8px;">'
-        + '<span style="font-weight:800;color:' + loadColor + ';font-size:1.1rem;">' + totalLearners + '</span>'
-        + '<span style="font-size:0.7rem;color:#94a3b8;flex:1;">active learners</span>'
-        + '<span style="font-size:0.7rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 7px;border-radius:5px;">'
-        + '<i class="fas fa-code" style="margin-right:3px;font-size:0.65rem;"></i>' + coding + ' Coding</span>'
-        + '<span style="font-size:0.7rem;background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;padding:2px 7px;border-radius:5px;">'
-        + '<i class="fas fa-square-root-alt" style="margin-right:3px;font-size:0.65rem;"></i>' + math + ' Math</span>'
-      + '</div>'
+      // ── Card body ──
+      + '<div style="padding:0.85rem 1rem;display:flex;flex-direction:column;gap:0.55rem;flex:1;">'
 
-      // \u2500\u2500 Trait pills \u2500\u2500
-      + '<div style="min-height:26px;line-height:1.8;">' + traitHtml + '</div>'
+        // Learner load bar
+        + '<div>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">'
+            + '<span style="font-size:0.68rem;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:.04em;">Learner Load</span>'
+            + '<div style="display:flex;align-items:baseline;gap:4px;">'
+              + '<span style="font-weight:800;color:' + loadColor + ';font-size:1.05rem;">' + totalLearners + '</span>'
+              + '<span style="font-size:0.65rem;color:#94a3b8;">active</span>'
+            + '</div>'
+          + '</div>'
+          + '<div style="background:#f1f5f9;border-radius:99px;height:5px;overflow:hidden;">'
+            + '<div style="background:' + stripGrad + ';height:5px;border-radius:99px;width:' + loadPct + '%;"></div>'
+          + '</div>'
+          + '<div style="display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;">'
+            + '<span style="font-size:0.67rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 8px;border-radius:5px;"><i class="fas fa-code" style="margin-right:3px;font-size:0.6rem;"></i>' + coding + ' Coding</span>'
+            + '<span style="font-size:0.67rem;background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;padding:2px 8px;border-radius:5px;"><i class="fas fa-square-root-alt" style="margin-right:3px;font-size:0.6rem;"></i>' + math + ' Math</span>'
+          + '</div>'
+        + '</div>'
 
-      // \u2500\u2500 Action buttons \u2500\u2500
-      + '<div style="display:flex;gap:6px;margin-top:4px;">'
-        + '<button class="view-profile-btn" style="flex:1;padding:6px 0;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.76rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">'
-        + '<i class="fas fa-user" style="margin-right:4px;font-size:0.7rem;"></i>Profile</button>'
-        + '<button class="find-replacement-btn" style="flex:1.6;padding:6px 0;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:8px;font-size:0.76rem;color:#fff;cursor:pointer;font-weight:600;transition:opacity .15s;" onmouseover="this.style.opacity=\'0.88\'" onmouseout="this.style.opacity=\'1\'">'
-        + '<i class="fas fa-robot" style="margin-right:4px;font-size:0.7rem;"></i>Find Replacement</button>'
-        + '<button class="toggle-visibility-btn" style="flex:0.55;padding:6px 0;border-radius:8px;border:1.5px solid;font-size:0.76rem;cursor:pointer;'
-        + (isHidden ? 'background:#dcfce7;color:#15803d;border-color:#86efac;' : 'background:#fee2e2;color:#b91c1c;border-color:#fca5a5;') + '">'
-        + (isHidden ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>')
-        + '</button>'
+        // Divider
+        + '<div style="height:1px;background:#f1f5f9;"></div>'
+
+        // Trait pills
+        + '<div style="min-height:24px;line-height:1.9;">' + traitHtml + '</div>'
+
+        // Action buttons
+        + '<div style="display:flex;gap:6px;margin-top:auto;padding-top:6px;">'
+          + '<button class="view-profile-btn" style="flex:1;padding:7px 0;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:9px;font-size:0.74rem;color:#475569;cursor:pointer;font-weight:600;transition:all .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\';this.style.borderColor=\'#c4b5fd\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\';this.style.borderColor=\'#e2e8f0\'">'
+          + '<i class="fas fa-user" style="margin-right:4px;font-size:0.68rem;"></i>Profile</button>'
+          + '<button class="find-replacement-btn" style="flex:1.7;padding:7px 0;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:9px;font-size:0.74rem;color:#fff;cursor:pointer;font-weight:600;transition:opacity .15s;box-shadow:0 2px 8px rgba(99,102,241,0.28);" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">'
+          + '<i class="fas fa-robot" style="margin-right:4px;font-size:0.68rem;"></i>Find Replacement</button>'
+          + '<button class="toggle-visibility-btn" style="flex:0.55;padding:7px 0;border-radius:9px;border:1.5px solid;font-size:0.76rem;cursor:pointer;'
+          + (isHidden ? 'background:#dcfce7;color:#15803d;border-color:#86efac;' : 'background:#fff0f0;color:#b91c1c;border-color:#fca5a5;') + '">'
+          + (isHidden ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>')
+          + '</button>'
+        + '</div>'
+
       + '</div>';
 
     // Wire up buttons
@@ -8894,9 +8917,7 @@ function handleNotifAction(action) {
         document.querySelector('.menu-item[data-page="tasks"]')?.click();
     } else if (action === 'openStuckMigrations') {
         document.querySelector('.menu-item[data-page="dashboard"]')?.click();
-        setTimeout(() => {
-            document.getElementById('stuckMigrationsList')?.scrollIntoView({ behavior: 'smooth' });
-        }, 300);
+        setTimeout(() => { openStuckMigrationsModal(); }, 400);
     }
 }
 
@@ -9500,20 +9521,23 @@ function _buildOnboardingCard(r) {
                 <div style="background:#e2e8f0;border-radius:99px;height:6px;">
                     <div style="background:#6366f1;height:6px;border-radius:99px;width:${Math.min(s.pct,100)}%;transition:width .5s;"></div>
                 </div>
-                <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-                    ${[25,50,75,100].map(v => `<button type="button" onclick="updateOnboardingField('${r.id}','trainingPct',${v},this)"
-                        style="font-size:0.65rem;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;background:${s.pct>=v?'#6366f1':'#fff'};color:${s.pct>=v?'#fff':'#6b7280'};cursor:pointer;">${v}%</button>`).join('')}
+                     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${_buildTrainingPctButtons(r.id, s.pct)}
                 </div>
             </div>`;
         }
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;">
             <span style="font-size:0.78rem;color:#475569;">${s.label}</span>
-            <button type="button" onclick="toggleOnboardingStep('${r.id}','${s.key}','${s.done?'No':'Yes'}',this)"
-                style="font-size:0.7rem;padding:3px 12px;border-radius:99px;border:1px solid ${s.done?'#86efac':'#e2e8f0'};background:${s.done?'#dcfce7':'#f8fafc'};color:${s.done?'#15803d':'#94a3b8'};cursor:pointer;font-weight:600;">
-                ${s.done ? '<i class="fas fa-check" style="margin-right:3px;"></i>Done' : 'Mark Done'}
-            </button>
-        </div>`;
-    }).join('');
+            <button type="button"'
+            + ' onclick="toggleOnboardingStep(\'' + r.id + '\',\'' + s.key + '\',\'' + (s.done ? 'No' : 'Yes') + '\',this)"'
+            + ' style="font-size:0.7rem;padding:3px 12px;border-radius:99px;'
+            + 'border:1px solid ' + (s.done ? '#86efac' : '#e2e8f0') + ';'
+            + 'background:' + (s.done ? '#dcfce7' : '#f8fafc') + ';'
+            + 'color:' + (s.done ? '#15803d' : '#94a3b8') + ';cursor:pointer;font-weight:600;">'
+            + (s.done ? '<i class="fas fa-check" style="margin-right:3px;"></i>Done' : 'Mark Done')
+            + '</button>        
+            </div>`;
+                
+        }).join('');
 
     const daysIn = r.joinDate ? Math.floor((Date.now() - new Date(r.joinDate).getTime()) / 86400000) : '?';
 
@@ -9537,6 +9561,20 @@ function _buildOnboardingCard(r) {
                 style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.78rem;box-sizing:border-box;color:#374151;">
         </div>
     </div>`;
+}
+function _buildTrainingPctButtons(recordId, currentPct) {
+  var html = '';
+  var vals = [25, 50, 75, 100];
+  for (var i = 0; i < vals.length; i++) {
+    var v = vals[i];
+    var bg    = currentPct >= v ? '#6366f1' : '#fff';
+    var color = currentPct >= v ? '#fff' : '#6b7280';
+    html += '<button type="button"'
+      + ' onclick="updateOnboardingField(\'' + recordId + '\',\'trainingPct\',' + v + ',this)"'
+      + ' style="font-size:0.65rem;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;'
+      + 'background:' + bg + ';color:' + color + ';cursor:pointer;">' + v + '%</button>';
+  }
+  return html;
 }
 
 function toggleOnboardingStep(id, field, newVal, btn) {
@@ -9776,17 +9814,29 @@ function openStuckMigrationsModal() {
   if (_stuckModalData) {
     _renderStuckModalTable(_stuckModalData);
   } else {
+    _showStuckModalLoading(true);
     google.script.run
       .withSuccessHandler(function(data) {
         _stuckModalData = (data && data.tickets) ? data.tickets : [];
+        _showStuckModalLoading(false);
         _renderStuckModalTable(_stuckModalData);
       })
       .withFailureHandler(function() {
-        var tb = document.getElementById('stuckModalBody');
-        if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;">Failed to load. Please try again.</td></tr>';
+        _showStuckModalLoading(false);
+        var tb = document.getElementById('stuckModalTableBody');
+        if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#ef4444;">Failed to load. Please try again.</td></tr>';
       })
       .getStuckMigrations(7);
   }
+}
+
+function _showStuckModalLoading(show) {
+  var ld = document.getElementById('stuckModalLoading');
+  var em = document.getElementById('stuckModalEmpty');
+  if (ld) ld.style.display = show ? 'block' : 'none';
+  if (em) em.style.display = 'none';
+  var tb = document.getElementById('stuckModalTableBody');
+  if (tb && show) tb.innerHTML = '';
 }
 
 function closeStuckMigrationsModal() {
@@ -9797,44 +9847,61 @@ function closeStuckMigrationsModal() {
 
 function refreshStuckMigrationsModal() {
   _stuckModalData = null;
-  var tb = document.getElementById('stuckModalBody');
-  if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Refreshing\u2026</td></tr>';
+  _showStuckModalLoading(true);
   google.script.run
     .withSuccessHandler(function(data) {
       _stuckModalData = (data && data.tickets) ? data.tickets : [];
+      _showStuckModalLoading(false);
       _renderStuckModalTable(_stuckModalData);
-      // also refresh the widget
       if (typeof refreshStuckMigrations === 'function') refreshStuckMigrations();
     })
-    .withFailureHandler(function() {})
+    .withFailureHandler(function() { _showStuckModalLoading(false); })
     .getStuckMigrations(7);
 }
 
 function _renderStuckModalTable(tickets) {
-  var tbody  = document.getElementById('stuckModalBody');
-  var cntEl  = document.getElementById('stuckModalCount');
-  var footEl = document.getElementById('stuckModalFooterText');
+  var tbody   = document.getElementById('stuckModalTableBody');
+  var subtitle = document.getElementById('stuckModalSubtitle');
+  var emptyEl = document.getElementById('stuckModalEmpty');
   if (!tbody) return;
-  if (cntEl)  cntEl.textContent  = (tickets.length) + ' ticket' + (tickets.length !== 1 ? 's' : '');
-  if (footEl) footEl.textContent = 'Showing ' + tickets.length + ' WIP tickets older than 7 days';
 
-  if (tickets.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#10b981;"><i class="fas fa-check-circle"></i> No stuck migrations \u2014 all clear!</td></tr>';
+  // Apply sort from dropdown
+  var sortBy = (document.getElementById('stuckModalSortBy')||{}).value || 'daysStuck';
+  var sorted = tickets.slice().sort(function(a, b) {
+    if (sortBy === 'daysStuck') return (b.daysStuck||0) - (a.daysStuck||0);
+    var av = (a[sortBy]||'').toLowerCase(), bv = (b[sortBy]||'').toLowerCase();
+    return av < bv ? -1 : av > bv ? 1 : 0;
+  });
+
+  if (subtitle) subtitle.textContent = sorted.length + ' WIP ticket' + (sorted.length !== 1 ? 's' : '') + ' stuck for >7 days';
+
+  if (sorted.length === 0) {
+    tbody.innerHTML = '';
+    if (emptyEl) emptyEl.style.display = 'block';
     return;
   }
-  tbody.innerHTML = tickets.map(function(t) {
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  tbody.innerHTML = sorted.map(function(t) {
     var days    = t.daysStuck || 0;
     var urgency = days >= 14 ? '#b91c1c' : days >= 10 ? '#d97706' : '#15803d';
     var urgBg   = days >= 14 ? '#fef2f2' : days >= 10 ? '#fffbeb' : '#f0fdf4';
-    return '<tr style="border-bottom:1px solid #f1f5f9;">'
-      + '<td style="padding:10px 12px;"><span style="background:'+urgBg+';color:'+urgency+';border-radius:6px;padding:3px 10px;font-size:0.8rem;font-weight:700;">'+days+'d</span></td>'
-      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.jlid||t.learnerUid||'\u2014')+'</td>'
-      + '<td style="padding:10px 12px;font-weight:500;font-size:0.84rem;">'+escapeHtml(t.learnerName||t.subject||'\u2014')+'</td>'
-      + '<td style="padding:10px 12px;font-size:0.82rem;">'+escapeHtml(t.fromTeacher||t.current_teacher||'\u2014')+'</td>'
-      + '<td style="padding:10px 12px;font-size:0.82rem;color:#6366f1;font-weight:500;">'+escapeHtml(t.toTeacher||t.new_teacher||'\u2014')+'</td>'
-      + '<td style="padding:10px 12px;"><span style="background:#f1f5f9;border-radius:6px;padding:2px 8px;font-size:0.73rem;color:#475569;">'+escapeHtml(t.stage||t.stageLabel||'\u2014')+'</span></td>'
-      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.createdDate||'\u2014')+'</td>'
-      + '<td style="padding:10px 12px;text-align:center;"><a href="'+(t.hubspotLink||t.ticketUrl||'#')+'" target="_blank" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:4px 10px;font-size:0.73rem;font-weight:600;text-decoration:none;white-space:nowrap;"><i class="fas fa-external-link-alt"></i> Escalate</a></td>'
+    var jlid    = escapeHtml(t.jlid || t.learnerUid || '—');
+    var learner = escapeHtml(t.learnerName || t.subject || '—');
+    var from    = escapeHtml(t.fromTeacher || t.current_teacher || '—');
+    var to      = escapeHtml(t.toTeacher || t.new_teacher || '—');
+    var stage   = escapeHtml(t.stage || t.stageLabel || '—');
+    var created = escapeHtml(t.createdDate || '—');
+    var link    = t.hubspotLink || t.ticketUrl || '#';
+    return '<tr style="border-bottom:1px solid #f1f5f9;" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'\'">'
+      + '<td style="padding:10px 16px;font-size:0.78rem;color:#64748b;font-weight:600;">' + jlid + '</td>'
+      + '<td style="padding:10px 16px;font-weight:600;font-size:0.85rem;color:#0f172a;">' + learner + '</td>'
+      + '<td style="padding:10px 16px;font-size:0.82rem;color:#374151;">' + from + '</td>'
+      + '<td style="padding:10px 16px;font-size:0.82rem;color:#6366f1;font-weight:500;">' + to + '</td>'
+      + '<td style="padding:10px 16px;"><span style="background:#f1f5f9;border-radius:6px;padding:3px 9px;font-size:0.73rem;color:#475569;white-space:nowrap;">' + stage + '</span></td>'
+      + '<td style="padding:10px 8px;text-align:center;"><span style="background:'+urgBg+';color:'+urgency+';border-radius:8px;padding:4px 12px;font-size:0.82rem;font-weight:800;white-space:nowrap;">' + days + 'd</span></td>'
+      + '<td style="padding:10px 16px;font-size:0.78rem;color:#64748b;">' + created + '</td>'
+      + '<td style="padding:10px 16px;text-align:center;"><a href="' + link + '" target="_blank" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:5px 12px;font-size:0.75rem;font-weight:600;text-decoration:none;white-space:nowrap;"><i class="fas fa-external-link-alt"></i> Escalate</a></td>'
       + '</tr>';
   }).join('');
 }

@@ -227,13 +227,6 @@
         <div class="user-profile">
           <div class="user-avatar" id="userAvatar">AD</div>
           <div class="user-info"><div class="user-name" id="userName">Admin User</div><div class="user-role" id="userRole">Administrator</div></div>
-          <!-- Notification Bell -->
-          <div style="position:relative;margin-left:4px;margin-right:2px;">
-            <button id="notifBellBtn" onclick="toggleNotifDropdown()" style="background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;color:var(--text-muted);position:relative;" title="Notifications">
-              <i class="fas fa-bell" style="font-size:1rem;"></i>
-              <span id="notifBadge" style="display:none;position:absolute;top:2px;right:2px;width:16px;height:16px;background:#ef4444;border-radius:50%;font-size:0.6rem;font-weight:800;color:#fff;align-items:center;justify-content:center;line-height:1;">0</span>
-            </button>
-          </div>
           <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i></button>
         </div>
       </div>
@@ -351,8 +344,9 @@
                 <i class="fas fa-spinner fa-spin"></i> Loading...
               </div>
             </div>
-            <div style="margin-top:0.75rem;border-top:1px solid #f1f5f9;padding-top:0.75rem;display:flex;justify-content:flex-end;">
+            <div style="margin-top:0.75rem;border-top:1px solid #f1f5f9;padding-top:0.75rem;display:flex;justify-content:space-between;align-items:center;">
               <button class="btn btn-sm btn-outline" onclick="refreshStuckMigrations()" style="font-size:0.75rem;"><i class="fas fa-sync-alt" style="margin-right:4px;"></i>Refresh</button>
+              <button class="btn btn-sm btn-primary" onclick="openStuckMigrationsModal()" style="font-size:0.75rem;"><i class="fas fa-expand-alt" style="margin-right:4px;"></i>View All</button>
             </div>
           </div>
 
@@ -1709,12 +1703,23 @@
                           <option value="All">All Teachers</option>
                       </select>
                   </div>
-                  <div id="personaTeacherTableBody" style="
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                    gap: 16px;
-                    padding: 4px 0;">
-                    </div>
+                  <!-- Page size selector -->
+                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:0.75rem;">
+                    <label style="font-size:0.78rem;color:var(--text-muted);">Show:</label>
+                    <select id="teacherBrowsePageSize" onchange="_teacherBrowsePage=1;renderPersonaTable();"
+                      style="padding:4px 10px;border:1px solid var(--gray);border-radius:7px;font-size:0.78rem;color:var(--text);background:#fff;outline:none;">
+                      <option value="15" selected>15</option>
+                      <option value="30">30</option>
+                      <option value="45">45</option>
+                      <option value="60">60</option>
+                      <option value="75">75</option>
+                      <option value="100">100</option>
+                    </select>
+                  </div>
+                  <!-- Teacher card grid -->
+                  <div id="personaTeacherTableBody" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;padding:4px 0;"></div>
+                  <!-- Pagination -->
+                  <div id="teacherBrowsePagination" style="display:flex;justify-content:center;align-items:center;gap:6px;padding:1rem 0 0.25rem;flex-wrap:wrap;"></div>
                     </div>
                       </div>
 
@@ -4649,5 +4654,130 @@
   }
 })();
 </script>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- NOTIFICATION BELL — Fixed top-right                       -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="notifBellWrapper" style="position:fixed;top:14px;right:22px;z-index:9500;display:none;">
+  <div style="position:relative;">
+    <button id="notifBellBtn" onclick="toggleNotifDropdown()"
+      style="width:40px;height:40px;border-radius:50%;background:#fff;border:1.5px solid #e2e8f0;
+             box-shadow:0 2px 10px rgba(0,0,0,0.10);cursor:pointer;display:flex;align-items:center;
+             justify-content:center;color:#475569;transition:box-shadow .15s,border-color .15s;"
+      onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,0.18)';this.style.borderColor='#c7d2fe'"
+      onmouseout="this.style.boxShadow='0 2px 10px rgba(0,0,0,0.10)';this.style.borderColor='#e2e8f0'"
+      title="Notifications">
+      <i class="fas fa-bell" style="font-size:0.95rem;"></i>
+      <span id="notifBadge" style="display:none;position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;
+            background:#ef4444;border-radius:50%;font-size:0.6rem;font-weight:800;color:#fff;
+            align-items:center;justify-content:center;border:2px solid #fff;padding:0 3px;line-height:1;">0</span>
+    </button>
+    <!-- Dropdown -->
+    <div id="notifDropdown" style="display:none;position:absolute;top:calc(100% + 10px);right:0;width:340px;
+         background:#fff;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.18);border:1px solid #e2e8f0;
+         z-index:9600;overflow:hidden;animation:notifSlideIn .15s ease;">
+      <div style="padding:13px 16px 11px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <i class="fas fa-bell" style="color:#6366f1;font-size:0.82rem;"></i>
+          <span style="font-weight:700;font-size:0.9rem;color:#0f172a;">Notifications</span>
+        </div>
+        <button onclick="markAllNotifRead()" style="background:none;border:none;cursor:pointer;font-size:0.72rem;
+                color:#6366f1;font-weight:600;padding:3px 8px;border-radius:6px;transition:background .12s;"
+                onmouseover="this.style.background='#ede9fe'" onmouseout="this.style.background='none'">
+          Mark all read
+        </button>
+      </div>
+      <div id="notifList" style="max-height:360px;overflow-y:auto;">
+        <div style="text-align:center;padding:2.5rem 1rem;color:#94a3b8;font-size:0.82rem;">
+          <i class="fas fa-spinner fa-spin" style="font-size:1.4rem;display:block;margin-bottom:8px;color:#c7d2fe;"></i>
+          Loading notifications…
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- STUCK MIGRATIONS FULL-SCREEN MODAL                        -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="stuckMigrationsModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:90vw;max-width:1100px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+
+    <!-- Modal Header -->
+    <div style="padding:1.25rem 1.5rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;background:#fff3cd;border-radius:10px;display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-hourglass-half" style="color:#d97706;"></i>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:1rem;color:#0f172a;">Stuck Migrations</div>
+          <div id="stuckModalSubtitle" style="font-size:0.72rem;color:#94a3b8;">WIP tickets stuck for &gt;7 days</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="refreshStuckMigrationsModal()" style="background:#f1f5f9;border:none;cursor:pointer;padding:7px 14px;border-radius:8px;font-size:0.78rem;color:#374151;font-weight:600;display:flex;align-items:center;gap:5px;">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button onclick="closeStuckMigrationsModal()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:#94a3b8;padding:0 4px;line-height:1;">&times;</button>
+      </div>
+    </div>
+
+    <!-- Filter + Search Bar -->
+    <div style="padding:0.9rem 1.5rem;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">
+      <div style="position:relative;flex:1;min-width:180px;">
+        <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:0.75rem;pointer-events:none;"></i>
+        <input type="text" id="stuckModalSearch" placeholder="Search by learner, teacher, JLID…"
+          oninput="filterStuckModal(this.value)"
+          style="width:100%;padding:7px 12px 7px 30px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;outline:none;box-sizing:border-box;" />
+      </div>
+      <select id="stuckModalStageFilter" onchange="filterStuckModal(document.getElementById('stuckModalSearch').value)"
+        style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;color:#374151;outline:none;background:#fff;">
+        <option value="">All Stages</option>
+        <option value="Learner contacted">Learner contacted</option>
+        <option value="Intro scheduled">Intro scheduled</option>
+        <option value="Intro done">Intro done</option>
+        <option value="Migration confirmed">Migration confirmed</option>
+        <option value="Old teacher notified">Old teacher notified</option>
+        <option value="CRM updated">CRM updated</option>
+      </select>
+      <select id="stuckModalSortBy" onchange="filterStuckModal(document.getElementById('stuckModalSearch').value)"
+        style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.82rem;color:#374151;outline:none;background:#fff;">
+        <option value="daysStuck">Sort: Days Stuck ↓</option>
+        <option value="learnerName">Sort: Learner A–Z</option>
+        <option value="fromTeacher">Sort: From Teacher A–Z</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div style="flex:1;overflow-y:auto;padding:0;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+        <thead>
+          <tr style="background:#f8fafc;position:sticky;top:0;z-index:2;">
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">JLID</th>
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">Learner</th>
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">From Teacher</th>
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">To Teacher</th>
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">Stage</th>
+            <th style="padding:10px 8px;text-align:center;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">Days Stuck</th>
+            <th style="padding:10px 16px;text-align:left;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">Created</th>
+            <th style="padding:10px 16px;text-align:center;font-weight:600;color:#64748b;border-bottom:1px solid #e2e8f0;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="stuckModalTableBody"></tbody>
+      </table>
+      <div id="stuckModalEmpty" style="display:none;text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-check-circle" style="font-size:2rem;color:#10b981;display:block;margin-bottom:8px;"></i>
+        No stuck migrations found.
+      </div>
+      <div id="stuckModalLoading" style="text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>
+        Loading stuck migrations…
+      </div>
+    </div>
+
+  </div>
+</div>
+<!-- END STUCK MIGRATIONS MODAL -->
+
 </body>
 </html>
