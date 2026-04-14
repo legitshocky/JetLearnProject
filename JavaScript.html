@@ -320,15 +320,15 @@ const runAgenticAuditBtn = document.getElementById('runAgenticAuditBtn');
 const setupDailyAuditTriggerBtn = document.getElementById('setupDailyAuditTriggerBtn');
 
 
-// Persona Tool elements — IDs updated to match personaPage HTML (personaFormEnhanced)
+// Persona Tool elements \u2014 IDs updated to match personaPage HTML (personaFormEnhanced)
 const personaForm             = document.getElementById('personaFormEnhanced');   // was 'personaForm'
-const requestedSlotSelect     = null;   // removed — slots now live in #personaSlotsContainer rows
+const requestedSlotSelect     = null;   // removed \u2014 slots now live in #personaSlotsContainer rows
 const currentCourseSelect     = document.getElementById('pInpCourse');            // was 'currentCourse'
 const futureCourse1Select     = document.getElementById('pInpFuture1');           // was 'futureCourse1'
 const futureCourse2Select     = document.getElementById('pInpFuture2');           // was 'futureCourse2'
 const futureCourse3Select     = document.getElementById('pInpFuture3');           // was 'futureCourse3'
 const currentCourseHeader     = null;   // removed from new HTML
-const cancelPersonaBtn        = null;   // removed from new HTML — reset handled by form reset button
+const cancelPersonaBtn        = null;   // removed from new HTML \u2014 reset handled by form reset button
 const refreshPersonaBtn       = document.getElementById('refreshPersona');
 const personaResultsContainer = document.getElementById('personaResultsContainer');
 const personaResultsBody      = document.getElementById('personaResultsBody');
@@ -669,13 +669,13 @@ function switchPage(pageId, context = null) {
     const livePageContents = document.querySelectorAll('.page-content');
     const liveMenuItems = document.querySelectorAll('.menu-item');
 
-    // 1. Hide all pages — remove 'active' class AND reset inline display style.
+    // 1. Hide all pages \u2014 remove 'active' class AND reset inline display style.
     livePageContents.forEach(page => {
         page.classList.remove('active');
         page.style.display = 'none';
     });
 
-    // 2. Show the single target page — add 'active' class AND set display to block.
+    // 2. Show the single target page \u2014 add 'active' class AND set display to block.
     const targetPage = document.getElementById(pageId);
     if (targetPage) {
         targetPage.classList.add('active');
@@ -732,7 +732,7 @@ function switchPage(pageId, context = null) {
         userManagementTabBtn.style.display = hasPermission('manage_users') ? 'block' : 'none';
         // NEW: Show Agentic Audit section for admins with the right permission
         agenticAuditContainer.style.display = hasPermission('manage_agentic_audit') ? 'block' : 'none';
-        // AI PM — admin only
+        // AI PM \u2014 admin only
         const aiPmMenuItem = document.getElementById('aiPmMenuItem');
         if (aiPmMenuItem) aiPmMenuItem.style.display = hasPermission('use_ai_pm') ? 'flex' : 'none';
     }
@@ -782,7 +782,7 @@ function switchPage(pageId, context = null) {
                 populateSelect(document.getElementById('onboardingParentTeacher'), globalTeachers, false, "Select a teacher");
                 populateSelect(document.getElementById('onboardingParentClsManager'), globalClsManagers, false, "Select CLS");
                 populateSelect(document.getElementById('onboardingParentTpManager'), globalTpManagers, false, "Select TP Manager");
-                populateSelect(document.getElementById('tpManagerSelect'), globalTpManagers, false, "— Select TP Manager —");
+                populateSelect(document.getElementById('tpManagerSelect'), globalTpManagers, false, "\u2014 Select TP Manager \u2014");
                 populateSelect(minecraftCourse, globalCourses, false, "Select a course");
                 populateSelect(robloxCourse, globalCourses, false, "Select a course");
 
@@ -809,7 +809,7 @@ function switchPage(pageId, context = null) {
 
     function loadDashboardData() {
     showLoading('Loading Command Center...');
-    // Primary dashboard data — KPIs, briefing, action cards
+    // Primary dashboard data \u2014 KPIs, briefing, action cards
     google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(e => { hideLoading(); showError(e); }).getNewDashboardData();
 
     // Migration reasons bar chart for this calendar month
@@ -819,7 +819,7 @@ function switchPage(pageId, context = null) {
       startDate: monthStart.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     });
-    // Teacher details are expensive (HubSpot per-teacher calls) — load lazily after main data
+    // Teacher details are expensive (HubSpot per-teacher calls) \u2014 load lazily after main data
     setTimeout(function() {
       google.script.run.withSuccessHandler(updateDashboardTeachers).withFailureHandler(function() {}).getTeacherDetailsForTable();
     }, 4000);
@@ -880,25 +880,25 @@ function updateNewDashboard(response) {
     document.getElementById('kpiActiveLearnersValue').textContent = data.kpiData.activeLearners.value.toLocaleString();
     renderSparkline('kpiActiveLearnersSparkline', data.kpiData.activeLearners.trend, true);
     const alTrend = document.getElementById('kpiActiveLearnersFooter');
-    alTrend.textContent = `${data.kpiData.activeLearners.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.activeLearners.change)} this week`;
+    alTrend.textContent = `${data.kpiData.activeLearners.change >= 0 ? '\u2191' : '\u2193'} ${Math.abs(data.kpiData.activeLearners.change)} this week`;
     alTrend.className = `kpi-footer ${data.kpiData.activeLearners.change >= 0 ? 'positive' : 'negative'}`;
 
     document.getElementById('kpiMigrationsValue').textContent = data.kpiData.migrations.value;
     renderSparkline('kpiMigrationsSparkline', data.kpiData.migrations.trend, false);
     const mTrend = document.getElementById('kpiMigrationsFooter');
-    mTrend.textContent = `${data.kpiData.migrations.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.migrations.change)}% vs last 30d`;
+    mTrend.textContent = `${data.kpiData.migrations.change >= 0 ? '\u2191' : '\u2193'} ${Math.abs(data.kpiData.migrations.change)}% vs last 30d`;
     mTrend.className = `kpi-footer ${data.kpiData.migrations.change >= 0 ? 'negative' : 'positive'}`;
     
-    document.getElementById('kpiRevenueValue').textContent = `€${Math.round(data.kpiData.revenue.value).toLocaleString()}`;
+    document.getElementById('kpiRevenueValue').textContent = `\u20AC${Math.round(data.kpiData.revenue.value).toLocaleString()}`;
     renderSparkline('kpiRevenueSparkline', data.kpiData.revenue.trend, true);
     const rTrend = document.getElementById('kpiRevenueFooter');
-    rTrend.textContent = `${data.kpiData.revenue.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.revenue.change)}% vs last month`;
+    rTrend.textContent = `${data.kpiData.revenue.change >= 0 ? '\u2191' : '\u2193'} ${Math.abs(data.kpiData.revenue.change)}% vs last month`;
     rTrend.className = `kpi-footer ${data.kpiData.revenue.change >= 0 ? 'positive' : 'negative'}`;
 
     document.getElementById('kpiSuccessRateValue').textContent = `${data.kpiData.successRate.value}%`;
     renderSparkline('kpiSuccessRateSparkline', data.kpiData.successRate.trend, true);
     const srTrend = document.getElementById('kpiSuccessRateFooter');
-    srTrend.textContent = `${data.kpiData.successRate.change >= 0 ? '↑' : '↓'} ${Math.abs(data.kpiData.successRate.change)} pts vs last 30d`;
+    srTrend.textContent = `${data.kpiData.successRate.change >= 0 ? '\u2191' : '\u2193'} ${Math.abs(data.kpiData.successRate.change)} pts vs last 30d`;
     srTrend.className = `kpi-footer ${data.kpiData.successRate.change >= 0 ? 'positive' : 'negative'}`;
 
     // 3. AI Action Center
@@ -964,7 +964,7 @@ function updateRecentActivities(data) {
 
 // (The old `updateDashboard` function has been replaced by `updateNewDashboard` and is removed for clarity)
 
-// –– NEW: Top active teachers handler ––
+// \u2013\u2013 NEW: Top active teachers handler \u2013\u2013
 function updateDashboardTeachers(teachers) {
     const container = document.getElementById('dashTopTeachers');
     if (!container) return;
@@ -1002,7 +1002,7 @@ function updateDashboardTeachers(teachers) {
     }).join('');
 }
 
-// –– NEW: Migration reasons bar chart handler ––
+// \u2013\u2013 NEW: Migration reasons bar chart handler \u2013\u2013
 function updateDashboardReasons(result) {
     const container = document.getElementById('dashReasonBars');
     if (!container) return;
@@ -1023,7 +1023,7 @@ function updateDashboardReasons(result) {
         const barColor = escalationReasons.some(e => nameLower.includes(e)) ? '#f87171'
                        : performanceReasons.some(p => nameLower.includes(p)) ? '#f472b6'
                        : '#818cf8';
-        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '…' : r.name;
+        const shortName = r.name.length > 22 ? r.name.substring(0, 20) + '\u2026' : r.name;
         return `<div style="display:flex;align-items:center;gap:8px;">
             <div style="font-size:10px;color:var(--text-light);width:130px;flex-shrink:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(r.name)}">${escapeHtml(shortName)}</div>
             <div style="flex:1;height:8px;background:var(--gray);border-radius:99px;overflow:hidden;">
@@ -1891,7 +1891,7 @@ function collectEmailFormData(emailType) {
                 const oldTeacher = String(row[4] || '').trim();
                 const newTeacher = String(row[5] || '').trim();
                 let teachersInfo = 'N/A';
-                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} → ${newTeacher}`;
+                if (oldTeacher && newTeacher) teachersInfo = `${oldTeacher} \u2192 ${newTeacher}`;
                 else if (newTeacher) teachersInfo = newTeacher;
                 else if (oldTeacher) teachersInfo = oldTeacher;
 tr.innerHTML = `
@@ -1961,7 +1961,7 @@ tr.innerHTML = `
                 if(data && data.success) {
                     const profile = data.profile;
 
-                    // –– Header –––––––––––––––––––––––––––––––––––––––––––––
+                    // \u2013\u2013 Header \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                     const initials    = profile.name.substring(0,2).toUpperCase();
                     const statusColor = profile.status === 'Active' ? '#15803d' : '#d97706';
                     const statusBg    = profile.status === 'Active' ? '#dcfce7' : '#fef3c7';
@@ -1994,7 +1994,7 @@ tr.innerHTML = `
                         </div>
                       </div>`;
 
-                    // –– Escalation Summary ––––––––––––––––––––––––––––––––––––––
+                    // \u2013\u2013 Escalation Summary \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                     const esc      = profile.escalation || { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null };
                     const escColor = esc.totalCount === 0 ? '#15803d' : esc.totalCount <= 2 ? '#d97706' : '#b91c1c';
                     const escBg    = esc.totalCount === 0 ? '#f0fdf4'  : esc.totalCount <= 2 ? '#fffbeb'  : '#fef2f2';
@@ -2021,12 +2021,12 @@ tr.innerHTML = `
                         </div>
                     </div>`;
 
-                    // –– Escalation Tickets Table –––––––––––––––––––––––––––––––
+                    // \u2013\u2013 Escalation Tickets Table \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                     if (esc.tickets && esc.tickets.length > 0) {
                         const ticketRows = esc.tickets.map(t => {
                             const sc = t.status === 'Completed' ? '#15803d' : '#d97706';
                             const sb = t.status === 'Completed' ? '#f0fdf4'  : '#fffbeb';
-                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '—';
+                            const daysHtml = t.daysToResolve !== 'N/A' ? `<span style="font-size:0.8rem;color:#64748b;">${t.daysToResolve}d</span>` : '\u2014';
                             return `<tr>
                                 <td style="font-size:0.8rem;color:#64748b;">${escapeHtml(t.ticketId)}</td>
                                 <td style="font-size:0.85rem;font-weight:500;">${escapeHtml(t.reason)}</td>
@@ -2038,7 +2038,7 @@ tr.innerHTML = `
                             </tr>`;
                         }).join('');
                         contentEl.innerHTML += `<div style="margin:0.5rem 0 1.5rem;">
-                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">📋 Escalation Ticket History</h3>
+                            <h3 style="font-size:1rem;font-weight:600;color:#334155;margin-bottom:0.75rem;">\u1F4CB Escalation Ticket History</h3>
                             <div class="table-container"><table class="data-table">
                                 <thead><tr>
                                     <th>Ticket ID</th><th>Reason</th><th>Triggered</th>
@@ -2049,7 +2049,7 @@ tr.innerHTML = `
                         </div>`;
                     }
 
-                    // –– Course Categories ––––––––––––––––––––––––––––––––––––––
+                    // \u2013\u2013 Course Categories \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                     const coursesHtml = Object.keys(profile.coursesByCategory).map(category => {
                         const cats = profile.coursesByCategory[category];
                         if (cats.length === 0) return '';
@@ -2127,10 +2127,198 @@ tr.innerHTML = `
         }).withFailureHandler(showError).updateTeacherDetails(teacherData);
     });
 
-    function loadCoursesPage() {
-        showLoading('Loading courses...');
-        google.script.run.withSuccessHandler(updateCoursesTable).withFailureHandler(showError).getCourseDetails();
+function loadCoursesPage() {
+      var container = document.getElementById('coursesTableContainer');
+      if (!container) return;
+      container.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:3rem;"><i class="fas fa-spinner fa-spin"></i> Loading courses...</p>';
+ 
+      google.script.run
+        .withSuccessHandler(renderCourseCatalog)
+        .withFailureHandler(showError)
+        .getCourseDetails();
     }
+
+function renderCourseCatalog(courses) {
+      var container = document.getElementById('coursesTableContainer');
+      if (!container) return;
+ 
+      if (!courses || courses.length === 0) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:3rem;">No courses found.</p>';
+        return;
+      }
+ 
+      window._allCourses = courses; // cache for search
+      container.innerHTML = buildCourseGrid(courses);
+      wireCourseCatalogSearch();
+    }
+
+
+    function buildCourseGrid(courses) {
+      if (!courses || courses.length === 0) {
+        return '<p style="text-align:center;color:var(--text-light);padding:3rem;">No courses match your search.</p>';
+      }
+      var cards = courses.map(function(course) {
+        var count = course.activeTeachersCount || 0;
+        var safe  = escapeHtml(course.name);
+        // Use JSON.stringify to safely embed the name in the onclick attribute
+        var jsonName = JSON.stringify(course.name);
+        return '<div class="course-catalog-card" onclick="openCourseDetail(' + jsonName + ')">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+            '<div class="course-catalog-icon"><i class="fas fa-laptop-code"></i></div>' +
+            '<i class="fas fa-chevron-right" style="color:var(--text-light);font-size:0.72rem;margin-top:4px;"></i>' +
+          '</div>' +
+          '<div style="margin-top:0.7rem;">' +
+            '<div style="font-weight:600;font-size:0.875rem;color:var(--dark);line-height:1.35;">' + safe + '</div>' +
+            '<div style="margin-top:0.35rem;display:flex;align-items:center;gap:0.3rem;font-size:0.74rem;color:var(--text-light);">' +
+              '<i class="fas fa-user-graduate" style="font-size:0.68rem;color:var(--primary);"></i>' +
+              '<span>' + count + ' Teacher' + (count !== 1 ? 's' : '') + ' Upskilled</span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="course-catalog-grid">' + cards + '</div>';
+    }
+
+function wireCourseCatalogSearch() {
+      var input = document.getElementById('courseSearchInput');
+      if (!input) return;
+      // Clone to remove any old listeners
+      var fresh = input.cloneNode(true);
+      input.parentNode.replaceChild(fresh, input);
+      fresh.addEventListener('input', function() {
+        var q        = this.value.trim().toLowerCase();
+        var filtered = q
+          ? (window._allCourses || []).filter(function(c) { return c.name.toLowerCase().indexOf(q) !== -1; })
+          : (window._allCourses || []);
+        var container = document.getElementById('coursesTableContainer');
+        if (container) container.innerHTML = buildCourseGrid(filtered);
+      });
+    }
+
+function bindCourseSearch() {
+  const input = document.getElementById('courseSearchInput');
+  if (!input) return;
+  // Remove old listener by replacing node
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  newInput.addEventListener('input', function() {
+    const q = this.value.trim().toLowerCase();
+    const filtered = q
+      ? (window._allCourses || []).filter(c => c.name.toLowerCase().includes(q))
+      : (window._allCourses || []);
+    document.getElementById('coursesTableContainer').innerHTML = buildCourseGrid(filtered);
+    // Re-bind search since we replaced the container
+  });
+}
+
+function openCourseDetail(courseName) {
+      var panel    = document.getElementById('courseDetailPanel');
+      var backdrop = document.getElementById('courseDetailBackdrop');
+      var title    = document.getElementById('courseDetailTitle');
+      var subtitle = document.getElementById('courseDetailSubtitle');
+      var stats    = document.getElementById('courseDetailStats');
+      var list     = document.getElementById('courseDetailTeacherList');
+ 
+      if (!panel) return;
+ 
+      title.textContent    = courseName;
+      subtitle.textContent = 'Teacher proficiency & learner bandwidth';
+      stats.innerHTML      = '';
+      list.innerHTML       = '<p style="text-align:center;color:var(--text-light);padding:2rem;"><i class="fas fa-spinner fa-spin"></i> Fetching data...</p>';
+ 
+      panel.style.display    = 'flex';
+      backdrop.style.display = 'block';
+ 
+      google.script.run
+        .withSuccessHandler(renderCourseDetailPanel)
+        .withFailureHandler(function(err) {
+          list.innerHTML = '<p style="color:var(--danger);padding:1rem;">Failed to load: ' + escapeHtml((err && err.message) ? err.message : 'Unknown error') + '</p>';
+        })
+        .getCourseTeacherDetails(courseName);
+    }
+
+function closeCourseDetailPanel() {
+      var panel    = document.getElementById('courseDetailPanel');
+      var backdrop = document.getElementById('courseDetailBackdrop');
+      if (panel)    panel.style.display    = 'none';
+      if (backdrop) backdrop.style.display = 'none';
+    }
+function renderCourseDetailPanel(data) {
+      var stats = document.getElementById('courseDetailStats');
+      var list  = document.getElementById('courseDetailTeacherList');
+      if (!stats || !list) return;
+ 
+      if (!data || !data.success) {
+        list.innerHTML = '<p style="color:var(--danger);padding:1rem;">' + escapeHtml((data && data.message) ? data.message : 'No data returned.') + '</p>';
+        return;
+      }
+ 
+      var teachers        = data.teachers || [];
+      var totalUpskilled  = teachers.length;
+      var totalOnCourse   = teachers.reduce(function(s, t) { return s + (t.learnersOnCourse || 0); }, 0);
+      var avgProf         = totalUpskilled
+        ? Math.round(teachers.reduce(function(s, t) { return s + (parseFloat(t.proficiency) || 0); }, 0) / totalUpskilled)
+        : 0;
+ 
+      // \u2500\u2500 Stats row \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      stats.innerHTML =
+        '<div style="flex:1;background:var(--secondary);border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.35rem;font-weight:700;color:var(--primary);">' + totalUpskilled + '</div>' +
+          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Teachers Upskilled</div>' +
+        '</div>' +
+        '<div style="flex:1;background:#f0fdf4;border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.35rem;font-weight:700;color:#16a34a;">' + totalOnCourse + '</div>' +
+          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Active Learners on Course</div>' +
+        '</div>' +
+        '<div style="flex:1;background:#fff7ed;border-radius:8px;padding:0.7rem 0.9rem;text-align:center;">' +
+          '<div style="font-size:1.35rem;font-weight:700;color:#ea580c;">' + avgProf + '%</div>' +
+          '<div style="font-size:0.7rem;color:var(--text-light);margin-top:2px;">Avg Proficiency</div>' +
+        '</div>';
+ 
+      // \u2500\u2500 Teacher list \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+      if (teachers.length === 0) {
+        list.innerHTML = '<p style="text-align:center;color:var(--text-light);padding:2rem;">No teachers are upskilled on this course yet.</p>';
+        return;
+      }
+ 
+      var header = '<div style="font-size:0.72rem;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem;">' +
+        teachers.length + ' Teacher' + (teachers.length !== 1 ? 's' : '') +
+      '</div>';
+ 
+      var rows = teachers.map(function(t) {
+        var prof       = parseFloat(t.proficiency) || 0;
+        var profColor  = prof >= 90 ? '#16a34a' : prof >= 71 ? '#ca8a04' : '#dc2626';
+        var barWidth   = Math.min(Math.max(prof, 0), 100);
+        var total      = t.totalLearners    || 0;
+        var onCourse   = t.learnersOnCourse || 0;
+        var bandwidth  = total > 0 ? Math.round((onCourse / total) * 100) : 0;
+        var bwColor    = bandwidth > 60 ? '#dc2626' : bandwidth > 30 ? '#ca8a04' : '#16a34a';
+ 
+        return '<div style="background:#fafafa;border:1px solid var(--gray);border-radius:10px;padding:0.85rem 1rem;margin-bottom:0.55rem;">' +
+          // Name + proficiency
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">' +
+            '<div style="font-weight:600;font-size:0.875rem;color:var(--dark);">' + escapeHtml(t.name) + '</div>' +
+            '<div style="text-align:right;flex-shrink:0;margin-left:0.5rem;">' +
+              '<span style="font-size:0.82rem;font-weight:700;color:' + profColor + ';">' + escapeHtml(t.proficiency || 'N/A') + '</span>' +
+              '<div style="font-size:0.65rem;color:var(--text-light);">Proficiency</div>' +
+            '</div>' +
+          '</div>' +
+          // Progress bar
+          '<div style="background:var(--gray);border-radius:99px;height:4px;margin-bottom:0.65rem;">' +
+            '<div style="background:' + profColor + ';height:4px;border-radius:99px;width:' + barWidth + '%;"></div>' +
+          '</div>' +
+          // Learner counts
+          '<div style="display:flex;align-items:center;font-size:0.74rem;color:var(--text-light);">' +
+            '<i class="fas fa-users" style="font-size:0.65rem;color:var(--primary);margin-right:0.3rem;"></i>' +
+            '<span><strong style="color:var(--dark);">' + onCourse + '</strong> / ' + total + ' learners on this course</span>' +
+            '<span style="margin-left:auto;">Bandwidth: <strong style="color:' + bwColor + ';">' + bandwidth + '%</strong></span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+ 
+      list.innerHTML = header + rows;
+    }
+
 
     function updateCoursesTable(courses) {
         coursesTableBody.innerHTML = '';
@@ -2223,8 +2411,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Root Cause Analysis
                     <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">📊 Chart</button>
-                        <button onclick="toggleReportView('rootCause', 'table')">📋 Table</button>
+                        <button class="active" onclick="toggleReportView('rootCause', 'chart')">\u1F4CA Chart</button>
+                        <button onclick="toggleReportView('rootCause', 'table')">\u1F4CB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="rootCauseChartView">
@@ -2248,8 +2436,8 @@ tr.innerHTML = `
             <div class="report-section">
                 <h3>Impact Analysis
                    <span class="toggle-buttons">
-                        <button class="active" onclick="toggleReportView('impact', 'chart')">📊 Chart</button>
-                        <button onclick="toggleReportView('impact', 'table')">📋 Table</button>
+                        <button class="active" onclick="toggleReportView('impact', 'chart')">\u1F4CA Chart</button>
+                        <button onclick="toggleReportView('impact', 'table')">\u1F4CB Table</button>
                     </span>
                 </h3>
                 <div class="report-chart-view" id="impactChartView">
@@ -2511,7 +2699,7 @@ tr.innerHTML = `
         document.getElementById('emailDot').style.background            = emailOk ? '#10b981' : '#ef4444';
         document.getElementById('emailBar').style.width                 = emailOk ? '100%' : '8%';
         document.getElementById('emailBar').style.background            = emailOk ? '#10b981' : '#ef4444';
-        document.getElementById('emailQuota').textContent               = health.emailQuota ? `${health.emailQuota} left` : '—';
+        document.getElementById('emailQuota').textContent               = health.emailQuota ? `${health.emailQuota} left` : '\u2014';
         document.getElementById('healthEmailQuotaDisplay').textContent  = health.emailQuota || (emailOk ? 'Active' : 'Error');
         document.getElementById('healthEmailStatus').textContent        = emailOk ? 'HEALTHY' : 'ERROR';
         document.getElementById('healthEmailStatus').style.color        = emailOk ? '#10b981' : '#ef4444';
@@ -2530,11 +2718,11 @@ tr.innerHTML = `
         document.getElementById('sheetsBar').style.background           = sheetsOk ? '#10b981' : '#f59e0b';
 
         // Last checked
-        document.getElementById('lastChecked').textContent = health.lastCheck ? new Date(health.lastCheck).toLocaleString() : '—';
+        document.getElementById('lastChecked').textContent = health.lastCheck ? new Date(health.lastCheck).toLocaleString() : '\u2014';
       }).withFailureHandler(showError).getSystemHealth();
     }
 
-    // –– Teacher Intelligence Center ––––––––––––––––––––––––––
+    // \u2013\u2013 Teacher Intelligence Center \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
 
     function loadPersonaTool() {
       if (personaResultsContainer) personaResultsContainer.style.display = 'none';
@@ -2547,7 +2735,7 @@ tr.innerHTML = `
             populateSelect(document.getElementById('pInpFuture2'),  courses, true);
             populateSelect(document.getElementById('pInpFuture3'),  courses, true);
           }
-          // Wire buttons/slot row — guarded so it only truly runs once
+          // Wire buttons/slot row \u2014 guarded so it only truly runs once
           if (typeof initPersonaSmartLogic === 'function') initPersonaSmartLogic();
         })
         .withFailureHandler(showError)
@@ -2556,7 +2744,7 @@ tr.innerHTML = `
 
     // JLID Fetch is handled by handleSmartFetchAction (wired via initPersonaSmartLogic)
 
-    // Search submit — uses new personaFormEnhanced and new slot/course IDs
+    // Search submit \u2014 uses new personaFormEnhanced and new slot/course IDs
     if (personaForm) {
       personaForm.addEventListener('submit', function(e) {
         e.preventDefault();
@@ -2590,7 +2778,7 @@ tr.innerHTML = `
           return;
         }
 
-        showLoading('Finding best matches…');
+        showLoading('Finding best matches\u2026');
         google.script.run
           .withSuccessHandler(updatePersonaResults)
           .withFailureHandler(function(err) { hideLoading(); showError(err); })
@@ -2610,10 +2798,10 @@ function updatePersonaResults(result) {
   _personaCurrentPage = 1;
   var container  = document.getElementById('personaResultsContainer');
 
-  if (false && personaResults.length === 0) { // legacy table path — kept for reference, never runs
+  if (false && personaResults.length === 0) { // legacy table path \u2014 kept for reference, never runs
     personaResults.forEach(function(t, idx) {
 
-      // ── Slot match ──
+      // \u2500\u2500 Slot match \u2500\u2500
       var slotRaw     = String(t.slotMatch || '');
       var isFullMatch = slotRaw.indexOf('\u2714') !== -1;
       var isPartial   = slotRaw.indexOf('\u26A0') !== -1;
@@ -2624,34 +2812,34 @@ function updatePersonaResults(result) {
           ? '<span style="color:#d97706;font-size:0.8rem;font-weight:600;">' + escapeHtml(slotRaw) + '</span>'
           : '<span style="color:#f43f5e;font-size:1.1rem;">&#10007;</span>';
 
-      // ── Available slots ──
+      // \u2500\u2500 Available slots \u2500\u2500
       var altRaw  = String(t.alternateSlots || '');
       var altHtml = altRaw
         ? '<span style="font-size:0.72rem;color:#334155;line-height:1.7;">' + escapeHtml(altRaw).replace(/,\s*/g, '<br>') + '</span>'
         : '<span style="color:#94a3b8;font-size:0.75rem;">No slots</span>';
 
-      // ── Top Pick badge ──
+      // \u2500\u2500 Top Pick badge \u2500\u2500
       var badge = idx === 0
         ? ' <span style="font-size:0.62rem;background:#fbbf24;color:#78350f;padding:1px 7px;border-radius:4px;vertical-align:middle;margin-left:4px;font-weight:600;">Top Pick</span>'
         : '';
 
-      // ── Teacher name colour: blue if slot matched ──
+      // \u2500\u2500 Teacher name colour: blue if slot matched \u2500\u2500
       var nameColor = isFullMatch ? '#2563eb' : '#1e293b';
 
-      // ── Course progress helpers ──
+      // \u2500\u2500 Course progress helpers \u2500\u2500
       function pColor(v) {
-        if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '\u2014' || v === '—') return '#94a3b8';
+        if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '\u2014' || v === '\u2014') return '#94a3b8';
         var n = parseInt(v);
         return isNaN(n) ? '#94a3b8' : n >= 80 ? '#15803d' : n >= 50 ? '#d97706' : '#b91c1c';
       }
       function pCell(v) {
-        var label = (v && v !== '\u2014' && v !== '—') ? v : '\u2014';
+        var label = (v && v !== '\u2014' && v !== '\u2014') ? v : '\u2014';
         var isBold = parseInt(v) >= 71;
         return '<span style="font-size:0.8rem;font-weight:' + (isBold ? '700' : '400') + ';color:' + pColor(v) + ';">'
                + escapeHtml(label) + '</span>';
       }
 
-      // ── Audit ──
+      // \u2500\u2500 Audit \u2500\u2500
       var gradeColor = { 'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c' }[t.auditGrade] || '#94a3b8';
       var hasAudit   = t.avgClassScore && t.avgClassScore !== 'No data';
       var auditHtml  = hasAudit
@@ -2660,20 +2848,20 @@ function updatePersonaResults(result) {
           + '<div style="font-size:0.65rem;color:#94a3b8;">' + (t.auditCount45 || 0) + ' sessions</div>'
         : '<span style="color:#94a3b8;font-size:0.78rem;">\u2014</span>';
 
-      // ── Flags ──
+      // \u2500\u2500 Flags \u2500\u2500
       var rfCount = Number(t.redFlagCount) || 0;
       var rfHtml  = rfCount > 0
         ? '<span style="color:#b91c1c;font-weight:600;">&#128681; ' + rfCount + '</span>'
         : '<span style="color:#94a3b8;">\u2014</span>';
 
-      // ── Traits Gap ──
+      // \u2500\u2500 Traits Gap \u2500\u2500
       var traitsHtml;
       // Helper: shorten a trait name to max 14 chars with category prefix stripped
       function shortTrait(tr) {
-        // Strip long category prefix like "Intermediate Programming (Python...)" → "Int. Programming"
+        // Strip long category prefix like "Intermediate Programming (Python...)" \u2192 "Int. Programming"
         var s = tr.trim();
         if (s.indexOf('(') > -1) s = s.substring(0, s.indexOf('(')).trim(); // drop parenthetical
-        return s.length > 16 ? s.substring(0, 15) + '…' : s;
+        return s.length > 16 ? s.substring(0, 15) + '\u2026' : s;
       }
       var traitTotal = (t.traitsMissing ? t.traitsMissing.length : 0) + (t._traitMatchesCount || 0);
       var traitNum   = traitTotal > 0 ? Math.round(((t._traitMatchesCount || 0) / traitTotal) * 30) : 15;
@@ -2699,7 +2887,7 @@ function updatePersonaResults(result) {
       tr.innerHTML =
         '<td style="color:#94a3b8;font-size:0.78rem;text-align:center;">' + (idx + 1) + '</td>'
 
-        // Teacher — name (coloured when slot matches) + Top Pick badge
+        // Teacher \u2014 name (coloured when slot matches) + Top Pick badge
         + '<td><span style="font-weight:700;color:' + nameColor + ';">' + escapeHtml(t.teacherName) + '</span>' + badge + '</td>'
 
         // Age/Year
@@ -2717,11 +2905,11 @@ function updatePersonaResults(result) {
         // Future 1 / 2 / 3
         + '<td>' + pCell(t.futureCourse1Progress) + '</td>'
         + '<td>' + pCell(t.futureCourse2Progress) + '</td>'
-        + '</td>'; // end legacy block — never executes (guarded by false &&)
+        + '</td>'; // end legacy block \u2014 never executes (guarded by false &&)
     });
   }
 
-  // ── Render as card grid ──
+  // \u2500\u2500 Render as card grid \u2500\u2500
   if (container) container.style.display = 'block';
   renderPersonaCards();
   if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2795,7 +2983,7 @@ function updatePersonaResults(result) {
     function searchLearnerHistory() {
         const jlid = document.getElementById('historyJlidInput').value.trim();
         if (!jlid) { showToast('error', 'Input Required', 'Please enter a JLID.'); return; }
-        showLoading('Loading migration timeline for ' + jlid + '…');
+        showLoading('Loading migration timeline for ' + jlid + '\u2026');
         document.getElementById('historyResultsContainer').style.display = 'none';
         const es = document.getElementById('historyEmptyState');
         if (es) es.style.display = 'none';
@@ -2805,7 +2993,7 @@ function updatePersonaResults(result) {
             .getComprehensiveLearnerHistory(jlid);
     }
 
-    /* –– colour helpers –– */
+    /* \u2013\u2013 colour helpers \u2013\u2013 */
     function _tlRiskColors(level) {
         const map = {
             Critical: { bg:'#fff0f0', border:'#e11d48', icon:'#e11d48', dot:'#e11d48' },
@@ -2837,11 +3025,11 @@ function updatePersonaResults(result) {
         try { return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); } catch(e) { return iso; }
     }
     function _fmtDateTime(iso) {
-        if (!iso) return '—';
+        if (!iso) return '\u2014';
         try { return new Date(iso).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); } catch(e) { return iso; }
     }
 
-    /* –– global store for filter –– */
+    /* \u2013\u2013 global store for filter \u2013\u2013 */
     var _tlAllTickets = [];
 
     function _renderTickets(tickets) {
@@ -2860,7 +3048,7 @@ function updatePersonaResults(result) {
         }
         if (noTix) noTix.style.display = 'none';
         document.getElementById('tlFilterCount').textContent = tickets.length + ' event' + (tickets.length !== 1 ? 's' : '');
-        document.getElementById('tlTicketCount').textContent = '— ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
+        document.getElementById('tlTicketCount').textContent = '\u2014 ' + tickets.length + ' record' + (tickets.length !== 1 ? 's' : '');
 
         tickets.forEach(function(evt, idx) {
             const rc  = _tlReasonColor(evt.type);
@@ -2941,7 +3129,7 @@ function updatePersonaResults(result) {
         _renderTickets(filtered);
     }
 
-// ── Migration Intelligence: override helpers ─────────────────────────────
+// \u2500\u2500 Migration Intelligence: override helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function mipToggleOverride(idx) {
   var sel = document.getElementById('mip_fc_override_' + idx);
   if (sel) sel.style.display = (sel.style.display === 'none' || sel.style.display === '') ? 'inline-block' : 'none';
@@ -2960,7 +3148,7 @@ function mipApplyOverride(idx, newCourse) {
   // Update badge
   var badgeEl = document.getElementById('mip_fc_badge_' + idx);
   if (badgeEl) {
-    badgeEl.textContent = isNowUpskilled ? '✓ Upskilled' : '✗ Not upskilled';
+    badgeEl.textContent = isNowUpskilled ? '\u2713 Upskilled' : '\u2717 Not upskilled';
     badgeEl.style.color           = isNowUpskilled ? '#15803d' : '#b91c1c';
     badgeEl.style.background      = isNowUpskilled ? '#f0fdf4' : '#fef2f2';
     badgeEl.style.borderColor     = isNowUpskilled ? '#86efac' : '#fca5a5';
@@ -2974,7 +3162,7 @@ function mipApplyOverride(idx, newCourse) {
 
   var sel = document.getElementById('mip_fc_override_' + idx);
   if (sel) sel.style.display = 'none';
-  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' → ' + newCourse + (isNowUpskilled ? ' ✓' : ' ✗ Not upskilled'));
+  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' \u2192 ' + newCourse + (isNowUpskilled ? ' \u2713' : ' \u2717 Not upskilled'));
 
   // Re-evaluate summary and replacement button based on all current badge states
   mipRefreshSummary();
@@ -2993,7 +3181,7 @@ function mipRefreshSummary() {
         ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text : '';
       summaryEl.innerHTML = '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher &ldquo;' + escapeHtml(name) + '&rdquo; is upskilled in current and future courses</span>';
     } else {
-      summaryEl.innerHTML = '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found — note will be added to ticket on submission</span>';
+      summaryEl.innerHTML = '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found \u2014 note will be added to ticket on submission</span>';
     }
   }
 
@@ -3004,9 +3192,9 @@ function mipRefreshSummary() {
 
 function mipFindAlternatives() {
   var btn = document.getElementById('mip_findAltBtn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:5px;"></i>Searching…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:5px;"></i>Searching\u2026'; }
 
-  // Send ALL future course labels — replacement must cover current + all future courses
+  // Send ALL future course labels \u2014 replacement must cover current + all future courses
   var gappedCourses = (window.mipConfirmedCourses || [])
     .map(function(fc) { return fc.courseLabel; });
 
@@ -3032,7 +3220,7 @@ function mipFindAlternatives() {
           var color = c.proficiency === '100%' ? '#15803d' : '#d97706';
           return '<span style="font-size:0.7rem;color:' + color + ';background:' + (c.proficiency === '100%' ? '#f0fdf4' : '#fefce8')
             + ';border-radius:3px;padding:1px 6px;border:1px solid ' + (c.proficiency === '100%' ? '#86efac' : '#fcd34d') + ';">'
-            + escapeHtml(c.course) + ' · ' + escapeHtml(c.proficiency) + '</span>';
+            + escapeHtml(c.course) + ' \u00B7 ' + escapeHtml(c.proficiency) + '</span>';
         }).join(' ');
 
         // History badges
@@ -3042,7 +3230,7 @@ function mipFindAlternatives() {
         }
         if (alt.wasEverAssigned && !alt.isAffinityCase) {
           var lastDate = alt.lastAssignedDate ? new Date(alt.lastAssignedDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '';
-          historyHtml += '<span style="font-size:0.68rem;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;"><i class="fas fa-history" style="margin-right:2px;"></i>Was teacher' + (lastDate ? ' · ' + lastDate : '') + '</span> ';
+          historyHtml += '<span style="font-size:0.68rem;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;"><i class="fas fa-history" style="margin-right:2px;"></i>Was teacher' + (lastDate ? ' \u00B7 ' + lastDate : '') + '</span> ';
         }
         if (alt.escalationCount > 0) {
           historyHtml += '<span style="font-size:0.68rem;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:3px;padding:1px 6px;"><i class="fas fa-exclamation-triangle" style="margin-right:2px;"></i>' + alt.escalationCount + ' escalation(s)</span> ';
@@ -3135,20 +3323,20 @@ function mipSelectAlternativeTeacher(teacherName) {
         const tickets = result.migrationTimeline || [];
         const auditRows = result.auditLogTimeline || [];
 
-        /* –– Profile card –– */
+        /* \u2013\u2013 Profile card \u2013\u2013 */
         const name = p.learnerName || p.jlid || 'Unknown';
         const av   = document.getElementById('tlAvatar');
         if (av) av.textContent = _initials(name);
         _setText('tlName',        name);
-        _setText('tlJlid',        p.jlid              || '—');
-        _setText('tlCourse',      p.course            || '—');
-        _setText('tlTeacher',     p.currentTeacher    || '—');
-        _setText('tlAge',         p.age               || '—');
-        _setText('tlStartDate',   p.startingDate      ? new Date(p.startingDate).toLocaleDateString('en-GB') : '—');
-        _setText('tlAmount',      p.dealAmount > 0    ? (p.currency || 'EUR') + ' ' + p.dealAmount.toLocaleString() : '—');
-        _setText('tlPaymentType', p.currentSubscriptionType || '—');
-        _setText('tlTenure',      p.tenure > 0        ? p.tenure : '—');
-        _setText('tlJetGuide',    p.jetGuide          || '—');
+        _setText('tlJlid',        p.jlid              || '\u2014');
+        _setText('tlCourse',      p.course            || '\u2014');
+        _setText('tlTeacher',     p.currentTeacher    || '\u2014');
+        _setText('tlAge',         p.age               || '\u2014');
+        _setText('tlStartDate',   p.startingDate      ? new Date(p.startingDate).toLocaleDateString('en-GB') : '\u2014');
+        _setText('tlAmount',      p.dealAmount > 0    ? (p.currency || 'EUR') + ' ' + p.dealAmount.toLocaleString() : '\u2014');
+        _setText('tlPaymentType', p.currentSubscriptionType || '\u2014');
+        _setText('tlTenure',      p.tenure > 0        ? p.tenure : '\u2014');
+        _setText('tlJetGuide',    p.jetGuide          || '\u2014');
         const hlWrap = document.getElementById('tlHsLinkWrap');
         const hlEl   = document.getElementById('tlHsLink');
         if (hlWrap && hlEl && p.hubspotLink) {
@@ -3161,7 +3349,7 @@ function mipSelectAlternativeTeacher(teacherName) {
         _setText('tlStatInbound',  ja.inbound         || 0);
         _setText('tlStatOutbound', ja.outbound        || 0);
 
-        /* –– Risk banner –– */
+        /* \u2013\u2013 Risk banner \u2013\u2013 */
         const rc  = _tlRiskColors(ja.riskLevel || 'Stable');
         const banner = document.getElementById('tlRiskBanner');
         const rIcon  = document.getElementById('tlRiskIcon');
@@ -3172,17 +3360,17 @@ function mipSelectAlternativeTeacher(teacherName) {
         _setText('tlRiskLevel', 'Journey stability: ' + (ja.riskLevel || 'Stable'));
         _setText('tlRiskMsg',   ja.riskMessage || '');
 
-        /* –– Summary –– */
+        /* \u2013\u2013 Summary \u2013\u2013 */
         _setText('tlSummary', result.aiSummary || 'No summary available.');
 
-        /* –– Tickets –– */
+        /* \u2013\u2013 Tickets \u2013\u2013 */
         _tlAllTickets = tickets;
         _applyTlFilter('all');
 
-        /* –– Audit log –– */
+        /* \u2013\u2013 Audit log \u2013\u2013 */
         const auditBody = document.getElementById('tlAuditBody');
         const auditCount = document.getElementById('tlAuditCount');
-        if (auditCount) auditCount.textContent = auditRows.length ? '— ' + auditRows.length + ' entries' : '';
+        if (auditCount) auditCount.textContent = auditRows.length ? '\u2014 ' + auditRows.length + ' entries' : '';
         if (auditBody) {
             if (auditRows.length === 0) {
                 auditBody.innerHTML = '<div class="tl-empty"><i class="fas fa-history"></i><p>No audit log entries found for this learner.</p></div>';
@@ -3196,15 +3384,15 @@ function mipSelectAlternativeTeacher(teacherName) {
                         : sTxt ? '<span class="status-badge status-info" style="font-size:0.7rem;">' + _e(sTxt) + '</span>' : '';
 
                     let detail = '';
-                    if (row.fromTeacher && row.toTeacher) detail = _e(row.fromTeacher) + ' → ' + _e(row.toTeacher);
+                    if (row.fromTeacher && row.toTeacher) detail = _e(row.fromTeacher) + ' \u2192 ' + _e(row.toTeacher);
                     else if (row.fromTeacher) detail = _e(row.fromTeacher);
                     else if (row.toTeacher)  detail = _e(row.toTeacher);
-                    if (row.course) detail += (detail ? ' · ' : '') + _e(row.course);
-                    if (row.notes)  detail += (detail ? ' · ' : '') + _e(row.notes);
+                    if (row.course) detail += (detail ? ' \u00B7 ' : '') + _e(row.course);
+                    if (row.notes)  detail += (detail ? ' \u00B7 ' : '') + _e(row.notes);
 
                     return '<div class="tl-audit-item">'
                         + '<span class="tl-audit-time">' + _fmtDateTime(row.timestamp) + '</span>'
-                        + '<span class="tl-audit-action">' + _e(row.action) + (detail ? '<span class="tl-audit-detail">— ' + detail + '</span>' : '') + '</span>'
+                        + '<span class="tl-audit-action">' + _e(row.action) + (detail ? '<span class="tl-audit-detail">\u2014 ' + detail + '</span>' : '') + '</span>'
                         + '<span class="tl-audit-status">' + sBadge + '</span>'
                         + '</div>';
                 }).join('');
@@ -3353,9 +3541,9 @@ function mipSelectAlternativeTeacher(teacherName) {
 
     function getCurrencySymbolClient(currencyCode) {
         switch (currencyCode) {
-            case 'GBP': return '£'; case 'EUR': return '€'; case 'USD': return '$'; case 'INR': return '₹'; case 'JPY': return '¥';
-            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '¥'; case 'SEK': return 'kr';
-            case 'NZD': return 'NZ$'; case 'AED': return 'د.إ'; case 'HKD': 'HK$';
+            case 'GBP': return '\u00A3'; case 'EUR': return '\u20AC'; case 'USD': return '$'; case 'INR': return '\u20B9'; case 'JPY': return '\u00A5';
+            case 'AUD': return 'A$'; case 'CAD': return 'C$'; case 'CHF': return 'CHF'; case 'CNY': return '\u00A5'; case 'SEK': return 'kr';
+            case 'NZD': return 'NZ$'; case 'AED': return '\u062F.\u0625'; case 'HKD': 'HK$';
             case 'ZAR': return 'R'; case 'SGD': return 'S$'; case 'NOK': return 'kr';
             case 'DKK': return 'kr'; case 'MXN': return 'Mex$'; case 'BRL': return 'R$';
             default: return currencyCode || '';
@@ -4110,7 +4298,7 @@ function loadTeacherSpecificDetails(teacherName) {
     _resetCalHoursPanel();
     _resetReplacementHistoryPanel();
 
-    // –– CALL 1: Basic Load Stats & Proficiency (Google Sheets) –––––––––––
+    // \u2013\u2013 CALL 1: Basic Load Stats & Proficiency (Google Sheets) \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
     google.script.run
         .withSuccessHandler(data => {
             if (!data || !data.success) {
@@ -4148,12 +4336,12 @@ function loadTeacherSpecificDetails(teacherName) {
 
             if (resultsContainer) resultsContainer.style.display = 'block';
 
-            // –– CALL 2a: Teaching Hours Distribution (Calendar) ––––––––––
+            // \u2013\u2013 CALL 2a: Teaching Hours Distribution (Calendar) \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
             _loadCalendarHours(teacherName);
-            // –– CALL 2b: Replacement History (HubSpot) ––––––––––––––––––
+            // \u2013\u2013 CALL 2b: Replacement History (HubSpot) \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
             _loadReplacementHistory(teacherName);
 
-            // –– CALL 2: Attrition Risk & Active Pool (HubSpot) ––––––––––––
+            // \u2013\u2013 CALL 2: Attrition Risk & Active Pool (HubSpot) \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
             google.script.run
                 .withSuccessHandler(report => {
                     hideLoading();
@@ -4206,7 +4394,7 @@ function loadTeacherSpecificDetails(teacherName) {
 
                     students.forEach(s => {
 
-                        // –– Risk badge & row highlight ––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Risk badge & row highlight \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         let rowStyle = '';
                         let riskBadge = `<span class="status-badge status-success">Stable</span>`;
                         if (s.recentMoves >= 2) {
@@ -4216,41 +4404,41 @@ function loadTeacherSpecificDetails(teacherName) {
                             riskBadge = `<span class="status-badge" style="background-color:#fff3e0; color:#e65100; border:1px solid #ffb74d;">1 Move</span>`;
                         }
 
-                        // –– Deal Value badge –––––––––––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Deal Value badge \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         const isUnknown     = !s.dealValueLabel || s.dealValueLabel === 'Unknown';
                         const dealValueBadge = isUnknown
                             ? `<span class="status-badge" style="background:#e2e8f0; color:#4a5568;">Unknown</span>`
                             : `<span class="status-badge" style="background-color:${escapeHtml(s.dealValueBg)}; color:${escapeHtml(s.dealValueColor)}; border:1px solid ${escapeHtml(s.dealValueColor)};">${escapeHtml(s.dealValueLabel)}</span>`;
 
-                        // –– Amount display ––––––––––––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Amount display \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         // Show local currency amount; if non-EUR also show ~EUR equivalent
                         let amountDisplay = '';
                         if (s.dealAmountLocal > 0) {
                             const localStr = s.dealCurrency !== 'EUR'
                                 ? `${escapeHtml(s.dealCurrency)} ${s.dealAmountLocal.toLocaleString()}`
-                                : `€${s.dealAmountLocal.toLocaleString()}`;
+                                : `\u20AC${s.dealAmountLocal.toLocaleString()}`;
                             const eurNote  = (s.dealCurrency !== 'EUR' && s.dealAmountEur > 0)
-                                ? ` <small style="color:#888;">(~€${s.dealAmountEur.toLocaleString()})</small>`
+                                ? ` <small style="color:#888;">(~\u20AC${s.dealAmountEur.toLocaleString()})</small>`
                                 : '';
                             amountDisplay = `<div style="font-size:0.85em; margin-top:3px; font-weight:600;">${localStr}${eurNote}</div>`;
                         }
 
-                        // –– Payment tag: Upfront (green) / Installment (blue) ––
+                        // \u2013\u2013 Payment tag: Upfront (green) / Installment (blue) \u2013\u2013
                         const paymentTagBadge = s.paymentTag === 'Installment'
                             ? `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd;">Installment</span>`
                             : `<span style="display:inline-block; margin-top:3px; font-size:0.72em; padding:1px 7px; border-radius:4px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">Upfront</span>`;
 
-                        // –– Tenure label –––––––––––––––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Tenure label \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         const tenureLabel = s.dealTenureMonths > 0
                             ? `<small style="color:#999; display:block; margin-top:2px;">${s.dealTenureMonths}-month plan</small>`
                             : '';
 
-                        // –– Previous teacher –––––––––––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Previous teacher \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         const prevTeacherDisplay = (!s.prevTeacher || s.prevTeacher === 'N/A')
                             ? '<span style="color:#aaa;">No Teacher Changes</span>'
                             : escapeHtml(s.prevTeacher);
 
-                        // –– Course (truncated) ––––––––––––––––––––––––––––––––––––
+                        // \u2013\u2013 Course (truncated) \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
                         const courseDisplay = s.course && s.course.length > 35
                             ? s.course.substring(0, 35) + '...'
                             : (s.course || '-');
@@ -4309,8 +4497,8 @@ function loadTeacherSpecificDetails(teacherName) {
         .getTeacherSpecificLoad(teacherName);
 }
 
-// ── Calendar Hours helpers ────────────────────────────────────────────────────
-var _calHoursChart = null;   // Chart.js instance — destroyed on re-render
+// \u2500\u2500 Calendar Hours helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+var _calHoursChart = null;   // Chart.js instance \u2014 destroyed on re-render
 var _calHoursCurrentTeacher = '';
 var _calHoursCurrentWeeks   = 4;
 
@@ -4323,7 +4511,7 @@ function _resetCalHoursPanel() {
     if (empty)   { empty.style.display   = 'none';  }
     ['calHoursTotalHours','calHoursAvgWeek','calHoursPeakDay','calHoursMatched'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.textContent = '—';
+        if (el) el.textContent = '\u2014';
     });
     if (_calHoursChart) { try { _calHoursChart.destroy(); } catch(e) {} _calHoursChart = null; }
 }
@@ -4421,7 +4609,7 @@ function _renderCalHours(data) {
 }
 
 
-// ── Replacement History helpers ───────────────────────────────────────────────
+// \u2500\u2500 Replacement History helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function _resetReplacementHistoryPanel() {
     const loading = document.getElementById('replacementHistoryLoading');
     const wrap    = document.getElementById('replacementHistoryTableWrap');
@@ -4728,11 +4916,11 @@ google.script.run
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
-                <strong>📊 Latest Ticket Logic Fixed</strong><br>
+                <strong>\u1F4CA Latest Ticket Logic Fixed</strong><br>
                 Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
             </li>
             <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
-                <strong>🧩 Enhanced Data Mapping</strong><br>
+                <strong>\u1F9E9 Enhanced Data Mapping</strong><br>
                 Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
             </li>
         </ul>
@@ -4869,8 +5057,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (response && response.success) {
         loginSuccess(response);
       } else if (response && response.transient) {
-        // Sheet temporarily unreadable — restore session from storage, don't log out
-        console.warn('Session verification transient error — restoring from sessionStorage:', response.message);
+        // Sheet temporarily unreadable \u2014 restore session from storage, don't log out
+        console.warn('Session verification transient error \u2014 restoring from sessionStorage:', response.message);
         hideLoading();
         try {
           const restoredUser = JSON.parse(sessionStorage.getItem('currentUser'));
@@ -5365,7 +5553,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (storedUserJSON) {
             try {
                 const storedUser = JSON.parse(storedUserJSON);
-                // Immediately restore session from storage — don't wait for server round-trip.
+                // Immediately restore session from storage \u2014 don't wait for server round-trip.
                 // Background verify: only force-logout if server explicitly says user is invalid/inactive.
                 loginSuccess(storedUser);
                 google.script.run
@@ -5375,15 +5563,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             currentUser = Object.assign({}, storedUser, response);
                             sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
                         } else if (response && !response.transient) {
-                            // Definitive rejection (user deactivated/removed) — log out
+                            // Definitive rejection (user deactivated/removed) \u2014 log out
                             console.warn('Background session check: user invalid, logging out.', response.message);
                             handleLogout();
                         }
-                        // transient = sheet error — stay logged in, do nothing
+                        // transient = sheet error \u2014 stay logged in, do nothing
                     })
                     .withFailureHandler(function(err) {
                         console.warn('Background session check failed (transient):', err);
-                        // Stay logged in — don't log out on GAS errors
+                        // Stay logged in \u2014 don't log out on GAS errors
                     })
                     .verifyUserSession(storedUser.username);
             } catch (e) {
@@ -5914,7 +6102,7 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     if (backToTeachersBtn) backToTeachersBtn.addEventListener('click', () => switchPage('loadPage'));
     if (searchHistoryBtn) searchHistoryBtn.addEventListener('click', searchLearnerHistory);
 
-    // ── Migration Intelligence: trigger when JLID + new teacher both filled ──
+    // \u2500\u2500 Migration Intelligence: trigger when JLID + new teacher both filled \u2500\u2500
     (function() {
       var mipDebounce = null;
 
@@ -5937,12 +6125,12 @@ function triggerMigrationIntelligence() {
           // Show loading state inside the modal
           document.getElementById('migrationAlertBanners').innerHTML =
             '<div style="padding:0.6rem 1rem;background:#f1f5f9;border-radius:6px;color:#64748b;font-size:0.83rem;">'
-            + '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Analysing teacher history…</div>';
+            + '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Analysing teacher history\u2026</div>';
           ['mip_count30','mip_count60','mip_count90','mip_total','mip_lastDate','mip_lastReason','mip_riskBadge'].forEach(function(id) {
-            var el = document.getElementById(id); if (el) el.textContent = '…';
+            var el = document.getElementById(id); if (el) el.textContent = '\u2026';
           });
           var histEl = document.getElementById('mip_teacherHistoryContent');
-          if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading…</span>';
+          if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading\u2026</span>';
 
           // Read first class session slot from the migration form
           var slotParams = null;
@@ -6014,22 +6202,22 @@ function triggerMigrationIntelligence() {
       } else {
         bannerContainer.innerHTML =
           '<div style="padding:0.65rem 1rem;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;color:#15803d;font-size:0.84rem;">'
-          + '<i class="fas fa-check-circle" style="margin-right:7px;"></i>No alerts — this looks like a safe migration.</div>';
+          + '<i class="fas fa-check-circle" style="margin-right:7px;"></i>No alerts \u2014 this looks like a safe migration.</div>';
       }
 
       // Frequency counts
       var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
-      set('mip_count30', result.migrationCount30d != null ? result.migrationCount30d : '—');
-      set('mip_count60', result.migrationCount60d != null ? result.migrationCount60d : '—');
-      set('mip_count90', result.migrationCount90d != null ? result.migrationCount90d : '—');
-      set('mip_total',   result.totalMigrations   != null ? result.totalMigrations   : '—');
+      set('mip_count30', result.migrationCount30d != null ? result.migrationCount30d : '\u2014');
+      set('mip_count60', result.migrationCount60d != null ? result.migrationCount60d : '\u2014');
+      set('mip_count90', result.migrationCount90d != null ? result.migrationCount90d : '\u2014');
+      set('mip_total',   result.totalMigrations   != null ? result.totalMigrations   : '\u2014');
 
       // Last migration
       var lastDate = result.lastMigrationDate
         ? new Date(result.lastMigrationDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})
-        : '—';
+        : '\u2014';
       set('mip_lastDate',   lastDate);
-      set('mip_lastReason', result.lastMigrationReason || '—');
+      set('mip_lastReason', result.lastMigrationReason || '\u2014');
 
       // Risk badge
       var riskEl = document.getElementById('mip_riskBadge');
@@ -6044,7 +6232,7 @@ function triggerMigrationIntelligence() {
       var histEl = document.getElementById('mip_teacherHistoryContent');
       if (histEl) {
         if (!result.wasEverAssigned) {
-          histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">No prior relationship — first time with this teacher.</span>';
+          histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">No prior relationship \u2014 first time with this teacher.</span>';
         } else {
           var html = '<div style="font-size:0.82rem;">';
           if (result.isAffinityCase) {
@@ -6058,7 +6246,7 @@ function triggerMigrationIntelligence() {
           html += '<div style="margin-bottom:4px;color:#475569;font-weight:600;">Assignment Periods:</div>';
           (result.assignmentPeriods || []).forEach(function(p) {
             html += '<div style="margin-bottom:3px;padding:4px 8px;background:#f1f5f9;border-radius:4px;border-left:3px solid #6366f1;">'
-              + escapeHtml(p.fromFormatted) + ' → ' + escapeHtml(p.toFormatted);
+              + escapeHtml(p.fromFormatted) + ' \u2192 ' + escapeHtml(p.toFormatted);
             if (p.departureReason) html += ' <span style="color:#94a3b8;font-size:0.75rem;">(' + escapeHtml(p.departureReason) + ')</span>';
             html += '</div>';
           });
@@ -6067,7 +6255,7 @@ function triggerMigrationIntelligence() {
         }
       }
 
-      // ── Future Courses & Upskilling ──────────────────────────────────────────
+      // \u2500\u2500 Future Courses & Upskilling \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
       var fcSection = document.getElementById('mip_futureCoursesSection');
       var fcContent = document.getElementById('mip_futureCoursesContent');
       var fcs = result.futureCourses || [];
@@ -6090,17 +6278,17 @@ function triggerMigrationIntelligence() {
             : (result.newTeacherName || '');
           var summaryText  = allUpskilled
             ? '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>New teacher &ldquo;' + escapeHtml(displayedTeacherName) + '&rdquo; is upskilled in current and future courses</span>'
-            : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found — note will be added to ticket on submission</span>';
+            : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Upskilling gaps found \u2014 note will be added to ticket on submission</span>';
           var fcHtml = '<div id="mip_fc_summary" style="margin-bottom:0.6rem;">' + summaryText + '</div>'
             + '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
 
           fcs.forEach(function(fc, i) {
             var upBadge = fc.isUpskilled
-              ? '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">✓ Upskilled</span>'
-              : '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">✗ Not upskilled</span>';
+              ? '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">\u2713 Upskilled</span>'
+              : '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">\u2717 Not upskilled</span>';
 
             // Build course options from globalCourses
-            var opts = '<option value="">— select course —</option>'
+            var opts = '<option value="">\u2014 select course \u2014</option>'
               + (globalCourses || []).map(function(c) {
                   return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
                 }).join('');
@@ -6129,13 +6317,13 @@ function triggerMigrationIntelligence() {
         }
       }
 
-      // ── Class Slot Availability ──────────────────────────────────────────────
+      // \u2500\u2500 Class Slot Availability \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
       var scSection = document.getElementById('mip_slotCheckSection');
       var scContent = document.getElementById('mip_slotCheckContent');
       var sc = result.slotCheck || {};
       if (scSection && scContent) {
         if (!sc.checked) {
-          // No slot info — hide section unless we have a reason worth showing
+          // No slot info \u2014 hide section unless we have a reason worth showing
           if (sc.reason && sc.reason !== 'No schedule provided.') {
             scSection.style.display = 'block';
             scContent.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">' + escapeHtml(sc.reason) + '</span>';
@@ -6145,7 +6333,7 @@ function triggerMigrationIntelligence() {
         } else {
           scSection.style.display = 'block';
           var cetLabel = '<strong>' + escapeHtml(sc.cetTime || '') + ' CET</strong>'
-            + (sc.cetDate ? ' &nbsp;·&nbsp; <span style="color:#64748b;">' + escapeHtml(sc.cetDate) + '</span>' : '');
+            + (sc.cetDate ? ' &nbsp;\u00B7&nbsp; <span style="color:#64748b;">' + escapeHtml(sc.cetDate) + '</span>' : '');
           var statusHtml = '';
           if (sc.isAvailable === true) {
             statusHtml = '<span style="font-size:0.82rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:5px;padding:2px 10px;">'
@@ -7188,23 +7376,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
     'V38': [
-      "**Migration Intelligence — Future Courses Panel**: Migration Intelligence popup now shows a third card listing all 3 future courses from the HubSpot ticket with upskilling status (✓ Upskilled / ✗ Not upskilled) for the selected new teacher.",
-      "**Confirm / Override Per Course**: Each future course row has an Override button that opens a dropdown to correct the course if HubSpot data is wrong — confirmed values are stored and passed through on submission.",
+      "**Migration Intelligence \u2014 Future Courses Panel**: Migration Intelligence popup now shows a third card listing all 3 future courses from the HubSpot ticket with upskilling status (\u2713 Upskilled / \u2717 Not upskilled) for the selected new teacher.",
+      "**Confirm / Override Per Course**: Each future course row has an Override button that opens a dropdown to correct the course if HubSpot data is wrong \u2014 confirmed values are stored and passed through on submission.",
       "**Automatic HubSpot Ticket Note on Complete Migration**: After a migration is submitted, the system checks the new teacher's upskilling across all future courses and writes a note to the ticket automatically.",
-      "**Upskilled Note**: If the new teacher is upskilled in all future courses, a ✅ note is added: 'Teacher is fully upskilled in all future courses — no action required.'",
-      "**Upskilling Gap Note**: If any course is missing, a ⚠️ note is added tagging Teacher Partner: 'Teacher needs upskilling in [courses] — @Teacher Partner please arrange upskilling before new sessions begin.'"
+      "**Upskilled Note**: If the new teacher is upskilled in all future courses, a \u2705 note is added: 'Teacher is fully upskilled in all future courses \u2014 no action required.'",
+      "**Upskilling Gap Note**: If any course is missing, a \u26A0\uFE0F note is added tagging Teacher Partner: 'Teacher needs upskilling in [courses] \u2014 @Teacher Partner please arrange upskilling before new sessions begin.'"
     ],
     'V37': [
-      "**Full Width Teacher Intelligence Center**: Removed max-width: 1400px constraints from #personaPage and #personaResultsContainer — the results table now stretches the full available content area with no wasted side space.",
+      "**Full Width Teacher Intelligence Center**: Removed max-width: 1400px constraints from #personaPage and #personaResultsContainer \u2014 the results table now stretches the full available content area with no wasted side space.",
       "**Side Padding Reduced**: Page-level padding on the Teacher Intelligence Center reduced from 2rem to 0.5rem on each side so the table has maximum horizontal room."
     ],
     'V36': [
-      "**Parallel Calendar Fetching**: Replaced sequential CalendarApp calls with UrlFetchApp.fetchAll() REST API batch — all teacher calendars are fetched simultaneously, significantly reducing search time.",
+      "**Parallel Calendar Fetching**: Replaced sequential CalendarApp calls with UrlFetchApp.fetchAll() REST API batch \u2014 all teacher calendars are fetched simultaneously, significantly reducing search time.",
       "**Session Restore on Reload**: Page refresh no longer logs the user out. A 'transient' flag distinguishes a temporary sheet-read failure from a genuine invalid session and restores from sessionStorage.",
       "**Future Courses Fetched from HubSpot**: future_course_1, future_course_2, future_course_3 properties are now fetched from HubSpot Migration tickets and populated into the Teacher Intelligence Center form.",
       "**Dynamic Future Course Column Headers**: Future 1 / 2 / 3 column headers in the results table update to show the actual course name (same as the Current Course header behaviour).",
-      "**Course Name Normalisation**: HubSpot course labels (e.g. 'Game development and AI with Scratch') are fuzzy-matched to Teacher Courses sheet names (e.g. 'Game Dev and AI with Scratch') — both server-side and in the dropdown.",
-      "**Traits Gap Score Numbers**: Traits Gap column now always shows a score number (e.g. 15/30, 30/30) with colour coding — green ≥25, amber ≥15, red <15.",
+      "**Course Name Normalisation**: HubSpot course labels (e.g. 'Game development and AI with Scratch') are fuzzy-matched to Teacher Courses sheet names (e.g. 'Game Dev and AI with Scratch') \u2014 both server-side and in the dropdown.",
+      "**Traits Gap Score Numbers**: Traits Gap column now always shows a score number (e.g. 15/30, 30/30) with colour coding \u2014 green \u226525, amber \u226515, red <15.",
       "**Teacher Email Matching**: Jetlearn email from Teacher Data sheet is used to match teachers against master calendar guest lists, fixing missing results for teachers like Shweta Mittal and Simleen Kaur.",
       "**Master Calendar Blocking Fix**: Changed name-part matching from .some() to .every() to prevent false blocks on common surnames (e.g. 'Kaur', 'Mittal') that appear in other teachers' events."
     ],
@@ -7387,7 +7575,7 @@ document.addEventListener('DOMContentLoaded', () => {
         var pageSlice = filtered.slice(start, start + pageSize);
 
         if (countLabel) countLabel.textContent = statusLabel + ': ' + filtered.length + ' / ' + total
-            + '  ·  Page ' + _teacherBrowsePage + ' of ' + (totalPages || 1);
+            + '  \u00B7  Page ' + _teacherBrowsePage + ' of ' + (totalPages || 1);
 
         if (filtered.length === 0) {
             grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-muted);">No teachers found.</div>';
@@ -7419,7 +7607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     var coding     = teacher.activeCoding  || 0;
     var math       = teacher.activeMath    || 0;
     var loadColor  = totalLearners > 20 ? '#b91c1c' : totalLearners < 5 ? '#d97706' : '#15803d';
-    var grade      = teacher.auditGrade || '—';
+    var grade      = teacher.auditGrade || '\u2014';
     var gradeColor = {'A':'#15803d','B':'#1d4ed8','C':'#d97706','D':'#b91c1c'}[grade] || '#94a3b8';
     var traits     = teacher.traits || [];
 
@@ -7429,7 +7617,7 @@ document.addEventListener('DOMContentLoaded', () => {
         var visible = traits.slice(0, 3);
         traitHtml = visible.map(function(tr) {
             var s = tr.indexOf('(') > -1 ? tr.substring(0, tr.indexOf('(')).trim() : tr;
-            s = s.length > 18 ? s.substring(0, 17) + '…' : s;
+            s = s.length > 18 ? s.substring(0, 17) + '\u2026' : s;
             return '<span style="display:inline-block;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;'
                  + 'border-radius:20px;padding:2px 9px;font-size:0.68rem;margin:2px 3px 2px 0;">'
                  + escapeHtml(s) + '</span>';
@@ -7450,7 +7638,7 @@ document.addEventListener('DOMContentLoaded', () => {
     card.onmouseout  = function() { this.style.boxShadow='0 1px 4px rgba(0,0,0,0.05)'; this.style.borderColor='#e2e8f0'; };
 
     card.innerHTML =
-      // ── Header: avatar + name + status + grade badge ──
+      // \u2500\u2500 Header: avatar + name + status + grade badge \u2500\u2500
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">'
         + '<div style="display:flex;align-items:center;gap:10px;min-width:0;">'
           + '<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);'
@@ -7473,7 +7661,7 @@ document.addEventListener('DOMContentLoaded', () => {
         + '</div>'
       + '</div>'
 
-      // ── Learner load stats ──
+      // \u2500\u2500 Learner load stats \u2500\u2500
       + '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:6px 10px;background:#f8fafc;border-radius:8px;">'
         + '<span style="font-weight:800;color:' + loadColor + ';font-size:1.1rem;">' + totalLearners + '</span>'
         + '<span style="font-size:0.7rem;color:#94a3b8;flex:1;">active learners</span>'
@@ -7483,10 +7671,10 @@ document.addEventListener('DOMContentLoaded', () => {
         + '<i class="fas fa-square-root-alt" style="margin-right:3px;font-size:0.65rem;"></i>' + math + ' Math</span>'
       + '</div>'
 
-      // ── Trait pills ──
+      // \u2500\u2500 Trait pills \u2500\u2500
       + '<div style="min-height:26px;line-height:1.8;">' + traitHtml + '</div>'
 
-      // ── Action buttons ──
+      // \u2500\u2500 Action buttons \u2500\u2500
       + '<div style="display:flex;gap:6px;margin-top:4px;">'
         + '<button class="view-profile-btn" style="flex:1;padding:6px 0;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.76rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">'
         + '<i class="fas fa-user" style="margin-right:4px;font-size:0.7rem;"></i>Profile</button>'
@@ -7669,7 +7857,7 @@ function openCloneModal(teacherName) {
 
                         var auditLabel = avgClassScore != null
                             ? avgClassScore + '/80'
-                            + (redFlagCount > 0 ? ' ⚑' + redFlagCount : '')
+                            + (redFlagCount > 0 ? ' \u2691' + redFlagCount : '')
                             : 'No data';
                         var auditColor = avgClassScore == null ? '#6b7280'
                             : Number(avgClassScore) >= 60 ? '#15803d'
@@ -7885,7 +8073,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', () => {
 
 var _personaSmartLogicInited = false;
 function initPersonaSmartLogic() {
-    // Guard: only attach listeners once — loadPersonaTool calls this on every page visit
+    // Guard: only attach listeners once \u2014 loadPersonaTool calls this on every page visit
     if (_personaSmartLogicInited) {
         // Still ensure first slot row exists on each visit
         var sc = document.getElementById('personaSlotsContainer');
@@ -7898,7 +8086,7 @@ function initPersonaSmartLogic() {
     const btnAddSlot = document.getElementById('btnAddPersonaSlot');
     const refreshBtn = document.getElementById('refreshPersona');
 
-    // Attach listeners (form submit is handled by the personaForm listener below — do NOT double-attach)
+    // Attach listeners (form submit is handled by the personaForm listener below \u2014 do NOT double-attach)
     if (btnFetch)   btnFetch.addEventListener('click', handleSmartFetchAction);
     if (btnAddSlot) btnAddSlot.addEventListener('click', () => addSingleSlotRow(false));
 
@@ -7935,7 +8123,7 @@ function handleSmartFetchAction() {
 
     showLoading('AI System detecting learner status...');
 
-    // ── Inner function: runs after we are sure courses & teachers are loaded ──
+    // \u2500\u2500 Inner function: runs after we are sure courses & teachers are loaded \u2500\u2500
     function _doFetch(courses, teachers) {
         google.script.run
             .withSuccessHandler(res => {
@@ -7956,11 +8144,11 @@ function handleSmartFetchAction() {
                 }
 
                 // Basic fields
-                if (document.getElementById('pDispName')) document.getElementById('pDispName').textContent = d.learnerName || '—';
+                if (document.getElementById('pDispName')) document.getElementById('pDispName').textContent = d.learnerName || '\u2014';
                 if (document.getElementById('pDispJlid')) document.getElementById('pDispJlid').textContent = d.jlid || jlid;
-                if (document.getElementById('pDispAge'))  document.getElementById('pDispAge').textContent  = d.age  || '—';
+                if (document.getElementById('pDispAge'))  document.getElementById('pDispAge').textContent  = d.age  || '\u2014';
 
-                // ── Current Teacher dropdown ──
+                // \u2500\u2500 Current Teacher dropdown \u2500\u2500
                 const tDrop = document.getElementById('pCurrentTeacherDropdown');
                 if (tDrop) {
                     populateSelect(tDrop, teachers, false, 'Select Teacher');
@@ -7972,7 +8160,7 @@ function handleSmartFetchAction() {
                     }
                 }
 
-                // ── Course dropdowns ──
+                // \u2500\u2500 Course dropdowns \u2500\u2500
                 // Helper: populate + set value, adding option dynamically if missing
                 function _setCourseDrop(id, value, allowNone) {
                     const el = document.getElementById(id);
@@ -8002,7 +8190,7 @@ function handleSmartFetchAction() {
                 _setCourseDrop('pInpFuture2', d.futureCourse2  || '', true);
                 _setCourseDrop('pInpFuture3', d.futureCourse3  || '', true);
 
-                // ── Slot rows: generate based on sessions/week ──
+                // \u2500\u2500 Slot rows: generate based on sessions/week \u2500\u2500
                 const countMatch = (d.sessionsPerWeek || '1').match(/(\d+)/);
                 const count = countMatch ? parseInt(countMatch[1]) : 1;
                 const slotContainer = document.getElementById('personaSlotsContainer');
@@ -8017,7 +8205,7 @@ function handleSmartFetchAction() {
             .fetchPersonaSmartData(jlid);
     }
 
-    // ── Ensure globalCourses & globalTeachers are populated before fetching ──
+    // \u2500\u2500 Ensure globalCourses & globalTeachers are populated before fetching \u2500\u2500
     const needsCourses  = !globalCourses  || globalCourses.length  === 0;
     const needsTeachers = !globalTeachers || globalTeachers.length === 0;
 
@@ -8042,7 +8230,7 @@ function handleSmartFetchAction() {
             })
             .getCommunicationPageData();
     } else {
-        // Globals already populated — go straight to the HubSpot fetch
+        // Globals already populated \u2014 go straight to the HubSpot fetch
         _doFetch(globalCourses, globalTeachers);
     }
 }
@@ -8126,9 +8314,9 @@ function filterMigrationReport(countFilter) {
     renderMultiMigrationReport(filteredData, false); // false = don't reset global data
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 // TP MANAGER DASHBOARD
-// ─────────────────────────────────────────────────────────────────────────────
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 function initTPDashboard() {
   var sel = document.getElementById('tpManagerSelect');
@@ -8142,7 +8330,7 @@ function initTPDashboard() {
   document.getElementById('tpLoadBtn').addEventListener('click', loadTPDashboard);
 
   function fillTPSelect(managers) {
-    sel.innerHTML = '<option value="" disabled selected>— Select TP Manager —</option>';
+    sel.innerHTML = '<option value="" disabled selected>\u2014 Select TP Manager \u2014</option>';
     managers.slice().sort().forEach(function(name) {
       var opt = document.createElement('option');
       opt.value = name; opt.textContent = name;
@@ -8154,14 +8342,14 @@ function initTPDashboard() {
   if (window.globalTpManagers && window.globalTpManagers.length) {
     fillTPSelect(window.globalTpManagers);
   } else {
-    sel.innerHTML = '<option value="" disabled selected>Loading…</option>';
+    sel.innerHTML = '<option value="" disabled selected>Loading\u2026</option>';
     google.script.run
       .withSuccessHandler(function(names) {
         window.globalTpManagers = names || [];
         fillTPSelect(window.globalTpManagers);
       })
       .withFailureHandler(function() {
-        sel.innerHTML = '<option value="" disabled selected>— Select TP Manager —</option>';
+        sel.innerHTML = '<option value="" disabled selected>\u2014 Select TP Manager \u2014</option>';
       })
       .getTPManagers();
   }
@@ -8204,7 +8392,7 @@ function renderTPDashboard(result) {
   cards.innerHTML = [
     { label: 'Total Teachers', value: s.total,    icon: 'fa-users',          color: '#6366f1' },
     { label: 'EWS Teachers',   value: s.ewsCount, icon: 'fa-exclamation-triangle', color: '#f59e0b' },
-    { label: 'Avg Audit Score',value: s.avgScore ? s.avgScore + '/80' : '—', icon: 'fa-star', color: gradeColor(s.avgScore) },
+    { label: 'Avg Audit Score',value: s.avgScore ? s.avgScore + '/80' : '\u2014', icon: 'fa-star', color: gradeColor(s.avgScore) },
     { label: 'Red Flag Incidents', value: s.redFlags, icon: 'fa-flag', color: '#dc2626' }
   ].map(function(c) {
     return '<div style="background:#fff;border-radius:14px;padding:1.1rem 1.25rem;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'
@@ -8226,7 +8414,7 @@ function renderTPDashboard(result) {
   if (countEl) countEl.textContent = teachers.length + ' teacher' + (teachers.length !== 1 ? 's' : '');
 
   teachers.forEach(function(t, idx) {
-    var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '—': '#94a3b8' };
+    var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '\u2014': '#94a3b8' };
     var riskColors  = { High: '#dc2626', Medium: '#d97706', Low: '#2563eb', Stable: '#16a34a' };
     var gc = gradeColors[t.lastGrade] || '#94a3b8';
     var rc = riskColors[t.riskScore]  || '#94a3b8';
@@ -8235,8 +8423,8 @@ function renderTPDashboard(result) {
     tr.onmouseover = function() { this.style.background = '#f8fafc'; };
     tr.onmouseout  = function() { this.style.background = ''; };
 
-    var scoreStr = t.lastScore !== null && t.lastScore !== undefined ? t.lastScore + '/80' : '—';
-    var dateStr  = t.lastAuditDate ? String(t.lastAuditDate).substring(0,10) : '—';
+    var scoreStr = t.lastScore !== null && t.lastScore !== undefined ? t.lastScore + '/80' : '\u2014';
+    var dateStr  = t.lastAuditDate ? String(t.lastAuditDate).substring(0,10) : '\u2014';
     var dueBadge = t.dueForAudit
       ? ' <span style="font-size:0.6rem;background:#fef3c7;color:#b45309;border-radius:4px;padding:1px 5px;vertical-align:middle;">Due</span>'
       : '';
@@ -8245,16 +8433,16 @@ function renderTPDashboard(result) {
       : '<span style="font-size:0.65rem;background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 6px;">Visible</span>';
     var statusBadge = '<span class="status-badge status-' + (t.status||'').toLowerCase().replace(/ /g,'-') + '">' + t.status + '</span>';
     var flagBadge = t.redFlagCount > 0
-      ? '<span style="background:#fee2e2;color:#dc2626;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:600;">⚑ ' + t.redFlagCount + '</span>'
-      : '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
-    var riskBadge = '<span style="font-size:0.72rem;font-weight:700;color:' + rc + ';">' + (t.riskScore||'—') + '</span>';
+      ? '<span style="background:#fee2e2;color:#dc2626;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:600;">\u2691 ' + t.redFlagCount + '</span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">\u2014</span>';
+    var riskBadge = '<span style="font-size:0.72rem;font-weight:700;color:' + rc + ';">' + (t.riskScore||'\u2014') + '</span>';
 
     tr.innerHTML = '<td style="padding:10px 16px;font-size:0.8rem;color:var(--text-muted);">' + (idx+1) + '</td>'
       + '<td style="padding:10px 16px;font-weight:600;font-size:0.875rem;">' + escapeHtml(t.name) + dueBadge + '</td>'
       + '<td style="padding:10px 16px;">' + statusBadge + '</td>'
       + '<td style="padding:10px 16px;font-size:0.8rem;color:var(--text-muted);">' + dateStr + '</td>'
       + '<td style="padding:10px 16px;font-size:0.875rem;font-weight:600;">' + scoreStr + '</td>'
-      + '<td style="padding:10px 16px;"><span style="font-weight:700;color:' + gc + ';">' + (t.lastGrade||'—') + '</span></td>'
+      + '<td style="padding:10px 16px;"><span style="font-weight:700;color:' + gc + ';">' + (t.lastGrade||'\u2014') + '</span></td>'
       + '<td style="padding:10px 16px;">' + riskBadge + '</td>'
       + '<td style="padding:10px 16px;">' + flagBadge + '</td>'
       + '<td style="padding:10px 16px;">' + hiddenBadge + '</td>';
@@ -8284,7 +8472,7 @@ function renderTPDashboard(result) {
   document.getElementById('tpLastUpdated').textContent = 'Last loaded: ' + new Date().toLocaleTimeString();
 }
 
-// ── Export CSV ────────────────────────────────────────────────────────────────
+// \u2500\u2500 Export CSV \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function exportTPDashboardCSV() {
   var data = window._tpDashboardData;
   if (!data || !data.teachers || !data.teachers.length) { showToast('error', 'No data', 'Load the dashboard first.'); return; }
@@ -8304,7 +8492,7 @@ function exportTPDashboardCSV() {
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// ── Load upskill tasks + TP notes lazily when detail row opens ────────────────
+// \u2500\u2500 Load upskill tasks + TP notes lazily when detail row opens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function loadTPTeacherExtras(teacherName, detailTr) {
   var upskillEl = detailTr.querySelector('[data-upskill-wrap]');
   var notesEl   = detailTr.querySelector('[data-notes-wrap]');
@@ -8334,10 +8522,10 @@ function buildUpskillHTML(tasks) {
   tasks.forEach(function(task) {
     var sc = statusColors[task.status] || '#94a3b8';
     html += '<tr style="border-top:1px solid #f1f5f9;">'
-      + '<td style="padding:5px 8px;">' + escapeHtml(task.learner||task.jlid||'—') + '</td>'
-      + '<td style="padding:5px 8px;color:#6366f1;">' + escapeHtml(task.gapCourses||'—') + '</td>'
+      + '<td style="padding:5px 8px;">' + escapeHtml(task.learner||task.jlid||'\u2014') + '</td>'
+      + '<td style="padding:5px 8px;color:#6366f1;">' + escapeHtml(task.gapCourses||'\u2014') + '</td>'
       + '<td style="padding:5px 8px;color:var(--text-muted);">' + String(task.createdAt||'').substring(0,10) + '</td>'
-      + '<td style="padding:5px 8px;"><span style="font-weight:700;color:' + sc + ';">' + (task.status||'—') + '</span></td>'
+      + '<td style="padding:5px 8px;"><span style="font-weight:700;color:' + sc + ';">' + (task.status||'\u2014') + '</span></td>'
       + '<td style="padding:5px 8px;">'
         + (task.status !== 'Done' ? '<button onclick="markUpskillDone(\'' + task.id + '\',this)" style="font-size:0.7rem;padding:2px 8px;background:#dcfce7;color:#15803d;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Mark Done</button>' : '')
       + '</td></tr>';
@@ -8359,7 +8547,7 @@ function buildNotesHTML(teacherName, notes) {
     html += '<div style="max-height:120px;overflow-y:auto;margin-bottom:8px;">';
     notes.forEach(function(n) {
       html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-bottom:5px;font-size:0.78rem;">'
-        + '<div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:2px;">' + String(n.createdAt||'').substring(0,10) + ' · ' + escapeHtml(n.createdBy||'') + '</div>'
+        + '<div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:2px;">' + String(n.createdAt||'').substring(0,10) + ' \u00B7 ' + escapeHtml(n.createdBy||'') + '</div>'
         + '<div>' + escapeHtml(n.note||'') + '</div></div>';
     });
     html += '</div>';
@@ -8391,21 +8579,21 @@ function submitTPNote(encodedName, btn) {
 }
 
 function buildTPDetailHTML(t) {
-  var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '—': '#94a3b8' };
+  var gradeColors = { A: '#16a34a', B: '#2563eb', C: '#d97706', D: '#dc2626', '\u2014': '#94a3b8' };
   var typeColors  = { Coding: '#6366f1', Math: '#0ea5e9', GCSE: '#f59e0b' };
   var html = '<div style="margin-top:8px;">';
 
-  // ── Grade Legend ──
+  // \u2500\u2500 Grade Legend \u2500\u2500
   html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:7px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:0.72rem;">'
     + '<span style="font-weight:700;color:var(--dark);margin-right:2px;"><i class="fas fa-info-circle" style="color:#6366f1;margin-right:4px;"></i>Grade Scale (out of 80):</span>'
-    + '<span style="background:#dcfce7;color:#16a34a;font-weight:700;padding:1px 9px;border-radius:99px;">A &nbsp;≥ 65 — Excellent</span>'
-    + '<span style="background:#dbeafe;color:#2563eb;font-weight:700;padding:1px 9px;border-radius:99px;">B &nbsp;50–64 — Good</span>'
-    + '<span style="background:#fef3c7;color:#d97706;font-weight:700;padding:1px 9px;border-radius:99px;">C &nbsp;35–49 — Needs Improvement</span>'
-    + '<span style="background:#fee2e2;color:#dc2626;font-weight:700;padding:1px 9px;border-radius:99px;">D &nbsp;&lt;35 — Critical</span>'
-    + '<span style="color:var(--text-muted);margin-left:4px;">· Covers Warm-up, Activity, Wrap-up &amp; Hygiene</span>'
+    + '<span style="background:#dcfce7;color:#16a34a;font-weight:700;padding:1px 9px;border-radius:99px;">A &nbsp;\u2265 65 \u2014 Excellent</span>'
+    + '<span style="background:#dbeafe;color:#2563eb;font-weight:700;padding:1px 9px;border-radius:99px;">B &nbsp;50\u201364 \u2014 Good</span>'
+    + '<span style="background:#fef3c7;color:#d97706;font-weight:700;padding:1px 9px;border-radius:99px;">C &nbsp;35\u201349 \u2014 Needs Improvement</span>'
+    + '<span style="background:#fee2e2;color:#dc2626;font-weight:700;padding:1px 9px;border-radius:99px;">D &nbsp;&lt;35 \u2014 Critical</span>'
+    + '<span style="color:var(--text-muted);margin-left:4px;">\u00B7 Covers Warm-up, Activity, Wrap-up &amp; Hygiene</span>'
     + '</div>';
 
-  // ── Audits grouped by type (within date range) ──
+  // \u2500\u2500 Audits grouped by type (within date range) \u2500\u2500
   var byType = t.auditsByType || {};
   var types  = Object.keys(byType);
 
@@ -8433,14 +8621,14 @@ function buildTPDetailHTML(t) {
 
       audits.forEach(function(a) {
         var gc = gradeColors[a.grade] || '#94a3b8';
-        var dateStr = a.date ? String(a.date).substring(0, 10) : '—';
+        var dateStr = a.date ? String(a.date).substring(0, 10) : '\u2014';
         var hasFlags = a.redFlags && a.redFlags.trim();
         html += '<tr style="border-bottom:1px solid #f1f5f9;">'
           + '<td style="padding:5px 8px;color:var(--text-muted);">' + dateStr + '</td>'
-          + '<td style="padding:5px 8px;font-weight:500;">' + escapeHtml(a.learner||'—') + '</td>'
-          + '<td style="padding:5px 8px;">' + (a.score !== null ? a.score + '/80' : '—') + '</td>'
+          + '<td style="padding:5px 8px;font-weight:500;">' + escapeHtml(a.learner||'\u2014') + '</td>'
+          + '<td style="padding:5px 8px;">' + (a.score !== null ? a.score + '/80' : '\u2014') + '</td>'
           + '<td style="padding:5px 8px;font-weight:700;color:' + gc + ';">' + a.grade + '</td>'
-          + '<td style="padding:5px 8px;color:#dc2626;font-size:0.72rem;">' + (hasFlags ? escapeHtml(a.redFlags) : '<span style="color:#94a3b8;">—</span>') + '</td>'
+          + '<td style="padding:5px 8px;color:#dc2626;font-size:0.72rem;">' + (hasFlags ? escapeHtml(a.redFlags) : '<span style="color:#94a3b8;">\u2014</span>') + '</td>'
           + '<td style="padding:5px 8px;">' + (a.recording ? '<a href="' + escapeHtml(a.recording) + '" target="_blank" style="color:#6366f1;font-size:0.7rem;"><i class="fas fa-video"></i></a>' : '') + '</td>'
           + '</tr>';
       });
@@ -8450,10 +8638,10 @@ function buildTPDetailHTML(t) {
     html += '</div>'; // end flex
   }
 
-  // ── Red flag summary (if any) ──
+  // \u2500\u2500 Red flag summary (if any) \u2500\u2500
   if (t.redFlagIncidents && t.redFlagIncidents.length > 0) {
     html += '<div style="margin-top:14px;">'
-      + '<div style="font-size:0.75rem;font-weight:700;color:#dc2626;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">⚑ Red Flag Summary</div>'
+      + '<div style="font-size:0.75rem;font-weight:700;color:#dc2626;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">\u2691 Red Flag Summary</div>'
       + '<table style="font-size:0.76rem;border-collapse:collapse;width:100%;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #fee2e2;">'
       + '<tr style="background:#fee2e2;">'
       + '<th style="padding:5px 10px;text-align:left;">Type</th>'
@@ -8467,10 +8655,10 @@ function buildTPDetailHTML(t) {
       var tc = typeColors[type] || '#6366f1';
       html += '<tr style="border-bottom:1px solid #fee2e2;">'
         + '<td style="padding:5px 10px;"><span style="font-size:0.68rem;font-weight:600;background:' + tc + '22;color:' + tc + ';border-radius:4px;padding:1px 6px;">' + type + '</span></td>'
-        + '<td style="padding:5px 10px;font-weight:600;">' + escapeHtml(f.learner||'—') + '</td>'
-        + '<td style="padding:5px 10px;">' + escapeHtml(f.course||'—') + '</td>'
-        + '<td style="padding:5px 10px;">' + (f.score !== null ? f.score + '/80' : '—') + '</td>'
-        + '<td style="padding:5px 10px;color:#dc2626;">' + escapeHtml(f.flags||'—') + '</td>'
+        + '<td style="padding:5px 10px;font-weight:600;">' + escapeHtml(f.learner||'\u2014') + '</td>'
+        + '<td style="padding:5px 10px;">' + escapeHtml(f.course||'\u2014') + '</td>'
+        + '<td style="padding:5px 10px;">' + (f.score !== null ? f.score + '/80' : '\u2014') + '</td>'
+        + '<td style="padding:5px 10px;color:#dc2626;">' + escapeHtml(f.flags||'\u2014') + '</td>'
         + '</tr>';
     });
     html += '</table></div>';
@@ -8480,19 +8668,19 @@ function buildTPDetailHTML(t) {
     html += '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0;">No audits in the selected date range.</div>';
   }
 
-  // ── Upskill Tracker + TP Notes (lazy-loaded) ─────────────────────────────
+  // \u2500\u2500 Upskill Tracker + TP Notes (lazy-loaded) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">';
 
   // Upskill Tracker panel
   html += '<div data-upskill-wrap style="flex:1;min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">'
     + '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-tasks" style="color:#6366f1;margin-right:5px;"></i>Upskilling Tasks</div>'
-    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading…</div>'
+    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading\u2026</div>'
     + '</div>';
 
   // TP Notes panel
   html += '<div data-notes-wrap style="flex:1;min-width:280px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;">'
     + '<div style="font-size:0.75rem;font-weight:700;color:var(--dark);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;"><i class="fas fa-sticky-note" style="color:#f59e0b;margin-right:5px;"></i>TP Notes</div>'
-    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading…</div>'
+    + '<div style="color:var(--text-muted);font-size:0.78rem;">Loading\u2026</div>'
     + '</div>';
 
   html += '</div>';
@@ -8513,9 +8701,9 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // GLOBAL IMPACT SCORE
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 function loadImpactScore(username) {
     if (!username) return;
     google.script.run
@@ -8564,9 +8752,9 @@ function renderImpactScore(data) {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // STUCK MIGRATIONS WIDGET
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 function loadStuckMigrations() {
     google.script.run
         .withSuccessHandler(renderStuckMigrations)
@@ -8617,20 +8805,20 @@ function renderStuckMigrations(data) {
             </div>
             <div style="flex:1;min-width:0;">
                 <div style="font-size:0.8rem;font-weight:600;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.subject || t.jlid || 'Migration')}</div>
-                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">${escapeHtml(t.stage)} · ${escapeHtml(t.fromTeacher)} → ${escapeHtml(t.toTeacher)}</div>
+                <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">${escapeHtml(t.stage)} \u00B7 ${escapeHtml(t.fromTeacher)} \u2192 ${escapeHtml(t.toTeacher)}</div>
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
                 <span style="font-size:0.7rem;font-weight:700;color:${urgency};">${t.daysStuck}d</span>
-                <a href="${escapeHtml(t.hubspotLink)}" target="_blank" style="font-size:0.65rem;color:#6366f1;text-decoration:none;font-weight:600;">Open ›</a>
+                <a href="${escapeHtml(t.hubspotLink)}" target="_blank" style="font-size:0.65rem;color:#6366f1;text-decoration:none;font-weight:600;">Open \u203A</a>
             </div>
         </div>`;
     }).join('');
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // NOTIFICATION BELL
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 let _notifData = [];
 let _notifOpen = false;
 
@@ -8728,9 +8916,9 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // SUPPORT & DOCUMENTATION OVERLAY SYSTEM
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 function showHelpPage(page) {
   document.getElementById('supportOverlay').style.display       = 'none';
@@ -8793,27 +8981,27 @@ function filterDocSearch(val) {
   if (!val) document.querySelectorAll('.doc-section').forEach(s => s.style.display = '');
 }
 
-// ── Doc article content ───────────────────────────────────────────────────────
+// \u2500\u2500 Doc article content \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 const DOC_ARTICLES = {
   'system-overview': {
     title: 'System Overview',
     body: `<p>JetLearn Operational Intelligence is a Google Apps Script web app that centralises all teacher, learner, and migration operations for JetLearn tutoring operations.</p>
 <h4>Core Modules</h4>
 <ul>
-  <li><strong>Command Center (Dashboard)</strong> — KPI snapshot: active learners, migrations, revenue, success rate. Live HubSpot data.</li>
-  <li><strong>Communication Center</strong> — Send migration emails, welcome emails, renewal notices, and WhatsApp messages per learner.</li>
-  <li><strong>Audit Center</strong> — Log and review teaching audits for Coding, Math, and GCSE. TP Dashboard with risk scoring.</li>
-  <li><strong>Teacher Intelligence</strong> — Per-teacher load, replacement history, teaching hours distribution, attrition risk pool, AI dashboard.</li>
-  <li><strong>Persona & Replacement Engine</strong> — Find best-matched replacement teachers using proficiency, availability, traits, and audit scores.</li>
-  <li><strong>Invoices</strong> — Generate PDF invoices, installment plans, renewal invoices with HubSpot line items.</li>
-  <li><strong>Reports</strong> — Monthly migration, attrition, and performance reports exportable to PDF.</li>
-  <li><strong>System Health</strong> — Live check of all Google Sheets connections, API keys, and App Data logs.</li>
+  <li><strong>Command Center (Dashboard)</strong> \u2014 KPI snapshot: active learners, migrations, revenue, success rate. Live HubSpot data.</li>
+  <li><strong>Communication Center</strong> \u2014 Send migration emails, welcome emails, renewal notices, and WhatsApp messages per learner.</li>
+  <li><strong>Audit Center</strong> \u2014 Log and review teaching audits for Coding, Math, and GCSE. TP Dashboard with risk scoring.</li>
+  <li><strong>Teacher Intelligence</strong> \u2014 Per-teacher load, replacement history, teaching hours distribution, attrition risk pool, AI dashboard.</li>
+  <li><strong>Persona & Replacement Engine</strong> \u2014 Find best-matched replacement teachers using proficiency, availability, traits, and audit scores.</li>
+  <li><strong>Invoices</strong> \u2014 Generate PDF invoices, installment plans, renewal invoices with HubSpot line items.</li>
+  <li><strong>Reports</strong> \u2014 Monthly migration, attrition, and performance reports exportable to PDF.</li>
+  <li><strong>System Health</strong> \u2014 Live check of all Google Sheets connections, API keys, and App Data logs.</li>
 </ul>
 <h4>Data Stores</h4>
 <ul>
-  <li><strong>Migration Sheet</strong> — Audit Log, User Activity, Tasks, Persona Mapping.</li>
-  <li><strong>JetLearn App Data Sheet</strong> — TP Notes, Upskill Tracker, Alert Log, Email Logs (separate from operational sheets for performance).</li>
-  <li><strong>Audit Sheet</strong> — Coding Audit'26, Math Audit'26, GCSE Audit'26.</li>
+  <li><strong>Migration Sheet</strong> \u2014 Audit Log, User Activity, Tasks, Persona Mapping.</li>
+  <li><strong>JetLearn App Data Sheet</strong> \u2014 TP Notes, Upskill Tracker, Alert Log, Email Logs (separate from operational sheets for performance).</li>
+  <li><strong>Audit Sheet</strong> \u2014 Coding Audit'26, Math Audit'26, GCSE Audit'26.</li>
 </ul>`
   },
   'dashboard-nav': {
@@ -8852,10 +9040,10 @@ const DOC_ARTICLES = {
     body: `<ol style="font-size:0.88rem;line-height:2;">
   <li>Log in with your JetLearn email and password.</li>
   <li>On the <strong>Dashboard</strong>, verify the 4 KPI cards are loading (active learners, migrations, revenue, success rate).</li>
-  <li>To process a migration: go to <strong>New Communication</strong> → enter JLID → select Migration tab → fill in new teacher, course, reason → Send.</li>
-  <li>To find a replacement teacher: go to <strong>Teacher Intelligence</strong> → <em>Persona & Replacement Engine</em> tab → select a teacher → click <em>Find Replacement</em>.</li>
-  <li>To run an audit: go to <strong>Audit Center</strong> → enter teacher name, date range → view results and grades.</li>
-  <li>To generate an invoice: go to <strong>Invoices</strong> → enter JLID → select plan type → Generate & Send.</li>
+  <li>To process a migration: go to <strong>New Communication</strong> \u2192 enter JLID \u2192 select Migration tab \u2192 fill in new teacher, course, reason \u2192 Send.</li>
+  <li>To find a replacement teacher: go to <strong>Teacher Intelligence</strong> \u2192 <em>Persona & Replacement Engine</em> tab \u2192 select a teacher \u2192 click <em>Find Replacement</em>.</li>
+  <li>To run an audit: go to <strong>Audit Center</strong> \u2192 enter teacher name, date range \u2192 view results and grades.</li>
+  <li>To generate an invoice: go to <strong>Invoices</strong> \u2192 enter JLID \u2192 select plan type \u2192 Generate & Send.</li>
 </ol>`
   },
   'learner-onboarding': {
@@ -8867,7 +9055,7 @@ const DOC_ARTICLES = {
   <li>Select the <strong>Onboarding</strong> tab.</li>
   <li>Review auto-filled learner details from HubSpot.</li>
   <li>Confirm teacher assignment and first class slot.</li>
-  <li>Click <strong>Send Welcome Email</strong> — emails old teacher (if reassigned) and new teacher simultaneously.</li>
+  <li>Click <strong>Send Welcome Email</strong> \u2014 emails old teacher (if reassigned) and new teacher simultaneously.</li>
   <li>A WhatsApp message is queued via WATI to the parent's registered number.</li>
 </ol>
 <p style="color:#64748b;font-size:0.82rem;">All sent emails are logged in <strong>Email Activities</strong> with timestamp and recipients.</p>`
@@ -8877,10 +9065,10 @@ const DOC_ARTICLES = {
     body: `<p>The migration wizard handles teacher reassignments. It creates a HubSpot ticket, sends notification emails to old teacher, new teacher, parent, and TP manager, and logs the action.</p>
 <h4>Migration Flow</h4>
 <ol style="font-size:0.88rem;line-height:2;">
-  <li>Enter JLID in New Communication → select <strong>Migration</strong> tab.</li>
+  <li>Enter JLID in New Communication \u2192 select <strong>Migration</strong> tab.</li>
   <li>System auto-detects if an active migration ticket exists for this learner.</li>
   <li>Select new teacher, reason for migration, and new course (if changing).</li>
-  <li>Click Send — system validates all required fields before dispatching.</li>
+  <li>Click Send \u2014 system validates all required fields before dispatching.</li>
 </ol>
 <h4>Reason Categories</h4>
 <ul style="font-size:0.85rem;">
@@ -8894,7 +9082,7 @@ const DOC_ARTICLES = {
 <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
   <thead><tr style="background:#f1f5f9;"><th style="padding:8px;">Factor</th><th style="padding:8px;">Weight</th><th style="padding:8px;">Source</th></tr></thead>
   <tbody>
-    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Course Proficiency</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Required ≥71%</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Teacher Courses sheet</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Course Proficiency</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Required \u226571%</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Teacher Courses sheet</td></tr>
     <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Slot Availability</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">High</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Google Calendar</td></tr>
     <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Audit Grade (45d)</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">High</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Audit sheets</td></tr>
     <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Trait Match</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Medium</td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Persona sheet</td></tr>
@@ -8908,29 +9096,29 @@ const DOC_ARTICLES = {
     body: `<p>The Audit Center reads from three sheets: <strong>Coding Audit'26</strong>, <strong>Math Audit'26</strong>, and <strong>GCSE Audit'26</strong>.</p>
 <h4>Grade Scale</h4>
 <ul style="font-size:0.85rem;line-height:2;">
-  <li><strong style="color:#16a34a;">A (≥65)</strong> — Excellent performance</li>
-  <li><strong style="color:#2563eb;">B (50–64)</strong> — Good, minor improvements needed</li>
-  <li><strong style="color:#d97706;">C (35–49)</strong> — Needs Improvement</li>
-  <li><strong style="color:#dc2626;">D (&lt;35)</strong> — Critical — triggers EWS</li>
+  <li><strong style="color:#16a34a;">A (\u226565)</strong> \u2014 Excellent performance</li>
+  <li><strong style="color:#2563eb;">B (50\u201364)</strong> \u2014 Good, minor improvements needed</li>
+  <li><strong style="color:#d97706;">C (35\u201349)</strong> \u2014 Needs Improvement</li>
+  <li><strong style="color:#dc2626;">D (&lt;35)</strong> \u2014 Critical \u2014 triggers EWS</li>
 </ul>
 <h4>Risk Scoring (TP Dashboard)</h4>
 <ul style="font-size:0.85rem;line-height:2;">
-  <li><strong>High Risk</strong> — EWS status or D grade</li>
-  <li><strong>Medium Risk</strong> — C grade or 2+ red flags</li>
-  <li><strong>Low Risk</strong> — B grade or 1 flag</li>
-  <li><strong>Stable</strong> — A grade, no flags</li>
+  <li><strong>High Risk</strong> \u2014 EWS status or D grade</li>
+  <li><strong>Medium Risk</strong> \u2014 C grade or 2+ red flags</li>
+  <li><strong>Low Risk</strong> \u2014 B grade or 1 flag</li>
+  <li><strong>Stable</strong> \u2014 A grade, no flags</li>
 </ul>
 <p style="font-size:0.82rem;color:#64748b;">Red flag alerts are emailed to the TP Manager daily at 8 AM for any new flags in the past 2 days.</p>`
   },
   'tp-dashboard': {
     title: 'TP Dashboard Guide',
-    body: `<p>The TP Dashboard (Audit Center → TP Dashboard tab) shows a TP manager's full teacher portfolio.</p>
+    body: `<p>The TP Dashboard (Audit Center \u2192 TP Dashboard tab) shows a TP manager's full teacher portfolio.</p>
 <h4>Features</h4>
 <ul style="font-size:0.85rem;line-height:2;">
   <li>Filter by TP Manager name to see all assigned teachers</li>
   <li>Each row shows latest grade, risk badge, and Due for Audit indicator (no audit in 30 days)</li>
   <li>Expand any row to view Upskill Tracker tasks and TP Notes</li>
-  <li>Add notes directly from the detail panel — tagged with the correct manager name</li>
+  <li>Add notes directly from the detail panel \u2014 tagged with the correct manager name</li>
   <li>Export all data as CSV via the toolbar button</li>
 </ul>
 <h4>Due for Audit</h4>
@@ -8946,7 +9134,7 @@ const DOC_ARTICLES = {
   <li>In the TP Dashboard detail panel, all upskill tasks for that teacher are visible.</li>
   <li>Click <strong>Mark Done</strong> to update the status to Completed.</li>
 </ol>
-<p style="font-size:0.82rem;color:#64748b;">Stored in: JetLearn App Data → Upskill Tracker sheet.</p>`
+<p style="font-size:0.82rem;color:#64748b;">Stored in: JetLearn App Data \u2192 Upskill Tracker sheet.</p>`
   },
   'hubspot-sync': {
     title: 'HubSpot Sync',
@@ -8958,14 +9146,14 @@ const DOC_ARTICLES = {
   <li>Active learner pool for attrition risk analysis</li>
 </ul>
 <h4>API Key</h4>
-<p style="font-size:0.85rem;">Stored as <code>HUBSPOT_API_KEY</code> in GAS Script Properties. Rotate via Settings page → API Keys tab. Portal ID: <strong>7729491</strong>.</p>`
+<p style="font-size:0.85rem;">Stored as <code>HUBSPOT_API_KEY</code> in GAS Script Properties. Rotate via Settings page \u2192 API Keys tab. Portal ID: <strong>7729491</strong>.</p>`
   },
   'wati-whatsapp': {
     title: 'WATI WhatsApp Integration',
-    body: `<p>WATI sends templated WhatsApp messages to learner parents. The system does not support automatic contact search — details must be copied manually.</p>
+    body: `<p>WATI sends templated WhatsApp messages to learner parents. The system does not support automatic contact search \u2014 details must be copied manually.</p>
 <h4>How to send</h4>
 <ol style="font-size:0.88rem;line-height:2;">
-  <li>In Communication Center → WhatsApp tab, enter JLID to fetch learner data.</li>
+  <li>In Communication Center \u2192 WhatsApp tab, enter JLID to fetch learner data.</li>
   <li>The system pre-fills the WATI template with learner name, teacher, and course.</li>
   <li>Copy the generated message and send via your WATI dashboard.</li>
 </ol>
@@ -8983,16 +9171,16 @@ const DOC_ARTICLES = {
   <li>Generic email (free-text from Communication Center)</li>
 </ul>
 <h4>Email Logs</h4>
-<p style="font-size:0.85rem;">All sent emails are recorded in <strong>JetLearn App Data → Email Logs</strong> sheet with timestamp, recipients, subject, and status. View in Email Activities page.</p>`
+<p style="font-size:0.85rem;">All sent emails are recorded in <strong>JetLearn App Data \u2192 Email Logs</strong> sheet with timestamp, recipients, subject, and status. View in Email Activities page.</p>`
   },
   'google-sheets': {
     title: 'Google Sheets Data Model',
     body: `<h4>Main Migration Sheet</h4>
 <ul style="font-size:0.85rem;line-height:2;">
-  <li><strong>Teacher Data</strong> — name, email, CLS email, TP manager email, status, join date</li>
-  <li><strong>Teacher Courses</strong> — proficiency per course per teacher</li>
-  <li><strong>User Profiles</strong> — login credentials and roles</li>
-  <li><strong>Course Name</strong> — master list of courses</li>
+  <li><strong>Teacher Data</strong> \u2014 name, email, CLS email, TP manager email, status, join date</li>
+  <li><strong>Teacher Courses</strong> \u2014 proficiency per course per teacher</li>
+  <li><strong>User Profiles</strong> \u2014 login credentials and roles</li>
+  <li><strong>Course Name</strong> \u2014 master list of courses</li>
 </ul>
 <h4>JetLearn App Data Sheet (ID: 1XxC8Y0sWkBqoOa0Ntw6zhd5EYXTvaTAN4XhIH1hOwDE)</h4>
 <ul style="font-size:0.85rem;line-height:2;">
@@ -9013,7 +9201,7 @@ const DOC_ARTICLES = {
 <p style="font-size:0.85rem;color:#64748b;">CalendarApp has a 20,000 read quota per day. The system caches calendar results in ScriptCache (1 hour TTL) to minimise calls.</p>`
   },
   'api-reference': {
-    title: 'API Reference — GAS Server Functions',
+    title: 'API Reference \u2014 GAS Server Functions',
     body: `<p>All client-server calls use <code>google.script.run.functionName(args)</code>. Key functions:</p>
 <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
   <thead><tr style="background:#f1f5f9;"><th style="padding:8px;">Function</th><th style="padding:8px;">Returns</th></tr></thead>
@@ -9045,10 +9233,10 @@ const DOC_ARTICLES = {
   'security': {
     title: 'Security & Compliance',
     body: `<ul style="font-size:0.85rem;line-height:2;">
-  <li>All data stored in Google Workspace (Sheets, Drive) — no third-party databases.</li>
-  <li>Session tokens hashed and stored in GAS ScriptProperties — never exposed client-side.</li>
+  <li>All data stored in Google Workspace (Sheets, Drive) \u2014 no third-party databases.</li>
+  <li>Session tokens hashed and stored in GAS ScriptProperties \u2014 never exposed client-side.</li>
   <li>Role-based access enforced server-side on every function call.</li>
-  <li>API keys (HubSpot, WATI, Exchange Rate) stored in ScriptProperties — never in code.</li>
+  <li>API keys (HubSpot, WATI, Exchange Rate) stored in ScriptProperties \u2014 never in code.</li>
   <li>All emails sent from verified Google Workspace domain (jet-learn.com).</li>
   <li>Audit log tracks every action with timestamp and user.</li>
   <li>No personal data leaves Google infrastructure except via HubSpot/WATI API calls.</li>
@@ -9058,10 +9246,10 @@ const DOC_ARTICLES = {
     title: 'Release Notes',
     body: `<p style="color:#64748b;font-size:0.85rem;">Most recent versions first.</p>
 <div style="border-left:3px solid #6366f1;padding-left:1rem;margin-bottom:1.25rem;">
-  <div style="font-size:0.72rem;color:#6366f1;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v382 — Current</div>
+  <div style="font-size:0.72rem;color:#6366f1;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v382 \u2014 Current</div>
   <ul style="font-size:0.85rem;line-height:2;margin:0.25rem 0 0;">
     <li>Teaching Hours Distribution chart in Teacher Intelligence (CalendarApp, day-of-week bar chart)</li>
-    <li>Teacher Replacement History table — all migration tickets per teacher, joined/left direction</li>
+    <li>Teacher Replacement History table \u2014 all migration tickets per teacher, joined/left direction</li>
     <li>Support Center and Documentation pages with real JetLearn content</li>
     <li>Footer updated with SUPPORT and DOCUMENTATION links</li>
   </ul>
@@ -9069,13 +9257,13 @@ const DOC_ARTICLES = {
 <div style="border-left:3px solid #10b981;padding-left:1rem;margin-bottom:1.25rem;">
   <div style="font-size:0.72rem;color:#10b981;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">v381</div>
   <ul style="font-size:0.85rem;line-height:2;margin:0.25rem 0 0;">
-    <li>JetLearn App Data spreadsheet — all logs moved out of Migration Sheet</li>
+    <li>JetLearn App Data spreadsheet \u2014 all logs moved out of Migration Sheet</li>
     <li>AI response caching (6-hour TTL via CacheService)</li>
     <li>AI Daily Briefing removed from Command Center</li>
     <li>Grade legend (A/B/C/D) added to TP Dashboard</li>
-    <li>Red Flag Alert emails — daily 8AM trigger to TP managers</li>
-    <li>Upskill Tracker — logs HubSpot tasks for course gaps</li>
-    <li>TP Notes — saved per teacher with correct manager tagging</li>
+    <li>Red Flag Alert emails \u2014 daily 8AM trigger to TP managers</li>
+    <li>Upskill Tracker \u2014 logs HubSpot tasks for course gaps</li>
+    <li>TP Notes \u2014 saved per teacher with correct manager tagging</li>
     <li>CSV export for TP Dashboard</li>
     <li>Risk Score and Due for Audit badges</li>
   </ul>
@@ -9124,11 +9312,11 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // SMART SLOT SUGGESTER
 // Reads the first session's day+time from the migration form, then calls
 // searchMatchingTeachers with that slot and the selected course.
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 // Show the suggester panel once course + slot are both filled
 function _checkShowSlotSuggester() {
@@ -9210,7 +9398,7 @@ function _renderSlotSuggestions(data, slot) {
         const score     = t.matchScore || t.score || 0;
         const scorePct  = Math.round(score * 100) / 100;
         const barColor  = scorePct >= 80 ? '#10b981' : scorePct >= 60 ? '#6366f1' : '#f59e0b';
-        const grade     = t.auditGrade || '—';
+        const grade     = t.auditGrade || '\u2014';
         const available = t.available !== false;
         return `<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px 14px;cursor:pointer;transition:border-color .15s;"
                      onclick="applySlotTeacher('${escapeHtml(t.name)}')"
@@ -9249,9 +9437,9 @@ function applySlotTeacher(name) {
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // TEACHER ONBOARDING TRACKER
-// ══════════════════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 function loadOnboardingTracker() {
     const grid = document.getElementById('onboardingTrackerGrid');
@@ -9334,7 +9522,7 @@ function _buildOnboardingCard(r) {
             <div>
                 <div style="font-weight:700;font-size:0.95rem;color:#0f172a;">${escapeHtml(r.teacherName)}</div>
                 <div style="font-size:0.72rem;color:#64748b;margin-top:2px;">
-                    ${escapeHtml(r.tpManager || '—')} · Joined ${escapeHtml(r.joinDate || '—')} · Day ${daysIn}
+                    ${escapeHtml(r.tpManager || '\u2014')} \u00B7 Joined ${escapeHtml(r.joinDate || '\u2014')} \u00B7 Day ${daysIn}
                 </div>
             </div>
             <span style="font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:99px;background:${overallPct===100?'#dcfce7':'rgba(99,102,241,0.1)'};color:${overallPct===100?'#15803d':'#6366f1'};white-space:nowrap;">${overallPct}%</span>
@@ -9451,9 +9639,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ═══════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // PERSONA CARD GRID (3-per-row, grade badges, pagination)
-// ═══════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 var _personaCurrentPage = 1;
 
 function renderPersonaCards() {
@@ -9495,7 +9683,7 @@ function renderPersonaCards() {
     var isPartial= slotRaw.indexOf('\u26A0') !== -1;
 
     function pColor(v) {
-      if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '—') return '#94a3b8';
+      if (!v || v === 'N/A' || v === 'Not Onboarded' || v === '\u2014') return '#94a3b8';
       var n = parseInt(v); return isNaN(n) ? '#94a3b8' : n >= 80 ? '#15803d' : n >= 50 ? '#d97706' : '#b91c1c';
     }
 
@@ -9504,14 +9692,14 @@ function renderPersonaCards() {
       : '';
     var rfCount = Number(t.redFlagCount) || 0;
     var rfBadge = rfCount > 0
-      ? '<span style="background:#fee2e2;color:#b91c1c;border-radius:99px;padding:1px 7px;font-size:0.6rem;font-weight:700;margin-left:4px;">⚑ ' + rfCount + '</span>'
+      ? '<span style="background:#fee2e2;color:#b91c1c;border-radius:99px;padding:1px 7px;font-size:0.6rem;font-weight:700;margin-left:4px;">\u2691 ' + rfCount + '</span>'
       : '';
 
     var slotHtml = isMatch
-      ? '<span style="color:#15803d;font-weight:700;">✔ Matches</span>'
+      ? '<span style="color:#15803d;font-weight:700;">\u2714 Matches</span>'
       : isPartial
         ? '<span style="color:#d97706;font-size:0.78rem;">' + escapeHtml(slotRaw) + '</span>'
-        : '<span style="color:#94a3b8;">✗ No match</span>';
+        : '<span style="color:#94a3b8;">\u2717 No match</span>';
 
     var hasAudit = t.avgClassScore && t.avgClassScore !== 'No data';
     var auditVal = hasAudit
@@ -9520,7 +9708,7 @@ function renderPersonaCards() {
 
     var traitLine = (t.traitsMissing && t.traitsMissing.length > 0)
       ? '<div style="font-size:0.7rem;background:#fff7ed;border-radius:6px;padding:4px 8px;color:#92400e;">Missing: ' + escapeHtml(t.traitsMissing.slice(0,2).join(', ')) + (t.traitsMissing.length > 2 ? ' +' + (t.traitsMissing.length-2) + ' more' : '') + '</div>'
-      : '<div style="font-size:0.7rem;background:#f0fdf4;border-radius:6px;padding:4px 8px;color:#15803d;">All traits matched ✔</div>';
+      : '<div style="font-size:0.7rem;background:#f0fdf4;border-radius:6px;padding:4px 8px;color:#15803d;">All traits matched \u2714</div>';
 
     return '<div style="background:#fff;border-radius:14px;border:1.5px solid #e2e8f0;padding:1.1rem;display:flex;flex-direction:column;gap:0.55rem;transition:box-shadow .15s,border-color .15s;cursor:default;" onmouseover="this.style.boxShadow=\'0 4px 18px rgba(99,102,241,0.12)\';this.style.borderColor=\'#c7d2fe\'" onmouseout="this.style.boxShadow=\'\';this.style.borderColor=\'#e2e8f0\'">'
       + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">'
@@ -9528,11 +9716,11 @@ function renderPersonaCards() {
           + '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;color:#fff;flex-shrink:0;">' + escapeHtml((t.teacherName||'').substring(0,2).toUpperCase()) + '</div>'
           + '<div style="min-width:0;">'
             + '<div style="font-weight:700;font-size:0.86rem;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t.teacherName||'') + topBadge + rfBadge + '</div>'
-            + '<div style="font-size:0.7rem;color:#64748b;">' + escapeHtml(t.ageYear||'—') + '</div>'
+            + '<div style="font-size:0.7rem;color:#64748b;">' + escapeHtml(t.ageYear||'\u2014') + '</div>'
           + '</div>'
         + '</div>'
         + '<div style="background:' + gc.bg + ';color:' + gc.text + ';border-radius:8px;padding:4px 10px;text-align:center;flex-shrink:0;">'
-          + '<div style="font-size:1rem;font-weight:800;line-height:1;">' + (t.auditGrade||'—') + '</div>'
+          + '<div style="font-size:1rem;font-weight:800;line-height:1;">' + (t.auditGrade||'\u2014') + '</div>'
           + '<div style="font-size:0.55rem;font-weight:600;opacity:0.7;">GRADE</div>'
         + '</div>'
       + '</div>'
@@ -9549,10 +9737,10 @@ function renderPersonaCards() {
       + '</div>'
       + '<div style="border-top:1px solid #f1f5f9;padding-top:0.45rem;display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:0.72rem;">'
         + '<div style="color:#64748b;">Current: <span style="font-weight:600;color:' + pColor(t.currentCourseProgress) + ';">' + escapeHtml(t.currentCourseProgress||'N/A') + '</span></div>'
-        + '<div style="color:#64748b;">Future 1: <span style="font-weight:600;color:' + pColor(t.futureCourse1Progress) + ';">' + escapeHtml(t.futureCourse1Progress||'—') + '</span></div>'
+        + '<div style="color:#64748b;">Future 1: <span style="font-weight:600;color:' + pColor(t.futureCourse1Progress) + ';">' + escapeHtml(t.futureCourse1Progress||'\u2014') + '</span></div>'
       + '</div>'
       + traitLine
-      + '<button onclick="switchPage(\'teacherProfilePage\',\'' + escapeHtml(t.teacherName||'') + '\')" style="margin-top:2px;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile →</button>'
+      + '<button onclick="switchPage(\'teacherProfilePage\',\'' + escapeHtml(t.teacherName||'') + '\')" style="margin-top:2px;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile \u2192</button>'
       + '</div>';
   }).join('');
 
@@ -9575,9 +9763,9 @@ function _goPersonaPage(p) {
   if (c) c.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 
-// ═══════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // STUCK MIGRATIONS MODAL
-// ═══════════════════════════════════════════════════════════════════
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 var _stuckModalData = null;
 
 function openStuckMigrationsModal() {
@@ -9610,7 +9798,7 @@ function closeStuckMigrationsModal() {
 function refreshStuckMigrationsModal() {
   _stuckModalData = null;
   var tb = document.getElementById('stuckModalBody');
-  if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Refreshing…</td></tr>';
+  if (tb) tb.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Refreshing\u2026</td></tr>';
   google.script.run
     .withSuccessHandler(function(data) {
       _stuckModalData = (data && data.tickets) ? data.tickets : [];
@@ -9631,7 +9819,7 @@ function _renderStuckModalTable(tickets) {
   if (footEl) footEl.textContent = 'Showing ' + tickets.length + ' WIP tickets older than 7 days';
 
   if (tickets.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#10b981;"><i class="fas fa-check-circle"></i> No stuck migrations — all clear!</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#10b981;"><i class="fas fa-check-circle"></i> No stuck migrations \u2014 all clear!</td></tr>';
     return;
   }
   tbody.innerHTML = tickets.map(function(t) {
@@ -9640,12 +9828,12 @@ function _renderStuckModalTable(tickets) {
     var urgBg   = days >= 14 ? '#fef2f2' : days >= 10 ? '#fffbeb' : '#f0fdf4';
     return '<tr style="border-bottom:1px solid #f1f5f9;">'
       + '<td style="padding:10px 12px;"><span style="background:'+urgBg+';color:'+urgency+';border-radius:6px;padding:3px 10px;font-size:0.8rem;font-weight:700;">'+days+'d</span></td>'
-      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.jlid||t.learnerUid||'—')+'</td>'
-      + '<td style="padding:10px 12px;font-weight:500;font-size:0.84rem;">'+escapeHtml(t.learnerName||t.subject||'—')+'</td>'
-      + '<td style="padding:10px 12px;font-size:0.82rem;">'+escapeHtml(t.fromTeacher||t.current_teacher||'—')+'</td>'
-      + '<td style="padding:10px 12px;font-size:0.82rem;color:#6366f1;font-weight:500;">'+escapeHtml(t.toTeacher||t.new_teacher||'—')+'</td>'
-      + '<td style="padding:10px 12px;"><span style="background:#f1f5f9;border-radius:6px;padding:2px 8px;font-size:0.73rem;color:#475569;">'+escapeHtml(t.stage||t.stageLabel||'—')+'</span></td>'
-      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.createdDate||'—')+'</td>'
+      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.jlid||t.learnerUid||'\u2014')+'</td>'
+      + '<td style="padding:10px 12px;font-weight:500;font-size:0.84rem;">'+escapeHtml(t.learnerName||t.subject||'\u2014')+'</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;">'+escapeHtml(t.fromTeacher||t.current_teacher||'\u2014')+'</td>'
+      + '<td style="padding:10px 12px;font-size:0.82rem;color:#6366f1;font-weight:500;">'+escapeHtml(t.toTeacher||t.new_teacher||'\u2014')+'</td>'
+      + '<td style="padding:10px 12px;"><span style="background:#f1f5f9;border-radius:6px;padding:2px 8px;font-size:0.73rem;color:#475569;">'+escapeHtml(t.stage||t.stageLabel||'\u2014')+'</span></td>'
+      + '<td style="padding:10px 12px;font-size:0.78rem;color:#64748b;">'+escapeHtml(t.createdDate||'\u2014')+'</td>'
       + '<td style="padding:10px 12px;text-align:center;"><a href="'+(t.hubspotLink||t.ticketUrl||'#')+'" target="_blank" style="background:#ede9fe;color:#5b21b6;border-radius:6px;padding:4px 10px;font-size:0.73rem;font-weight:600;text-decoration:none;white-space:nowrap;"><i class="fas fa-external-link-alt"></i> Escalate</a></td>'
       + '</tr>';
   }).join('');

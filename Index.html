@@ -351,8 +351,7 @@
                 <i class="fas fa-spinner fa-spin"></i> Loading...
               </div>
             </div>
-            <div style="margin-top:0.75rem;border-top:1px solid #f1f5f9;padding-top:0.75rem;display:flex;justify-content:space-between;align-items:center;">
-              <button onclick="openStuckMigrationsModal()" style="font-size:0.75rem;color:#6366f1;background:#ede9fe;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-weight:600;"><i class="fas fa-expand-alt" style="margin-right:4px;"></i>View All</button>
+            <div style="margin-top:0.75rem;border-top:1px solid #f1f5f9;padding-top:0.75rem;display:flex;justify-content:flex-end;">
               <button class="btn btn-sm btn-outline" onclick="refreshStuckMigrations()" style="font-size:0.75rem;"><i class="fas fa-sync-alt" style="margin-right:4px;"></i>Refresh</button>
             </div>
           </div>
@@ -1697,38 +1696,27 @@
           </div>
           <div id="personaMatchTab" class="tab-content">
               <div class="form-container" style="max-width: 100%;">
-                <!-- Top bar -->
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:0.75rem;">
-                  <div>
-                    <h2 class="form-title" style="margin:0 0 2px;">Find Replacement Teacher</h2>
-                    <p id="personaTeacherCountLabel" style="margin:0;font-size:0.82rem;color:var(--text-muted);">Loading teachers...</p>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                      <div>
+                        <h2 class="form-title" style="margin: 0 0 4px;">Find Replacement Teacher</h2>
+                        <p id="personaTeacherCountLabel" style="margin:0; font-size:0.85rem; color:var(--text-muted);">Loading teachers...</p>
+                      </div>
+                      <select id="personaStatusFilter" class="form-control form-select" style="width: 200px;" onchange="renderPersonaTable()">
+                          <option value="Active" selected>Active Teachers</option>
+                          <option value="EWS">EWS</option>
+                          <option value="Attrited">Attrited / Inactive</option>
+                          <option value="On Leave">On Leave</option>
+                          <option value="All">All Teachers</option>
+                      </select>
                   </div>
-                  <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
-                    <select id="personaStatusFilter" class="form-control form-select" style="height:36px;font-size:0.82rem;" onchange="renderPersonaTable()">
-                      <option value="Active" selected>Active Teachers</option>
-                      <option value="EWS">EWS</option>
-                      <option value="Attrited">Attrited / Inactive</option>
-                      <option value="On Leave">On Leave</option>
-                      <option value="All">All Teachers</option>
-                    </select>
-                    <span style="font-size:0.78rem;color:#64748b;">Show</span>
-                    <select id="teacherBrowsePageSize" style="height:36px;padding:0 8px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.78rem;cursor:pointer;" onchange="renderPersonaTable()">
-                      <option value="15" selected>15</option>
-                      <option value="30">30</option>
-                      <option value="45">45</option>
-                      <option value="60">60</option>
-                      <option value="75">75</option>
-                      <option value="100">100</option>
-                    </select>
-                    <span style="font-size:0.78rem;color:#64748b;">per page</span>
-                  </div>
-                </div>
-                <!-- Card grid -->
-                <div id="personaTeacherTableBody" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;"></div>
-                <!-- Pagination -->
-                <div id="teacherBrowsePagination" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-top:1.25rem;flex-wrap:wrap;"></div>
-              </div>
-          </div>
+                  <div id="personaTeacherTableBody" style="
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                    gap: 16px;
+                    padding: 4px 0;">
+                    </div>
+                    </div>
+                      </div>
 
           <!-- ═══ AI TEACHER DASHBOARD TAB ═══ -->
           <div id="aiDashboardTab" class="tab-content">
@@ -1910,23 +1898,53 @@
       </div> 
       <!-- Courses Page -->
       <div id="coursesPage" class="page-content" style="display:none;">
-        <div class="page-header">
-          <h1 class="page-title"><i class="fas fa-book"></i> Courses</h1>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">All Courses</h3>
-            <button class="btn btn-primary" id="addNewCourseBtn">
-              <i class="fas fa-plus"></i> Add Course
-            </button>
+ 
+        <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;flex-wrap:wrap;gap:0.75rem;">
+          <div>
+            <h1 class="page-title" style="margin:0;"><i class="fas fa-book"></i> Course Catalog</h1>
+            <p style="color:var(--text-light);font-size:0.875rem;margin:4px 0 0;">Browse all available courses and teacher proficiencies</p>
           </div>
-          <div class="card-body">
-            <div id="coursesTableContainer">
-              <p style="text-align:center; color:var(--text-muted);">Loading courses...</p>
+          <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+            <div style="position:relative;">
+              <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-light);font-size:0.78rem;pointer-events:none;"></i>
+              <input type="text" id="courseSearchInput" placeholder="Search courses..."
+                style="padding:0.5rem 0.75rem 0.5rem 2.1rem;border:1px solid var(--gray);border-radius:8px;font-size:0.84rem;width:210px;outline:none;color:var(--text);background:#fff;transition:border-color 0.2s;"
+                onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--gray)'">
             </div>
+            <button class="btn btn-outline" id="refreshCoursesBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
+            <button class="btn btn-primary" id="addNewCourseBtn"><i class="fas fa-plus"></i> Add Course</button>
           </div>
         </div>
+ 
+        <!-- Course catalog grid rendered here by JS -->
+        <div id="coursesTableContainer">
+          <p style="text-align:center;color:var(--text-light);padding:3rem;"><i class="fas fa-spinner fa-spin"></i> Loading courses...</p>
+        </div>
+ 
+        <!-- Slide-in detail panel -->
+        <div id="courseDetailPanel" style="display:none;position:fixed;top:0;right:0;width:460px;max-width:95vw;height:100vh;background:#fff;box-shadow:-6px 0 32px rgba(0,0,0,0.13);z-index:1200;overflow-y:auto;flex-direction:column;">
+          <!-- Panel header -->
+          <div style="padding:1.1rem 1.4rem;border-bottom:1px solid var(--gray);display:flex;align-items:flex-start;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:2;">
+            <div>
+              <h2 id="courseDetailTitle" style="font-size:1rem;font-weight:700;margin:0;color:var(--dark);"></h2>
+              <p id="courseDetailSubtitle" style="font-size:0.76rem;color:var(--text-light);margin:3px 0 0;"></p>
+            </div>
+            <button onclick="closeCourseDetailPanel()" title="Close"
+              style="background:none;border:none;cursor:pointer;font-size:1.25rem;color:var(--text-light);padding:2px 6px;line-height:1;margin-top:-2px;">&times;</button>
+          </div>
+          <!-- Stats row -->
+          <div id="courseDetailStats" style="padding:1rem 1.4rem;border-bottom:1px solid var(--gray);display:flex;gap:0.75rem;"></div>
+          <!-- Teacher list -->
+          <div id="courseDetailTeacherList" style="padding:1rem 1.4rem;">
+            <p style="text-align:center;color:var(--text-light);">Loading...</p>
+          </div>
+        </div>
+        <!-- Backdrop -->
+        <div id="courseDetailBackdrop" onclick="closeCourseDetailPanel()"
+          style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.22);z-index:1199;"></div>
+ 
       </div>
+      <!-- END Courses Page -->
 
 <!-- Reports Page -->
       <div id="reportsPage" class="page-content" style="display: none;">
@@ -2372,39 +2390,42 @@
 
   <!-- Section 3: AI Ranked Results -->
   <div id="personaResultsContainer" style="display:none; margin-top: 2rem;">
-    <!-- Header + page size -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem;">
-      <div style="display:flex;align-items:center;gap:0.75rem;">
-        <i class="fas fa-id-card" style="color:var(--primary);"></i>
-        <h3 class="dashboard-section-title" style="margin:0;">AI Ranked Recommendations</h3>
-        <span id="personaResultsCount" class="status-badge status-info">0 matches</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:0.5rem;">
-        <span style="font-size:0.74rem;color:#64748b;">Show:</span>
-        <select id="personaPageSizeSelect" onchange="renderPersonaCards()" style="padding:4px 8px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:0.78rem;color:#374151;cursor:pointer;">
-          <option value="15" selected>15</option>
-          <option value="30">30</option>
-          <option value="45">45</option>
-          <option value="60">60</option>
-          <option value="75">75</option>
-          <option value="100">100</option>
-        </select>
-        <span style="font-size:0.74rem;color:#64748b;">per page</span>
-      </div>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:0.75rem;">
+       <h3 class="dashboard-section-title" style="margin:0;">AI Ranked Recommendations</h3>
+       <span id="personaResultsCount" class="status-badge status-info">0 matches</span>
+       <span style="font-size:0.72rem; color:#64748b; margin-left:auto;">Ranked by: Slot availability &middot; Audit score (45d) &middot; Course readiness &middot; Trait match</span>
     </div>
-    <!-- Grade legend -->
-    <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;font-size:0.72rem;color:#64748b;margin-bottom:1rem;padding:0.5rem 0.75rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#dcfce7;color:#15803d;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">A</span> ≥65/80</span>
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#dbeafe;color:#1d4ed8;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">B</span> 50–64</span>
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#fef3c7;color:#d97706;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">C</span> 35–49</span>
-      <span style="display:flex;align-items:center;gap:4px;"><span style="width:20px;height:20px;border-radius:5px;background:#fee2e2;color:#b91c1c;font-weight:800;font-size:0.7rem;display:inline-flex;align-items:center;justify-content:center;">D</span> &lt;35</span>
+    <!-- Audit legend -->
+    <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;font-size:0.72rem;color:#64748b;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+      <span><strong style="color:#15803d;">A</strong> &ge;65/80</span>
+      <span><strong style="color:#1d4ed8;">B</strong> 50&ndash;64</span>
+      <span><strong style="color:#d97706;">C</strong> 35&ndash;49</span>
+      <span><strong style="color:#b91c1c;">D</strong> &lt;35</span>
       <span style="color:#94a3b8;">&#8212; No audit data (45d)</span>
-      <span>⚑ = Red flag from audit</span>
+      <span>&#128681; Red flag from audit</span>
     </div>
-    <!-- 3-per-row card grid -->
-    <div id="personaCardsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;"></div>
-    <!-- Pagination -->
-    <div id="personaCardsPagination" style="display:flex;align-items:center;justify-content:center;gap:0.5rem;margin-top:1.25rem;flex-wrap:wrap;"></div>
+    <div class="table-container">
+      <table class="data-table" style="font-size:0.83rem;">
+        <thead>
+          <tr>
+            <th style="width:32px;">#</th>
+            <th>Teacher</th>
+            <th>Age/Year</th>
+            <th style="text-align:center;width:48px;">Slot</th>
+            <th>Available Slots (day)</th>
+            <th id="personaCurrentCourseHeader">Current Course</th>
+            <th id="personaFuture1Header">Future 1</th>
+            <th id="personaFuture2Header">Future 2</th>
+            <th id="personaFuture3Header">Future 3</th>
+            <th>Audit (45d)</th>
+            <th style="text-align:center;">Flags</th>
+            <th>Traits Gap</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="personaResultsBody"></tbody>
+      </table>
+    </div>
   </div>
 </div>
       <!-- AI PM Page -->
@@ -4628,63 +4649,5 @@
   }
 })();
 </script>
-
-<!-- ═══════════════════════════════════════════════════════
-     STUCK MIGRATIONS FULL-SCREEN MODAL
-     ═══════════════════════════════════════════════════════ -->
-<div id="stuckMigrationsModal" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:20px;width:min(960px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.25);">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid #e2e8f0;flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:0.75rem;">
-        <div style="width:36px;height:36px;border-radius:10px;background:#fef3c7;display:flex;align-items:center;justify-content:center;">
-          <i class="fas fa-hourglass-half" style="color:#d97706;font-size:0.9rem;"></i>
-        </div>
-        <div>
-          <h2 style="margin:0;font-size:1.1rem;font-weight:700;color:#1e293b;">Stuck Migration Tracker</h2>
-          <p style="margin:0;font-size:0.78rem;color:#64748b;">WIP tickets &gt; 7 days — sort by urgency and escalate</p>
-        </div>
-        <span id="stuckModalCount" style="background:#fef3c7;color:#d97706;border-radius:99px;padding:2px 10px;font-size:0.75rem;font-weight:700;border:1px solid #fcd34d;">0 tickets</span>
-      </div>
-      <button onclick="closeStuckMigrationsModal()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;padding:4px 8px;border-radius:8px;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='none'"><i class="fas fa-times"></i></button>
-    </div>
-    <div style="padding:0.75rem 1.5rem;border-bottom:1px solid #f1f5f9;display:flex;gap:0.75rem;align-items:center;flex-shrink:0;flex-wrap:wrap;">
-      <input id="stuckModalSearch" type="text" placeholder="Search by learner, teacher, JLID…" style="flex:1;min-width:180px;padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;outline:none;" oninput="filterStuckModal(this.value)">
-      <select id="stuckModalStageFilter" style="padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;" onchange="filterStuckModal(document.getElementById('stuckModalSearch').value)">
-        <option value="">All Stages</option>
-        <option value="WIP">WIP</option>
-        <option value="TP Approval">WIP - TP Approval Pending</option>
-        <option value="CLS Approval">WIP - CLS Approval Pending</option>
-        <option value="Rejected">WIP - Rejected by CLS</option>
-        <option value="Approved">WIP - Approved by CLS</option>
-        <option value="PR Approval">WIP - PR Approval Pending</option>
-      </select>
-      <button onclick="refreshStuckMigrationsModal()" style="padding:7px 14px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;color:#475569;display:flex;align-items:center;gap:5px;white-space:nowrap;"><i class="fas fa-sync-alt"></i> Refresh</button>
-    </div>
-    <div style="overflow-y:auto;flex:1;padding:0 0.5rem;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.83rem;" id="stuckModalTable">
-        <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
-          <tr>
-            <th onclick="sortStuckModal('daysStuck')" style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;cursor:pointer;white-space:nowrap;">Days Stuck <i class="fas fa-sort" style="opacity:0.4;font-size:0.7rem;"></i></th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">JLID</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Learner</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">From Teacher</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">To Teacher</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Stage</th>
-            <th style="padding:10px 12px;text-align:left;font-weight:600;color:#64748b;">Created</th>
-            <th style="padding:10px 12px;text-align:center;font-weight:600;color:#64748b;">Action</th>
-          </tr>
-        </thead>
-        <tbody id="stuckModalBody">
-          <tr><td colspan="8" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div style="padding:0.85rem 1.5rem;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;background:#fafafa;">
-      <span id="stuckModalFooterText" style="font-size:0.78rem;color:#64748b;"></span>
-      <button onclick="closeStuckMigrationsModal()" style="padding:7px 20px;background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.82rem;cursor:pointer;color:#374151;font-weight:500;">Close</button>
-    </div>
-  </div>
-</div>
-
 </body>
 </html>

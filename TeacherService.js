@@ -39,6 +39,142 @@ function getTeacherData() {
   }
 }
 
+function getCourseTeacherDetails(courseName) {
+  Logger.log('getCourseTeacherDetails called for: ' + courseName);
+  try {
+    // ── 1. Read wide-format TEACHER_COURSES sheet ──────────────────────────
+    const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    if (!sheetData || sheetData.length < 2) {
+      return { success: false, message: 'No teacher data found.', teachers: [] };
+    }
+ 
+    // Detect header row
+    let headerRowIndex = 0;
+    for (let i = 0; i < Math.min(sheetData.length, 10); i++) {
+      if (String(sheetData[i][0]).trim().toLowerCase() === 'teacher') {
+        headerRowIndex = i;
+        break;
+      }
+    }
+    const headers     = sheetData[headerRowIndex];
+    const COURSE_START = 4;
+ 
+    // Find the column index for the requested course (case-insensitive)
+    let courseColIndex = -1;
+    for (let i = COURSE_START; i < headers.length; i++) {
+      if (String(headers[i] || '').trim().toLowerCase() === courseName.trim().toLowerCase()) {
+        courseColIndex = i;
+        break;
+      }
+    }
+ 
+    if (courseColIndex === -1) {
+      Logger.log('getCourseTeacherDetails: course column not found for "' + courseName + '"');
+      // Return empty but successful — course exists but no one upskilled yet
+      return { success: true, courseName: courseName, teachers: [] };
+    }
+ 
+    // Build proficiency map for all teachers upskilled on this course
+    const proficiencyMap = {}; // teacherName -> proficiency string
+    sheetData.slice(headerRowIndex + 1).forEach(function(row) {
+      const teacher     = String(row[0] || '').trim();
+      const proficiency = String(row[courseColIndex] || '').trim();
+      if (!teacher || !proficiency || proficiency.toLowerCase() === 'not onboarded') return;
+      proficiencyMap[teacher] = proficiency;
+    });
+ 
+    if (Object.keys(proficiencyMap).length === 0) {
+      return { success: true, courseName: courseName, teachers: [] };
+    }
+ 
+    // ── 2. Fetch HubSpot active learner counts ─────────────────────────────
+    //    One paginated call gives us both totalLearners and learnersOnThisCourse
+    const token          = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    const searchUrl      = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+    const activeStatuses = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
+ 
+    const teacherTotals   = {}; // teacherName (normalised) -> total active learners
+    const teacherOnCourse = {}; // teacherName (normalised) -> learners on THIS course
+ 
+    let after = undefined, page = 0;
+    do {
+      var body = {
+        filterGroups: [{
+          filters: [{
+            propertyName: 'learner_status',
+            operator:     'IN',
+            values:       activeStatuses
+          }]
+        }],
+        properties: ['current_teacher', 'current_course'],
+        limit: 100
+      };
+      if (after) body.after = after;
+ 
+      var resp = UrlFetchApp.fetch(searchUrl, {
+        method:             'post',
+        headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload:            JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+      var data = JSON.parse(resp.getContentText());
+      if (!data.results) break;
+ 
+      data.results.forEach(function(deal) {
+        var rawTeacher = deal.properties.current_teacher || '';
+        var rawCourse  = deal.properties.current_course  || '';
+        var teacher    = getTeacherLabel(rawTeacher);
+        if (!teacher) return;
+ 
+        var teacherKey  = teacher.trim().toLowerCase().replace(/\s+/g, ' ');
+        var courseLabel = getCourseLabel(rawCourse);
+ 
+        // Accumulate totals
+        if (!teacherTotals[teacherKey]) teacherTotals[teacherKey] = 0;
+        teacherTotals[teacherKey]++;
+ 
+        // Check if this learner is on the selected course
+        if (courseLabel && courseLabel.trim().toLowerCase() === courseName.trim().toLowerCase()) {
+          if (!teacherOnCourse[teacherKey]) teacherOnCourse[teacherKey] = 0;
+          teacherOnCourse[teacherKey]++;
+        }
+      });
+ 
+      after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+      page++;
+    } while (after && page < 30);
+ 
+    // ── 3. Build result array ──────────────────────────────────────────────
+    var teachers = Object.keys(proficiencyMap).map(function(teacherName) {
+      var key        = teacherName.trim().toLowerCase().replace(/\s+/g, ' ');
+      var total      = teacherTotals[key]   || 0;
+      var onCourse   = teacherOnCourse[key] || 0;
+ 
+      return {
+        name:             teacherName,
+        proficiency:      proficiencyMap[teacherName],
+        totalLearners:    total,
+        learnersOnCourse: onCourse
+      };
+    });
+ 
+    // Sort: most learners on this course first, then highest proficiency
+    teachers.sort(function(a, b) {
+      var diff = b.learnersOnCourse - a.learnersOnCourse;
+      if (diff !== 0) return diff;
+      return (parseFloat(b.proficiency) || 0) - (parseFloat(a.proficiency) || 0);
+    });
+ 
+    Logger.log('getCourseTeacherDetails: ' + teachers.length + ' teachers found for ' + courseName);
+    return { success: true, courseName: courseName, teachers: teachers };
+ 
+  } catch (e) {
+    Logger.log('getCourseTeacherDetails error: ' + e.message);
+    return { success: false, message: e.message, teachers: [] };
+  }
+}
+
+
 function getTeacherCourses() {
   try {
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
@@ -350,42 +486,52 @@ function getCourseNames() {
 
 function getCourseDetails() {
   Logger.log('getCourseDetails called for Courses Page');
-
   try {
+    // Get the master list of course names from the Course Name sheet
+    const courseNames = getCourseNames();
+ 
+    // Count how many teachers are upskilled on each course
+    // using the wide-format TEACHER_COURSES sheet
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
-
-    if (sheetData.length < 2) { 
-      Logger.log('Teacher Courses sheet is empty or only has headers.');
-      return {};
-    }
-
-    const coursesByTeacher = {};
-
-    sheetData.slice(1).forEach(row => { 
-      const teacher = String(row[0] || '').trim(); 
-      const course = String(row[1] || '').trim(); 
-      const status = String(row[2] || '').trim(); 
-      const progress = String(row[3] || '').trim(); 
-
-      if (!teacher || !course) return; 
-
-      if (!coursesByTeacher[teacher]) {
-        coursesByTeacher[teacher] = [];
+    const courseTeacherCount = {};
+ 
+    if (sheetData && sheetData.length > 1) {
+      // Detect header row (same pattern used across persona engine)
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(sheetData.length, 10); i++) {
+        if (String(sheetData[i][0]).trim().toLowerCase() === 'teacher') {
+          headerRowIndex = i;
+          break;
+        }
       }
-
-      coursesByTeacher[teacher].push({
-        course: course,
-        status: status,
-        progress: progress
+      const headers = sheetData[headerRowIndex];
+      const COURSE_START = 4; // col0=Teacher, col1=Email, col2=Manager, col3=Health
+ 
+      sheetData.slice(headerRowIndex + 1).forEach(function(row) {
+        const teacherName = String(row[0] || '').trim();
+        if (!teacherName) return;
+        for (let i = COURSE_START; i < headers.length; i++) {
+          const courseName = String(headers[i] || '').trim();
+          const val        = String(row[i]   || '').trim();
+          if (!courseName || !val || val.toLowerCase() === 'not onboarded') continue;
+          courseTeacherCount[courseName] = (courseTeacherCount[courseName] || 0) + 1;
+        }
       });
+    }
+ 
+    return courseNames.map(function(name) {
+      return {
+        name:               name,
+        activeTeachersCount: courseTeacherCount[name] || 0
+      };
     });
-
-    return coursesByTeacher;
-  } catch (error) {
-    Logger.log('Error getting teacher courses: ' + error.message);
-    return {};
+ 
+  } catch (e) {
+    Logger.log('getCourseDetails error: ' + e.message);
+    return [];
   }
 }
+
 
 function getTeachersForCourse(courseName) {
   try {
