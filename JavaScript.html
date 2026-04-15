@@ -810,8 +810,6 @@ function switchPage(pageId, context = null) {
     function loadDashboardData() {
     showLoading('Loading Command Center...');
     // Primary dashboard data \u2014 KPIs, briefing, action cards
-    google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(e => { hideLoading(); showError(e); }).getNewDashboardData();
-
     // Migration reasons bar chart for this calendar month
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -868,7 +866,6 @@ function renderSparkline(canvasId, data, isPositiveGood) {
 function updateNewDashboard(response) {
     hideLoading();
     if (!response || !response.success) {
-        showToast('error', 'Dashboard Error', 'Could not load AI dashboard data.');
         return;
     }
     const data = response.data;
@@ -4962,9 +4959,6 @@ google.script.run
     showToast('success', 'Login Successful', 'Welcome, ' + user.username + '!');
     switchPage('dashboardPage');
 
-    // Show notification bell (fixed top-right)
-    var bellWrapper = document.getElementById('notifBellWrapper');
-    if (bellWrapper) bellWrapper.style.display = 'block';
 
     // Load impact score + notifications after login
     setTimeout(() => {
@@ -5046,8 +5040,6 @@ document.addEventListener('DOMContentLoaded', () => {
           loginPage.style.display = 'flex';
           switchLoginView('loginView');
           loginForm.reset();
-          var bw = document.getElementById('notifBellWrapper');
-          if (bw) bw.style.display = 'none';
         }
       });
     }
