@@ -379,7 +379,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "427";
+const APP_VERSION = "428";
 
 function getAppVersion() {
   return APP_VERSION;
