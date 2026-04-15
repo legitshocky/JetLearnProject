@@ -809,7 +809,8 @@ function switchPage(pageId, context = null) {
 
     function loadDashboardData() {
     showLoading('Loading Command Center...');
-    // Primary dashboard data \u2014 KPIs, briefing, action cards
+    // KPI data
+    google.script.run.withSuccessHandler(updateNewDashboard).withFailureHandler(function() {}).getNewDashboardData();
     // Migration reasons bar chart for this calendar month
     const today = new Date();
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -898,8 +899,9 @@ function updateNewDashboard(response) {
     srTrend.textContent = `${data.kpiData.successRate.change >= 0 ? '\u2191' : '\u2193'} ${Math.abs(data.kpiData.successRate.change)} pts vs last 30d`;
     srTrend.className = `kpi-footer ${data.kpiData.successRate.change >= 0 ? 'positive' : 'negative'}`;
 
-    // 3. AI Action Center
+    // 3. AI Action Center (removed from UI — guard if element missing)
     const actionCenter = document.getElementById('aiActionCenter');
+    if (!actionCenter) return;
     actionCenter.innerHTML = '';
     if (data.actionCards && data.actionCards.length > 0) {
         data.actionCards.forEach(card => {
