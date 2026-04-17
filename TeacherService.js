@@ -1754,6 +1754,77 @@ function diagnoseSMT() {
     else { log('✅ "Teacher Data" — ' + (tdData.length-1) + ' rows'); }
   } catch(e) { log('❌ Teacher Data error: ' + e.message); }
 
+  // 5. Calendar event title check — fetch one teacher's calendar for today
+  var AVAIL_KEYWORDS = ['availability', 'available hours', 'teaching hours'];
+  try {
+    var migSS2   = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var migSh2   = migSS2.getSheetByName('Migration Teacher');
+    if (migSh2) {
+      var migRows  = migSh2.getDataRange().getValues();
+      var tcData2  = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+      var tcHdrIdx2 = 0;
+      for (var ii = 0; ii < Math.min(tcData2.length,10); ii++) {
+        if (String(tcData2[ii][0]).trim().toLowerCase() === 'teacher') { tcHdrIdx2 = ii; break; }
+      }
+      var tcHeaders2 = tcData2[tcHdrIdx2];
+      var appItUpColIdx = tcHeaders2.map(function(h){return String(h).trim().toLowerCase();}).indexOf('app it up');
+
+      // Find first teacher with ≥71% on App It Up AND a calendar ID
+      var sampleCalId = null, sampleName = null;
+      for (var ri = 1; ri < migRows.length && !sampleCalId; ri++) {
+        var tname = String(migRows[ri][0] || '').trim();
+        var tcalid = String(migRows[ri][1] || '').trim();
+        if (!tname || tcalid.indexOf('@') === -1) continue;
+        // Check progress in tcData2
+        if (appItUpColIdx > -1) {
+          for (var tj = tcHdrIdx2 + 1; tj < tcData2.length; tj++) {
+            var tRow = tcData2[tj];
+            if (String(tRow[0]||'').trim().toLowerCase() === tname.toLowerCase()) {
+              var prog = String(tRow[appItUpColIdx]||'').trim();
+              if (['71-80%','81-90%','91-99%','100%'].indexOf(prog) > -1) {
+                sampleCalId = tcalid; sampleName = tname; break;
+              }
+            }
+          }
+        }
+      }
+
+      if (!sampleCalId) { log('⚠️  Could not find a teacher with App It Up ≥71% + calendar ID to test'); }
+      else {
+        log('🔍 Testing calendar for: ' + sampleName + ' (' + sampleCalId + ')');
+        var today = new Date();
+        var tMin  = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0).toISOString();
+        var tMax  = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+        try {
+          var token = ScriptApp.getOAuthToken();
+          var calUrl = 'https://www.googleapis.com/calendar/v3/calendars/'
+            + encodeURIComponent(sampleCalId)
+            + '/events?singleEvents=true&timeMin=' + encodeURIComponent(tMin)
+            + '&timeMax=' + encodeURIComponent(tMax);
+          var resp = UrlFetchApp.fetch(calUrl, { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+          if (resp.getResponseCode() !== 200) {
+            log('   ❌ Calendar API error ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0,200));
+          } else {
+            var items = JSON.parse(resp.getContentText()).items || [];
+            log('   Total events today: ' + items.length);
+            var titles = items.map(function(ev){ return '"' + (ev.summary||'(no title)') + '"'; });
+            log('   Event titles: ' + (titles.length ? titles.join(', ') : '(none)'));
+            var hasAvail = items.some(function(ev){
+              var t = (ev.summary||'').toLowerCase();
+              return AVAIL_KEYWORDS.some(function(kw){ return t.indexOf(kw) > -1; });
+            });
+            log('   Has availability keyword event: ' + (hasAvail ? '✅ YES' : '❌ NO — teachers will have 0 slots'));
+            if (!hasAvail && items.length > 0) {
+              log('   ⚠️  AVAIL_KEYWORDS ' + JSON.stringify(AVAIL_KEYWORDS) + ' do NOT match any event title!');
+              log('   → Fix: either add events with those titles to teacher calendars,');
+              log('     OR update AVAIL_KEYWORDS in searchMatchingTeachers() to match actual event naming.');
+            }
+          }
+        } catch(ce) { log('   ❌ Calendar fetch error: ' + ce.message); }
+      }
+    }
+  } catch(e) { log('❌ Calendar check error: ' + e.message); }
+
   Logger.log('=== diagnoseSMT COMPLETE ===\n' + report.join('\n'));
   return report.join('\n');
 }
