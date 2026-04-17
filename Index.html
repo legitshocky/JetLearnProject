@@ -2761,28 +2761,21 @@
       <span style="color:#94a3b8;">&#8212; No audit data (45d)</span>
       <span>&#128681; Red flag from audit</span>
     </div>
-    <div class="table-container">
-      <table class="data-table" style="font-size:0.83rem;">
-        <thead>
-          <tr>
-            <th style="width:32px;">#</th>
-            <th>Teacher</th>
-            <th>Age/Year</th>
-            <th style="text-align:center;width:48px;">Slot</th>
-            <th>Available Slots (day)</th>
-            <th id="personaCurrentCourseHeader">Current Course</th>
-            <th id="personaFuture1Header">Future 1</th>
-            <th id="personaFuture2Header">Future 2</th>
-            <th id="personaFuture3Header">Future 3</th>
-            <th>Audit (45d)</th>
-            <th style="text-align:center;">Flags</th>
-            <th>Traits Gap</th>
-            <th style="text-align:right;">Action</th>
-          </tr>
-        </thead>
-        <tbody id="personaResultsBody"></tbody>
-      </table>
+    <!-- Relaxed filter warning (shown by JS when falling back to ≥51%) -->
+    <div id="personaRelaxedBanner" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:0.82rem;color:#92400e;"></div>
+    <!-- Page size + pagination controls -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;font-size:0.78rem;color:#64748b;">
+        Show <select id="personaPageSizeSelect" class="form-control form-select" style="width:70px;height:30px;font-size:0.78rem;padding:2px 6px;" onchange="renderPersonaCards()">
+          <option value="9">9</option>
+          <option value="15" selected>15</option>
+          <option value="30">30</option>
+        </select> per page
+      </div>
+      <div id="personaCardsPagination" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
     </div>
+    <!-- Card grid — populated by renderPersonaCards() -->
+    <div id="personaCardsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;"></div>
   </div>
 </div>
       <!-- AI PM Page -->
