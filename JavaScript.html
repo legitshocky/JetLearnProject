@@ -58,6 +58,9 @@ let globalTicketData = [];
 let globalTeacherDataList = [];
 let allTeacherDetailsCache = [];
 let globalMultiMigrationData = []; // To store the full report data
+let mcRegistryData = [];           // Migration Center: full registry from server
+let mcFilteredData = [];           // Migration Center: post search/filter view
+let mwState = { step: 1, jlid: '', learnerData: null, selectedTeacher: null, teacherResults: [] };
 let sparklineCharts = {};
 let sendConfirmed = false; // Flag to indicate if sending from preview modal
 let formSelectedFiles = new Map();
@@ -713,7 +716,8 @@ function switchPage(pageId, context = null) {
         emailActivitiesPage: loadEmailActivitiesPage,
         aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); },
         profilePage: loadProfilePage,
-        onboardingTrackerPage: loadOnboardingTracker
+        onboardingTrackerPage: loadOnboardingTracker,
+        learnerMigrationPage:  loadLearnerMigrationPage
     };
 
     if (pageLoaders[pageId]) {
@@ -9926,4 +9930,454 @@ document.addEventListener('keydown', function(e) {
     if (modal && modal.style.display === 'flex') closeStuckMigrationsModal();
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEARNER MIGRATION CENTER
+// ══════════════════════════════════════════════════════════════════════════════
+
+function loadLearnerMigrationPage() {
+    _mcSetRegistryLoading(true);
+    google.script.run
+        .withSuccessHandler(_mcHandleRegistryData)
+        .withFailureHandler(function(err) {
+            _mcSetRegistryLoading(false);
+            showToast('error', 'Migration Center', err.message || 'Failed to load registry');
+        })
+        .getMigrationRegistry();
+}
+
+function _mcHandleRegistryData(result) {
+    _mcSetRegistryLoading(false);
+    if (!result || !result.success) {
+        showToast('error', 'Migration Center', (result && result.message) || 'Unknown error');
+        return;
+    }
+    var stats   = result.stats   || {};
+    var tickets = result.tickets || [];
+    mcRegistryData = tickets;
+    mcFilteredData = tickets.slice();
+
+    var setKpi = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+    setKpi('mcKpiTotal',     stats.total);
+    setKpi('mcKpiPending',   stats.pending);
+    setKpi('mcKpiCompleted', stats.completed);
+    setKpi('mcKpiRate',      stats.successRate + '%');
+
+    _mcRenderTable(mcFilteredData);
+    _mcComputeInsights(mcRegistryData);
+}
+
+function _mcSetRegistryLoading(show) {
+    var tbody = document.getElementById('mcRegistryBody');
+    if (!tbody) return;
+    if (show) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:3rem;color:var(--text-muted);">' +
+            '<i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>' +
+            'Loading registry...</td></tr>';
+    }
+}
+
+function filterMigrationRegistry() {
+    var q     = (document.getElementById('mcSearch')     && document.getElementById('mcSearch').value     || '').toLowerCase();
+    var stage = (document.getElementById('mcStageFilter') && document.getElementById('mcStageFilter').value || '');
+    mcFilteredData = mcRegistryData.filter(function(t) {
+        var hay = [t.jlid, t.learnerName, t.fromTeacher, t.toTeacher, t.reason, t.stageLabel].join(' ').toLowerCase();
+        return (!q || hay.includes(q)) && (!stage || t.stageLabel === stage);
+    });
+    _mcRenderTable(mcFilteredData);
+}
+
+function _mcRenderTable(tickets) {
+    var tbody = document.getElementById('mcRegistryBody');
+    var empty = document.getElementById('mcRegistryEmpty');
+    if (!tbody) return;
+
+    if (!tickets || tickets.length === 0) {
+        tbody.innerHTML = '';
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    function stageBadge(label) {
+        if (label === 'Migration Completed')       return 'background:#d1fae5;color:#065f46;';
+        if (label.indexOf('Rejected')  > -1)       return 'background:#fee2e2;color:#991b1b;';
+        if (label.indexOf('Approved')  > -1)       return 'background:#dbeafe;color:#1e40af;';
+        if (label.indexOf('Execution') > -1)       return 'background:#ede9fe;color:#5b21b6;';
+        if (label === 'Migration Triggered')        return 'background:#fef3c7;color:#92400e;';
+        return 'background:#f1f5f9;color:#475569;';
+    }
+    function daysColor(d) { return d > 14 ? '#ef4444' : d > 7 ? '#f59e0b' : '#10b981'; }
+
+    tbody.innerHTML = tickets.map(function(t) {
+        return '<tr>' +
+          '<td>' +
+            '<div style="font-weight:700;font-size:0.85rem;color:var(--dark);">' + escapeHtml(t.learnerName) + '</div>' +
+            '<div style="font-size:0.72rem;color:var(--text-muted);">' + escapeHtml(t.jlid) + (t.course ? ' · ' + escapeHtml(t.course) : '') + '</div>' +
+            '<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">' + escapeHtml(t.createdDate) + '</div>' +
+          '</td>' +
+          '<td>' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+              '<span style="font-size:0.8rem;font-weight:600;color:var(--dark);">' + escapeHtml(t.fromTeacher) + '</span>' +
+              '<i class="fas fa-arrow-right" style="color:#94a3b8;font-size:0.7rem;"></i>' +
+              '<span style="font-size:0.8rem;font-weight:600;color:#6366f1;">' + escapeHtml(t.toTeacher) + '</span>' +
+            '</div>' +
+            '<div style="font-size:0.7rem;color:#94a3b8;margin-top:3px;">' + escapeHtml(t.reason) + '</div>' +
+          '</td>' +
+          '<td><span style="font-size:0.72rem;font-weight:600;padding:3px 9px;border-radius:99px;white-space:nowrap;' + stageBadge(t.stageLabel) + '">' + escapeHtml(t.stageLabel) + '</span></td>' +
+          '<td style="text-align:center;"><span style="font-size:0.88rem;font-weight:700;color:' + daysColor(t.daysInStage) + ';">' + t.daysInStage + '</span></td>' +
+          '<td style="text-align:right;"><a href="' + escapeHtml(t.hubspotLink) + '" target="_blank" ' +
+            'style="font-size:0.75rem;color:#6366f1;text-decoration:none;padding:3px 9px;border:1px solid #e2e8f0;border-radius:6px;">' +
+            '<i class="fas fa-external-link-alt"></i> HS</a></td>' +
+        '</tr>';
+    }).join('');
+}
+
+function _mcComputeInsights(tickets) {
+    var insightsEl = document.getElementById('mcAiInsightsContent');
+    var riskEl     = document.getElementById('mcRiskScore');
+    var loadEl     = document.getElementById('mcLoadBar');
+    if (!insightsEl) return;
+
+    var WIP_STAGES = ['WIP','WIP - TP Approval Pending','WIP - CLS Approval Pending',
+                      'WIP - Approved by CLS','WIP - PR Approval Pending','Execution Pending'];
+    var wipTickets      = tickets.filter(function(t) { return WIP_STAGES.indexOf(t.stageLabel) > -1; });
+    var rejectedTickets = tickets.filter(function(t) { return t.stageLabel === 'WIP - Rejected by CLS'; });
+    var stuckTickets    = wipTickets.filter(function(t) { return t.daysInStage > 7; });
+    var avgDaysStuck    = stuckTickets.length > 0
+        ? Math.round(stuckTickets.reduce(function(s,t){ return s + t.daysInStage; }, 0) / stuckTickets.length) : 0;
+
+    var riskRaw  = (stuckTickets.length * 3) + (rejectedTickets.length * 5) + (avgDaysStuck / 2);
+    var riskPct  = Math.min(100, Math.round(riskRaw));
+    var loadPct  = wipTickets.length > 0 ? Math.min(100, Math.round((stuckTickets.length / wipTickets.length) * 100)) : 0;
+    var riskLabel = riskPct >= 70 ? 'High Risk' : riskPct >= 40 ? 'Moderate' : 'Low Risk';
+    var riskColor = riskPct >= 70 ? '#ef4444' : riskPct >= 40 ? '#f59e0b' : '#10b981';
+
+    insightsEl.innerHTML =
+        '<div style="display:flex;flex-direction:column;gap:6px;font-size:0.8rem;margin-bottom:1rem;">' +
+          '<div style="display:flex;justify-content:space-between;color:rgba(196,181,253,0.85);"><span>WIP tickets</span><span style="font-weight:700;color:#e2e8f0;">' + wipTickets.length + '</span></div>' +
+          '<div style="display:flex;justify-content:space-between;color:rgba(196,181,253,0.85);"><span>Stuck &gt;7 days</span><span style="font-weight:700;color:#fbbf24;">' + stuckTickets.length + '</span></div>' +
+          '<div style="display:flex;justify-content:space-between;color:rgba(196,181,253,0.85);"><span>Rejected by CLS</span><span style="font-weight:700;color:#f87171;">' + rejectedTickets.length + '</span></div>' +
+          '<div style="display:flex;justify-content:space-between;color:rgba(196,181,253,0.85);"><span>Avg days stuck</span><span style="font-weight:700;color:#e2e8f0;">' + avgDaysStuck + 'd</span></div>' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;margin-top:2px;">' +
+            '<span style="color:rgba(196,181,253,0.85);">Assessment</span>' +
+            '<span style="font-weight:700;font-size:0.82rem;padding:2px 10px;border-radius:99px;background:' + riskColor + '22;color:' + riskColor + ';border:1px solid ' + riskColor + '44;">' + riskLabel + '</span>' +
+          '</div>' +
+        '</div>';
+
+    if (riskEl) {
+        riskEl.style.display = 'block';
+        var rv = document.getElementById('mcRiskValue'); if (rv) rv.textContent = riskPct + '%';
+        var rb = document.getElementById('mcRiskBar');   if (rb) rb.style.width = riskPct + '%';
+    }
+    if (loadEl) {
+        loadEl.style.display = 'block';
+        var lv = document.getElementById('mcLoadValue');    if (lv) lv.textContent = stuckTickets.length + '/' + wipTickets.length;
+        var lb = document.getElementById('mcLoadBarFill');  if (lb) lb.style.width = loadPct + '%';
+    }
+}
+
+function runMigrationAiAnalysis() {
+    var btn = document.getElementById('mcRunAnalysisBtn');
+    if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Analysing...';
+    google.script.run
+        .withSuccessHandler(function(result) {
+            if (btn) btn.innerHTML = '<i class="fas fa-play-circle" style="margin-right:6px;"></i>Run Analysis';
+            if (result && result.success) {
+                mcRegistryData = result.tickets || [];
+                _mcComputeInsights(mcRegistryData);
+                showToast('success', 'AI Insights', 'Analysis updated from live data.');
+            }
+        })
+        .withFailureHandler(function() {
+            if (btn) btn.innerHTML = '<i class="fas fa-play-circle" style="margin-right:6px;"></i>Run Analysis';
+        })
+        .getMigrationRegistry();
+}
+
+// ── Wizard ────────────────────────────────────────────────────────────────────
+
+function openNewMigrationWizard() {
+    mwState = { step: 1, jlid: '', learnerData: null, selectedTeacher: null, teacherResults: [] };
+    _mwShowStep(1);
+    var ji = document.getElementById('mwJlidInput'); if (ji) ji.value = '';
+    var lc = document.getElementById('mwLearnerCard'); if (lc) lc.style.display = 'none';
+    var sl = document.getElementById('mwStep1Loading'); if (sl) sl.style.display = 'none';
+    var tr = document.getElementById('mwTeacherResults'); if (tr) tr.style.display = 'none';
+    document.getElementById('newMigrationWizardModal').classList.add('active');
+}
+
+function closeNewMigrationWizard() {
+    document.getElementById('newMigrationWizardModal').classList.remove('active');
+}
+
+function _mwShowStep(n) {
+    mwState.step = n;
+    [1, 2, 3].forEach(function(i) {
+        var body = document.getElementById('mwStep' + i);
+        var pill = document.getElementById('mwStep' + i + 'Pill');
+        if (body) body.style.display = (i === n) ? 'block' : 'none';
+        if (pill) {
+            pill.classList.remove('mw-active', 'mw-done');
+            if (i < n)   pill.classList.add('mw-done');
+            if (i === n) pill.classList.add('mw-active');
+        }
+    });
+    var back    = document.getElementById('mwBackBtn');
+    var next    = document.getElementById('mwNextBtn');
+    var confirm = document.getElementById('mwConfirmBtn');
+    if (back)    back.style.display    = n > 1 ? 'inline-flex' : 'none';
+    if (next)    next.style.display    = n < 3 ? 'inline-flex' : 'none';
+    if (confirm) confirm.style.display = n === 3 ? 'inline-flex' : 'none';
+}
+
+function mwGoNext() {
+    if (mwState.step === 1) {
+        if (!mwState.learnerData) { showToast('error', 'Wizard', 'Please fetch a learner first.'); return; }
+        _mwPopulateStep2();
+        _mwShowStep(2);
+    } else if (mwState.step === 2) {
+        if (!mwState.selectedTeacher) { showToast('error', 'Wizard', 'Please select a teacher.'); return; }
+        _mwPopulateStep3();
+        _mwShowStep(3);
+    }
+}
+
+function mwGoBack() {
+    if (mwState.step > 1) _mwShowStep(mwState.step - 1);
+}
+
+function mwFetchLearner() {
+    var jlid = (document.getElementById('mwJlidInput').value || '').trim();
+    if (!jlid) { showToast('error', 'Wizard', 'Please enter a JLID.'); return; }
+    mwState.jlid = jlid;
+    var lc = document.getElementById('mwLearnerCard'); if (lc) lc.style.display = 'none';
+    var sl = document.getElementById('mwStep1Loading'); if (sl) sl.style.display = 'block';
+    google.script.run
+        .withSuccessHandler(function(result) {
+            var sl2 = document.getElementById('mwStep1Loading'); if (sl2) sl2.style.display = 'none';
+            if (!result || !result.success) {
+                showToast('error', 'Learner Fetch', (result && result.message) || 'Not found.'); return;
+            }
+            mwState.learnerData = result.data;
+            _mwRenderLearnerCard(result.data);
+        })
+        .withFailureHandler(function(err) {
+            var sl3 = document.getElementById('mwStep1Loading'); if (sl3) sl3.style.display = 'none';
+            showToast('error', 'Learner Fetch', err.message || String(err));
+        })
+        .fetchHubspotByJlid(jlid);
+}
+
+function _mwRenderLearnerCard(data) {
+    var card = document.getElementById('mwLearnerCard');
+    if (!card) return;
+    card.innerHTML =
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;">' +
+          '<div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:2px;">Learner</div>' +
+            '<div style="font-weight:700;color:#0f172a;">' + escapeHtml(data.learnerName || '—') + '</div>' +
+            '<div style="font-size:0.75rem;color:#64748b;">' + escapeHtml(data.jlid || '—') + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:2px;">Current Teacher</div>' +
+            '<div style="font-weight:600;color:#0f172a;">' + escapeHtml(data.currentTeacher || '—') + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:2px;">Course / Age</div>' +
+            '<div style="font-weight:600;color:#0f172a;">' + escapeHtml(data.course || '—') + '</div>' +
+            '<div style="font-size:0.75rem;color:#64748b;">Age: ' + escapeHtml(String(data.age || '—')) + '</div>' +
+          '</div>' +
+        '</div>' +
+        (data.churnAlert ? '<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:0.8rem;font-weight:600;">' +
+            '<i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>' + escapeHtml(data.churnAlert.message) + '</div>' : '');
+    card.style.display = 'block';
+}
+
+function _mwPopulateStep2() {
+    var d = mwState.learnerData;
+    if (!d) return;
+    var courseEl = document.getElementById('mwCourse');
+    if (courseEl) {
+        if (globalCourses && globalCourses.length) {
+            courseEl.innerHTML = globalCourses.map(function(c) {
+                var val   = c.value || c;
+                var label = c.label || c;
+                return '<option value="' + escapeHtml(val) + '"' + (label === d.course ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+            }).join('');
+        } else if (d.course) {
+            courseEl.innerHTML = '<option value="' + escapeHtml(d.course) + '" selected>' + escapeHtml(d.course) + '</option>';
+        }
+    }
+    var ageEl = document.getElementById('mwAge'); if (ageEl) ageEl.value = d.age || '';
+    var dateEl = document.getElementById('mwSlotDate'); if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().split('T')[0];
+
+    // Pre-fill slot from first class session if available
+    if (d.classSessions && d.classSessions.length > 0) {
+        var s = d.classSessions[0];
+        var dayEl  = document.getElementById('mwSlotDay');  if (dayEl  && s.day)  dayEl.value  = s.day;
+        var timeEl = document.getElementById('mwSlotTime'); if (timeEl && s.time) timeEl.value = s.time;
+    }
+
+    // Pre-populate CLS manager dropdown for Step 3
+    var clsEl = document.getElementById('mwClsManager');
+    if (clsEl && globalClsManagers && globalClsManagers.length) {
+        clsEl.innerHTML = '<option value="">Select CLS Manager...</option>' +
+            globalClsManagers.map(function(m) {
+                var val   = m.value || m;
+                var label = m.label || m;
+                return '<option value="' + escapeHtml(val) + '"' + (label === d.clsManagerName ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+            }).join('');
+    }
+}
+
+function mwFindTeachers() {
+    var day    = (document.getElementById('mwSlotDay')   && document.getElementById('mwSlotDay').value)   || '';
+    var date   = (document.getElementById('mwSlotDate')  && document.getElementById('mwSlotDate').value)  || new Date().toISOString().split('T')[0];
+    var time   = (document.getElementById('mwSlotTime')  && document.getElementById('mwSlotTime').value)  || '';
+    var course = (document.getElementById('mwCourse')    && document.getElementById('mwCourse').value)    || '';
+
+    if (!course) { showToast('error', 'Wizard', 'Please select a course.'); return; }
+
+    var slotStr  = (day && time) ? (day + ' ' + time) : '';
+    var searchData = {
+        requestedDate:  date,
+        requestedSlot:  slotStr,
+        requestedSlots: slotStr ? [{ date: date, slot: slotStr }] : [],
+        currentCourse:  course,
+        futureCourse1:  '', futureCourse2: '', futureCourse3: '',
+        learnerAge:     (document.getElementById('mwAge') && document.getElementById('mwAge').value) || '',
+        techTraits:     ((document.getElementById('mwTechTraits') && document.getElementById('mwTechTraits').value) || '').trim(),
+        mathTraits:     ((document.getElementById('mwMathTraits') && document.getElementById('mwMathTraits').value) || '').trim()
+    };
+
+    var sl = document.getElementById('mwStep2Loading'); if (sl) sl.style.display = 'block';
+    var tr = document.getElementById('mwTeacherResults'); if (tr) tr.style.display = 'none';
+
+    google.script.run
+        .withSuccessHandler(function(result) {
+            var sl2 = document.getElementById('mwStep2Loading'); if (sl2) sl2.style.display = 'none';
+            if (!result || !result.success) {
+                showToast('error', 'Teacher Search', (result && result.message) || 'Search failed.'); return;
+            }
+            mwState.teacherResults = result.results || [];
+            _mwRenderTeacherCards(mwState.teacherResults);
+        })
+        .withFailureHandler(function(err) {
+            var sl3 = document.getElementById('mwStep2Loading'); if (sl3) sl3.style.display = 'none';
+            showToast('error', 'Teacher Search', err.message || String(err));
+        })
+        .searchMatchingTeachers(searchData);
+}
+
+function _mwRenderTeacherCards(teachers) {
+    var container = document.getElementById('mwTeacherResults');
+    if (!container) return;
+    if (!teachers || teachers.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-muted);">' +
+            '<i class="fas fa-search" style="font-size:2rem;opacity:.3;display:block;margin-bottom:8px;"></i>' +
+            'No matching teachers found. Try adjusting the slot or course.</div>';
+        container.style.display = 'flex';
+        return;
+    }
+    container.innerHTML = teachers.slice(0, 10).map(function(t, i) {
+        var score     = Math.round(t._rankScore || t.matchScore || 0);
+        var barColor  = score >= 80 ? '#10b981' : score >= 60 ? '#6366f1' : '#f59e0b';
+        var grade     = t.auditGrade || '—';
+        var gradeColors = { A:'#16a34a', B:'#2563eb', C:'#d97706', D:'#dc2626' };
+        var gradeColor  = gradeColors[grade] || '#94a3b8';
+        var isSelected  = mwState.selectedTeacher && mwState.selectedTeacher.teacherName === t.teacherName;
+        var slotOk      = String(t.slotMatch || '').indexOf('\u2714') > -1 || String(t.slotMatch || '').toLowerCase().indexOf('match all') > -1;
+        var name        = t.teacherName || t.name || '';
+        return '<div class="mw-teacher-card ' + (isSelected ? 'selected' : '') + '" onclick="mwSelectTeacher(' + i + ')" id="mwTCard_' + i + '">' +
+          '<div style="width:28px;height:28px;background:' + barColor + '18;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;color:' + barColor + ';flex-shrink:0;">' + (i+1) + '</div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:0.88rem;font-weight:700;color:#0f172a;">' + escapeHtml(name) + '</div>' +
+            '<div style="font-size:0.72rem;color:#64748b;margin-top:2px;">Audit: <strong style="color:' + gradeColor + ';">' + grade + '</strong>' +
+              (slotOk ? ' <span style="color:#10b981;margin-left:8px;"><i class="fas fa-calendar-check"></i> Slot free</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0;">' +
+            '<div style="font-size:1rem;font-weight:800;color:' + barColor + ';">' + score + '</div>' +
+            '<div style="font-size:0.65rem;color:#94a3b8;">score</div>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+    container.style.display = 'flex';
+}
+
+function mwSelectTeacher(index) {
+    mwState.selectedTeacher = mwState.teacherResults[index] || null;
+    document.querySelectorAll('.mw-teacher-card').forEach(function(el, i) {
+        el.classList.toggle('selected', i === index);
+    });
+}
+
+function _mwPopulateStep3() {
+    var d = mwState.learnerData;
+    var t = mwState.selectedTeacher;
+    if (!d || !t) return;
+    var name = t.teacherName || t.name || '';
+    var summary = document.getElementById('mwReviewSummary');
+    if (!summary) return;
+    summary.innerHTML =
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">' +
+          '<div><div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">Learner</div>' +
+            '<div style="font-weight:700;">' + escapeHtml(d.learnerName || '—') + ' <span style="font-weight:400;color:#64748b;">(' + escapeHtml(d.jlid || '') + ')</span></div></div>' +
+          '<div><div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">Course</div>' +
+            '<div style="font-weight:600;">' + escapeHtml(d.course || '—') + '</div></div>' +
+          '<div><div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">From Teacher</div>' +
+            '<div style="font-weight:600;color:#64748b;">' + escapeHtml(d.currentTeacher || '—') + '</div></div>' +
+          '<div><div style="font-size:0.7rem;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;">To Teacher</div>' +
+            '<div style="font-weight:700;color:#6366f1;">' + escapeHtml(name) + '</div></div>' +
+        '</div>';
+}
+
+function mwConfirmMigration() {
+    var reason = document.getElementById('mwReason') && document.getElementById('mwReason').value;
+    if (!reason) { showToast('error', 'Wizard', 'Please select a migration reason.'); return; }
+    var d   = mwState.learnerData;
+    var t   = mwState.selectedTeacher;
+    var cls = document.getElementById('mwClsManager') && document.getElementById('mwClsManager').value;
+    if (!d || !t) { showToast('error', 'Wizard', 'Learner or teacher data missing.'); return; }
+    var name = t.teacherName || t.name || '';
+    var migrationData = {
+        jlid:                d.jlid,
+        learner:             d.learnerName,
+        oldTeacher:          d.currentTeacher,
+        newTeacher:          name,
+        course:              d.course,
+        reason:              reason,
+        clsManager:          cls || d.clsManagerName || '',
+        parentEmail:         d.parentEmail || '',
+        parentName:          d.parentName  || '',
+        notes:               (document.getElementById('mwNotes') && document.getElementById('mwNotes').value) || '',
+        sendEmailToTeacher:  true,
+        migrationIntervenedBy: (currentUser && currentUser.username) || ''
+    };
+    showConfirm(
+        'Confirm Migration',
+        'Migrate ' + migrationData.learner + ' to ' + migrationData.newTeacher + '?',
+        function(confirmed) {
+            if (!confirmed) return;
+            showLoading('Processing migration...');
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    hideLoading();
+                    closeNewMigrationWizard();
+                    if (result && result.success) {
+                        showToast('success', 'Migration Initiated', result.message || 'Migration email sent.');
+                        loadLearnerMigrationPage();
+                    } else {
+                        showToast('error', 'Migration Failed', (result && result.message) || 'Unknown error.');
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    showToast('error', 'Migration Failed', err.message || String(err));
+                })
+                .sendMigrationEmail(migrationData, []);
+        }
+    );
+}
 </script>

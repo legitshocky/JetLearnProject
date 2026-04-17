@@ -218,6 +218,7 @@
         <div class="menu-item" data-page="reports"><i class="fas fa-chart-pie"></i><span>Reports</span></div>
         <div class="menu-item" data-page="health"><i class="fas fa-heartbeat"></i><span>System Health</span></div>
         <div class="menu-item" data-page="onboardingTracker"><i class="fas fa-user-plus"></i><span>Onboarding Tracker</span><span class="badge">New</span></div>
+        <div class="menu-item" data-page="learnerMigration"><i class="fas fa-exchange-alt"></i><span>Migration Center</span><span class="badge" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;">New</span></div>
         <div class="menu-item" data-page="persona"><i class="fas fa-user-tie"></i><span>Teacher Persona</span><span class="badge">Tool</span></div>
         <div class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>Settings</span></div>
         <div class="menu-item" data-page="profile" id="profileMenuItem"><i class="fas fa-user-circle"></i><span>My Profile</span></div>
@@ -2327,6 +2328,330 @@
 
         </div>
       </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- LEARNER MIGRATION CENTER                                  -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="learnerMigrationPage" class="page-content" style="display:none;">
+
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1 class="page-title" style="display:flex;align-items:center;gap:0.5rem;">
+          <i class="fas fa-exchange-alt" style="color:#6366f1;font-size:1.3rem;"></i>
+          Learner Migration Center
+        </h1>
+        <p style="color:var(--text-muted);margin:0.2rem 0 0;font-size:0.85rem;">
+          Full migration registry, smart teacher finder &amp; pipeline health.
+        </p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline" onclick="loadLearnerMigrationPage()">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="btn btn-primary" onclick="openNewMigrationWizard()">
+          <i class="fas fa-plus"></i> New Migration
+        </button>
+        <button class="btn btn-outline" onclick="switchPage('communicationPage')">
+          <i class="fas fa-paper-plane"></i> Communication
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-grid-v2" style="grid-template-columns:repeat(4,1fr);margin-bottom:1.5rem;">
+      <div class="kpi-card-v2">
+        <div class="kpi-header">
+          <span class="kpi-title">Total Migrations</span>
+          <span class="kpi-badge" style="background:#ede9fe;color:#5b21b6;">All</span>
+        </div>
+        <div class="kpi-main"><span class="kpi-value" id="mcKpiTotal">—</span></div>
+        <div class="kpi-footer">Last 100 loaded</div>
+      </div>
+      <div class="kpi-card-v2">
+        <div class="kpi-header">
+          <span class="kpi-title">Pending Requests</span>
+          <span class="kpi-badge" style="background:#fef3c7;color:#92400e;">WIP</span>
+        </div>
+        <div class="kpi-main"><span class="kpi-value" id="mcKpiPending" style="color:#f59e0b;">—</span></div>
+        <div class="kpi-footer">In pipeline</div>
+      </div>
+      <div class="kpi-card-v2">
+        <div class="kpi-header">
+          <span class="kpi-title">Completed</span>
+          <span class="kpi-badge" style="background:#d1fae5;color:#065f46;">Done</span>
+        </div>
+        <div class="kpi-main"><span class="kpi-value" id="mcKpiCompleted" style="color:#10b981;">—</span></div>
+        <div class="kpi-footer">Migration Completed stage</div>
+      </div>
+      <div class="kpi-card-v2">
+        <div class="kpi-header">
+          <span class="kpi-title">Success Rate</span>
+          <span class="kpi-badge" style="background:#e0f2fe;color:#0369a1;">Rate</span>
+        </div>
+        <div class="kpi-main"><span class="kpi-value" id="mcKpiRate" style="color:#6366f1;">—</span></div>
+        <div class="kpi-footer">Completed / Total</div>
+      </div>
+    </div>
+
+    <!-- 65/35 split -->
+    <div style="display:grid;grid-template-columns:65fr 35fr;gap:1.25rem;align-items:start;">
+
+      <!-- LEFT: Migration Registry -->
+      <div class="audit-log-container">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;">
+          <h3 class="dashboard-section-title" style="margin:0;">
+            <i class="fas fa-list" style="color:#6366f1;margin-right:8px;"></i>Migration Registry
+          </h3>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <input type="text" id="mcSearch" class="form-control"
+              placeholder="Search JLID, learner, teacher..."
+              style="width:220px;font-size:0.83rem;"
+              oninput="filterMigrationRegistry()">
+            <select id="mcStageFilter" class="form-control form-select"
+              style="width:200px;font-size:0.83rem;"
+              onchange="filterMigrationRegistry()">
+              <option value="">All Stages</option>
+              <option value="Migration Triggered">Migration Triggered</option>
+              <option value="WIP">WIP</option>
+              <option value="WIP - TP Approval Pending">TP Approval Pending</option>
+              <option value="WIP - CLS Approval Pending">CLS Approval Pending</option>
+              <option value="WIP - Rejected by CLS">Rejected by CLS</option>
+              <option value="WIP - Approved by CLS">Approved by CLS</option>
+              <option value="Execution Pending">Execution Pending</option>
+              <option value="WIP - PR Approval Pending">PR Approval Pending</option>
+              <option value="Migration Completed">Completed</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table" style="font-size:0.82rem;">
+            <thead>
+              <tr>
+                <th>Learner Details</th>
+                <th>Transition Path</th>
+                <th>Status</th>
+                <th style="text-align:center;">Days</th>
+                <th style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="mcRegistryBody">
+              <tr>
+                <td colspan="5" style="text-align:center;padding:3rem;color:var(--text-muted);">
+                  <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>
+                  Loading registry...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="mcRegistryEmpty" style="display:none;text-align:center;padding:3rem;color:var(--text-muted);">
+          <i class="fas fa-inbox" style="font-size:2.5rem;opacity:.3;display:block;margin-bottom:1rem;"></i>
+          No migrations found for the selected filter.
+        </div>
+      </div>
+
+      <!-- RIGHT: AI Insights + Quick Resources -->
+      <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+        <!-- AI Insights -->
+        <div style="background:linear-gradient(135deg,#1e1b4b,#312e6b);border-radius:16px;padding:1.5rem;color:#fff;border:1px solid rgba(129,140,248,0.3);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <i class="fas fa-brain" style="color:#c4b5fd;font-size:1.1rem;"></i>
+              <span style="font-weight:700;font-size:0.95rem;">AI Insights</span>
+            </div>
+            <span style="font-size:0.65rem;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;padding:2px 8px;border-radius:99px;font-weight:700;">AI</span>
+          </div>
+          <div id="mcAiInsightsContent">
+            <div style="color:rgba(196,181,253,0.6);font-size:0.82rem;text-align:center;padding:1.5rem 0;">
+              <i class="fas fa-spinner fa-spin" style="display:block;margin-bottom:8px;"></i>
+              Loading insights...
+            </div>
+          </div>
+          <div id="mcRiskScore" style="display:none;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
+              <span style="color:rgba(196,181,253,0.8);">Pipeline Risk Score</span>
+              <span id="mcRiskValue" style="font-weight:700;color:#fbbf24;">—</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1);border-radius:99px;height:8px;">
+              <div id="mcRiskBar" style="background:linear-gradient(90deg,#f59e0b,#ef4444);height:8px;border-radius:99px;width:0%;transition:width .6s ease;"></div>
+            </div>
+          </div>
+          <div id="mcLoadBar" style="display:none;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:4px;">
+              <span style="color:rgba(196,181,253,0.8);">Stuck Migrations</span>
+              <span id="mcLoadValue" style="font-weight:700;color:#60a5fa;">—</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1);border-radius:99px;height:8px;">
+              <div id="mcLoadBarFill" style="background:linear-gradient(90deg,#6366f1,#8b5cf6);height:8px;border-radius:99px;width:0%;transition:width .6s ease;"></div>
+            </div>
+          </div>
+          <button id="mcRunAnalysisBtn" onclick="runMigrationAiAnalysis()"
+            style="width:100%;background:none;border:1px solid rgba(129,140,248,0.4);color:#c4b5fd;font-size:0.8rem;padding:8px;border-radius:8px;cursor:pointer;margin-top:4px;transition:background .15s;"
+            onmouseover="this.style.background='rgba(99,102,241,0.2)'" onmouseout="this.style.background='none'">
+            <i class="fas fa-play-circle" style="margin-right:6px;"></i>Run Analysis
+          </button>
+        </div>
+
+        <!-- Quick Resources -->
+        <div class="audit-log-container" style="padding:1.25rem;">
+          <h3 class="dashboard-section-title" style="margin:0 0 1rem;font-size:0.95rem;">
+            <i class="fas fa-link" style="color:#6366f1;margin-right:6px;"></i>Quick Resources
+          </h3>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div class="action-card info" style="padding:0.75rem 1rem;cursor:pointer;" onclick="openStuckMigrationsModal()">
+              <div class="action-card-icon"><i class="fas fa-hourglass-half"></i></div>
+              <div><div class="action-card-title">Stuck Migrations</div><div class="action-card-subtitle">WIP tickets &gt;7 days</div></div>
+            </div>
+            <div class="action-card opportunity" style="padding:0.75rem 1rem;cursor:pointer;" onclick="switchPage('personaPage')">
+              <div class="action-card-icon"><i class="fas fa-user-check"></i></div>
+              <div><div class="action-card-title">Teacher Finder</div><div class="action-card-subtitle">Persona &amp; slot engine</div></div>
+            </div>
+            <div class="action-card" style="padding:0.75rem 1rem;cursor:pointer;border-left-color:#6366f1;" onclick="switchPage('historyPage')">
+              <div class="action-card-icon" style="background:rgba(99,102,241,0.1);color:#6366f1;"><i class="fas fa-user-clock"></i></div>
+              <div><div class="action-card-title">Learner History</div><div class="action-card-subtitle">Per-learner migration timeline</div></div>
+            </div>
+            <div class="action-card risk" style="padding:0.75rem 1rem;cursor:pointer;" onclick="switchPage('communicationPage')">
+              <div class="action-card-icon"><i class="fas fa-paper-plane"></i></div>
+              <div><div class="action-card-title">Send Migration Email</div><div class="action-card-subtitle">Go to Communication form</div></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end RIGHT -->
+    </div><!-- end 65/35 grid -->
+  </div><!-- end learnerMigrationPage -->
+
+  <!-- New Migration Wizard Modal -->
+  <div class="modal-overlay" id="newMigrationWizardModal">
+    <div class="modal" style="max-width:780px;width:95%;">
+      <div class="modal-header" style="flex-direction:column;align-items:flex-start;gap:0.75rem;">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center;">
+          <h3 class="modal-title">
+            <i class="fas fa-exchange-alt" style="color:#6366f1;margin-right:8px;"></i>New Migration
+          </h3>
+          <button class="modal-close" onclick="closeNewMigrationWizard()">×</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;width:100%;">
+          <div id="mwStep1Pill" class="mw-step-pill mw-active"><span class="mw-step-num">1</span> Learner Lookup</div>
+          <div class="mw-step-arrow">›</div>
+          <div id="mwStep2Pill" class="mw-step-pill"><span class="mw-step-num">2</span> Find Teacher</div>
+          <div class="mw-step-arrow">›</div>
+          <div id="mwStep3Pill" class="mw-step-pill"><span class="mw-step-num">3</span> Review &amp; Confirm</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Learner Lookup -->
+      <div id="mwStep1" class="mw-step-body">
+        <div style="display:flex;gap:10px;margin-bottom:1.25rem;">
+          <input type="text" id="mwJlidInput" class="form-control"
+            placeholder="Enter JLID (e.g. JL1234)" style="font-weight:600;font-size:1rem;"
+            onkeydown="if(event.key==='Enter') mwFetchLearner()">
+          <button class="btn btn-primary" onclick="mwFetchLearner()">
+            <i class="fas fa-search"></i> Fetch
+          </button>
+        </div>
+        <div id="mwStep1Loading" style="display:none;text-align:center;padding:2rem;color:var(--text-muted);">
+          <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>
+          Fetching learner from HubSpot...
+        </div>
+        <div id="mwLearnerCard" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1.25rem;"></div>
+      </div>
+
+      <!-- Step 2: Smart Teacher Finder -->
+      <div id="mwStep2" class="mw-step-body" style="display:none;">
+        <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:1rem;">
+          Course and age are pre-filled from learner. Adjust if needed, then click Find.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;margin-bottom:1rem;">
+          <div class="form-group">
+            <label class="form-label">Current Course</label>
+            <select id="mwCourse" class="form-control form-select"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Learner Age</label>
+            <input type="text" id="mwAge" class="form-control" placeholder="e.g. 10" readonly>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tech Traits (comma-sep)</label>
+            <input type="text" id="mwTechTraits" class="form-control" placeholder="Optional">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Math Traits (comma-sep)</label>
+            <input type="text" id="mwMathTraits" class="form-control" placeholder="Optional">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem;">
+          <div class="form-group">
+            <label class="form-label">Preferred Day</label>
+            <select id="mwSlotDay" class="form-control form-select">
+              <option value="">Any day</option>
+              <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+              <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input type="date" id="mwSlotDate" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Time Slot</label>
+            <input type="text" id="mwSlotTime" class="form-control" placeholder="e.g. 04:00 PM">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="mwFindTeachers()" style="width:100%;margin-bottom:1rem;">
+          <i class="fas fa-search"></i> Find Matching Teachers
+        </button>
+        <div id="mwStep2Loading" style="display:none;text-align:center;padding:2rem;color:var(--text-muted);">
+          <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>
+          Searching for matching teachers...
+        </div>
+        <div id="mwTeacherResults" style="display:none;flex-direction:column;gap:8px;max-height:320px;overflow-y:auto;"></div>
+      </div>
+
+      <!-- Step 3: Review & Confirm -->
+      <div id="mwStep3" class="mw-step-body" style="display:none;">
+        <div id="mwReviewSummary" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1.25rem;margin-bottom:1rem;"></div>
+        <div class="form-group">
+          <label class="form-label">Migration Reason <span style="color:#ef4444;">*</span></label>
+          <select id="mwReason" class="form-control form-select" required>
+            <option value="" disabled selected>Select reason...</option>
+            <option>Teacher Resignation</option>
+            <option>Slot change - Learner request</option>
+            <option>Teacher Affinity</option>
+            <option>Performance Issue</option>
+            <option>Course Change</option>
+            <option>Operational</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">CLS Manager</label>
+          <select id="mwClsManager" class="form-control form-select"><option value="">Select CLS Manager...</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes (optional)</label>
+          <textarea id="mwNotes" class="form-control" rows="3" placeholder="Any additional context..."></textarea>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="modal-footer" style="justify-content:space-between;">
+        <button class="btn btn-outline" id="mwBackBtn" onclick="mwGoBack()" style="display:none;">
+          <i class="fas fa-arrow-left"></i> Back
+        </button>
+        <div style="display:flex;gap:10px;margin-left:auto;">
+          <button class="btn btn-outline" onclick="closeNewMigrationWizard()">Cancel</button>
+          <button class="btn btn-primary" id="mwNextBtn" onclick="mwGoNext()">
+            Next <i class="fas fa-arrow-right"></i>
+          </button>
+          <button class="btn btn-primary" id="mwConfirmBtn" style="display:none;" onclick="mwConfirmMigration()">
+            <i class="fas fa-check"></i> Confirm Migration
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Teacher Intelligence Center -->
 <div id="personaPage" class="page-content" style="display:none;">

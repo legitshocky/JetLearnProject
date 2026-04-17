@@ -3299,6 +3299,94 @@ function getStuckMigrations(thresholdDays) {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Migration Registry
+// Returns all migration pipeline tickets for the Learner Migration Center page.
+// ─────────────────────────────────────────────────────────────────────────────
+function getMigrationRegistry() {
+  try {
+    var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var PORTAL   = '7729491';
+    var PIPELINE = '66161281';
+    var headers  = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    var STAGE_LABELS = {
+      '128913747':  'Migration Triggered',
+      '128913748':  'WIP',
+      '128913750':  'WIP - TP Approval Pending',
+      '128913752':  'WIP - CLS Approval Pending',
+      '1030980247': 'WIP - Rejected by CLS',
+      '133755411':  'WIP - Approved by CLS',
+      '1065336836': 'Execution Pending',
+      '128913749':  'WIP - PR Approval Pending',
+      '128913753':  'Migration Completed'
+    };
+    var COMPLETED_STAGE = '128913753';
+
+    var body = {
+      filterGroups: [{ filters: [
+        { propertyName: 'hs_pipeline', operator: 'EQ', value: PIPELINE }
+      ]}],
+      properties: [
+        'subject', 'createdate', 'hs_pipeline_stage',
+        'current_teacher__t_', 'new_teacher',
+        'reason_of_migration__t_', 'learner_uid',
+        'current_course__t_', 'hs_date_entered_hs_pipeline_stage'
+      ],
+      sorts:  [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+      limit:  100
+    };
+
+    var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+      method: 'post', headers: headers,
+      payload: JSON.stringify(body), muteHttpExceptions: true
+    });
+    var data = JSON.parse(res.getContentText());
+    var raw  = (data && data.results) ? data.results : [];
+
+    var tickets = raw.map(function(t) {
+      var props      = t.properties || {};
+      var stageId    = props.hs_pipeline_stage || '';
+      var createdMs  = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      var stageMs    = props.hs_date_entered_hs_pipeline_stage
+                       ? new Date(props.hs_date_entered_hs_pipeline_stage).getTime()
+                       : createdMs;
+      var daysInStage = Math.floor((Date.now() - stageMs) / 86400000);
+      return {
+        ticketId:    t.id,
+        jlid:        props.learner_uid                           || '',
+        learnerName: props.subject || props.learner_uid          || 'Unknown',
+        fromTeacher: getTeacherLabel(props.current_teacher__t_)  || 'Unknown',
+        toTeacher:   getTeacherLabel(props.new_teacher)          || 'Not assigned',
+        course:      getCourseLabel(props.current_course__t_)    || '',
+        reason:      props.reason_of_migration__t_               || 'Unspecified',
+        stage:       stageId,
+        stageLabel:  STAGE_LABELS[stageId] || stageId,
+        createdDate: t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '',
+        daysInStage: daysInStage,
+        hubspotLink: 'https://app.hubspot.com/contacts/' + PORTAL + '/ticket/' + t.id
+      };
+    });
+
+    var completed   = tickets.filter(function(t) { return t.stage === COMPLETED_STAGE; }).length;
+    var pending     = tickets.length - completed;
+    var successRate = tickets.length > 0 ? Math.round((completed / tickets.length) * 100) : 0;
+
+    return {
+      success: true,
+      stats:   { total: tickets.length, pending: pending, completed: completed, successRate: successRate },
+      tickets: tickets
+    };
+  } catch(e) {
+    Logger.log('[getMigrationRegistry] Error: ' + e.message);
+    return {
+      success: false, message: e.message,
+      stats:   { total: 0, pending: 0, completed: 0, successRate: 0 },
+      tickets: []
+    };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Notifications Aggregator
 // Collects actionable alerts across all modules for the current user.
 // ─────────────────────────────────────────────────────────────────────────────

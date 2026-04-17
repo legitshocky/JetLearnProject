@@ -3893,4 +3893,54 @@ body.dark-mode .filter-label { color: rgba(255,255,255,0.5) !important; }
       border-color: #c4b5fd !important;
     }
 
+    /* ── Migration Center Wizard Step Pills ── */
+    .mw-step-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 14px; border-radius: 99px;
+      font-size: 0.78rem; font-weight: 600;
+      background: #f1f5f9; color: #94a3b8;
+      border: 1px solid #e2e8f0; transition: all 0.2s ease;
+    }
+    .mw-step-pill.mw-active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff; border-color: #6366f1;
+    }
+    .mw-step-pill.mw-done {
+      background: #d1fae5; color: #065f46; border-color: #86efac;
+    }
+    .mw-step-num {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 800; flex-shrink: 0;
+    }
+    .mw-step-pill:not(.mw-active) .mw-step-num {
+      background: #e2e8f0; color: #94a3b8;
+    }
+    .mw-step-arrow {
+      color: #cbd5e1; font-size: 1.1rem; line-height: 1;
+      display: flex; align-items: center;
+    }
+    .mw-step-body { padding: 1.5rem; }
+
+    /* Teacher match card in wizard Step 2 */
+    .mw-teacher-card {
+      background: #fff; border: 1.5px solid #e2e8f0;
+      border-radius: 10px; padding: 10px 14px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .mw-teacher-card:hover, .mw-teacher-card.selected {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+    .mw-teacher-card.selected { background: #f5f3ff; }
+
+    /* Dark mode */
+    body.dark-mode .mw-step-pill { background: #1e2035; color: #64748b; border-color: rgba(255,255,255,0.07); }
+    body.dark-mode .mw-step-pill.mw-active { background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff; }
+    body.dark-mode .mw-step-pill.mw-done { background: rgba(16,185,129,0.15); color: #6ee7b7; border-color: rgba(16,185,129,0.3); }
+    body.dark-mode .mw-teacher-card { background: var(--secondary); border-color: rgba(255,255,255,0.08); }
+    body.dark-mode .mw-teacher-card.selected { background: rgba(99,102,241,0.15); }
+
   </style>
