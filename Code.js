@@ -52,7 +52,7 @@ const CONFIG = {
     TEACHER_DATA: 'A2:L',
     COURSE_DATA: 'A2:A',
     PERSONA_DATA: 'A1:BR',
-    TEACHER_COURSES: 'A2:D',
+    TEACHER_COURSES: 'A1:ZZ',
     COURSE_PROGRESS_DATA: 'A1:L'
   },
   PAGINATION_LIMIT: 50
@@ -379,7 +379,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "429";
+const APP_VERSION = "430";
 
 function getAppVersion() {
   return APP_VERSION;
