@@ -1685,6 +1685,79 @@ function searchMatchingTeachers(requestData) {
 }
 
 
+/**
+ * Diagnostic: call from GAS Apps Script editor (Run > diagnoseSMT) to find
+ * why searchMatchingTeachers returns 0 results.
+ * Logs a full report to View > Logs.
+ */
+function diagnoseSMT() {
+  var report = [];
+  function log(msg) { report.push(msg); Logger.log(msg); }
+
+  // 1. Migration Teacher sheet
+  try {
+    var migSS    = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var migSheet = migSS.getSheetByName('Migration Teacher');
+    if (!migSheet) { log('❌ "Migration Teacher" tab NOT FOUND in AUDIT_SHEET_ID ' + CONFIG.AUDIT_SHEET_ID); }
+    else {
+      var migData = migSheet.getDataRange().getValues();
+      log('✅ "Migration Teacher" tab found — ' + (migData.length - 1) + ' data rows');
+      log('   First 5 teacher names: ' + migData.slice(1,6).map(function(r){return r[0];}).join(', '));
+      log('   Col B (calendar IDs) sample: ' + migData.slice(1,4).map(function(r){return r[1];}).join(', '));
+    }
+  } catch(e) { log('❌ AUDIT_SHEET_ID open error: ' + e.message); }
+
+  // 2. Teacher Courses sheet
+  try {
+    var tcData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    if (!tcData || tcData.length < 2) { log('❌ "Teacher Courses" sheet empty or missing'); }
+    else {
+      log('✅ "Teacher Courses" — ' + tcData.length + ' rows');
+      // Find header row
+      var tcHdrIdx = 0;
+      for (var i = 0; i < Math.min(tcData.length, 10); i++) {
+        if (String(tcData[i][0]).trim().toLowerCase() === 'teacher') { tcHdrIdx = i; break; }
+      }
+      var tcHeaders = tcData[tcHdrIdx];
+      log('   Header row index: ' + tcHdrIdx);
+      log('   All headers (first 20): ' + tcHeaders.slice(0,20).map(function(h){return '"'+h+'"';}).join(', '));
+      log('   Total cols: ' + tcHeaders.length);
+      var courseHeaders = tcHeaders.slice(4).filter(function(h){return String(h).trim();});
+      log('   Courses at col 4+ (' + courseHeaders.length + '): ' + courseHeaders.slice(0,10).join(', '));
+      if (courseHeaders.length === 0) log('⚠️  NO courses found at col index 4+ — courses may start at a different column!');
+
+      // Check "App It Up" specifically
+      var appItUpCol = tcHeaders.map(function(h){return String(h).trim().toLowerCase();}).indexOf('app it up');
+      log('   "App It Up" column index: ' + (appItUpCol === -1 ? 'NOT FOUND' : appItUpCol));
+
+      // Sample progress values for "App It Up"
+      if (appItUpCol > -1) {
+        var progValues = tcData.slice(tcHdrIdx + 1).map(function(r){
+          return (String(r[0]||'').trim() || '(blank)') + '→' + (String(r[appItUpCol]||'').trim() || 'empty');
+        }).slice(0, 10);
+        log('   App It Up progress sample: ' + progValues.join(', '));
+      }
+    }
+  } catch(e) { log('❌ Teacher Courses error: ' + e.message); }
+
+  // 3. Teacher Persona Mapping sheet
+  try {
+    var pmData = _getCachedSheetData('Teacher Persona Mapping');
+    if (!pmData || pmData.length < 2) { log('⚠️ "Teacher Persona Mapping" sheet empty or missing (traits/age won\'t work)'); }
+    else { log('✅ "Teacher Persona Mapping" — ' + (pmData.length-1) + ' rows'); }
+  } catch(e) { log('❌ Teacher Persona Mapping error: ' + e.message); }
+
+  // 4. Teacher Data (hidden flags + emails)
+  try {
+    var tdData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+    if (!tdData || tdData.length < 2) { log('⚠️ "Teacher Data" sheet empty or missing'); }
+    else { log('✅ "Teacher Data" — ' + (tdData.length-1) + ' rows'); }
+  } catch(e) { log('❌ Teacher Data error: ' + e.message); }
+
+  Logger.log('=== diagnoseSMT COMPLETE ===\n' + report.join('\n'));
+  return report.join('\n');
+}
+
 function updateTeacherPersona(teacherData) {
   Logger.log('updateTeacherPersona called for teacher: ' + teacherData['Teacher Name']);
 
