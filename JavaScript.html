@@ -2836,6 +2836,18 @@ function updatePersonaResults(result) {
   _personaCurrentPage = 1;
   var container  = document.getElementById('personaResultsContainer');
 
+  // Show relaxed-filter warning banner if server fell back to ≥51% threshold
+  var relaxedBanner = document.getElementById('personaRelaxedBanner');
+  if (!relaxedBanner) {
+    relaxedBanner = document.createElement('div');
+    relaxedBanner.id = 'personaRelaxedBanner';
+    relaxedBanner.style.cssText = 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:0.82rem;color:#92400e;display:none;';
+    relaxedBanner.innerHTML = '⚠️ <strong>No teachers with ≥71% progress found for this course.</strong> Showing teachers with ≥51% progress — verify readiness before assigning.';
+    var grid = document.getElementById('personaCardsGrid');
+    if (grid && grid.parentNode) grid.parentNode.insertBefore(relaxedBanner, grid);
+  }
+  relaxedBanner.style.display = result.relaxedFilter ? 'block' : 'none';
+
   if (false && personaResults.length === 0) { // legacy table path \u2014 kept for reference, never runs
     personaResults.forEach(function(t, idx) {
 
@@ -4908,7 +4920,7 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V41';
+    const CURRENT_APP_VERSION = 'V42';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">

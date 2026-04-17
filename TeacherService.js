@@ -1459,9 +1459,13 @@ function searchMatchingTeachers(requestData) {
       '51-60%':15,'41-50%':12,'31-40%':9,'21-30%':6,'11-20%':3,'1-10%':1,'0%':0
     };
 
-    var VALID_PROGRESS = ['71-80%','81-90%','91-99%','100%'];
+    // Try strict threshold first; if 0 pass, fall back to relaxed threshold
+    var VALID_PROGRESS_STRICT  = ['71-80%','81-90%','91-99%','100%'];
+    var VALID_PROGRESS_RELAXED = ['51-60%','61-70%','71-80%','81-90%','91-99%','100%'];
+    var VALID_PROGRESS = VALID_PROGRESS_STRICT;
     var output = [];
     var debugSlotFiltered = 0;
+    var relaxedMode = false;
 
     // ── 7b. Parallel pre-fetch — batch all teacher calendars in one shot ──
     // This converts N sequential CalendarApp HTTP calls into 1 parallel UrlFetchApp.fetchAll,
@@ -1675,8 +1679,155 @@ function searchMatchingTeachers(requestData) {
       // Priority 3: trait matches
       return (b._traitMatchesCount || 0) - (a._traitMatchesCount || 0);
     });
-    Logger.log('[SMT] done: ' + output.length + ' results | slotFiltered=' + debugSlotFiltered);
-    return { success: true, results: output };
+    // ── Fallback: if strict course filter (≥71%) yielded 0 results, retry at ≥51% ──
+    if (output.length === 0 && currentCourse && !relaxedMode) {
+      Logger.log('[SMT] 0 results with strict filter — retrying with relaxed (≥51%) for course: ' + currentCourse);
+      VALID_PROGRESS = VALID_PROGRESS_RELAXED;
+      relaxedMode = true;
+      output = [];
+      debugSlotFiltered = 0;
+      _calSlotCache = {}; // clear slot cache so prefetch re-runs
+      // Re-run prefetch with relaxed filter
+      if (requestedSlots.length > 0) {
+        var relaxedPairs = [];
+        migDataRows.forEach(function(row) {
+          var tn  = normalizeTeacherName(String(row[0] || '').trim());
+          var rn  = String(row[0] || '').trim();
+          var tc  = normalizeTeacherName(resolveTeacherName(rn));
+          if (hiddenTeacherSet[tn] || hiddenTeacherSet[tc]) return;
+          if (currentCourse) {
+            var ep = getCourseProgress(tn, currentCourse);
+            if (!ep && tc !== tn) ep = getCourseProgress(tc, currentCourse);
+            if (VALID_PROGRESS.indexOf(ep || '') === -1) return;
+          }
+          var cid = calendarIdMap[tn] || calendarIdMap[tc] || null;
+          if (!cid) return;
+          requestedSlots.forEach(function(req) {
+            if (!req.date) return;
+            var em = teacherEmailMap[tn] || teacherEmailMap[tc] || '';
+            relaxedPairs.push({ calId: cid, dateStr: req.date, teacherName: rn, teacherEmail: em });
+          });
+        });
+        prefetchCalendarsBatch(relaxedPairs);
+      }
+      // Re-run main loop (goto-style via label not available — duplicate the loop)
+      for (var mi2 = 0; mi2 < migDataRows.length; mi2++) {
+        var mRow2   = migDataRows[mi2];
+        var rawName2 = String(mRow2[0] || '').trim();
+        if (!rawName2) continue;
+        var tNorm2  = normalizeTeacherName(rawName2);
+        var tCanon2 = normalizeTeacherName(resolveTeacherName(rawName2));
+        if (hiddenTeacherSet[tNorm2] || hiddenTeacherSet[tCanon2]) continue;
+        if (currentCourse) {
+          var ep2 = getCourseProgress(tNorm2, currentCourse);
+          if (!ep2 && tCanon2 !== tNorm2) ep2 = getCourseProgress(tCanon2, currentCourse);
+          if (VALID_PROGRESS.indexOf(ep2 || '') === -1) continue;
+        }
+        var calId2 = calendarIdMap[tNorm2] || calendarIdMap[tCanon2] || null;
+        var slotsMatched2 = 0;
+        var allAlternate2 = [];
+        var teacherInAnyMap2 = false;
+        for (var si2 = 0; si2 < requestedSlots.length; si2++) {
+          var req2 = requestedSlots[si2];
+          if (calId2) {
+            var tEmail2   = teacherEmailMap[tNorm2] || teacherEmailMap[tCanon2] || '';
+            var calSlots2 = fetchTeacherCalendarSlots(calId2, req2.date, rawName2, tEmail2);
+            if (calSlots2 !== null) {
+              teacherInAnyMap2 = true;
+              var utcRange2 = parseSlotToUtcMs(req2.date, normaliseSlot(req2.slot));
+              if (utcRange2) {
+                var reqSMs2 = utcRange2[0], reqEMs2 = utcRange2[1];
+                if (calSlots2.some(function(cs) { return cs.startMs <= reqSMs2 && cs.endMs >= reqEMs2; })) slotsMatched2++;
+              }
+              var matched2 = utcRange2 && calSlots2.some(function(cs) { return cs.startMs <= utcRange2[0] && cs.endMs >= utcRange2[1]; });
+              if (!matched2) calSlots2.forEach(function(cs) {
+                var lbl2 = utcMsToCetLabel(cs.startMs, cs.endMs, req2.date);
+                if (!allAlternate2.some(function(x){ return (x.lbl||x) === lbl2; })) allAlternate2.push({ lbl: lbl2, startMs: cs.startMs });
+              });
+            }
+          } else {
+            var colIdx2 = slotColMap[req2.date];
+            if (colIdx2 !== undefined) {
+              teacherInAnyMap2 = true;
+              var cell2 = String(mRow2[colIdx2] || '').trim();
+              var slotArr2 = (cell2 && cell2 !== 'No Slots' && cell2 !== 'No Slots Available')
+                ? cell2.split(/[\n,]/).map(function(sv){ return sv.trim(); }).filter(Boolean) : [];
+              var reqNorm2 = normaliseSlot(req2.slot);
+              if (slotArr2.some(function(sv){ return normaliseSlot(sv) === reqNorm2; })) slotsMatched2++;
+              else slotArr2.forEach(function(sv) {
+                if (!allAlternate2.some(function(x){ return (x.lbl||x) === sv; })) allAlternate2.push({ lbl: sv, startMs: 0 });
+              });
+            }
+          }
+        }
+        var totalSlots2 = requestedSlots.length;
+        var isFullSlotMatch2 = (totalSlots2 === 0) || (slotsMatched2 === totalSlots2);
+        if (totalSlots2 > 0 && teacherInAnyMap2 && slotsMatched2 === 0 && allAlternate2.length === 0) { debugSlotFiltered++; continue; }
+        var personaEntry2 = personaMap[tNorm2] || personaMap[tCanon2] || null;
+        var teacherTraits2 = personaEntry2 ? personaEntry2.traits : [];
+        var candidateAgeGroups2 = personaEntry2 ? personaEntry2.ageGroups : [];
+        var traitScore2 = 15; var traitsMissing2 = [];
+        if (targetTraits.length > 0) {
+          var tLow2 = teacherTraits2.map(function(t){ return t.toLowerCase(); });
+          var matched2t = targetTraits.filter(function(t){ return tLow2.indexOf(t) > -1; });
+          traitsMissing2 = targetTraits.filter(function(t){ return tLow2.indexOf(t) === -1; });
+          traitScore2 = teacherTraits2.length > 0 ? Math.round((matched2t.length / targetTraits.length) * 30) : 0;
+        }
+        var ageScore2 = 10;
+        if (!isNaN(learnerAgeNum) && candidateAgeGroups2.length > 0) {
+          var ageMatched2 = candidateAgeGroups2.some(function(ag) {
+            var agL = ag.toLowerCase();
+            var rng = agL.match(/(\d+)\s*[-\u2013]\s*(\d+)/);
+            if (rng) return learnerAgeNum >= parseInt(rng[1]) && learnerAgeNum <= parseInt(rng[2]);
+            var plus = agL.match(/(\d+)\+/); if (plus) return learnerAgeNum >= parseInt(plus[1]); return false;
+          });
+          ageScore2 = ageMatched2 ? 20 : 5;
+        }
+        var currentCourseProgress2 = 'Not Onboarded'; var courseScore2 = 0;
+        if (currentCourse) {
+          var prog2 = getCourseProgress(tNorm2, currentCourse);
+          if (!prog2 && tCanon2 !== tNorm2) prog2 = getCourseProgress(tCanon2, currentCourse);
+          if (prog2) { currentCourseProgress2 = prog2; courseScore2 = PROG_SCORE[prog2] !== undefined ? PROG_SCORE[prog2] : 5; }
+        }
+        if (currentCourse && VALID_PROGRESS.indexOf(currentCourseProgress2) === -1) continue;
+        var auditData2 = auditScoreMap[tNorm2] || auditScoreMap[tCanon2] || null;
+        var auditGrade2 = '\u2014'; var redFlagCount2 = 0; var auditScore2 = 10;
+        if (auditData2) {
+          redFlagCount2 = auditData2.redFlags || 0;
+          if (auditData2.avgScore != null) {
+            var sc2 = auditData2.avgScore;
+            auditGrade2 = sc2 >= 65 ? 'A' : sc2 >= 50 ? 'B' : sc2 >= 35 ? 'C' : 'D';
+            auditScore2 = Math.max(0, Math.round((sc2 / 80) * 20) - Math.min(redFlagCount2 * 3, 10));
+          }
+        }
+        var slotLabel2 = totalSlots2 === 0 ? '\u2714\uFE0F' : isFullSlotMatch2 ? '\u2714\uFE0F Match All' : slotsMatched2 > 0 ? '\u26A0\uFE0F ' + slotsMatched2 + '/' + totalSlots2 : '';
+        output.push({
+          teacherName: rawName2, ageYear: candidateAgeGroups2.join(', ') || 'N/A',
+          slotMatch: slotLabel2, slotFullMatch: isFullSlotMatch2,
+          alternateSlots: allAlternate2.sort(function(a,b){ return (a.startMs||0)-(b.startMs||0); }).map(function(x){ return x.lbl||x; }).join(', '),
+          currentCourseProgress: currentCourseProgress2,
+          futureCourse1Progress: fcProg(futureCourses[0]), futureCourse2Progress: fcProg(futureCourses[1]), futureCourse3Progress: fcProg(futureCourses[2]),
+          teacherTraits: teacherTraits2, traitsMissing: traitsMissing2,
+          avgClassScore: auditData2 && auditData2.avgScore != null ? auditData2.avgScore + '/80' : 'No data',
+          auditGrade: auditGrade2, redFlagCount: redFlagCount2, auditCount45: auditData2 ? (auditData2.auditCount || 0) : 0,
+          upskillCount: upskillCountMap[tNorm2] || upskillCountMap[tCanon2] || 0,
+          _rankScore: traitScore2 + ageScore2 + courseScore2 + auditScore2,
+          _traitMatchesCount: targetTraits.length > 0 ? (targetTraits.length - traitsMissing2.length) : 0,
+          _relaxedFilter: true
+        });
+      }
+      output.sort(function(a, b) {
+        var sa = a.slotFullMatch ? 0 : 1, sb = b.slotFullMatch ? 0 : 1;
+        if (sa !== sb) return sa - sb;
+        var pa = PROGRESS_RANK[a.currentCourseProgress] !== undefined ? PROGRESS_RANK[a.currentCourseProgress] : 99;
+        var pb = PROGRESS_RANK[b.currentCourseProgress] !== undefined ? PROGRESS_RANK[b.currentCourseProgress] : 99;
+        if (pa !== pb) return pa - pb;
+        return (b._traitMatchesCount || 0) - (a._traitMatchesCount || 0);
+      });
+    }
+
+    Logger.log('[SMT] done: ' + output.length + ' results | slotFiltered=' + debugSlotFiltered + ' | relaxed=' + relaxedMode);
+    return { success: true, results: output, relaxedFilter: relaxedMode };
 
   } catch (error) {
     Logger.log('Error in searchMatchingTeachers: ' + error.message + '\n' + error.stack);
