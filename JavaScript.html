@@ -2842,7 +2842,7 @@ function updatePersonaResults(result) {
     relaxedBanner = document.createElement('div');
     relaxedBanner.id = 'personaRelaxedBanner';
     relaxedBanner.style.cssText = 'background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:0.82rem;color:#92400e;display:none;';
-    relaxedBanner.innerHTML = '⚠️ <strong>No teachers with ≥71% progress found for this course.</strong> Showing teachers with ≥51% progress — verify readiness before assigning.';
+    relaxedBanner.innerHTML = '⚠️ <strong>Very few teachers are trained for this course.</strong> Showing all available teachers (≥51% progress). Slot availability may be limited — try a different date if needed.';
     var grid = document.getElementById('personaCardsGrid');
     if (grid && grid.parentNode) grid.parentNode.insertBefore(relaxedBanner, grid);
   }
@@ -4920,7 +4920,7 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V42';
+    const CURRENT_APP_VERSION = 'V43';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">

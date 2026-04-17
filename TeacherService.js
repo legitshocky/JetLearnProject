@@ -1762,7 +1762,8 @@ function searchMatchingTeachers(requestData) {
         }
         var totalSlots2 = requestedSlots.length;
         var isFullSlotMatch2 = (totalSlots2 === 0) || (slotsMatched2 === totalSlots2);
-        if (totalSlots2 > 0 && teacherInAnyMap2 && slotsMatched2 === 0 && allAlternate2.length === 0) { debugSlotFiltered++; continue; }
+        // In relaxed fallback mode: never drop by slot — show teacher as "No availability on date"
+        // This ensures the user always sees course-qualified teachers even if calendar shows no free slots
         var personaEntry2 = personaMap[tNorm2] || personaMap[tCanon2] || null;
         var teacherTraits2 = personaEntry2 ? personaEntry2.traits : [];
         var candidateAgeGroups2 = personaEntry2 ? personaEntry2.ageGroups : [];
@@ -1800,7 +1801,7 @@ function searchMatchingTeachers(requestData) {
             auditScore2 = Math.max(0, Math.round((sc2 / 80) * 20) - Math.min(redFlagCount2 * 3, 10));
           }
         }
-        var slotLabel2 = totalSlots2 === 0 ? '\u2714\uFE0F' : isFullSlotMatch2 ? '\u2714\uFE0F Match All' : slotsMatched2 > 0 ? '\u26A0\uFE0F ' + slotsMatched2 + '/' + totalSlots2 : '';
+        var slotLabel2 = totalSlots2 === 0 ? '\u2714\uFE0F' : isFullSlotMatch2 ? '\u2714\uFE0F Match All' : slotsMatched2 > 0 ? '\u26A0\uFE0F ' + slotsMatched2 + '/' + totalSlots2 : (teacherInAnyMap2 ? '\u26A0\uFE0F No slots this date' : '');
         output.push({
           teacherName: rawName2, ageYear: candidateAgeGroups2.join(', ') || 'N/A',
           slotMatch: slotLabel2, slotFullMatch: isFullSlotMatch2,
