@@ -1825,6 +1825,33 @@ function diagnoseSMT() {
     }
   } catch(e) { log('❌ Calendar check error: ' + e.message); }
 
+  // 6. Live test: call searchMatchingTeachers exactly like the UI does
+  log('');
+  log('── LIVE TEST: searchMatchingTeachers ──');
+  try {
+    var testReq = {
+      currentCourse: 'App It Up',
+      futureCourse1: '',
+      futureCourse2: '',
+      futureCourse3: '',
+      learnerAge: '8',
+      techTraits: '',
+      mathTraits: '',
+      requestedSlots: [{ date: '2026-04-17', slot: '03:00 PM - 04:00 PM' }]
+    };
+    var testResult = searchMatchingTeachers(testReq);
+    log('Result success: ' + testResult.success);
+    if (!testResult.success) { log('Error: ' + testResult.message); }
+    else {
+      log('Results count: ' + (testResult.results || []).length);
+      if (testResult.results && testResult.results.length > 0) {
+        log('Top 3: ' + testResult.results.slice(0,3).map(function(r){
+          return r.teacherName + ' | ' + r.currentCourseProgress + ' | slot:' + r.slotMatch + ' | alts:' + (r.alternateSlots||'none');
+        }).join('\n  '));
+      }
+    }
+  } catch(e) { log('❌ Live test error: ' + e.message + '\n' + e.stack); }
+
   Logger.log('=== diagnoseSMT COMPLETE ===\n' + report.join('\n'));
   return report.join('\n');
 }
