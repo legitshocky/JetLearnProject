@@ -1877,17 +1877,19 @@ function diagnoseSMT() {
       log('   Courses at col 4+ (' + courseHeaders.length + '): ' + courseHeaders.slice(0,10).join(', '));
       if (courseHeaders.length === 0) log('⚠️  NO courses found at col index 4+ — courses may start at a different column!');
 
-      // Check "App It Up" specifically
-      var appItUpCol = tcHeaders.map(function(h){return String(h).trim().toLowerCase();}).indexOf('app it up');
-      log('   "App It Up" column index: ' + (appItUpCol === -1 ? 'NOT FOUND' : appItUpCol));
-
-      // Sample progress values for "App It Up"
-      if (appItUpCol > -1) {
-        var progValues = tcData.slice(tcHdrIdx + 1).map(function(r){
-          return (String(r[0]||'').trim() || '(blank)') + '→' + (String(r[appItUpCol]||'').trim() || 'empty');
-        }).slice(0, 10);
-        log('   App It Up progress sample: ' + progValues.join(', '));
-      }
+      // Check specific courses
+      ['App It Up', 'Advanced Microbit', 'Data Science with Python'].forEach(function(courseName) {
+        var colIdx = tcHeaders.map(function(h){return String(h).trim().toLowerCase();}).indexOf(courseName.toLowerCase());
+        if (colIdx === -1) { log('   "' + courseName + '": NOT FOUND in sheet'); return; }
+        var dist = {};
+        tcData.slice(tcHdrIdx + 1).forEach(function(r) {
+          var prog = String(r[colIdx]||'').trim() || 'empty';
+          dist[prog] = (dist[prog] || 0) + 1;
+        });
+        var qualified = (dist['71-80%']||0)+(dist['81-90%']||0)+(dist['91-99%']||0)+(dist['100%']||0);
+        var relaxed   = qualified + (dist['51-60%']||0)+(dist['61-70%']||0);
+        log('   "' + courseName + '" (col ' + colIdx + '): ≥71%=' + qualified + ', ≥51%=' + relaxed + ' | dist: ' + JSON.stringify(dist));
+      });
     }
   } catch(e) { log('❌ Teacher Courses error: ' + e.message); }
 
@@ -1981,14 +1983,14 @@ function diagnoseSMT() {
   log('── LIVE TEST: searchMatchingTeachers ──');
   try {
     var testReq = {
-      currentCourse: 'App It Up',
+      currentCourse: 'Advanced Microbit',
       futureCourse1: '',
       futureCourse2: '',
       futureCourse3: '',
-      learnerAge: '8',
+      learnerAge: '',
       techTraits: '',
       mathTraits: '',
-      requestedSlots: [{ date: '2026-04-17', slot: '03:00 PM - 04:00 PM' }]
+      requestedSlots: [{ date: '2026-04-17', slot: '01:00 PM - 02:00 PM' }]
     };
     var testResult = searchMatchingTeachers(testReq);
     log('Result success: ' + testResult.success);
