@@ -557,7 +557,7 @@ function generateInvoicePDFAndEmail(formData) {
     trackingId = emailResult.trackingId;
 
     // Log the successful action to the main audit log
-    logAction('Invoice Sent', formData.jlid || '', formData.learnerName, '', '', formData.planName, 'Success', `Invoice PDF sent to ${formData.parentEmail}. TID: ${trackingId}`);
+    logAction('Invoice Sent', formData.jlid || '', formData.learnerName, '', '', formData.planName, 'Success', `Invoice PDF sent to ${formData.parentEmail}. TID: ${trackingId}`, '', formData.performedBy || '');
     
     return { success: true, message: 'Invoice generated and emailed successfully!' };
 

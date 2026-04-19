@@ -107,7 +107,7 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     return { success: false, message: `Failed to complete onboarding: ${error.message}` };
 
   } finally {
-    logAction('New Learner Onboarded', formData.jlid, formData.learnerName, '', formData.teacherName, formData.course, overallStatus, logNotes);
+    logAction('New Learner Onboarded', formData.jlid, formData.learnerName, '', formData.teacherName, formData.course, overallStatus, logNotes, '', formData.performedBy || '');
   }
 }
 
@@ -203,13 +203,13 @@ function sendOnboardingEmail(data, attachments = []) {
       attachments: attachments
     });
     
-    // NOTE: We no longer call logAction here. The parent function does it.
-    
+    logAction('New Learner Onboarded', data.jlid, data.learnerName, '', data.teacherName, data.course, 'Success', `Teacher email TID: ${result.trackingId}`, '', data.performedBy || '');
+
     return { success: true, message: `Onboarding email sent to teacher. TID: ${result.trackingId}` };
 
   } catch (error) {
     Logger.log(`Error in helper sendOnboardingEmail: ${error.message}`);
-    // Re-throw the error so the main function knows it failed
+    logAction('New Learner Onboarded', data.jlid, data.learnerName, '', data.teacherName, data.course, 'Failed', error.message, '', data.performedBy || '');
     throw new Error(`Failed to send teacher onboarding email: ${error.message}`);
   }
 }
@@ -368,27 +368,25 @@ function sendMigrationEmail(data, attachments = []) {
     // ==========================================
     // 2. WATI WHATSAPP
     // ==========================================
+    let watiErrorMessage = '';
+    let watiParentEmail  = '';
+    let watiSentCount    = 0;
+
     if (data.sendWhatsappToParent) {
-      // We wrap the ENTIRE WATI block in its own try/catch
-      // This ensures that even if HubSpot/WATI crashes, the Emails (already sent above) are recorded.
       try {
-        
         // SAFE HUBSPOT FETCH
         let hsData = {};
         try {
            const hubspotResult = fetchHubspotByJlid(data.jlid);
            if (hubspotResult.success) {
                hsData = hubspotResult.data;
+               watiParentEmail = hsData.parentEmail || '';
            } else {
                Logger.log("HubSpot Warning: " + hubspotResult.message);
            }
         } catch (hsError) {
            Logger.log("HubSpot Critical Failure: " + hsError.message);
-           // We continue, but parent phone might be missing
         }
-
-        const parentPhone = hsData.parentContact;
-        if (!parentPhone) throw new Error("Parent phone number missing in HubSpot.");
 
         let templateId = data.watiTemplateName;
         if (!templateId) {
@@ -397,26 +395,55 @@ function sendMigrationEmail(data, attachments = []) {
         }
 
         const watiParameters = getWatiParameters(templateId, data, hsData);
-
-        // LOGGING ENHANCEMENT
         const logDetail = watiParameters.map(p => `${p.name}: ${p.value}`).join(' | ');
 
-        // SEND
-        const watiRes = sendWatiTemplate(parentPhone, templateId, watiParameters, data.manualPhone);
-
-        
-        if (watiRes.success) {
-            notes.push(`WATI Sent (${templateId}) -> [DATA: ${logDetail}]`);
+        // Determine target phones: use explicitly selected list or fall back to auto-fetch
+        let targetPhones = [];
+        if (data.watiPhoneTargets && data.watiPhoneTargets.length > 0) {
+          // User explicitly selected contacts from the picker
+          targetPhones = data.watiPhoneTargets.filter(Boolean);
+        } else if (data.manualPhone) {
+          targetPhones = [data.manualPhone];
         } else {
-            watiSuccess = false;
-            notes.push(`WATI Failed: ${watiRes.message}`);
+          // Auto-fetch best number
+          const phone = hsData.parentContact;
+          if (!phone) throw new Error("Parent phone number missing in HubSpot. No manual override provided.");
+          targetPhones = [phone];
+        }
+
+        // Send to each selected target
+        const failedTargets = [];
+        targetPhones.forEach(function(phone) {
+          try {
+            const watiRes = sendWatiTemplate(phone, templateId, watiParameters, '');
+            if (watiRes.success) {
+              watiSentCount++;
+              notes.push(`WATI Sent → ${phone} (${templateId})`);
+            } else {
+              failedTargets.push({ phone, reason: watiRes.message });
+              notes.push(`WATI Failed → ${phone}: ${watiRes.message}`);
+            }
+          } catch(we) {
+            failedTargets.push({ phone, reason: we.message });
+            notes.push(`WATI Error → ${phone}: ${we.message}`);
+          }
+        });
+
+        if (failedTargets.length > 0 && watiSentCount === 0) {
+          watiSuccess = false;
+          watiErrorMessage = failedTargets.map(f => f.phone + ': ' + f.reason).join('; ');
+        } else if (failedTargets.length > 0) {
+          // Partial — some sent, some failed
+          notes.push(`WATI Partial: ${failedTargets.length} of ${targetPhones.length} failed`);
+        } else {
+          notes.push(`WATI OK → all ${watiSentCount} sent [DATA: ${logDetail}]`);
         }
 
       } catch(e) {
         watiSuccess = false;
+        watiErrorMessage = e.message.substring(0, 200);
         Logger.log("WATI Block Error: " + e.message);
-        const safeError = e.message.substring(0, 150);
-        notes.push("Error: " + safeError);
+        notes.push("WATI Error: " + watiErrorMessage);
       }
     } else {
         notes.push("WhatsApp Skipped.");
@@ -436,10 +463,80 @@ function sendMigrationEmail(data, attachments = []) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
+    // ── Send course completion certificate to parent ───────────────────────────
+    if (data.sendCertificate && data.course) {
+      try {
+        // Fetch parent email if not already in data
+        let certParentEmail = data.parentEmail || watiParentEmail || '';
+        let certParentName  = data.parentName  || '';
+        if (!certParentEmail) {
+          try {
+            const hsRes = fetchHubspotByJlid(data.jlid);
+            if (hsRes.success) {
+              certParentEmail = hsRes.data.parentEmail  || '';
+              certParentName  = hsRes.data.parentName   || '';
+            }
+          } catch(hse) {}
+        }
+
+        if (certParentEmail) {
+          const certResult = sendCourseCertificateEmail(
+            data.jlid, data.learner,
+            data.completedCourseForCert || data.course,  // always old (completed) course, not new
+            certParentEmail, certParentName,
+            data.performedBy || ''
+          );
+
+          if (certResult.success) {
+            notes.push('Certificate Sent to ' + certParentEmail);
+
+            // ── HubSpot note: certificate sent ─────────────────────────────
+            try {
+              const tcRes = fetchLatestMigrationTicket(data.jlid);
+              if (tcRes.found && tcRes.ticketId) {
+                const driveUrl = certResult.driveUrl ? '\nDrive URL: ' + certResult.driveUrl : '';
+                const noteText = 'Certificate Sent\n'
+                  + '--------------------\n'
+                  + 'Learner : ' + data.learner + '\n'
+                  + 'Course  : ' + data.course + '\n'
+                  + 'Emailed : ' + certParentEmail + '\n'
+                  + 'Sent by : ' + (data.performedBy || 'CLS') + '\n'
+                  + 'Date    : ' + new Date().toDateString()
+                  + driveUrl;
+                addNoteToHubSpotTicket(tcRes.ticketId, noteText);
+                Logger.log('[sendMigrationEmail] HubSpot cert note written to ticket ' + tcRes.ticketId);
+              } else {
+                Logger.log('[sendMigrationEmail] No ticket found for JLID ' + data.jlid + ' — cert note skipped');
+              }
+            } catch(nte) {
+              Logger.log('[sendMigrationEmail] Cert HubSpot note failed: ' + nte.message);
+            }
+          } else {
+            notes.push('Certificate Failed: ' + certResult.message);
+          }
+        } else {
+          notes.push('Certificate Skipped — no parent email found.');
+        }
+      } catch(certErr) {
+        Logger.log('[sendMigrationEmail] Certificate block error: ' + certErr.message);
+        notes.push('Certificate Error: ' + certErr.message);
+      }
+    }
+
     if (watiSuccess) {
-        return { success: true, message: 'Migration process completed successfully.' };
+        return { success: true, message: 'Migration process completed successfully.', watiError: false };
     } else {
-        return { success: true, message: 'Email sent, but WhatsApp failed. Check Logs.' };
+        return {
+          success: true,
+          message: 'Emails sent. WhatsApp message failed — see details below.',
+          watiError: true,
+          watiErrorMessage: watiErrorMessage,
+          parentEmail: watiParentEmail,
+          learner: data.learner || '',
+          newTeacher: data.newTeacher || '',
+          course: data.course || '',
+          jlid: data.jlid || ''
+        };
     }
 
   } catch (error) {
@@ -447,10 +544,14 @@ function sendMigrationEmail(data, attachments = []) {
     notes.push(`Critical Error: ${error.message}`);
     return { success: false, message: `Failed: ${error.message}` };
   } finally {
-    // FIX: Format the checkbox array into a comma-separated string, then pass it to logAction
-    const intervenedStr = Array.isArray(data.migrationIntervenedBy) 
-        ? data.migrationIntervenedBy.join(', ') 
-        : (data.migrationIntervenedBy || '');
+    // Include performedBy (actual username) so Impact Score is attributed correctly
+    const intervenedParts = Array.isArray(data.migrationIntervenedBy)
+        ? data.migrationIntervenedBy
+        : (data.migrationIntervenedBy ? [data.migrationIntervenedBy] : []);
+    if (data.performedBy && intervenedParts.indexOf(data.performedBy) === -1) {
+      intervenedParts.push(data.performedBy);
+    }
+    const intervenedStr = intervenedParts.filter(Boolean).join(', ');
 
     logAction(
         'Migration Process', 
@@ -468,6 +569,325 @@ function sendMigrationEmail(data, attachments = []) {
 }
 
 
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getWatiContactsForJlid(jlid)
+// Returns all phone numbers (contacts) associated with this learner's deal.
+// Used by the migration form to let CLS pick which contact(s) to WhatsApp.
+// ─────────────────────────────────────────────────────────────────────────────
+function getWatiContactsForJlid(jlid) {
+  try {
+    var hsResult = fetchHubspotByJlid(jlid);
+    if (!hsResult.success) return { success: false, message: hsResult.message, contacts: [], best: '', parentEmail: '' };
+    var hs = hsResult.data;
+    var parentEmail = hs.parentEmail || '';
+    var dealId = hs.dealId || '';
+
+    if (!dealId) {
+      // No deal ID — fall back to the single phone on the deal
+      var fallback = hs.parentContact || '';
+      return {
+        success: true,
+        contacts: fallback ? [{ number: fallback, label: 'Deal Phone', type: 'phone' }] : [],
+        best: fallback,
+        parentEmail: parentEmail
+      };
+    }
+
+    var phoneData = getPhoneNumbersForDeal(dealId);
+    var contacts = (phoneData.all || []).map(function(entry) {
+      // Entry format: "+91xxxx (WhatsApp)" or "+91xxxx (Mobile)" or "+91xxxx (Phone)"
+      var match = String(entry).match(/^(.+?)\s*\((.+?)\)$/);
+      if (match) return { number: match[1].trim(), label: match[2].trim(), type: match[2].toLowerCase() };
+      return { number: String(entry).trim(), label: 'Phone', type: 'phone' };
+    });
+
+    return {
+      success: true,
+      contacts: contacts,
+      best: phoneData.best || '',
+      parentEmail: parentEmail
+    };
+  } catch(e) {
+    Logger.log('[getWatiContactsForJlid] Error: ' + e.message);
+    return { success: false, message: e.message, contacts: [], best: '', parentEmail: '' };
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _fetchWatiTemplateBody(templateName)
+// Fetches the actual message body of a WATI template via API.
+// Returns the body string with {{VariableName}} placeholders, or null on failure.
+// ─────────────────────────────────────────────────────────────────────────────
+function _fetchWatiTemplateBody(templateName) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var base  = (props.getProperty('WATI_API_ENDPOINT') || '').trim();
+    var token = (props.getProperty('WATI_ACCESS_TOKEN') || '').trim();
+    if (!base || !token) return null;
+    if (!token.startsWith('Bearer ')) token = 'Bearer ' + token;
+    if (base.endsWith('/')) base = base.slice(0, -1);
+
+    var headers = { Authorization: token };
+
+    // Direct lookup by name — single API call (verify name matches, WATI filter is not strict)
+    var url = base + '/api/v1/getMessageTemplates?pageSize=1&templateName=' + encodeURIComponent(templateName);
+    var res = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+
+    if (res.getResponseCode() === 200) {
+      var data = JSON.parse(res.getContentText());
+      var templates = data.messageTemplates || data.templates || data.items || data.data || [];
+      if (templates.length > 0) {
+        var t = templates[0];
+        var returnedName = (t.elementName || t.name || '').toLowerCase();
+        if (returnedName === templateName.toLowerCase()) {
+          var body = t.body || t.content || null;
+          if (body) return body;
+        }
+      }
+    }
+
+    // Fallback: paginate if direct lookup returned nothing
+    var pageNumber = 1;
+    while (pageNumber <= 10) {
+      url = base + '/api/v1/getMessageTemplates?pageSize=200&pageNumber=' + pageNumber;
+      res = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+      if (res.getResponseCode() !== 200) break;
+
+      data = JSON.parse(res.getContentText());
+      templates = data.messageTemplates || data.templates || data.items || data.data || [];
+      if (!templates || templates.length === 0) break;
+
+      for (var i = 0; i < templates.length; i++) {
+        var t = templates[i];
+        if ((t.name || t.elementName || '').toLowerCase() === templateName.toLowerCase()) {
+          return t.body || t.content || null;
+        }
+      }
+
+      if (templates.length < 200) break;
+      pageNumber++;
+    }
+
+    return null;
+  } catch(e) {
+    Logger.log('[_fetchWatiTemplateBody] Error: ' + e.message);
+    return null;
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _substituteWatiParams(body, params)
+// Replaces {{VariableName}} and {{1}}/{{2}} positional placeholders with values.
+// params = [{name, value}] array from getWatiParameters()
+// ─────────────────────────────────────────────────────────────────────────────
+function _substituteWatiParams(body, params) {
+  var result = body;
+
+  // Named substitution: {{Parent}}, {{Learner}}, {{new_teacher}} etc. (case-insensitive)
+  params.forEach(function(p) {
+    var regex = new RegExp('\\{\\{' + p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\}\\}', 'gi');
+    result = result.replace(regex, p.value || '');
+  });
+
+  // Positional fallback: {{1}}, {{2}} ... in order of params array
+  params.forEach(function(p, idx) {
+    var regex = new RegExp('\\{\\{' + (idx + 1) + '\\}\\}', 'g');
+    result = result.replace(regex, p.value || '');
+  });
+
+  return result;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy)
+// Called when WATI fails — sends parent the exact same content as the WhatsApp.
+// migrationContext = full migrationData object from the form
+// ─────────────────────────────────────────────────────────────────────────────
+function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy) {
+  try {
+    // 1. Fetch HubSpot data for parent email + enrich params
+    var hsData = {};
+    var parentEmail = migrationContext.parentEmail || '';
+    try {
+      var hsRes = fetchHubspotByJlid(jlid);
+      if (hsRes.success) {
+        hsData = hsRes.data;
+        if (!parentEmail || !isValidEmail(parentEmail)) parentEmail = hsData.parentEmail || '';
+      }
+    } catch(he) { Logger.log('[FallbackEmail] HS fetch: ' + he.message); }
+
+    if (!parentEmail || !isValidEmail(parentEmail)) {
+      return { success: false, message: 'No valid parent email found for JLID: ' + jlid };
+    }
+
+    // 2. Resolve template name
+    var templateId = migrationContext.watiTemplateName || '';
+    if (!templateId) {
+      try {
+        var tpls = getTemplatesForReason(migrationContext.reasonOfMigration || '');
+        templateId = (tpls && tpls.length > 0) ? tpls[0].id : 'migration_generic_update';
+      } catch(e) { templateId = 'migration_generic_update'; }
+    }
+
+    // 3. Build same params WATI would have used
+    var paramsList = [];
+    try { paramsList = getWatiParameters(templateId, migrationContext, hsData); } catch(e) {}
+
+    // 4. Fetch the actual template body from WATI API and substitute params
+    var messageBody = null;
+    try { messageBody = _fetchWatiTemplateBody(templateId); } catch(e) {}
+
+    var learnerName = migrationContext.learner || jlid;
+    var newTeacher  = migrationContext.newTeacher || '';
+    var oldTeacher  = migrationContext.oldTeacher || '';
+    var subject     = 'JetLearn - ' + learnerName + ' - Class Update';
+    var htmlBody;
+
+    if (messageBody) {
+      // Substitute all {{params}} with real values — exact WATI content
+      var filledText = _substituteWatiParams(messageBody, paramsList);
+      htmlBody = getMigrationParentFallbackEmailHTML({ messageText: filledText, learnerName: learnerName });
+    } else {
+      // WATI API unreachable — fall back to structured summary (all key fields)
+      Logger.log('[FallbackEmail] Could not fetch WATI template body, using structured fallback.');
+      var paramsMap = {};
+      paramsList.forEach(function(p) { paramsMap[p.name.toLowerCase()] = p.value; });
+      htmlBody = getMigrationParentFallbackEmailHTML({
+        messageText: null,
+        learnerName:  learnerName,
+        newTeacher:   paramsMap['new_teacher'] || paramsMap['teacher'] || newTeacher,
+        oldTeacher:   oldTeacher,
+        course:       paramsMap['course'] || paramsMap['coures_type'] || migrationContext.course || '',
+        weekday:      paramsMap['weekday'] || '',
+        time:         paramsMap['time'] || '',
+        classLink:    paramsMap['link'] || paramsMap['meeting_link'] || migrationContext.classLink || '',
+        startDate:    paramsMap['date'] || ''
+      });
+    }
+
+    var sendResult = sendTrackedEmail({ to: parentEmail, subject: subject, htmlBody: htmlBody, jlid: jlid });
+
+    logAction('Migration Email Sent', jlid, learnerName, oldTeacher, newTeacher,
+      migrationContext.course || '', 'Success',
+      'Parent fallback email (WhatsApp failed). TID: ' + sendResult.trackingId,
+      migrationContext.reasonOfMigration || '', performedBy || '');
+
+    return { success: true, message: 'Parent notified via email.', trackingId: sendResult.trackingId };
+  } catch(e) {
+    Logger.log('[sendMigrationParentFallbackEmail] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getMigrationParentFallbackEmailHTML(ctx)
+// ctx.messageText  = filled WATI template body (preferred — exact content)
+// ctx.*            = structured fields used only when messageText is null
+// ─────────────────────────────────────────────────────────────────────────────
+function getMigrationParentFallbackEmailHTML(ctx) {
+  var learner   = ctx.learnerName || 'Learner';
+  var classLink = ctx.classLink || '';
+
+  // ── PRIMARY PATH: exact WATI template body ────────────────────────────────
+  if (ctx.messageText) {
+    // Convert WhatsApp line breaks / *bold* to basic HTML
+    var bodyHtml = ctx.messageText
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*(.*?)\*/g, '<strong>$1</strong>')   // *bold*
+      .replace(/_(.*?)_/g, '<em>$1</em>')             // _italic_
+      .replace(/\n/g, '<br/>');
+
+    return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>JetLearn - ${learner} - Class Update</title>
+</head>
+<body style="margin:0;padding:0;background:#f0ede8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="max-width:520px;background:#ffffff;border-radius:14px;border:1px solid #e4e1dc;overflow:hidden;">
+
+      <!-- Minimal header -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#2d2a6e,#4c3a9e);padding:18px 28px;">
+          <span style="color:#fff;font-size:1.1rem;font-weight:700;">✈ JetLearn</span>
+        </td>
+      </tr>
+
+      <!-- Exact template body -->
+      <tr>
+        <td style="padding:28px 28px 24px;font-size:0.93rem;color:#222;line-height:1.75;">
+          ${bodyHtml}
+        </td>
+      </tr>
+
+      ${classLink ? `<!-- CTA -->
+      <tr>
+        <td style="padding:0 28px 28px;text-align:center;">
+          <a href="${classLink}"
+            style="display:inline-block;background:linear-gradient(135deg,#2d2a6e,#4c3a9e);
+              color:#ffffff;text-decoration:none;padding:11px 28px;border-radius:9px;
+              font-weight:600;font-size:0.88rem;">
+            Join Class →
+          </a>
+        </td>
+      </tr>` : ''}
+
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+  }
+
+  // ── FALLBACK PATH: WATI API unreachable, render key fields ────────────────
+  var newTeacher = ctx.newTeacher  || '';
+  var oldTeacher = ctx.oldTeacher  || '';
+  var course     = ctx.course      || '';
+  var weekday    = ctx.weekday     || '';
+  var time       = ctx.time        || '';
+  var startDate  = ctx.startDate   || '';
+
+  var rows = '';
+  if (newTeacher) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;width:120px;">New Teacher</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;font-weight:600;">${newTeacher}</td></tr>`;
+  if (oldTeacher) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Previous Teacher</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#555;">${oldTeacher}</td></tr>`;
+  if (course)     rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Course</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;">${course}</td></tr>`;
+  if (weekday||time) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Schedule</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;font-weight:600;">${weekday}${weekday&&time?' · ':''}${time}</td></tr>`;
+  if (startDate)  rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Effective From</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;">${startDate}</td></tr>`;
+  if (classLink)  rows += `<tr><td style="padding:8px 0;color:#888;font-size:0.83rem;">Class Link</td><td style="padding:8px 0;"><a href="${classLink}" style="color:#5546d4;">${classLink}</a></td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<title>JetLearn - ${learner} - Class Update</title>
+</head>
+<body style="margin:0;padding:0;background:#f0ede8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="max-width:520px;background:#fff;border-radius:14px;border:1px solid #e4e1dc;overflow:hidden;">
+      <tr><td style="background:linear-gradient(135deg,#2d2a6e,#4c3a9e);padding:18px 28px;">
+        <span style="color:#fff;font-size:1.1rem;font-weight:700;">✈ JetLearn</span>
+      </td></tr>
+      <tr><td style="padding:24px 28px 8px;font-size:0.93rem;color:#333;">
+        Here is an update regarding <strong>${learner}</strong>'s upcoming classes.
+      </td></tr>
+      <tr><td style="padding:12px 28px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0"
+          style="background:#f8f7ff;border:1px solid #ddd8fa;border-radius:8px;padding:4px 14px;">
+          ${rows}
+        </table>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+}
 
 
 function handleTrackingPixel(trackingId) {
@@ -970,6 +1390,50 @@ function uploadAttachments(base64Files) {
   return attachments;
 }
 
+function _getBlobFromDriveFolder(folderId, fallbackName) {
+  // Grabs the first file found in a Drive folder and returns its blob
+  try {
+    var folder = DriveApp.getFolderById(folderId);
+    var files   = folder.getFiles();
+    if (!files.hasNext()) {
+      Logger.log('_getBlobFromDriveFolder: folder ' + folderId + ' is empty.');
+      return null;
+    }
+    var file = files.next();
+    var blob = file.getBlob();
+    // Preserve original filename; fallbackName used only if Drive returns blank
+    var name = file.getName() || fallbackName;
+    blob.setName(name);
+    Logger.log('_getBlobFromDriveFolder: attached "' + name + '" from folder ' + folderId);
+    return blob;
+  } catch(e) {
+    Logger.log('_getBlobFromDriveFolder error (' + folderId + '): ' + e.message);
+    return null;
+  }
+}
+
+function _getMinecraftDefaultAttachments() {
+  var blobs = [];
+  var sources = [
+    { folder: CONFIG.MINECRAFT_VIDEO_MAC_FOLDER, name: 'Minecraft Steps - Mac.mp4'     },
+    { folder: CONFIG.MINECRAFT_VIDEO_WIN_FOLDER, name: 'Minecraft Steps - Windows.mp4' }
+  ];
+  sources.forEach(function(src) {
+    if (!src.folder) return;
+    var blob = _getBlobFromDriveFolder(src.folder, src.name);
+    if (blob) blobs.push(blob);
+  });
+  return blobs;
+}
+
+function _getRobloxDefaultAttachments() {
+  var blobs = [];
+  if (!CONFIG.ROBLOX_SETUP_PDF_FOLDER) return blobs;
+  var blob = _getBlobFromDriveFolder(CONFIG.ROBLOX_SETUP_PDF_FOLDER, 'Roblox Studio Setup Instructions.pdf');
+  if (blob) blobs.push(blob);
+  return blobs;
+}
+
 function sendGenericEmail(emailType, formData, recipientEmail, attachmentsBase64, comments) {
   try {
     if (!isValidEmail(recipientEmail)) throw new Error('Valid Recipient Email is required.');
@@ -979,21 +1443,31 @@ function sendGenericEmail(emailType, formData, recipientEmail, attachmentsBase64
 
     switch (emailType) {
       case 'Minecraft Install':
-        subject = `JetLearn: Minecraft Installation Guide for ${formData.learnerName || 'Learner'}`;
+        subject = 'Minecraft Course Download Link';
         htmlBody = getMinecraftInstallEmailHTML(formData, comments);
         break;
       case 'Roblox Install':
-        subject = `JetLearn: Roblox Installation Guide for ${formData.learnerName || 'Learner'}`;
+        subject = 'Download & Set-up for Roblox Studio';
         htmlBody = getRobloxInstallEmailHTML(formData, comments);
         break;
       default: throw new Error(`Unknown email type: ${emailType}.`);
     }
 
     const attachments = (attachmentsBase64 && attachmentsBase64.length > 0) ? uploadAttachments(attachmentsBase64) : [];
-    
+
+    // Auto-append default Drive attachments for course emails
+    if (emailType === 'Minecraft Install') {
+      const mcAuto = _getMinecraftDefaultAttachments();
+      attachments.push(...mcAuto);
+    }
+    if (emailType === 'Roblox Install') {
+      const rbAuto = _getRobloxDefaultAttachments();
+      attachments.push(...rbAuto);
+    }
+
     const result = sendTrackedEmail({ to: recipientEmail, subject, htmlBody, jlid: formData.jlid, attachments });
     
-    logAction(`Email Sent (${emailType})`, formData.jlid, formData.learnerName, '', '', formData.course, 'Success', `TID: ${result.trackingId}`);
+    logAction(`Email Sent (${emailType})`, formData.jlid, formData.learnerName, '', '', formData.course, 'Success', `TID: ${result.trackingId}`, '', formData.performedBy || '');
     return { success: true, message: `${emailType} email sent successfully!` };
   } catch (error) {
     logAction(`Email Failed (${emailType})`, formData.jlid, formData.learnerName, '', '', formData.course, 'Failed', error.message);

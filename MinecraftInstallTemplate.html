@@ -1,116 +1,95 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
-    .container { max-width: 650px; margin: auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    .header { background: #4CAF50; padding: 25px; text-align: center; color: white; border-radius: 12px 12px 0 0; }
-    .header .title { font-size: 24px; font-weight: bold; margin: 0; }
-    .header .subtitle { font-size: 16px; margin: 5px 0 0 0; opacity: 0.9; }
-    .content { padding: 30px 40px; line-height: 1.6; }
-    .greeting { margin-bottom: 20px; }
-    .section { background: #e8f5e9; border: 1px solid #c8e6c9; border-left: 4px solid #4CAF50; border-radius: 8px; padding: 20px; margin: 20px 0; }
-    .section h3 { margin: 0 0 15px 0; color: #2E7D32; font-size: 18px; }
-    ol, ul { padding-left: 25px; margin: 0; }
-    li { margin-bottom: 10px; }
-    strong { color: #2d2d2d; }
-    a { color: #1976D2; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .call-to-action { text-align: center; margin-top: 30px; }
-    .btn { display: inline-block; padding: 12px 25px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
-    .btn:hover { background-color: #388E3C; }
-    .footer { background: #333; padding: 25px; text-align: center; font-size: 13px; color: white; border-top: 1px solid #e9ecef; }
-    .footer p { margin: 5px 0; }
-    .comments-section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; font-style: italic; color: #555; }
-
-    /* Dark mode styles */
-    @media (prefers-color-scheme: dark) {
-      body { background-color: #1a1a1a; color: #e5e5e5; }
-      .container { background: #2d2d2d; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-      .header { background: #388E3C; }
-      .content { background: #2d2d2d; color: #e5e5e5; }
-      .section { background: #2a3a2a; border: 1px solid #4CAF50; border-left-color: #4CAF50; }
-      .section h3 { color: #81C784; }
-      strong { color: #f0f0f0; }
-      a { color: #64B5F6; }
-      .btn { background-color: #388E3C; }
-      .btn:hover { background-color: #2E7D32; }
-      .footer { background: #1a1a1a; border-top-color: #444; color: #e5e5e5; }
-      .comments-section { color: #aaa; border-top-color: #444; }
-    }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Course Download Link</title>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="title">Minecraft Installation Guide</div>
-      <div class="subtitle">JetLearn Course Preparation</div>
-    </div>
-    <div class="content">
-      <div class="greeting">
-        <p>Dear Parent of <strong><?= data.learnerName || 'Learner' ?></strong>,</p>
-      </div>
-      
-      <p>Welcome to JetLearn! To ensure a smooth start to <strong><?= data.learnerName || 'your child\'s' ?></strong>'s <strong><?= data.course || 'Minecraft' ?></strong> course (JLID: <?= data.jlid || 'N/A' ?>), please follow these steps to install and set up Minecraft on their computer.</p>
-      
-      <div class="section">
-        <h3>Installation Steps:</h3>
-        <ol>
-          <li><strong>Purchase Minecraft Java Edition:</strong> Ensure you have purchased and downloaded the Java Edition of Minecraft. This is crucial for our curriculum. You can get it from the official Minecraft website: <a href="https://www.minecraft.net/en-us/get-minecraft/buy" target="_blank">minecraft.net/buy</a></li>
-          <li><strong>Install Java:</strong> Our courses require a specific version of Java. Please download and install Java 8 (JRE 8) from <a href="https://www.java.com/en/download/" target="_blank">java.com/download</a>.</li>
-          <li><strong>Install Minecraft Launcher:</strong> Download and install the Minecraft Launcher from the official website if you haven't already.</li>
-          <li><strong>Log in to the Launcher:</strong> Open the Minecraft Launcher and log in with your Mojang or Microsoft account.</li>
-          <li><strong>Select "Java Edition":</strong> Ensure you have "Minecraft: Java Edition" selected in the launcher.</li>
-          <li><strong>Create a new "Installation":</strong>
-            <ul>
-              <li>Go to the "Installations" tab.</li>
-              <li>Click "New Installation".</li>
-              <li>Name it "JetLearn".</li>
-              <li>For "VERSION", select "release 1.16.5" (or the version specified by your teacher).</li>
-              <li>Click "Create".</li>
-            </ul>
-          </li>
-          <li><strong>Download and Install Forge (Optional, but Recommended for Mods):</strong>
-            <ul>
-              <li>Go to the Forge website: <a href="https://files.minecraftforge.net/net/minecraftforge/forge/" target="_blank">files.minecraftforge.net</a></li>
-              <li>Select the same Minecraft version (e.g., 1.16.5).</li>
-              <li>Download the "Installer" version.</li>
-              <li>Run the downloaded Forge installer and select "Install client".</li>
-              <li>Once installed, open the Minecraft Launcher, and you should see a "Forge" profile available in the dropdown next to the "Play" button. Select it.</li>
-            </ul>
-          </li>
-          <li><strong>Test Your Installation:</strong> Launch the game using the "JetLearn" or "Forge" profile to ensure it loads correctly.</li>
-        </ol>
-      </div>
+<body style="margin:0;padding:0;background-color:#f0f4f0;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f4f0;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="620" cellpadding="0" cellspacing="0" border="0" style="max-width:620px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
 
-      <div class="section">
-        <h3>Minimum System Requirements:</h3>
-        <ul>
-            <li><strong>Operating System:</strong> Windows 10/11, macOS, Linux</li>
-            <li><strong>Processor:</strong> Intel Core i3-3210 3.2 GHz / AMD A8-7600 APU 3.1 GHz or equivalent</li>
-            <li><strong>RAM:</strong> 4GB RAM</li>
-            <li><strong>Graphics:</strong> Integrated: Intel HD Graphics 4000 / AMD Radeon R5 series. Dedicated: Nvidia GeForce 400 Series / AMD Radeon HD 7000 Series or equivalent</li>
-            <li><strong>Storage:</strong> 1GB for game core, maps, and other files</li>
-            <li><strong>Internet Connection:</strong> Stable broadband connection (at least 20 Mbps recommended)</li>
-        </ul>
-      </div>
-      
-      <p>If you encounter any issues during installation, please do not hesitate to contact our support team at <a href="mailto:support@jet-learn.com">support@jet-learn.com</a>. We are here to help!</p>
-      
-      <p>We look forward to <strong><?= data.learnerName || 'your child' ?></strong> starting their exciting coding journey with Minecraft!</p>
-      
-      <p>Warm regards,<br><strong>The JetLearn Team</strong></p>
+          <!-- Grass-block accent bar -->
+          <tr>
+            <td style="height:8px;background:linear-gradient(90deg,#5a9e3a 0%,#62b246 40%,#8cc84b 70%,#5a9e3a 100%);"></td>
+          </tr>
 
-      <? if (comments) { ?>
-        <div class="comments-section">
-          <p><strong>Additional Comments:</strong><br><?= comments.replace(/\n/g, '<br>') ?></p>
-        </div>
-      <? } ?>
-    </div>
-    <div class="footer">
-      <p><strong>JetLearn Team</strong></p>
-      <p>This is an automated message.</p>
-    </div>
-  </div>
+          <!-- Dark header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#1d3a1d 0%,#2a5c2a 60%,#1d3a1d 100%);padding:32px 40px 28px;text-align:center;">
+              <div style="font-size:2rem;margin-bottom:8px;">⛏️</div>
+              <div style="color:#62b246;font-size:0.72rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:6px;">JetLearn</div>
+              <h1 style="margin:0;color:#ffffff;font-size:1.5rem;font-weight:800;letter-spacing:-0.5px;line-height:1.3;">Minecraft Course<br>Download Link</h1>
+              <p style="margin:10px 0 0;color:rgba(255,255,255,0.65);font-size:0.88rem;">World's Top Rated Coding Academy for Kids</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 40px 28px;color:#1a1a1a;font-size:0.95rem;line-height:1.7;">
+
+              <p style="margin:0 0 18px;"><?= data.parentName ? 'Dear ' + data.parentName + ',' : 'Dear Parent,' ?></p>
+
+              <p style="margin:0 0 18px;"><strong><?= data.learnerName || 'Your Child' ?></strong> will start with Minecraft Edu soon. We request you to download the education version of Minecraft Education by clicking on the link below:</p>
+
+              <!-- Download link highlight box -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#e8f5e1,#d4edbc);border:2px solid #62b246;border-radius:10px;padding:18px 22px;text-align:center;">
+                    <div style="font-size:0.75rem;font-weight:700;color:#2a5c2a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Official Download Link</div>
+                    <a href="https://education.minecraft.net/en-us/get-started/download" target="_blank" style="color:#2a5c2a;font-weight:700;font-size:0.95rem;word-break:break-all;text-decoration:underline;">https://education.minecraft.net/en-us/get-started/download</a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- NOTE box -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;">
+                <tr>
+                  <td style="background:#fff8e1;border-left:4px solid #f9a825;border-radius:0 8px 8px 0;padding:12px 16px;font-size:0.88rem;color:#5d4037;">
+                    <strong style="color:#e65100;">NOTE:</strong> Make sure to use the same link provided above for downloading the Minecraft Education software (to avoid any version issues)
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 18px;">Depending on your computer, click on the <strong>Download for Windows</strong> or <strong>Download for Mac</strong> button to download the software.</p>
+
+              <p style="margin:0 0 18px;">It is recommended not to use a Chromebook or iPad.</p>
+
+              <p style="margin:0 0 28px;">Also, find attached relevant videos for quick reference.</p>
+
+              <p style="margin:0 0 4px;">Regards,</p>
+              <p style="margin:0;font-weight:700;color:#1d3a1d;">Team JetLearn</p>
+
+              <? if (comments) { ?>
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+                  <tr>
+                    <td style="border-top:1px solid #e0e0e0;padding-top:16px;font-size:0.88rem;color:#555;font-style:italic;">
+                      <strong>Additional Comments:</strong><br><?= comments.replace(/\n/g, '<br>') ?>
+                    </td>
+                  </tr>
+                </table>
+              <? } ?>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#1d3a1d;padding:20px 40px;text-align:center;">
+              <p style="margin:0 0 4px;color:#62b246;font-weight:700;font-size:0.88rem;">Team JetLearn</p>
+              <p style="margin:0;color:rgba(255,255,255,0.5);font-size:0.75rem;">This is an automated message.</p>
+            </td>
+          </tr>
+
+          <!-- Bottom grass accent -->
+          <tr>
+            <td style="height:6px;background:linear-gradient(90deg,#5a9e3a 0%,#62b246 40%,#8cc84b 70%,#5a9e3a 100%);"></td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

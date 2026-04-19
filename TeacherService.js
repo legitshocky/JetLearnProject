@@ -490,21 +490,18 @@ function updateTeacherDetails(teacherData) {
 }
 
 function getCourseNames() {
-  Logger.log('getCourseNames called');
   try {
-    const sheetData = _getCachedSheetData(CONFIG.SHEETS.COURSE_NAME); 
-
-    if (sheetData.length < 2) { 
-        Logger.log('Course Name sheet is empty or only has headers.');
-        return [];
+    const sheetData = _getCachedSheetData(CONFIG.SHEETS.COURSE_NAME);
+    Logger.log('getCourseNames: Course Name sheet rows = ' + (sheetData ? sheetData.length : 'null'));
+    if (sheetData && sheetData.length >= 2) {
+      const courses = sheetData.slice(1)
+        .map(row => (row[0] ? String(row[0]).trim() : ''))
+        .filter(name => name !== '');
+      Logger.log('getCourseNames: returning ' + courses.length + ' courses');
+      return courses.sort();
     }
-
-    const courses = sheetData.slice(1) 
-      .map(row => (row[0] ? String(row[0]).trim() : '')) 
-      .filter(name => name !== ''); 
-
-    Logger.log(`getCourseNames found ${courses.length} courses.`);
-    return courses;
+    Logger.log('getCourseNames: Course Name sheet empty or missing');
+    return [];
   } catch (error) {
     Logger.log('getCourseNames error: ' + error.message);
     return [];
@@ -1079,7 +1076,7 @@ function searchMatchingTeachers(requestData) {
     // Fetch and cache available 1-hour slots for a teacher's calendar on a given date.
     // Returns [] if no availability events; null if calendar inaccessible (don't penalise teacher).
     var _scriptCache = CacheService.getScriptCache();
-    var CAL_CACHE_VER = 'v5'; // bump to invalidate stale calendar cache
+    var CAL_CACHE_VER = 'v6'; // bumped: midnight slot end-time fix
     function fetchTeacherCalendarSlots(calId, dateStr, teacherName, teacherEmail) {
       var ck = CAL_CACHE_VER + '_' + calId + '_' + dateStr;
       if (_calSlotCache[ck] !== undefined) return _calSlotCache[ck];
@@ -1291,9 +1288,13 @@ function searchMatchingTeachers(requestData) {
       var yr = parseInt(dp[0]), mo = parseInt(dp[1]), dy = parseInt(dp[2]);
       // Apr–Sep = CEST (UTC+2); Oct–Mar = CET (UTC+1)
       var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+      // If end hour ≤ start hour, the slot crosses midnight — end is on the next calendar day.
+      // Without this, "11:00 PM - 12:00 AM" would compute endMs = Date.UTC(day, 0-2) = 22:00 UTC
+      // on the PREVIOUS day, making cs.endMs >= reqEMs trivially true for every teacher.
+      var endDy = (et.h <= st.h && et.h < 12) ? dy + 1 : dy;
       return [
-        Date.UTC(yr, mo - 1, dy, st.h - cetOff, st.m, 0),
-        Date.UTC(yr, mo - 1, dy, et.h - cetOff, et.m, 0)
+        Date.UTC(yr, mo - 1, dy,    st.h - cetOff, st.m, 0),
+        Date.UTC(yr, mo - 1, endDy, et.h - cetOff, et.m, 0)
       ];
     }
 
@@ -1637,7 +1638,16 @@ function searchMatchingTeachers(requestData) {
         }
       }
 
-      var totalScore = traitScore + ageScore + courseScore + auditScore;
+      // Pre-compute future course progress for ranking + display
+      var f1Prog = futureCourses[0] ? (getCourseProgress(tNorm, futureCourses[0]) || getCourseProgress(tCanon, futureCourses[0]) || 'Not Onboarded') : 'N/A';
+      var f2Prog = futureCourses[1] ? (getCourseProgress(tNorm, futureCourses[1]) || getCourseProgress(tCanon, futureCourses[1]) || 'Not Onboarded') : 'N/A';
+      var f3Prog = futureCourses[2] ? (getCourseProgress(tNorm, futureCourses[2]) || getCourseProgress(tCanon, futureCourses[2]) || 'Not Onboarded') : 'N/A';
+      var futureScore = 0;
+      if (futureCourses[0] && PROG_SCORE[f1Prog] !== undefined) futureScore += Math.round(PROG_SCORE[f1Prog] * 0.5);
+      if (futureCourses[1] && PROG_SCORE[f2Prog] !== undefined) futureScore += Math.round(PROG_SCORE[f2Prog] * 0.25);
+      if (futureCourses[2] && PROG_SCORE[f3Prog] !== undefined) futureScore += Math.round(PROG_SCORE[f3Prog] * 0.1);
+
+      var totalScore = traitScore + ageScore + courseScore + futureScore + auditScore;
       var slotLabel  = totalSlots === 0    ? '\u2714\uFE0F'
                      : isFullSlotMatch     ? '\u2714\uFE0F Match All'
                      : slotsMatched > 0   ? '\u26A0\uFE0F ' + slotsMatched + '/' + totalSlots
@@ -1650,9 +1660,9 @@ function searchMatchingTeachers(requestData) {
         slotFullMatch         : isFullSlotMatch,
         alternateSlots        : allAlternate.sort(function(a,b){ return (a.startMs||0)-(b.startMs||0); }).map(function(x){ return x.lbl||x; }).join(', '),
         currentCourseProgress : currentCourseProgress,
-        futureCourse1Progress : fcProg(futureCourses[0]),
-        futureCourse2Progress : fcProg(futureCourses[1]),
-        futureCourse3Progress : fcProg(futureCourses[2]),
+        futureCourse1Progress : f1Prog,
+        futureCourse2Progress : f2Prog,
+        futureCourse3Progress : f3Prog,
         teacherTraits         : teacherTraits,
         traitsMissing         : traitsMissing,
         avgClassScore         : auditData && auditData.avgScore != null ? auditData.avgScore + '/80' : 'No data',
@@ -1665,19 +1675,14 @@ function searchMatchingTeachers(requestData) {
       });
     }
 
-    // Sort: 1) slot match (✓ first)  2) course progress (100% > 91% > ...)  3) trait matches count
-    var PROGRESS_RANK = {'100%':0,'91-99%':1,'81-90%':2,'71-80%':3};
+    // Sort: 1) slot match (✓ first)  2) _rankScore composite (traits+age+currentCourse+futureCourses+audit)
     output.sort(function(a, b) {
       // Priority 1: slot match
       var sa = a.slotFullMatch ? 0 : 1;
       var sb = b.slotFullMatch ? 0 : 1;
       if (sa !== sb) return sa - sb;
-      // Priority 2: course progress (higher % = lower rank number = earlier)
-      var pa = PROGRESS_RANK[a.currentCourseProgress] !== undefined ? PROGRESS_RANK[a.currentCourseProgress] : 99;
-      var pb = PROGRESS_RANK[b.currentCourseProgress] !== undefined ? PROGRESS_RANK[b.currentCourseProgress] : 99;
-      if (pa !== pb) return pa - pb;
-      // Priority 3: trait matches
-      return (b._traitMatchesCount || 0) - (a._traitMatchesCount || 0);
+      // Priority 2: composite rank score (higher = better)
+      return (b._rankScore || 0) - (a._rankScore || 0);
     });
     // ── Fallback: if strict course filter (≥71%) yielded 0 results, retry at ≥51% ──
     if (output.length === 0 && currentCourse && !relaxedMode) {
@@ -1801,18 +1806,25 @@ function searchMatchingTeachers(requestData) {
             auditScore2 = Math.max(0, Math.round((sc2 / 80) * 20) - Math.min(redFlagCount2 * 3, 10));
           }
         }
+        var mf1Prog = futureCourses[0] ? (getCourseProgress(tNorm2, futureCourses[0]) || getCourseProgress(tCanon2, futureCourses[0]) || 'Not Onboarded') : 'N/A';
+        var mf2Prog = futureCourses[1] ? (getCourseProgress(tNorm2, futureCourses[1]) || getCourseProgress(tCanon2, futureCourses[1]) || 'Not Onboarded') : 'N/A';
+        var mf3Prog = futureCourses[2] ? (getCourseProgress(tNorm2, futureCourses[2]) || getCourseProgress(tCanon2, futureCourses[2]) || 'Not Onboarded') : 'N/A';
+        var futureScore2 = 0;
+        if (futureCourses[0] && PROG_SCORE[mf1Prog] !== undefined) futureScore2 += Math.round(PROG_SCORE[mf1Prog] * 0.5);
+        if (futureCourses[1] && PROG_SCORE[mf2Prog] !== undefined) futureScore2 += Math.round(PROG_SCORE[mf2Prog] * 0.25);
+        if (futureCourses[2] && PROG_SCORE[mf3Prog] !== undefined) futureScore2 += Math.round(PROG_SCORE[mf3Prog] * 0.1);
         var slotLabel2 = totalSlots2 === 0 ? '\u2714\uFE0F' : isFullSlotMatch2 ? '\u2714\uFE0F Match All' : slotsMatched2 > 0 ? '\u26A0\uFE0F ' + slotsMatched2 + '/' + totalSlots2 : (teacherInAnyMap2 ? '\u26A0\uFE0F No slots this date' : '');
         output.push({
           teacherName: rawName2, ageYear: candidateAgeGroups2.join(', ') || 'N/A',
           slotMatch: slotLabel2, slotFullMatch: isFullSlotMatch2,
           alternateSlots: allAlternate2.sort(function(a,b){ return (a.startMs||0)-(b.startMs||0); }).map(function(x){ return x.lbl||x; }).join(', '),
           currentCourseProgress: currentCourseProgress2,
-          futureCourse1Progress: fcProg(futureCourses[0]), futureCourse2Progress: fcProg(futureCourses[1]), futureCourse3Progress: fcProg(futureCourses[2]),
+          futureCourse1Progress: mf1Prog, futureCourse2Progress: mf2Prog, futureCourse3Progress: mf3Prog,
           teacherTraits: teacherTraits2, traitsMissing: traitsMissing2,
           avgClassScore: auditData2 && auditData2.avgScore != null ? auditData2.avgScore + '/80' : 'No data',
           auditGrade: auditGrade2, redFlagCount: redFlagCount2, auditCount45: auditData2 ? (auditData2.auditCount || 0) : 0,
           upskillCount: upskillCountMap[tNorm2] || upskillCountMap[tCanon2] || 0,
-          _rankScore: traitScore2 + ageScore2 + courseScore2 + auditScore2,
+          _rankScore: traitScore2 + ageScore2 + courseScore2 + futureScore2 + auditScore2,
           _traitMatchesCount: targetTraits.length > 0 ? (targetTraits.length - traitsMissing2.length) : 0,
           _relaxedFilter: true
         });
@@ -1820,10 +1832,7 @@ function searchMatchingTeachers(requestData) {
       output.sort(function(a, b) {
         var sa = a.slotFullMatch ? 0 : 1, sb = b.slotFullMatch ? 0 : 1;
         if (sa !== sb) return sa - sb;
-        var pa = PROGRESS_RANK[a.currentCourseProgress] !== undefined ? PROGRESS_RANK[a.currentCourseProgress] : 99;
-        var pb = PROGRESS_RANK[b.currentCourseProgress] !== undefined ? PROGRESS_RANK[b.currentCourseProgress] : 99;
-        if (pa !== pb) return pa - pb;
-        return (b._traitMatchesCount || 0) - (a._traitMatchesCount || 0);
+        return (b._rankScore || 0) - (a._rankScore || 0);
       });
     }
 
@@ -1836,6 +1845,52 @@ function searchMatchingTeachers(requestData) {
   }
 }
 
+
+/**
+ * Returns all unique tech + math traits from the Teacher Persona Mapping sheet.
+ * Used by the frontend multi-select chip UI.
+ */
+function getUniquePersonaTraits() {
+  try {
+    var personaData = _getCachedSheetData('Teacher Persona Mapping');
+    if (!personaData || personaData.length < 2) return { success: true, techTraits: [], mathTraits: [] };
+    var pHeaders = personaData[0].map(function(h) { return String(h).trim(); });
+    var techCols = [], mathCols = [];
+    pHeaders.forEach(function(h, i) {
+      if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) {
+        if (/math/i.test(h)) mathCols.push(i);
+        else techCols.push(i);
+      }
+    });
+    // If no column split detected, all trait cols go to tech
+    if (techCols.length === 0 && mathCols.length === 0) {
+      pHeaders.forEach(function(h, i) {
+        if (/trait|expertise|style|skill|strength|personality|subject|teaching/i.test(h)) techCols.push(i);
+      });
+    }
+    var techSet = {}, mathSet = {};
+    personaData.slice(1).forEach(function(row) {
+      techCols.forEach(function(i) {
+        String(row[i] || '').split(/[,\n]/).forEach(function(t) {
+          var clean = t.trim(); if (clean) techSet[clean] = (techSet[clean] || 0) + 1;
+        });
+      });
+      mathCols.forEach(function(i) {
+        String(row[i] || '').split(/[,\n]/).forEach(function(t) {
+          var clean = t.trim(); if (clean) mathSet[clean] = (mathSet[clean] || 0) + 1;
+        });
+      });
+    });
+    // Sort by frequency (most common traits first)
+    var sortByFreq = function(obj) {
+      return Object.keys(obj).sort(function(a, b) { return obj[b] - obj[a]; });
+    };
+    return { success: true, techTraits: sortByFreq(techSet), mathTraits: sortByFreq(mathSet) };
+  } catch(e) {
+    Logger.log('[getUniquePersonaTraits] error: ' + e.message);
+    return { success: false, error: e.message, techTraits: [], mathTraits: [] };
+  }
+}
 
 /**
  * Diagnostic: call from GAS Apps Script editor (Run > diagnoseSMT) to find
@@ -1984,14 +2039,14 @@ function diagnoseSMT() {
   log('── LIVE TEST: searchMatchingTeachers ──');
   try {
     var testReq = {
-      currentCourse: 'Advanced Microbit',
+      currentCourse: 'Design with Roblox',
       futureCourse1: '',
       futureCourse2: '',
       futureCourse3: '',
       learnerAge: '',
       techTraits: '',
       mathTraits: '',
-      requestedSlots: [{ date: '2026-04-17', slot: '01:00 PM - 02:00 PM' }]
+      requestedSlots: [{ date: '2026-04-17', slot: '04:00 PM - 05:00 PM' }]
     };
     var testResult = searchMatchingTeachers(testReq);
     log('Result success: ' + testResult.success);
@@ -2713,24 +2768,28 @@ function getTeacherAuditData(teacherName) {
       if (!sheet) return;
       var data = sheet.getDataRange().getValues();
       if (data.length < 2) return;
-      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var headers = data[0].map(function(h) { return String(h).trim().replace(/\s+/g,' '); });
       var teacherIdx = headers.indexOf('Teacher');
-      var scoreIdx   = headers.indexOf('Class Score');
-      var rfIdx      = headers.indexOf('Red Flags');
+      if (teacherIdx === -1) headers.forEach(function(h,i){ if (teacherIdx === -1 && /^teacher/i.test(h)) teacherIdx = i; });
+      var scoreIdx = -1;
+      headers.forEach(function(h,i){ if (scoreIdx === -1 && /^class\s+score/i.test(h)) scoreIdx = i; });
+      if (scoreIdx === -1) headers.forEach(function(h,i){ if (scoreIdx === -1 && /score/i.test(h) && !/warm|activity|hygiene|wrap/i.test(h)) scoreIdx = i; });
+      var rfIdx = headers.indexOf('Red Flags');
+      if (rfIdx === -1) headers.forEach(function(h,i){ if (rfIdx === -1 && /red\s*flag/i.test(h)) rfIdx = i; });
       if (teacherIdx === -1 || scoreIdx === -1) return;
 
       for (var i = 1; i < data.length; i++) {
         var rowTeacher = normalizeTeacherName(String(data[i][teacherIdx] || ''));
         if (!rowTeacher || rowTeacher !== normalized) continue;
-        var score = parseFloat(data[i][scoreIdx]) || 0;
-        if (score > 0) scores.push(score);
+        var score = parseFloat(data[i][scoreIdx]);
+        if (!isNaN(score) && score > 0) scores.push(score);
         if (rfIdx > -1) {
           var rf = String(data[i][rfIdx] || '').trim();
           if (rf && rf.toLowerCase() !== '' && rf.toLowerCase() !== 'none' && rf.toLowerCase() !== 'no' && rf !== '-') {
             redFlagTotal++;
           }
         }
-        auditRows.push({ tab: tabName, score: score, redFlags: rfIdx > -1 ? String(data[i][rfIdx] || '').trim() : '' });
+        auditRows.push({ tab: tabName, score: isNaN(score) ? 0 : score, redFlags: rfIdx > -1 ? String(data[i][rfIdx] || '').trim() : '' });
       }
     });
 
@@ -2767,18 +2826,22 @@ function _buildAuditScoreMap() {
       if (!sheet) return;
       var data = sheet.getDataRange().getValues();
       if (data.length < 2) return;
-      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var headers = data[0].map(function(h) { return String(h).trim().replace(/\s+/g,' '); });
       var teacherIdx = headers.indexOf('Teacher');
-      var scoreIdx   = headers.indexOf('Class Score');
-      var rfIdx      = headers.indexOf('Red Flags');
+      if (teacherIdx === -1) headers.forEach(function(h,i){ if (teacherIdx === -1 && /^teacher/i.test(h)) teacherIdx = i; });
+      var scoreIdx = -1;
+      headers.forEach(function(h,i){ if (scoreIdx === -1 && /^class\s+score/i.test(h)) scoreIdx = i; });
+      if (scoreIdx === -1) headers.forEach(function(h,i){ if (scoreIdx === -1 && /score/i.test(h) && !/warm|activity|hygiene|wrap/i.test(h)) scoreIdx = i; });
+      var rfIdx = headers.indexOf('Red Flags');
+      if (rfIdx === -1) headers.forEach(function(h,i){ if (rfIdx === -1 && /red\s*flag/i.test(h)) rfIdx = i; });
       if (teacherIdx === -1 || scoreIdx === -1) return;
 
       for (var i = 1; i < data.length; i++) {
         var rawTeacher = String(data[i][teacherIdx] || '').trim();
         if (!rawTeacher) continue;
         var key   = normalizeTeacherName(rawTeacher);
-        var score = parseFloat(data[i][scoreIdx]) || 0;
-        if (score <= 0) continue;
+        var score = parseFloat(data[i][scoreIdx]);
+        if (isNaN(score) || score <= 0) continue;
         if (!map[key]) map[key] = { scores: [], redFlags: 0 };
         map[key].scores.push(score);
         if (rfIdx > -1) {
@@ -2931,34 +2994,58 @@ function _buildAuditScoreMapDays(days) {
 
     auditTabs.forEach(function(tabName) {
       var sheet = ss.getSheetByName(tabName);
-      if (!sheet) return;
+      if (!sheet) { Logger.log('[_buildAuditScoreMapDays] tab not found: ' + tabName); return; }
       var data = sheet.getDataRange().getValues();
       if (data.length < 2) return;
-      var headers = data[0].map(function(h) { return String(h).trim(); });
+      var headers = data[0].map(function(h) { return String(h).trim().replace(/\s+/g,' '); });
+
+      // Teacher column — exact then fallback
       var teacherIdx = headers.indexOf('Teacher');
-      var scoreIdx   = headers.indexOf('Class Score');
-      var rfIdx      = headers.indexOf('Red Flags');
-      // Find date column
-      var dateIdx = -1;
-      ['Date', 'Audit Date', 'Class Date', 'Session Date', 'Observation Date'].forEach(function(n) {
-        if (dateIdx === -1 && headers.indexOf(n) > -1) dateIdx = headers.indexOf(n);
+      if (teacherIdx === -1) headers.forEach(function(h,i){ if (teacherIdx === -1 && /^teacher/i.test(h)) teacherIdx = i; });
+
+      // Score column — "Class Score (out of 80)" or any "Class Score…"
+      var scoreIdx = -1;
+      headers.forEach(function(h, i) {
+        if (scoreIdx === -1 && /^class\s+score/i.test(h)) scoreIdx = i;
       });
-      if (teacherIdx === -1 || scoreIdx === -1) return;
+      // Fallback: any column containing "score" but not "warm" / "activity" / "hygiene" / "wrap"
+      if (scoreIdx === -1) headers.forEach(function(h, i) {
+        if (scoreIdx === -1 && /score/i.test(h) && !/warm|activity|hygiene|wrap/i.test(h)) scoreIdx = i;
+      });
+
+      // Red Flags column
+      var rfIdx = headers.indexOf('Red Flags');
+      if (rfIdx === -1) headers.forEach(function(h,i){ if (rfIdx === -1 && /red\s*flag/i.test(h)) rfIdx = i; });
+
+      // Date column — prefer "Audit Completion Date", then "Date of the class", then "Date"
+      var dateIdx = -1;
+      ['Audit Completion Date', 'Completion Date', 'Date of the class', 'Class Date', 'Date', 'Audit Date'].forEach(function(n) {
+        if (dateIdx === -1) {
+          var exact = headers.indexOf(n);
+          if (exact > -1) dateIdx = exact;
+        }
+      });
+
+      if (teacherIdx === -1 || scoreIdx === -1) {
+        Logger.log('[_buildAuditScoreMapDays] ' + tabName + ': teacherIdx=' + teacherIdx + ' scoreIdx=' + scoreIdx + ' — skipping tab. Headers: ' + headers.slice(0,5).join('|'));
+        return;
+      }
+      Logger.log('[_buildAuditScoreMapDays] ' + tabName + ': teacherIdx=' + teacherIdx + ' scoreIdx=' + scoreIdx + ' dateIdx=' + dateIdx + ' rfIdx=' + rfIdx);
 
       for (var i = 1; i < data.length; i++) {
-        // Date filter
+        // Date filter — skip rows older than cutoff
         if (dateIdx > -1) {
           var rowDate = data[i][dateIdx];
           if (rowDate) {
-            var d = new Date(rowDate);
+            var d = (rowDate instanceof Date) ? rowDate : new Date(String(rowDate).replace(/(\d{2})-(\d{2})-(\d{2,4})/, function(m,d2,m2,y){ return (y.length===2?'20'+y:y)+'-'+m2+'-'+d2; }));
             if (!isNaN(d.getTime()) && d < cutoff) continue;
           }
         }
         var rawTeacher = String(data[i][teacherIdx] || '').trim();
         if (!rawTeacher) continue;
         var key   = normalizeTeacherName(rawTeacher);
-        var score = parseFloat(data[i][scoreIdx]) || 0;
-        if (score <= 0) continue;
+        var score = parseFloat(data[i][scoreIdx]);
+        if (isNaN(score) || score <= 0) continue; // skip zero/blank scores (e.g. Migration audits with 0)
         if (!map[key]) map[key] = { scores: [], redFlags: 0 };
         map[key].scores.push(score);
         if (rfIdx > -1) {

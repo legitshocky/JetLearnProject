@@ -219,6 +219,8 @@
         <div class="menu-item" data-page="health"><i class="fas fa-heartbeat"></i><span>System Health</span></div>
         <div class="menu-item" data-page="onboardingTracker"><i class="fas fa-user-plus"></i><span>Onboarding Tracker</span><span class="badge">New</span></div>
         <div class="menu-item" data-page="learnerMigration"><i class="fas fa-exchange-alt"></i><span>Migration Center</span><span class="badge" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;">New</span></div>
+        <div class="menu-item" data-page="coursePlanner"><i class="fas fa-route"></i><span>Course Planner</span><span id="coursePlannerAlertBadge" class="badge" style="display:none;background:#ef4444;color:#fff;">0</span></div>
+        <div class="menu-item" data-page="bulkCertificates"><i class="fas fa-certificate"></i><span>Certificates</span></div>
         <div class="menu-item" data-page="persona"><i class="fas fa-user-tie"></i><span>Teacher Persona</span><span class="badge">Tool</span></div>
         <div class="menu-item" data-page="settings"><i class="fas fa-cog"></i><span>Settings</span></div>
         <div class="menu-item" data-page="profile" id="profileMenuItem"><i class="fas fa-user-circle"></i><span>My Profile</span></div>
@@ -360,6 +362,8 @@
                 <div style="font-size:0.6rem;color:rgba(255,255,255,0.55);">TASKS</div>
               </div>
             </div>
+            <!-- Super Admin team leaderboard — injected by renderImpactScore() -->
+            <div id="impactLeaderboard" style="display:none;"></div>
           </div>
 
           <!-- Stuck Migrations Widget -->
@@ -466,10 +470,41 @@
                     </div>
                 </div>
                 <div class="form-group"><label for="learner" class="form-label">Learner Name</label><input type="text" id="learner" class="form-control" placeholder="Enter learner name" required></div>
-                <div class="form-group"> <label for="manualWhatsappNumber" class="form-label">WhatsApp Number (Optional)</label><input type="text" id="manualWhatsappNumber" class="form-control" placeholder="Leave empty to auto-fetch from HubSpot"><small class="form-text-muted" style="font-size:0.75em; color:var(--text-light);">Overrides the HubSpot number if entered.</small></div>
+
+                <!-- WhatsApp Contact Picker (loaded after JLID fetch) -->
+                <div class="form-group" id="watiContactPickerGroup" style="display:none;">
+                  <label class="form-label">WhatsApp Contact(s)</label>
+                  <div id="watiContactList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;"></div>
+                  <small class="form-text-muted" style="font-size:0.75em;color:var(--text-light);">
+                    Select one or more contacts to receive the WhatsApp message.
+                  </small>
+                </div>
+                <!-- Fallback manual override (always visible, optional) -->
+                <div class="form-group">
+                  <label for="manualWhatsappNumber" class="form-label">Manual WhatsApp Override <span style="font-weight:400;font-size:0.8em;color:var(--text-light);">(optional)</span></label>
+                  <input type="text" id="manualWhatsappNumber" class="form-control" placeholder="Enter number to override all above">
+                  <small class="form-text-muted" style="font-size:0.75em;color:var(--text-light);">Overrides all contact selections above if filled.</small>
+                </div>
                 <div class="form-group"><label for="oldTeacher" class="form-label">Old Teacher (Optional)</label><select id="oldTeacher" class="form-control form-select"><option value="" disabled selected>Select old teacher</option></select></div>
                 <div class="form-group"><label for="newTeacher" class="form-label">New Teacher</label><select id="newTeacher" class="form-control form-select" required><option value="" disabled selected>Select new teacher</option></select></div>
                 <div class="form-group"><label for="migrationCourse" class="form-label">Course</label><select id="migrationCourse" class="form-control form-select" required><option value="" disabled selected>Select course</option></select></div>
+
+                <!-- ── CCTC: Old / New course fields — shown only for Course Change Teacher Change ── -->
+                <div id="cctcCourseFields" class="form-group full-width" style="display:none;">
+                  <div style="background:#f5f3ff;border:1.5px solid #c4b5fd;border-radius:12px;padding:16px 20px;">
+                    <p style="margin:0 0 12px;font-size:0.78rem;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:1px;"><i class="fas fa-exchange-alt" style="margin-right:6px;"></i>Course Change Details</p>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                      <div>
+                        <label class="form-label" style="font-size:0.82rem;">Completed Course <span style="background:#ede9fe;color:#6366f1;font-size:0.7rem;font-weight:600;padding:2px 7px;border-radius:20px;margin-left:4px;">Certificate for this</span></label>
+                        <input type="text" id="migOldCourse" class="form-control" readonly style="background:#ede9fe;cursor:default;font-weight:600;color:#1e1b4b;" placeholder="Auto-filled when JLID loads">
+                      </div>
+                      <div>
+                        <label class="form-label" style="font-size:0.82rem;">New Course <span style="color:#94a3b8;font-size:0.72rem;">(moving to)</span></label>
+                        <input type="text" id="migNewCourseDisplay" class="form-control" readonly style="background:#f8fafc;cursor:default;color:#374151;" placeholder="Reflects Course selection above">
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 <!-- ── Smart Slot Suggester ── -->
                 <div class="form-group full-width" id="slotSuggesterWrap" style="display:none;">
@@ -585,6 +620,12 @@
                   <div class="checkbox-option" style="cursor: pointer;">
                       <input type="checkbox" id="sendWhatsappToParent" class="checkbox-input" checked>
                       <label for="sendWhatsappToParent" style="cursor: pointer;">WhatsApp Parent (WATI)</label>
+                  </div>
+
+                  <!-- Option 3: Course Certificate -->
+                  <div class="checkbox-option" style="cursor: pointer;">
+                      <input type="checkbox" id="sendCourseCertificate" class="checkbox-input">
+                      <label for="sendCourseCertificate" style="cursor: pointer;">🎓 Send Course Certificate</label>
                   </div>
               </div>
 
@@ -894,6 +935,16 @@
                     <label for="minecraftAttachmentsInput" class="form-label">Attachments (Optional)</label>
                     <input type="file" id="minecraftAttachmentsInput" multiple class="form-control">
                 </div>
+                <div class="form-group full-width" style="margin-top:-6px;">
+                  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+                    <i class="fas fa-paperclip" style="color:#16a34a;"></i>
+                    <div>
+                      <div style="font-size:0.8rem;font-weight:600;color:#15803d;">Auto-attached files</div>
+                      <div style="font-size:0.75rem;color:#166534;margin-top:2px;">📹 Minecraft Steps - Mac.mp4 &nbsp;·&nbsp; 📹 Minecraft Steps - Windows.mp4</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:0.72rem;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:12px;font-weight:600;">Drive</span>
+                  </div>
+                </div>
                 <div class="form-group full-width">
                     <label for="minecraftComments" class="form-label">Additional Comments (Optional)</label>
                     <textarea id="minecraftComments" class="form-control" rows="3" placeholder="Add any specific comments for this email..."></textarea>
@@ -940,6 +991,16 @@
                 <div class="form-group full-width">
                     <label for="robloxAttachmentsInput" class="form-label">Attachments (Optional)</label>
                     <input type="file" id="robloxAttachmentsInput" multiple class="form-control">
+                </div>
+                <div class="form-group full-width" style="margin-top:-6px;">
+                  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">
+                    <i class="fas fa-paperclip" style="color:#ea580c;"></i>
+                    <div>
+                      <div style="font-size:0.8rem;font-weight:600;color:#c2410c;">Auto-attached files</div>
+                      <div style="font-size:0.75rem;color:#9a3412;margin-top:2px;">📄 Roblox Studio Download &amp; Setup Instructions.pdf</div>
+                    </div>
+                    <span style="margin-left:auto;font-size:0.72rem;color:#ea580c;background:#ffedd5;padding:3px 8px;border-radius:12px;font-weight:600;">Drive</span>
+                  </div>
                 </div>
                 <div class="form-group full-width">
                     <label for="robloxComments" class="form-label">Additional Comments (Optional)</label>
@@ -2653,6 +2714,255 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- COURSE PLANNER — Smart Migration & Progression Tracking  -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="coursePlannerPage" class="page-content" style="display:none;">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1 class="page-title"><i class="fas fa-route" style="color:#6366f1;margin-right:8px;"></i>Course Planner</h1>
+        <p class="page-subtitle">Track learner course completion timelines · Identify CCTC migrations · Pre-match teachers</p>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <span id="cpCacheNote" style="display:none;font-size:0.72rem;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:20px;padding:3px 10px;align-items:center;"></span>
+        <button id="cpRefreshBtn" onclick="refreshCoursePlanner()" class="btn btn-secondary btn-sm"><i class="fas fa-sync-alt"></i> Refresh</button>
+        <a href="#" onclick="openCPDataGuide();return false;" class="btn btn-secondary btn-sm" style="text-decoration:none;"><i class="fas fa-upload"></i> Upload Guide</a>
+      </div>
+    </div>
+
+    <!-- KPI Strip -->
+    <div class="kpi-grid-v2" style="margin-bottom:1.5rem;">
+      <div class="kpi-card-v2">
+        <div class="kpi-label">Active Learners</div>
+        <div class="kpi-value" id="cpKpiTotal">—</div>
+        <div class="kpi-sub">tracked in PRMS</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #ef4444;">
+        <div class="kpi-label">Critical Alerts</div>
+        <div class="kpi-value" id="cpKpiCritical" style="color:#ef4444;">—</div>
+        <div class="kpi-sub">≤ 4 weeks to completion</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #f59e0b;">
+        <div class="kpi-label">Migrations Due</div>
+        <div class="kpi-value" id="cpKpiMigrations" style="color:#d97706;">—</div>
+        <div class="kpi-sub">teacher not ready for next</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #8b5cf6;">
+        <div class="kpi-label">Roadmap Gaps</div>
+        <div class="kpi-value" id="cpKpiGaps" style="color:#7c3aed;">—</div>
+        <div class="kpi-sub">teachers missing next course</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;box-sizing:border-box;width:100%;">
+      <select id="cpFilterAlert" class="form-control form-select" style="flex:0 1 140px;min-width:110px;height:36px;padding:4px 8px;font-size:0.8rem;line-height:1.4;" onchange="renderCPCards()">
+        <option value="">All Alerts</option>
+        <option value="critical">🔴 Critical</option>
+        <option value="warning">🟡 Warning</option>
+        <option value="ok">🟢 OK</option>
+      </select>
+      <select id="cpFilterWeeks" class="form-control form-select" style="flex:0 1 150px;min-width:120px;height:36px;padding:4px 8px;font-size:0.8rem;line-height:1.4;" onchange="renderCPCards()">
+        <option value="">All Timelines</option>
+        <option value="4">≤ 4 weeks</option>
+        <option value="8">≤ 8 weeks</option>
+        <option value="12">≤ 12 weeks</option>
+      </select>
+      <select id="cpFilterMigration" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;line-height:1.4;" onchange="renderCPCards()">
+        <option value="">All Learners</option>
+        <option value="migration">Needs Migration</option>
+        <option value="ready">Teacher Ready</option>
+        <option value="unfinalized">Roadmap Not Finalized</option>
+      </select>
+      <select id="cpFilterSubject" class="form-control form-select" style="flex:0 1 130px;min-width:110px;height:36px;padding:4px 8px;font-size:0.8rem;line-height:1.4;" onchange="renderCPCards()">
+        <option value="coding">💻 Coding Only</option>
+        <option value="">All Subjects</option>
+        <option value="maths">📐 Maths Only</option>
+      </select>
+      <select id="cpFilterCourseNum" class="form-control form-select" style="flex:0 1 145px;min-width:120px;height:36px;padding:4px 8px;font-size:0.8rem;line-height:1.4;" onchange="renderCPCards()">
+        <option value="">All Courses</option>
+        <option value="2">2nd Course+</option>
+        <option value="1">1st Course Only</option>
+      </select>
+      <input type="text" id="cpSearch" class="form-control" placeholder="Search learner or teacher…" style="flex:1 1 160px;min-width:140px;height:36px;padding:4px 10px;font-size:0.8rem;line-height:1.4;" oninput="renderCPCards()">
+      <span id="cpResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;flex-shrink:0;"></span>
+    </div>
+
+    <!-- Card grid -->
+    <div id="cpCardsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1rem;">
+      <div style="grid-column:1/-1;text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-route" style="font-size:2rem;margin-bottom:1rem;display:block;"></i>
+        Click Refresh to load learner progression data from Athena sheets.
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="cpPagination" style="display:flex;align-items:center;gap:6px;margin-top:1rem;flex-wrap:wrap;"></div>
+
+    <!-- ── CLS Approval Queue ─────────────────────────────────────── -->
+    <div style="margin-top:2.5rem;border-top:2px solid #f1f5f9;padding-top:1.5rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <h3 style="font-size:0.9rem;font-weight:700;color:#1e293b;margin:0;"><i class="fas fa-clipboard-check" style="color:#6366f1;margin-right:6px;"></i>CLS Approval Queue</h3>
+          <span id="clsQueuePendingBadge" style="display:none;font-size:0.68rem;font-weight:700;background:#f59e0b;color:#fff;padding:1px 7px;border-radius:20px;">0</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="clsQueueFilter" class="form-control form-select" style="height:32px;padding:3px 8px;font-size:0.78rem;" onchange="renderCLSQueue()">
+            <option value="">All Statuses</option>
+            <option value="Pending">⏳ Pending</option>
+            <option value="Approved">✅ Approved</option>
+            <option value="Declined">❌ Declined</option>
+          </select>
+          <button onclick="loadCLSQueue(true)" class="btn btn-secondary btn-sm" style="height:32px;font-size:0.75rem;padding:3px 10px;" title="Refresh queue"><i class="fas fa-sync-alt"></i></button>
+        </div>
+      </div>
+      <p style="font-size:0.76rem;color:#94a3b8;margin:0 0 10px;">CCTC learners where a Slack review was sent to the CLS team. CLS approves or declines via Slack — status updates here automatically.</p>
+      <div id="clsQueueGrid"></div>
+    </div>
+  </div>
+
+  <!-- Course Planner — Roadmap Detail Modal -->
+  <div id="cpDetailPanel" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1050;align-items:center;justify-content:center;padding:1rem;" onclick="if(event.target===this)closeCPDetailPanel();">
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.18);">
+      <div id="cpDetailContent" style="padding:1.25rem;"></div>
+    </div>
+  </div>
+
+  <!-- Smart Migration Confirm Modal -->
+  <div class="modal-overlay" id="cpMigrationModal" style="display:none;">
+    <div class="modal" style="max-width:540px;width:95%;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i class="fas fa-exchange-alt" style="color:#6366f1;margin-right:8px;"></i>Trigger Smart Migration</h3>
+        <button class="modal-close" onclick="closeCPMigrationModal()">×</button>
+      </div>
+      <div class="modal-body" id="cpMigrationModalBody" style="padding:1.2rem;">
+        <div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Finding best-matched teachers…</div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:1rem 1.2rem;">
+        <button class="btn btn-secondary" onclick="closeCPMigrationModal()">Cancel</button>
+        <button class="btn btn-primary" id="cpMigrationConfirmBtn" onclick="confirmCPMigration()" style="display:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);">Create HubSpot Ticket →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- CERTIFICATES PAGE                                         -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="bulkCertificatesPage" class="page-content" style="display:none;">
+  <!-- Gradient header banner -->
+  <div style="background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a78bfa 100%);border-radius:16px;padding:28px 32px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <h1 style="margin:0;color:#fff;font-size:1.6rem;font-weight:800;letter-spacing:-0.5px;"><i class="fas fa-certificate" style="margin-right:10px;opacity:0.9;"></i>Certificate Center</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,0.82);font-size:0.9rem;">Generate & send course completion certificates</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.15);border-radius:12px;padding:14px 20px;text-align:center;">
+      <div style="color:#fff;font-size:1.8rem;font-weight:800;" id="bcSentCount">0</div>
+      <div style="color:rgba(255,255,255,0.8);font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Sent Today</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+    <!-- LEFT: Form card -->
+    <div class="card" style="padding:28px;">
+      <!-- Learner section -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:0.85rem;flex-shrink:0;">1</div>
+        <div><div style="font-weight:700;color:#0f172a;font-size:0.95rem;">Learner Details</div><div style="font-size:0.78rem;color:#64748b;">Who is receiving the certificate?</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px;">
+        <div>
+          <label class="form-label" style="font-size:0.8rem;">Learner Name <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="bcLearnerName" class="form-control" placeholder="e.g. Arjun Mehta" style="height:40px;">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.8rem;">JLID <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="bcJlid" class="form-control" placeholder="JL52767973402C" style="height:40px;flex:1;">
+            <button onclick="bcAutoFillFromHubspot()" class="btn" style="height:40px;background:linear-gradient(135deg,#e0e7ff,#ede9fe);color:#4338ca;border:none;white-space:nowrap;padding:0 12px;border-radius:8px;font-size:0.78rem;font-weight:600;">
+              <i class="fas fa-magic"></i> Fill
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.8rem;">Parent Email <span style="color:#ef4444;">*</span></label>
+          <input type="email" id="bcParentEmail" class="form-control" placeholder="parent@email.com" style="height:40px;">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.8rem;">Parent Name</label>
+          <input type="text" id="bcParentName" class="form-control" placeholder="e.g. Rajesh Mehta" style="height:40px;">
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #f1f5f9;margin:20px 0;">
+
+      <!-- Courses section -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="width:36px;height:36px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:0.85rem;flex-shrink:0;">2</div>
+        <div style="flex:1;"><div style="font-weight:700;color:#0f172a;font-size:0.95rem;">Courses to Certify</div><div style="font-size:0.78rem;color:#64748b;">Select one or more completed courses</div></div>
+        <button onclick="bcAddCourseRow()" class="btn" style="background:linear-gradient(135deg,#e0e7ff,#ede9fe);color:#4338ca;border:none;padding:7px 16px;border-radius:8px;font-size:0.82rem;font-weight:600;white-space:nowrap;">
+          <i class="fas fa-plus"></i> Add Course
+        </button>
+      </div>
+
+      <div id="bcCourseRows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;min-height:56px;"></div>
+
+      <!-- Action row -->
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:12px;padding-top:16px;border-top:1px solid #f1f5f9;">
+        <div id="bcSendStatus" style="display:none;align-items:center;gap:6px;color:#15803d;font-size:0.88rem;font-weight:600;background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 14px;border-radius:8px;"></div>
+        <button onclick="bcReset()" class="btn" style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;padding:10px 20px;border-radius:8px;font-weight:600;">
+          <i class="fas fa-undo" style="margin-right:6px;"></i>Reset
+        </button>
+        <button onclick="bcSendSelected()" id="bcSendBtn" class="btn btn-primary" style="padding:10px 28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;font-weight:700;border-radius:8px;box-shadow:0 4px 12px rgba(99,102,241,0.35);">
+          <i class="fas fa-paper-plane" style="margin-right:7px;"></i>Send Certificates
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Tips & Summary panel -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <!-- Summary card -->
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:20px;">
+        <div style="font-weight:700;color:#0f172a;font-size:0.88rem;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><i class="fas fa-info-circle" style="color:#6366f1;"></i> How it works</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:22px;height:22px;background:#e0e7ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:#4338ca;flex-shrink:0;margin-top:1px;">1</div>
+            <div style="font-size:0.82rem;color:#475569;line-height:1.5;">Enter learner name & parent email. Use JLID to auto-fill from HubSpot.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:22px;height:22px;background:#e0e7ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:#4338ca;flex-shrink:0;margin-top:1px;">2</div>
+            <div style="font-size:0.82rem;color:#475569;line-height:1.5;">Add all completed courses. Set the completion year for each.</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:22px;height:22px;background:#e0e7ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:#4338ca;flex-shrink:0;margin-top:1px;">3</div>
+            <div style="font-size:0.82rem;color:#475569;line-height:1.5;">Click Send — a PDF certificate is generated & emailed to the parent instantly.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Certificate preview mockup -->
+      <div style="background:linear-gradient(145deg,#fefce8,#fef9c3);border:2px solid #fde68a;border-radius:14px;padding:20px;text-align:center;">
+        <div style="font-size:1.2rem;margin-bottom:6px;">🏆</div>
+        <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#92400e;margin-bottom:4px;">Certificate of Completion</div>
+        <div style="font-size:0.82rem;color:#78350f;font-style:italic;margin-bottom:6px;">This certifies that</div>
+        <div id="bcPreviewName" style="font-size:1rem;font-weight:700;color:#451a03;min-height:22px;">—</div>
+        <div style="font-size:0.78rem;color:#78350f;margin:4px 0;">has successfully completed</div>
+        <div id="bcPreviewCourses" style="font-size:0.82rem;font-weight:600;color:#451a03;min-height:18px;">—</div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #fde68a;">
+          <div style="font-size:0.7rem;color:#92400e;font-weight:600;">Team JetLearn</div>
+          <div style="font-size:0.65rem;color:#a16207;">World's Top Rated Coding Academy for Kids</div>
+        </div>
+      </div>
+
+      <!-- Quick tip -->
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px;font-size:0.8rem;color:#9a3412;">
+        <strong><i class="fas fa-lightbulb" style="color:#f97316;margin-right:6px;"></i>Tip:</strong> You can add multiple courses in a single send — each gets its own PDF certificate in one email.
+      </div>
+    </div>
+  </div>
+</div>
+
   <!-- Teacher Intelligence Center -->
 <div id="personaPage" class="page-content" style="display:none;">
 
@@ -2719,14 +3029,36 @@
       </div>
 
       <h4 class="dashboard-section-title">2. Learner Traits (Optional)</h4>
+      <!-- hidden inputs still used by search function -->
+      <input type="hidden" id="pInpTechTraits">
+      <input type="hidden" id="pInpMathTraits">
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.25rem; margin-bottom:2rem;">
+        <!-- TECH TRAITS -->
         <div class="form-group">
-          <label class="form-label" style="font-size:0.78rem;">Tech / Coding Traits Required <span style="color:#94a3b8;">(comma-separated)</span></label>
-          <input type="text" id="pInpTechTraits" class="form-control" placeholder="e.g. Focused Communicator, Storyteller" style="font-size:0.83rem;">
+          <label class="form-label" style="font-size:0.78rem;">Tech / Coding Traits Required
+            <span style="color:#94a3b8;font-weight:400;margin-left:4px;">· click to select</span>
+          </label>
+          <div id="pTechTraitsBox" style="min-height:44px;border:1.5px solid #e2e8f0;border-radius:10px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;cursor:text;background:#fff;transition:border-color .15s;" onclick="document.getElementById('pTechTraitsCustomInput').focus()">
+            <!-- selected chips injected here by JS, id="pTechTraitsSelected" -->
+            <span id="pTechTraitsSelected" style="display:contents;"></span>
+            <input id="pTechTraitsCustomInput" type="text" placeholder="Type custom trait…" style="border:none;outline:none;font-size:0.78rem;color:#334155;flex:1;min-width:110px;background:transparent;" oninput="window._pTraitCustomInput(this,'tech')" onkeydown="window._pTraitCustomKeydown(event,'tech')">
+          </div>
+          <div id="pTechTraitsSuggestions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            <span style="font-size:0.68rem;color:#94a3b8;align-self:center;">Loading traits…</span>
+          </div>
         </div>
+        <!-- MATH TRAITS -->
         <div class="form-group">
-          <label class="form-label" style="font-size:0.78rem;">Math Traits Required <span style="color:#94a3b8;">(comma-separated)</span></label>
-          <input type="text" id="pInpMathTraits" class="form-control" placeholder="e.g. Playful &amp; Engaging, Real-World Connector" style="font-size:0.83rem;">
+          <label class="form-label" style="font-size:0.78rem;">Math Traits Required
+            <span style="color:#94a3b8;font-weight:400;margin-left:4px;">· click to select</span>
+          </label>
+          <div id="pMathTraitsBox" style="min-height:44px;border:1.5px solid #e2e8f0;border-radius:10px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;cursor:text;background:#fff;transition:border-color .15s;" onclick="document.getElementById('pMathTraitsCustomInput').focus()">
+            <span id="pMathTraitsSelected" style="display:contents;"></span>
+            <input id="pMathTraitsCustomInput" type="text" placeholder="Type custom trait…" style="border:none;outline:none;font-size:0.78rem;color:#334155;flex:1;min-width:110px;background:transparent;" oninput="window._pTraitCustomInput(this,'math')" onkeydown="window._pTraitCustomKeydown(event,'math')">
+          </div>
+          <div id="pMathTraitsSuggestions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            <span style="font-size:0.68rem;color:#94a3b8;align-self:center;">Loading traits…</span>
+          </div>
         </div>
       </div>
 
@@ -3623,27 +3955,88 @@
   </div>
 
   <!-- Add this modal anywhere near your other modals -->
-<div class="modal-overlay" id="forcePasswordModal">
-  <div class="modal" style="max-width: 400px;">
-    <div class="modal-header">
-      <h3 class="modal-title">Change Your Password</h3>
-    </div>
-    <div class="modal-body">
-      <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem;">
-        This is your first login. You must set a new password before continuing.
-      </p>
-      <div class="form-group">
-        <label class="form-label">New Password</label>
-        <input type="password" id="forceNewPassword" class="form-control" placeholder="Enter new password" required>
+<!-- ── Force Password Change — Full-Screen Landing ── -->
+<div id="forcePasswordModal" style="display:none;position:fixed;inset:0;z-index:9999;background:#08081a;overflow:hidden;">
+
+  <!-- Animated background (reuses login styles) -->
+  <div class="login-bg-gradient"></div>
+  <div class="login-particles">
+    <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+    <div class="particle"></div><div class="particle"></div><div class="particle"></div>
+  </div>
+
+  <!-- Grid lines overlay -->
+  <div style="position:absolute;inset:0;z-index:1;pointer-events:none;background-image:linear-gradient(rgba(99,102,241,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.04) 1px,transparent 1px);background-size:40px 40px;"></div>
+
+  <!-- Card -->
+  <div style="position:relative;z-index:10;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;">
+    <div style="background:rgba(255,255,255,0.04);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(99,102,241,0.2);border-radius:20px;padding:2.5rem 2rem;width:100%;max-width:420px;box-shadow:0 24px 64px rgba(0,0,0,0.5);">
+
+      <!-- Logo -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.8rem;">
+        <div style="width:42px;height:42px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(99,102,241,0.4);">
+          <i class="fas fa-rocket" style="color:#fff;font-size:1rem;"></i>
+        </div>
+        <span style="font-family:'Sora',sans-serif;font-weight:800;font-size:1.15rem;background:linear-gradient(135deg,#fff 30%,#c4b5fd) !important;-webkit-background-clip:text !important;-webkit-text-fill-color:transparent !important;background-clip:text !important;">JetLearn</span>
       </div>
-      <div class="form-group">
-        <label class="form-label">Confirm Password</label>
-        <input type="password" id="forceConfirmPassword" class="form-control" placeholder="Confirm new password" required>
+
+      <!-- Headline -->
+      <div style="margin-bottom:0.5rem;">
+        <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);border-radius:20px;padding:3px 10px;font-size:0.7rem;color:#a5b4fc;margin-bottom:10px;">
+          <i class="fas fa-shield-alt"></i> First Login · Secure Setup
+        </div>
+        <h2 style="color:#ffffff !important;font-size:1.5rem;font-weight:700;margin:0 0 6px;font-family:'Sora',sans-serif;-webkit-text-fill-color:#ffffff !important;background:none !important;">Set Your Password</h2>
+        <p style="color:rgba(255,255,255,0.6) !important;font-size:0.83rem;margin:0;-webkit-text-fill-color:rgba(255,255,255,0.6) !important;">Choose a strong password to secure your account before continuing.</p>
       </div>
-      <p id="forcePasswordError" style="color: var(--danger); font-size: 0.85rem; min-height: 20px;"></p>
-    </div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-primary" id="forcePasswordSaveBtn">Set Password & Continue</button>
+
+      <!-- Divider -->
+      <div style="height:1px;background:rgba(99,102,241,0.15);margin:1.4rem 0;"></div>
+
+      <!-- New Password -->
+      <div style="margin-bottom:1.1rem;">
+        <label style="display:block;font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.55);margin-bottom:6px;letter-spacing:.4px;">
+          <i class="fas fa-lock" style="margin-right:5px;color:#818cf8;"></i>NEW PASSWORD
+        </label>
+        <div style="position:relative;">
+          <input type="password" id="forceNewPassword" placeholder="Enter new password" autocomplete="new-password"
+            style="width:100%;padding:0.7rem 2.8rem 0.7rem 0.9rem;background:#1e1b38;border:1px solid rgba(99,102,241,0.3);border-radius:10px;color:#fff;font-size:0.88rem;box-sizing:border-box;outline:none;transition:border .2s;-webkit-text-fill-color:#fff;"
+            onfocus="this.style.borderColor='rgba(99,102,241,0.7)'" onblur="this.style.borderColor='rgba(99,102,241,0.3)'">
+          <button type="button" onclick="toggleForcePwd('forceNewPassword',this)" tabindex="-1"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.25);border-radius:6px;cursor:pointer;color:#a5b4fc;font-size:0.78rem;width:28px;height:26px;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Confirm Password -->
+      <div style="margin-bottom:1.1rem;">
+        <label style="display:block;font-size:0.78rem;font-weight:600;color:rgba(255,255,255,0.55);margin-bottom:6px;letter-spacing:.4px;">
+          <i class="fas fa-lock" style="margin-right:5px;color:#818cf8;"></i>CONFIRM PASSWORD
+        </label>
+        <div style="position:relative;">
+          <input type="password" id="forceConfirmPassword" placeholder="Re-enter new password" autocomplete="new-password"
+            style="width:100%;padding:0.7rem 2.8rem 0.7rem 0.9rem;background:#1e1b38;border:1px solid rgba(99,102,241,0.3);border-radius:10px;color:#fff;font-size:0.88rem;box-sizing:border-box;outline:none;transition:border .2s;-webkit-text-fill-color:#fff;"
+            onfocus="this.style.borderColor='rgba(99,102,241,0.7)'" onblur="this.style.borderColor='rgba(99,102,241,0.3)'">
+          <button type="button" onclick="toggleForcePwd('forceConfirmPassword',this)" tabindex="-1"
+            style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.25);border-radius:6px;cursor:pointer;color:#a5b4fc;font-size:0.78rem;width:28px;height:26px;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+            <i class="fas fa-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Password strength hint -->
+      <p style="font-size:0.72rem;color:rgba(255,255,255,0.45) !important;-webkit-text-fill-color:rgba(255,255,255,0.45) !important;margin:0 0 1rem;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Minimum 6 characters. Mix letters, numbers &amp; symbols for stronger security.</p>
+
+      <!-- Error -->
+      <p id="forcePasswordError" style="color:#f87171 !important;-webkit-text-fill-color:#f87171 !important;font-size:0.8rem;min-height:18px;margin:0 0 10px;"></p>
+
+      <!-- Submit -->
+      <button id="forcePasswordSaveBtn" type="button"
+        style="width:100%;padding:0.8rem;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:10px;color:#fff;font-size:0.9rem;font-weight:600;cursor:pointer;box-shadow:0 4px 20px rgba(99,102,241,0.4);transition:opacity .2s,transform .15s;letter-spacing:.3px;"
+        onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+        <i class="fas fa-arrow-right" style="margin-right:6px;"></i>Set Password &amp; Continue
+      </button>
+
     </div>
   </div>
 </div>

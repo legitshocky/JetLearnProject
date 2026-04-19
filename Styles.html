@@ -360,9 +360,21 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      scrollbar-width: none;     /* hide scrollbar in sidebar */
+      scrollbar-width: thin;
+      scrollbar-color: rgba(99,102,241,0.3) transparent;
+      /* Bottom fade when items overflow */
+      -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
+      mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
     }
-    .sidebar-menu::-webkit-scrollbar { display: none; }
+    .sidebar-menu::-webkit-scrollbar { width: 4px; }
+    .sidebar-menu::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-menu::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.35); border-radius: 4px; }
+    .sidebar-menu::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.6); }
+
+    /* Compact mode on short viewports (laptops < 750px tall) */
+    @media (max-height: 750px) {
+      .sidebar-menu { padding: 0.25rem 0.75rem; }
+    }
 
     .menu-item {
       display: flex;
@@ -512,6 +524,17 @@
     /* Teacher Intelligence Center — reduced side padding so results table uses full width */
     #personaPage.page-content {
       padding: 1.5rem 0.5rem;
+    }
+    /* Course Planner — tighter side padding so cards + filters use full width */
+    #coursePlannerPage.page-content {
+      padding: 1.5rem 1rem;
+    }
+    /* Filter bar selects — override .form-control's large padding */
+    #cpFilterAlert, #cpFilterWeeks, #cpFilterMigration, #cpFilterSubject, #cpFilterCourseNum, #cpSearch {
+      padding: 4px 10px !important;
+      height: 36px !important;
+      line-height: 1.4 !important;
+      box-sizing: border-box;
     }
     #personaPage > div {
       margin-left: 0 !important;
@@ -2645,6 +2668,18 @@
       }
     }
 
+    /* Compact sidebar on short viewports (laptops ~768px–900px tall) */
+    @media (max-height: 780px) {
+      .sidebar-menu { padding: 0.2rem 0.75rem; }
+      .menu-item    { padding: 0.42rem 0.85rem; margin-bottom: 0.05rem; font-size: 0.85rem; }
+      .menu-item i  { font-size: 0.85rem; }
+      .sidebar-header { padding: 1rem 1.25rem 0.9rem; }
+    }
+    @media (max-height: 650px) {
+      .menu-item    { padding: 0.32rem 0.75rem; font-size: 0.8rem; }
+      .sidebar-header { padding: 0.75rem 1rem; }
+    }
+
     @media (max-width: 992px) {
       .app-container {
         grid-template-columns: 240px 1fr;
@@ -3319,12 +3354,28 @@ body:not(.dark-mode) [style*="background: #f8fafc"] {
 
 /* ── Forms ── */
 body:not(.dark-mode) .form-control,
-body:not(.dark-mode) input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+body:not(.dark-mode) input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([id^="force"]),
 body:not(.dark-mode) select,
 body:not(.dark-mode) textarea {
   background: #ffffff !important;
   color: #111827 !important;
   border-color: #d1d5db !important;
+}
+
+/* Force-password overlay inputs must stay dark regardless of light/dark mode */
+#forceNewPassword, #forceConfirmPassword {
+  background: #1e1b38 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: rgba(99,102,241,0.3) !important;
+  caret-color: #ffffff !important;
+}
+#forceNewPassword:-webkit-autofill, #forceConfirmPassword:-webkit-autofill,
+#forceNewPassword:-webkit-autofill:hover, #forceConfirmPassword:-webkit-autofill:hover,
+#forceNewPassword:-webkit-autofill:focus, #forceConfirmPassword:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #1e1b38 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff !important;
 }
 body:not(.dark-mode) input::placeholder,
 body:not(.dark-mode) textarea::placeholder { color: #9ca3af !important; }

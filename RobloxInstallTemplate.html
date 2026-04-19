@@ -1,98 +1,81 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <style>
-    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
-    .container { max-width: 650px; margin: auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    .header { background: #007BFF; padding: 25px; text-align: center; color: white; border-radius: 12px 12px 0 0; }
-    .header .title { font-size: 24px; font-weight: bold; margin: 0; }
-    .header .subtitle { font-size: 16px; margin: 5px 0 0 0; opacity: 0.9; }
-    .content { padding: 30px 40px; line-height: 1.6; }
-    .greeting { margin-bottom: 20px; }
-    .section { background: #e0f2f7; border: 1px solid #b3e5fc; border-left: 4px solid #007BFF; border-radius: 8px; padding: 20px; margin: 20px 0; }
-    .section h3 { margin: 0 0 15px 0; color: #0288D1; font-size: 18px; }
-    ol, ul { padding-left: 25px; margin: 0; }
-    li { margin-bottom: 10px; }
-    strong { color: #2d2d2d; }
-    a { color: #0056b3; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    .call-to-action { text-align: center; margin-top: 30px; }
-    .btn { display: inline-block; padding: 12px 25px; background-color: #007BFF; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; }
-    .btn:hover { background-color: #0056b3; }
-    .footer { background: #333; padding: 25px; text-align: center; font-size: 13px; color: white; border-top: 1px solid #e9ecef; }
-    .footer p { margin: 5px 0; }
-    .comments-section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; font-style: italic; color: #555; }
-
-    /* Dark mode styles */
-    @media (prefers-color-scheme: dark) {
-      body { background-color: #1a1a1a; color: #e5e5e5; }
-      .container { background: #2d2d2d; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-      .header { background: #0056b3; }
-      .content { background: #2d2d2d; color: #e5e5e5; }
-      .section { background: #2a354a; border: 1px solid #007BFF; border-left-color: #007BFF; }
-      h3 { color: #64B5F6; }
-      strong { color: #f0f0f0; }
-      a { color: #81D4FA; }
-      .btn { background-color: #0056b3; }
-      .btn:hover { background-color: #004085; }
-      .footer { background: #1a1a1a; border-top-color: #444; color: #e5e5e5; }
-      .comments-section { color: #aaa; border-top-color: #444; }
-    }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download & Set-up for Roblox Studio</title>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="title">Roblox Installation Guide</div>
-      <div class="subtitle">JetLearn Course Preparation</div>
-    </div>
-    <div class="content">
-      <div class="greeting">
-        <p>Dear Parent of <strong><?= data.learnerName || 'Learner' ?></strong>,</p>
-      </div>
-      
-      <p>Welcome to JetLearn! To ensure a smooth start to <strong><?= data.learnerName || 'your child\'s' ?></strong>'s <strong><?= data.course || 'Roblox' ?></strong> course (JLID: <?= data.jlid || 'N/A' ?>), please follow these simple steps to install and set up Roblox Studio on their computer.</p>
-      
-      <div class="section">
-        <h3>Installation Steps:</h3>
-        <ol>
-          <li><strong>Create a Roblox Account:</strong> If <strong><?= data.learnerName || 'your child' ?></strong> doesn't have a Roblox account yet, please create one on the Roblox website: <a href="https://www.roblox.com/login/signup" target="_blank">roblox.com/signup</a></li>
-          <li><strong>Download Roblox Studio:</strong> Go to the official Roblox Studio download page. This is where we create games. You can find it here: <a href="https://create.roblox.com/docs/getting-started/setup-and-installation/installing-roblox-studio" target="_blank">create.roblox.com/docs/getting-started/setup-and-installation/installing-roblox-studio</a></li>
-          <li><strong>Run the Installer:</strong> Once the download is complete, run the installer file (usually named 'RobloxStudioInstaller.exe' or similar) and follow the on-screen instructions.</li>
-          <li><strong>Log in to Roblox Studio:</strong> After installation, open Roblox Studio and log in using the Roblox account created in step 1.</li>
-          <li><strong>Familiarize Yourself (Optional):</strong> Spend a few minutes exploring the interface. Don't worry if it looks complicated at first; your child's teacher will guide them through everything!</li>
-          <li><strong>Test Your Installation:</strong> Try opening a new baseplate or a simple template in Roblox Studio to ensure it's functioning correctly.</li>
-        </ol>
-      </div>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f5;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="620" cellpadding="0" cellspacing="0" border="0" style="max-width:620px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
 
-      <div class="section">
-        <h3>Minimum System Requirements:</h3>
-        <ul>
-            <li><strong>Operating System:</strong> Windows 7, 8, 10, 11 (64-bit), macOS 10.10 (Yosemite) or higher</li>
-            <li><strong>Processor:</strong> Processor with a clock speed of 1.6 GHz or better</li>
-            <li><strong>RAM:</strong> 1 GB RAM</li>
-            <li><strong>Graphics Card:</strong> DirectX 9 (Windows) or OpenGL 2.1 (Mac) capable graphics card</li>
-            <li><strong>Storage:</strong> At least 20 MB of free system disk space</li>
-            <li><strong>Internet Connection:</strong> Stable broadband connection (at least 20 Mbps recommended)</li>
-        </ul>
-      </div>
-      
-      <p>If you encounter any issues during installation, please do not hesitate to contact our support team at <a href="mailto:support@jet-learn.com">support@jet-learn.com</a>. We are here to help!</p>
-      
-      <p>We look forward to <strong><?= data.learnerName || 'your child' ?></strong> creating amazing games with Roblox!</p>
-      
-      <p>Warm regards,<br><strong>The JetLearn Team</strong></p>
+          <!-- Top accent bar -->
+          <tr>
+            <td style="height:6px;background:linear-gradient(90deg,#c0392b 0%,#e53228 50%,#c0392b 100%);"></td>
+          </tr>
 
-      <? if (comments) { ?>
-        <div class="comments-section">
-          <p><strong>Additional Comments:</strong><br><?= comments.replace(/\n/g, '<br>') ?></p>
-        </div>
-      <? } ?>
-    </div>
-    <div class="footer">
-      <p><strong>JetLearn Team</strong></p>
-      <p>This is an automated message.</p>
-    </div>
-  </div>
+          <!-- Header -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0f0f0f 0%,#1a1a1a 60%,#0f0f0f 100%);padding:32px 40px 28px;text-align:center;">
+              <div style="font-size:2rem;margin-bottom:8px;">🎮</div>
+              <div style="color:#e53228;font-size:0.72rem;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:6px;">JetLearn</div>
+              <h1 style="margin:0;color:#ffffff;font-size:1.5rem;font-weight:800;letter-spacing:-0.5px;line-height:1.3;">Download &amp; Set-up<br>for Roblox Studio</h1>
+              <p style="margin:10px 0 0;color:rgba(255,255,255,0.6);font-size:0.88rem;">World's Top Rated Coding Academy for Kids</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px 40px 28px;color:#1a1a1a;font-size:0.95rem;line-height:1.7;">
+
+              <p style="margin:0 0 18px;">Hello Parent,</p>
+
+              <p style="margin:0 0 18px;">Greetings from JetLearn!</p>
+
+              <!-- Highlight intro -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#fff0f0,#ffe4e4);border:1.5px solid #fca5a5;border-radius:10px;padding:16px 20px;font-size:0.92rem;color:#7f1d1d;line-height:1.6;">
+                    Get ready for an exhilarating adventure as we welcome <strong style="color:#c0392b;"><?= data.learnerName || 'Your Child' ?></strong> to the next course in their learning journey — <strong style="color:#c0392b;">Design with Roblox</strong>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 18px;">Requesting you to please review the attached document, which contains the setup instructions for the Roblox course. Completing the setup in advance will ensure a smooth start to the course.</p>
+
+              <p style="margin:0 0 4px;">Regards,</p>
+              <p style="margin:0;font-weight:700;color:#0f0f0f;">Team JetLearn</p>
+
+              <? if (comments) { ?>
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+                  <tr>
+                    <td style="border-top:1px solid #e0e0e0;padding-top:16px;font-size:0.88rem;color:#555;font-style:italic;">
+                      <strong>Additional Comments:</strong><br><?= comments.replace(/\n/g, '<br>') ?>
+                    </td>
+                  </tr>
+                </table>
+              <? } ?>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#0f0f0f;padding:20px 40px;text-align:center;">
+              <p style="margin:0 0 4px;color:#e53228;font-weight:700;font-size:0.88rem;">Team JetLearn</p>
+              <p style="margin:0;color:rgba(255,255,255,0.4);font-size:0.75rem;">This is an automated message.</p>
+            </td>
+          </tr>
+
+          <!-- Bottom accent bar -->
+          <tr>
+            <td style="height:6px;background:linear-gradient(90deg,#c0392b 0%,#e53228 50%,#c0392b 100%);"></td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

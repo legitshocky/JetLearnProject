@@ -410,6 +410,44 @@ function updateUser(userData, currentUser) {
   }
 }
 
+// ── changeOwnPassword ─────────────────────────────────────────────────
+// Called on first-login forced password change.
+// No admin permission required — user can only change their OWN password.
+// Clears mustChangePassword flag after save.
+function changeOwnPassword(username, newPassword) {
+  try {
+    if (!username || !newPassword) return { success: false, message: 'Username and password required.' };
+    if (newPassword.length < 6) return { success: false, message: 'Password must be at least 6 characters.' };
+
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+    var data  = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
+    if (!data || data.length < 2) return { success: false, message: 'User profiles sheet not found.' };
+
+    var headers = data[0].map(function(h){ return String(h).toLowerCase().replace(/\s/g,''); });
+    var passIdx = headers.indexOf('password');
+    var mcpIdx  = headers.indexOf('mustchangepassword');
+
+    var rowIndex = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === String(username).trim()) { rowIndex = i + 1; break; }
+    }
+    if (rowIndex === -1) return { success: false, message: 'User not found.' };
+
+    if (passIdx > -1) sheet.getRange(rowIndex, passIdx + 1).setValue(newPassword);
+    if (mcpIdx  > -1) sheet.getRange(rowIndex, mcpIdx  + 1).setValue(false);
+
+    // Bust cache so next login reads fresh data
+    var cacheKey = CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES;
+    if (typeof _sheetDataCache !== 'undefined') delete _sheetDataCache[cacheKey];
+
+    Logger.log('[Users] changeOwnPassword: ' + username + ' — password updated, mustChangePassword cleared');
+    return { success: true, message: 'Password updated successfully.' };
+  } catch(e) {
+    Logger.log('[Users] changeOwnPassword error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function updateSystemConfig(newConfig) {
   Logger.log('updateSystemConfig called');
 
@@ -1085,6 +1123,19 @@ function getUserImpactScore(username) {
     if (myData.migrations < 3)  insight += ' Try completing more migrations.';
     else if (myData.audits < 2) insight += ' Running more audits will increase your score.';
 
+    // Build team leaderboard (all users with activity this month)
+    var leaderboard = Object.keys(userScores).map(function(u) {
+      var raw = Math.min(userScores[u].points, MAX_RAW);
+      return {
+        username   : u,
+        score      : Math.round((raw / MAX_RAW) * 100 * 10) / 10,
+        migrations : userScores[u].migrations,
+        emails     : userScores[u].emails,
+        audits     : userScores[u].audits,
+        tasks      : userScores[u].tasks
+      };
+    }).sort(function(a, b) { return b.score - a.score; });
+
     return {
       success:          true,
       score:            score,
@@ -1095,7 +1146,8 @@ function getUserImpactScore(username) {
       tasksCompleted:   myData.tasks,
       nextMilestone:    nextMilestone,
       insight:          insight,
-      team:             team
+      team:             team,
+      leaderboard:      leaderboard   // always returned — frontend shows it for Super Admin only
     };
   } catch(e) {
     Logger.log('[getUserImpactScore] Error: ' + e.message);

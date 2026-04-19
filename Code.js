@@ -25,7 +25,9 @@ const CONFIG = {
     TEACHER_HS_DATA: 'Teacher HS values',
     COURSE_HS_DATA: 'Course HS values',
     HS_USER_DATA: 'HS User Values',
-    PERSONA_DATA: 'Main Sheet'
+    PERSONA_DATA: 'Main Sheet',
+    ATHENA_CPRS:  'CPR',   // tab in Athena spreadsheet (1EodMl-ls6hJe7ONOp4Yyt5r901J4d5PtjgF5iXeYDk8)
+    ATHENA_PRMS:  'PRM'    // tab in Athena spreadsheet
   },
   // Sheets that live in JetLearn App Data spreadsheet (logs that grow over time)
   APP_DATA_SHEETS: {
@@ -38,7 +40,8 @@ const CONFIG = {
     ALERT_LOG: 'Alert Log',
     UPSKILL_TRACKER: 'Upskill Tracker',
     AUDIT_SUMMARY_CACHE: 'Audit Summary Cache',
-    ONBOARDING_TRACKER: 'Onboarding Tracker'
+    ONBOARDING_TRACKER: 'Onboarding Tracker',
+    CERTIFICATE_LOG: 'Certificate Log'
   },
   EMAIL: {
     FROM: 'hello@jet-learn.com',
@@ -55,7 +58,13 @@ const CONFIG = {
     TEACHER_COURSES: 'A1:ZZ',
     COURSE_PROGRESS_DATA: 'A1:L'
   },
-  PAGINATION_LIMIT: 50
+  PAGINATION_LIMIT: 50,
+
+  // Drive FOLDER IDs for course welcome email auto-attachments
+  // Each folder contains one file — the first file in the folder is attached
+  MINECRAFT_VIDEO_MAC_FOLDER: '1bFhd4ZYm1dqGiGvTbLbWTxBhAMJVXHmH',  // Minecraft Steps - Mac.mp4
+  MINECRAFT_VIDEO_WIN_FOLDER: '1zvO-vKGe-ke4wPiGcCNW-QVjHXv8kO_X',  // Minecraft Steps - Windows.mp4
+  ROBLOX_SETUP_PDF_FOLDER:    '1HNQ7rlryRctWj_ujCNBsCqpi-9mCQ2sT',  // Roblox Studio Setup Instructions.pdf
 };
 
 const ROLES = {
@@ -379,10 +388,52 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "433";
+const APP_VERSION = "481";
 
 function getAppVersion() {
   return APP_VERSION;
+}
+
+// Direct course list for Certificate Center — bypasses all caching/indirection
+function getCoursesForCertificate() {
+  try {
+    // Source 1: Course Name sheet col A rows 2+
+    var sheetData = _getCachedSheetData(CONFIG.SHEETS.COURSE_NAME);
+    Logger.log('[Cert] Course Name sheet rows: ' + (sheetData ? sheetData.length : 'null'));
+    if (sheetData && sheetData.length >= 2) {
+      var courses = [];
+      for (var i = 1; i < sheetData.length; i++) {
+        var v = sheetData[i][0] ? String(sheetData[i][0]).trim() : '';
+        if (v) courses.push(v);
+      }
+      Logger.log('[Cert] Source 1 found ' + courses.length + ' courses. First 5: ' + JSON.stringify(courses.slice(0,5)));
+      if (courses.length > 0) return { success: true, courses: courses.sort(), source: 'Course Name sheet' };
+    }
+
+    // Source 2: Teacher Courses header row cols 4+
+    Logger.log('[Cert] Course Name sheet empty, trying Teacher Courses header');
+    var tcData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    Logger.log('[Cert] Teacher Courses rows: ' + (tcData ? tcData.length : 'null'));
+    if (tcData && tcData.length > 0) {
+      var headerRow = tcData[0];
+      for (var r = 0; r < Math.min(tcData.length, 10); r++) {
+        if (String(tcData[r][0] || '').trim().toLowerCase() === 'teacher') { headerRow = tcData[r]; break; }
+      }
+      var fallback = [];
+      for (var c = 4; c < headerRow.length; c++) {
+        var n = headerRow[c] ? String(headerRow[c]).trim() : '';
+        if (n) fallback.push(n);
+      }
+      Logger.log('[Cert] Source 2 found ' + fallback.length + ' courses. First 5: ' + JSON.stringify(fallback.slice(0,5)));
+      if (fallback.length > 0) return { success: true, courses: fallback.sort(), source: 'Teacher Courses header' };
+    }
+
+    Logger.log('[Cert] All sources exhausted — both sheets appear empty');
+    return { success: false, courses: [], message: 'No courses found in Course Name sheet or Teacher Courses sheet. Please add courses to the "Course Name" sheet.' };
+  } catch (e) {
+    Logger.log('[Cert] getCoursesForCertificate error: ' + e.message);
+    return { success: false, courses: [], message: e.message };
+  }
 }
 
 function setupCheckRepliesTrigger() {
@@ -511,7 +562,216 @@ function setupAppDataSpreadsheet() {
   return id;
 }
 
+function findFormGuid() {
+  var result = getMigrationFormFields();
+  Logger.log(JSON.stringify(result));
+}
 
 
+function diagnoseCourseSheet() {
+  var ss = SpreadsheetApp.openById(CONFIG.MIGRATION_SHEET_ID);
+  var cn = ss.getSheetByName('Course Name');
+  Logger.log('Course Name sheet exists: ' + !!cn);
+  if (cn) {
+    var data = cn.getDataRange().getValues();
+    Logger.log('Rows: ' + data.length);
+    Logger.log('First 5 rows: ' + JSON.stringify(data.slice(0,5)));
+  }
+  var tc = ss.getSheetByName('Teacher Courses');
+  Logger.log('Teacher Courses exists: ' + !!tc);
+  if (tc) {
+    var tcData = tc.getRange(1,1,3,10).getValues();
+    Logger.log('Teacher Courses first 3 rows x 10 cols: ' + JSON.stringify(tcData));
+  }
+}
 
+// ─────────────────────────────────────────────────────────────────────
+// doPost — Slack Interactivity callback handler
+// Receives interactive payloads from Slack (button clicks, modal submits)
+// for the CLS CCTC migration approval workflow.
+//
+// Deployment: Deploy this GAS project as a Web App
+//   Execute as: Me | Who has access: Anyone
+//   → Set the deployed /exec URL as the Interactivity Request URL in your Slack app
+// ─────────────────────────────────────────────────────────────────────
+function doPost(e) {
+  try {
+    // Slack sends interactive payloads as application/x-www-form-urlencoded
+    // with a single field called "payload" containing a URL-encoded JSON string.
+    var rawPayload = '';
+    if (e.parameter && e.parameter.payload) {
+      rawPayload = e.parameter.payload;
+    } else if (e.postData && e.postData.contents) {
+      var match = e.postData.contents.match(/(?:^|&)payload=([^&]+)/);
+      rawPayload = match ? decodeURIComponent(match[1]) : e.postData.contents;
+    }
+    if (!rawPayload) return _slackAck('', false);
 
+    var payload = JSON.parse(rawPayload);
+    Logger.log('[doPost] Slack payload type: ' + payload.type);
+
+    // ── Block actions: button clicks ─────────────────────────────────
+    if (payload.type === 'block_actions') {
+      var action      = payload.actions && payload.actions[0];
+      var responseUrl = payload.response_url || '';
+      var triggerId   = payload.trigger_id   || '';
+      var slackUser   = payload.user         || {};
+      var userName    = slackUser.name || slackUser.username || slackUser.id || 'CLS Manager';
+      var userId      = slackUser.id   || '';
+
+      if (!action) return _slackAck('', false);
+
+      if (action.action_id === 'cls_approve_migration') {
+        var jlid = action.value || '';
+        Logger.log('[doPost] CLS approve queued: ' + jlid + ' by ' + userName);
+
+        // 1. Immediately replace message with "Processing" — removes buttons, gives visual feedback
+        _slackUpdateMessage(responseUrl, [{
+          type: 'section',
+          text: { type: 'mrkdwn', text: '⏳ *Processing approval for JLID ' + jlid + '...*\nCreating HubSpot ticket. This takes ~1 minute.' }
+        }], 'Processing CLS approval...');
+
+        // 2. Store data + fire background trigger
+        var scA = CacheService.getScriptCache();
+        scA.put('CLS_APR_PENDING', JSON.stringify({
+          jlid: jlid, userId: userId, userName: userName, responseUrl: responseUrl
+        }), 300);
+        try {
+          ScriptApp.getProjectTriggers().forEach(function(t) {
+            if (t.getHandlerFunction() === '_processPendingCLSApproval') ScriptApp.deleteTrigger(t);
+          });
+          ScriptApp.newTrigger('_processPendingCLSApproval').timeBased().after(60000).create();
+          Logger.log('[doPost] Approval trigger created for ' + jlid);
+        } catch(te) {
+          Logger.log('[doPost] Approve trigger failed, inline: ' + te.message);
+          handleCLSMigrationApproval(jlid, userId, userName, responseUrl);
+        }
+      }
+      else if (action.action_id === 'cls_decline_migration') {
+        var jlid        = action.value || '';
+        var learnerName = '';
+        // Retrieve learner name from queue without a full getLearnerProgressions call
+        try {
+          var entry = _clsQueueGetEntry(jlid);
+          if (entry) learnerName = String(entry.data[CLS_Q.JLID + 1] || '');
+        } catch(qe) {}
+        Logger.log('[doPost] CLS decline click: ' + jlid + ' by ' + userName);
+        // Cache response_url + user so the modal submission can use them
+        var sc = CacheService.getScriptCache();
+        sc.put('CLS_RESP_' + jlid,  responseUrl,                   600);
+        sc.put('CLS_USER_' + jlid,  JSON.stringify({ id: userId, name: userName }), 600);
+        openSlackDeclineModal(triggerId, jlid, learnerName);
+      }
+    }
+
+    // ── View submission: decline reason modal ─────────────────────────
+    // Slack requires ack within 3s — we must return IMMEDIATELY.
+    // Store data in cache and process via 1-min trigger (response_url valid 30 min).
+    else if (payload.type === 'view_submission') {
+      if (payload.view && payload.view.callback_id === 'cls_decline_reason') {
+        var jlid        = payload.view.private_metadata || '';
+        var stateValues = ((payload.view.state || {}).values) || {};
+        var reason      = '';
+        try {
+          reason = stateValues['decline_reason_block']['decline_reason_input'].value || '';
+        } catch(ve) {}
+        var slackUser = payload.user || {};
+        var userName  = slackUser.name || slackUser.username || slackUser.id || 'CLS Manager';
+        var userId    = slackUser.id || '';
+
+        // Recover response_url + user from cache (stored when decline button was clicked)
+        var sc          = CacheService.getScriptCache();
+        var responseUrl = sc.get('CLS_RESP_' + jlid) || '';
+        var cachedUser  = sc.get('CLS_USER_' + jlid);
+        if (cachedUser) {
+          try {
+            var cu = JSON.parse(cachedUser);
+            if (!userName || userName === 'CLS Manager') userName = cu.name || cu.id || userName;
+            if (!userId)                                  userId   = cu.id   || userId;
+          } catch(pe) {}
+        }
+
+        // ── Store work in cache, fire trigger, return ack immediately ──
+        // Processing (sheet write + Slack update) happens in _processPendingCLSDecline
+        // which runs ~1 min later (response_url valid for 30 min — plenty of time).
+        var pendingKey = 'CLS_DEC_PENDING';
+        sc.put(pendingKey, JSON.stringify({
+          jlid       : jlid,
+          reason     : reason,
+          userId     : userId,
+          userName   : userName,
+          responseUrl: responseUrl
+        }), 300);
+
+        // Create a one-shot 1-minute trigger to process the decline
+        try {
+          // Remove any stale same-name triggers first to avoid accumulation
+          ScriptApp.getProjectTriggers().forEach(function(t) {
+            if (t.getHandlerFunction() === '_processPendingCLSDecline') ScriptApp.deleteTrigger(t);
+          });
+          ScriptApp.newTrigger('_processPendingCLSDecline').timeBased().after(60000).create();
+        } catch(te) {
+          // Trigger creation failed — fall back to inline processing (may show modal error)
+          Logger.log('[doPost] Trigger create failed, processing inline: ' + te.message);
+          handleCLSMigrationDecline(jlid, reason, userId, userName, responseUrl);
+        }
+
+        Logger.log('[doPost] CLS decline queued for ' + jlid + ' by ' + userName);
+        // Return immediately — closes modal cleanly without "trouble connecting" error
+        return _slackAck('{"response_action":"clear"}', true);
+      }
+    }
+
+    return _slackAck('', false);
+  } catch(err) {
+    Logger.log('[doPost] Error: ' + err.message);
+    return _slackAck('', false);
+  }
+}
+
+// ── Background processor for Slack approve button ─────────────────────
+function _processPendingCLSApproval() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_processPendingCLSApproval') ScriptApp.deleteTrigger(t);
+    });
+  } catch(te) {}
+
+  var sc  = CacheService.getScriptCache();
+  var raw = sc.get('CLS_APR_PENDING');
+  if (!raw) { Logger.log('[CLS] _processPendingCLSApproval: no pending data'); return; }
+  var data;
+  try { data = JSON.parse(raw); } catch(pe) { return; }
+  sc.remove('CLS_APR_PENDING');
+
+  Logger.log('[CLS] _processPendingCLSApproval: ' + data.jlid + ' by ' + data.userName);
+  handleCLSMigrationApproval(data.jlid, data.userId, data.userName, data.responseUrl);
+}
+
+// ── Background processor for Slack decline modal submissions ──────────
+// Fired ~1 min after doPost returns ack, so we're well within the 30-min response_url window.
+function _processPendingCLSDecline() {
+  // Self-delete this trigger first
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_processPendingCLSDecline') ScriptApp.deleteTrigger(t);
+    });
+  } catch(te) {}
+
+  var sc  = CacheService.getScriptCache();
+  var raw = sc.get('CLS_DEC_PENDING');
+  if (!raw) { Logger.log('[CLS] _processPendingCLSDecline: no pending data found'); return; }
+  var data;
+  try { data = JSON.parse(raw); } catch(pe) { Logger.log('[CLS] _processPendingCLSDecline: bad JSON'); return; }
+  sc.remove('CLS_DEC_PENDING');
+
+  Logger.log('[CLS] _processPendingCLSDecline processing: ' + data.jlid + ' by ' + data.userName);
+  handleCLSMigrationDecline(data.jlid, data.reason, data.userId, data.userName, data.responseUrl);
+}
+
+function _slackAck(body, isJson) {
+  var mime = isJson
+    ? ContentService.MimeType.JSON
+    : ContentService.MimeType.TEXT;
+  return ContentService.createTextOutput(body || '').setMimeType(mime);
+}

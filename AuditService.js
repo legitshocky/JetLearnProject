@@ -9,56 +9,73 @@ function getAuditLog(params = {}) {
 
   try {
     const sheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
-    
-    // Check if data exists and has more than just headers
-    if (sheetData && sheetData.length > 1) { 
-        let filteredData = sheetData.slice(1); 
+    Logger.log('getAuditLog: raw sheet rows = ' + (sheetData ? sheetData.length : 'null'));
 
-        if (params.status && params.status !== 'all') {
-          filteredData = filteredData.filter(row => row[7] && String(row[7]).toLowerCase() === params.status.toLowerCase());
-        }
-
-        if (params.fromDate || params.toDate) {
-          const fromDate = params.fromDate ? new Date(params.fromDate) : null;
-          if (fromDate) fromDate.setHours(0, 0, 0, 0);
-
-          const toDate = params.toDate ? new Date(params.toDate) : null;
-          if(toDate) toDate.setHours(23, 59, 59, 999);
-          
-          filteredData = filteredData.filter(row => {
-            const rowDate = parseSheetDate(row[0]); 
-            if (!rowDate) return false;
-            const isAfterOrEqualFrom = fromDate ? rowDate >= fromDate : true;
-            const isBeforeOrEqualTo = toDate ? rowDate <= toDate : true;
-            return isAfterOrEqualFrom && isBeforeOrEqualTo;
-          });
-        }
-
-        if (params.search) {
-          const searchTerm = params.search.toLowerCase();
-          filteredData = filteredData.filter(row =>
-            row.some(cell => cell && String(cell).toLowerCase().includes(searchTerm))
-          );
-        }
-
-        // Sort descending by date
-        filteredData.sort((a, b) => {
-            const dateA = parseSheetDate(a[0]);
-            const dateB = parseSheetDate(b[0]);
-            if (!dateA && !dateB) return 0;
-            if (!dateA) return 1; 
-            if (!dateB) return -1;
-            return dateB.getTime() - dateA.getTime();
-        });
-
-        totalItems = filteredData.length;
-        const limit = params.limit || CONFIG.PAGINATION_LIMIT;
-        const startIndex = (currentPage - 1) * limit;
-        const endIndex = startIndex + limit;
-        paginatedData = filteredData.slice(startIndex, endIndex);
-        totalPages = (totalItems > 0 && limit > 0) ? Math.ceil(totalItems / limit) : 0;
+    // Detect whether row 0 is a header row by checking if first cell is a string (not a Date)
+    // logAction never writes headers, so row 0 is often the first data row
+    let dataRows = [];
+    if (sheetData && sheetData.length > 0) {
+      const firstCell = sheetData[0][0];
+      const firstCellIsHeader = (typeof firstCell === 'string' && isNaN(Date.parse(firstCell)) === false
+        ? false  // parseable date string → data
+        : typeof firstCell === 'string'); // non-date string → header
+      dataRows = firstCellIsHeader ? sheetData.slice(1) : sheetData.slice(0);
+      // Filter out completely empty rows
+      dataRows = dataRows.filter(row => row && row.length > 1 && row.some(c => c !== '' && c !== null && c !== undefined));
     }
 
+    Logger.log('getAuditLog: data rows after header detection = ' + dataRows.length);
+
+    if (dataRows.length > 0) {
+      let filteredData = dataRows;
+
+      if (params.status && params.status !== 'all') {
+        filteredData = filteredData.filter(row => row[7] && String(row[7]).toLowerCase() === params.status.toLowerCase());
+      }
+
+      // Timezone-safe date filter: format rowDate as YYYY-MM-DD in script timezone, compare as string
+      if (params.fromDate || params.toDate) {
+        const tz = Session.getScriptTimeZone();
+        const fromStr = params.fromDate || null; // already 'YYYY-MM-DD'
+        const toStr   = params.toDate   || null;
+
+        filteredData = filteredData.filter(row => {
+          const rowDate = parseSheetDate(row[0]);
+          if (!rowDate) return false;
+          const rowStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
+          if (fromStr && rowStr < fromStr) return false;
+          if (toStr   && rowStr > toStr)   return false;
+          return true;
+        });
+        Logger.log('getAuditLog: rows after date filter (' + fromStr + ' → ' + toStr + ') = ' + filteredData.length);
+      }
+
+      if (params.search) {
+        const searchTerm = params.search.toLowerCase();
+        filteredData = filteredData.filter(row =>
+          row.some(cell => cell && String(cell).toLowerCase().includes(searchTerm))
+        );
+      }
+
+      // Sort descending by date (newest first)
+      filteredData.sort((a, b) => {
+        const dateA = parseSheetDate(a[0]);
+        const dateB = parseSheetDate(b[0]);
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      totalItems = filteredData.length;
+      const limit = params.limit || CONFIG.PAGINATION_LIMIT;
+      const startIndex = (currentPage - 1) * limit;
+      const endIndex = startIndex + limit;
+      paginatedData = filteredData.slice(startIndex, endIndex);
+      totalPages = (totalItems > 0 && limit > 0) ? Math.ceil(totalItems / limit) : 0;
+    }
+
+    Logger.log('getAuditLog: returning ' + paginatedData.length + ' rows, total=' + totalItems);
     return {
       data: paginatedData,
       total: totalItems,
@@ -67,13 +84,13 @@ function getAuditLog(params = {}) {
     };
 
   } catch (error) {
-    Logger.log('getAuditLog error: ' + error.message);
+    Logger.log('getAuditLog error: ' + error.message + ' | stack: ' + error.stack);
     // CRITICAL FIX: Return the full structure even on error to prevent client crashes
-    return { 
-      data: [], 
-      total: 0, 
-      page: 1, 
-      totalPages: 0 
+    return {
+      data: [],
+      total: 0,
+      page: 1,
+      totalPages: 0
     };
   }
 }
@@ -85,6 +102,10 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
     lock.waitLock(10000); 
     
     const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
+    // Write header row if sheet is empty (so column lookups work correctly)
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['Timestamp','Action','JLID','Learner','Old Teacher','New Teacher','Course','Status','Notes','Session ID','Reason for Migration','Intervened By']);
+    }
     const timestamp = new Date();
     const sessionId = Utilities.getUuid();
     sheet.appendRow([
@@ -101,11 +122,46 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       reason || '', 
       intervenedBy || ''  
     ]);
-    SpreadsheetApp.flush();    
+    SpreadsheetApp.flush();
     if(typeof _sheetDataCache !== 'undefined') {
         _clearAppDataCache(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     }
     Logger.log('Action logged successfully: ' + action);
+
+    // Auto-track in User Activity Log so Impact Score reflects real work
+    if (intervenedBy) {
+      var ACTION_SCORE_MAP = {
+        'Migration Process':        'Migration Processed',
+        'Migration Processed':      'Migration Processed',
+        'Migration Email Sent':     'Migration Email Sent',
+        'New Learner Onboarded':    'Email Sent',
+        'Onboarding Email Sent':    'Email Sent',
+        'Batch Email Sent':         'Batch Email Sent',
+        'Audit Completed':          'Audit Completed',
+        'Audit Submitted':          'Audit Submitted',
+        'Invoice Sent':             'Invoice Sent',
+        'Invoice Generated':        'Invoice Generated',
+        'Task Updated':             'Task Completed',
+        'Task Completed':           'Task Completed',
+        'WhatsApp Sent':            'WhatsApp Sent',
+        'Report Generated':         'Report Generated',
+        'Teacher Added':            'Teacher Added',
+        'Learner Added':            'Learner Added'
+      };
+      var scoredAction = ACTION_SCORE_MAP[action];
+      if (!scoredAction && action && action.indexOf('Email Sent') !== -1) scoredAction = 'Email Sent';
+      if (!scoredAction && action && action.indexOf('Migration') !== -1) scoredAction = 'Migration Processed';
+      if (!scoredAction && action && action.indexOf('Audit') !== -1) scoredAction = 'Audit Completed';
+      if (scoredAction) {
+        var activityDetail = action + (jlid ? ' | JLID: ' + jlid : '') + (learner ? ' | ' + learner : '');
+        String(intervenedBy).split(',').map(function(u){ return u.trim(); }).filter(Boolean)
+          .forEach(function(u) {
+            try { logUserActivity(u, scoredAction, activityDetail); } catch(e) {
+              Logger.log('logUserActivity error for ' + u + ': ' + e.message);
+            }
+          });
+      }
+    }
   } catch (error) {
     Logger.log('Error logging action (Lock/Write failed): ' + error.message);
   } finally {
@@ -175,7 +231,7 @@ function cleanupOldAuditLogs(daysToKeep = 90) {
 
   try {
     const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
-    const data = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG); 
+    const data = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
 
     if (data.length <= 1) return { success: true, message: 'No data to cleanup' };
 
@@ -198,7 +254,7 @@ function cleanupOldAuditLogs(daysToKeep = 90) {
     const deletedCount = data.length - 1 - recordsToKeep.length; 
     Logger.log('Cleaned up ' + deletedCount + ' old audit records');
 
-    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.AUDIT_LOG}`];
+    _clearAppDataCache(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
 
     return {
       success: true,
@@ -218,7 +274,7 @@ function getRawLearnerAuditLog(searchTerm) {
       return { success: false, message: 'Search term cannot be empty.' };
     }
 
-    const auditSheetData = _getCachedSheetData(CONFIG.SHEETS.AUDIT_LOG);
+    const auditSheetData = _getAppDataCachedSheetData(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
 
     if (auditSheetData.length <= 1) {
       return { success: true, data: [], message: 'No audit history available.' };

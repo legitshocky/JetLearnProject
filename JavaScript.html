@@ -1,5 +1,15 @@
 <script>
 
+// Show/hide toggle for force-password fields
+function toggleForcePwd(inputId, btn) {
+  var inp = document.getElementById(inputId);
+  if (!inp) return;
+  var isHidden = inp.type === 'password';
+  inp.type = isHidden ? 'text' : 'password';
+  btn.innerHTML = isHidden ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+  btn.style.color = isHidden ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)';
+}
+
 function escapeHtml(text) {
   if (!text) return text;
   return String(text)
@@ -717,7 +727,9 @@ function switchPage(pageId, context = null) {
         aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); },
         profilePage: loadProfilePage,
         onboardingTrackerPage: loadOnboardingTracker,
-        learnerMigrationPage:  loadLearnerMigrationPage
+        learnerMigrationPage:  loadLearnerMigrationPage,
+        coursePlanner:         loadCoursePlannerPage,
+        bulkCertificates:      loadBulkCertificatesPage
     };
 
     if (pageLoaders[pageId]) {
@@ -1084,6 +1096,7 @@ function updateDashboardReasons(result) {
           tpManager: onboardingTpManagerSelect.value,
           jetGuide: onboardingJetGuide.value,
           startDate: onboardingStartDateInput.value,
+          performedBy: currentUser ? currentUser.username : '',
       };
       if (!onboardingData.learnerName || !onboardingData.teacherName || !onboardingData.course || !onboardingData.clsManager || !onboardingData.jetGuide || !onboardingData.startDate) {
           showToast('error', 'Validation Error', 'Learner Name, Teacher, Course, CLS Manager, JetGuide, and Start Date are required.');
@@ -1165,8 +1178,9 @@ function submitMigrationForm(e) {
       e.preventDefault();
 
       // 1. Capture Checkbox States
-      const sendEmail = document.getElementById('sendEmailToTeacher').checked;
-      const sendWhatsapp = document.getElementById('sendWhatsappToParent').checked;
+      const sendEmail       = document.getElementById('sendEmailToTeacher').checked;
+      const sendWhatsapp    = document.getElementById('sendWhatsappToParent').checked;
+      const sendCertificate = document.getElementById('sendCourseCertificate') ? document.getElementById('sendCourseCertificate').checked : false;
 
       if (!sendEmail && !sendWhatsapp) {
           showToast('error', 'Selection Required', 'Please select at least one communication method.');
@@ -1207,6 +1221,7 @@ function submitMigrationForm(e) {
           oldTeacher: oldTeacherSelect.value,
           newTeacher: newTeacherSelect.value,
           course: migrationCourseSelect.value,
+          completedCourseForCert: (document.getElementById('migOldCourse') && document.getElementById('migOldCourse').value) || migrationCourseSelect.value,
           clsManager: clsManagerSelect.value,
           jetGuide: jetGuideSelect.value,
           startDate: startDateInput.value,
@@ -1215,14 +1230,16 @@ function submitMigrationForm(e) {
           reasonOfMigration: reasonOfMigrationSelect.value,
           migrationIntervenedBy: migrationIntervenedBy,
           newTeacherComments: document.getElementById('migration-comments-new-teacher').value.trim(),
-          sendEmailToTeacher: sendEmail,      
-          sendWhatsappToParent: sendWhatsapp, 
+          sendEmailToTeacher:  sendEmail,
+          sendWhatsappToParent: sendWhatsapp,
+          sendCertificate:     sendCertificate,
           manualTimezone: selectedTimezone,
           
-          // --- FIX: ADD THIS LINE ---
           manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
-          // --------------------------
-          
+
+          // Selected contacts from the picker (if any checkboxes checked)
+          watiPhoneTargets: Array.from(document.querySelectorAll('input[name="watiContactTarget"]:checked')).map(cb => cb.value).filter(Boolean),
+
           watiTemplateName: selectedWatiTemplate,
           confirmedFutureCourses: window.mipConfirmedCourses || []
       };
@@ -1240,11 +1257,17 @@ function submitMigrationForm(e) {
             .withSuccessHandler(result => {
               hideLoading();
               if (result && result.success) {
-                showToast('success', 'Migration Complete', result.message);
+                if (result.watiError) {
+                  // WhatsApp failed — show fallback modal
+                  _showWatiFailureBanner(result, migrationData);
+                } else {
+                  showToast('success', 'Migration Complete', result.message);
+                }
+                // Reset form regardless
                 window.mipConfirmedCourses = [];
                 migrationForm.reset();
+                _resetWatiContactPicker();
                 classSessionsContainer.innerHTML = '';
-                // Re-initialize with a fresh row (this triggers the dropdown creation)
                 classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
                 sessionCounter = 0;
                 initDateInputs();
@@ -1253,9 +1276,159 @@ function submitMigrationForm(e) {
               }
             })
             .withFailureHandler(showError)
-            .sendMigrationEmail(migrationData, []); 
+            .sendMigrationEmail(migrationData, []);
         }
       });
+    }
+
+    // ── WATI Contact Picker ────────────────────────────────────────────────────
+    function _loadWatiContacts(jlid) {
+      if (!jlid || jlid.length < 8) return;
+      const pickerGroup = document.getElementById('watiContactPickerGroup');
+      const listEl      = document.getElementById('watiContactList');
+      if (!pickerGroup || !listEl) return;
+
+      listEl.innerHTML = '<div style="color:var(--text-light);font-size:0.82rem;padding:4px 0;"><i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Loading contacts...</div>';
+      pickerGroup.style.display = 'block';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          listEl.innerHTML = '';
+          if (!res || !res.contacts || res.contacts.length === 0) {
+            pickerGroup.style.display = 'none';
+            return;
+          }
+          res.contacts.forEach(function(c, idx) {
+            const id = `watiContact_${idx}`;
+            const typeIcon = c.type && c.type.toLowerCase().indexOf('whatsapp') !== -1
+              ? '<i class="fab fa-whatsapp" style="color:#25d366;margin-right:5px;"></i>'
+              : '<i class="fas fa-mobile-alt" style="color:#888;margin-right:5px;"></i>';
+            const isBest = c.number === res.best;
+            const row = document.createElement('label');
+            row.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;
+              background:${isBest ? 'rgba(37,211,102,0.07)' : 'rgba(255,255,255,0.04)'};
+              border:1px solid ${isBest ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.1)'};cursor:pointer;`;
+            row.innerHTML = `<input type="checkbox" name="watiContactTarget" value="${c.number}" ${isBest ? 'checked' : ''}
+              style="accent-color:#6366f1;width:15px;height:15px;">
+              ${typeIcon}
+              <span style="font-size:0.88rem;color:var(--text-primary);font-weight:${isBest ? '600' : '400'};">
+                ${c.number}</span>
+              <span style="font-size:0.75rem;color:var(--text-light);margin-left:auto;">${c.label}${isBest ? ' · <span style="color:#25d366">Best</span>' : ''}</span>`;
+            listEl.appendChild(row);
+          });
+          pickerGroup.style.display = 'block';
+        })
+        .withFailureHandler(function() { pickerGroup.style.display = 'none'; })
+        .getWatiContactsForJlid(jlid);
+    }
+
+    function _resetWatiContactPicker() {
+      const pg = document.getElementById('watiContactPickerGroup');
+      const ll = document.getElementById('watiContactList');
+      if (pg) pg.style.display = 'none';
+      if (ll) ll.innerHTML = '';
+    }
+
+    // ── WATI Failure Banner ────────────────────────────────────────────────────
+    function _showWatiFailureBanner(result, migrationData) {
+      // Build inline modal / banner
+      const existing = document.getElementById('watiFallbackModal');
+      if (existing) existing.remove();
+
+      const parentEmailDisplay = result.parentEmail
+        ? `<div style="margin:8px 0;font-size:0.83rem;color:var(--text-light);">Will send to: <strong style="color:var(--text-primary);">${result.parentEmail}</strong></div>`
+        : `<div style="margin:8px 0;font-size:0.83rem;color:#f87171;">⚠ No parent email found in HubSpot — cannot send fallback.</div>`;
+
+      const canEmail = !!result.parentEmail;
+
+      const modal = document.createElement('div');
+      modal.id = 'watiFallbackModal';
+      modal.style.cssText = `position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.65);
+        display:flex;align-items:center;justify-content:center;padding:20px;`;
+
+      modal.innerHTML = `
+        <div style="background:var(--bg-card,#1a1a2e);border:1.5px solid rgba(248,113,113,0.4);border-radius:16px;
+          max-width:480px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:40px;height:40px;border-radius:50%;background:rgba(248,113,113,0.15);
+              display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fab fa-whatsapp" style="color:#f87171;font-size:1.2rem;"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:1rem;color:#f87171;">WhatsApp Not Sent</div>
+              <div style="font-size:0.8rem;color:var(--text-light);margin-top:2px;">Migration emails went through ✓</div>
+            </div>
+          </div>
+
+          <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);
+            border-radius:10px;padding:12px;margin-bottom:16px;font-size:0.83rem;color:#fca5a5;line-height:1.5;">
+            <strong>Error:</strong> ${escapeHtml(result.watiErrorMessage || 'Unknown WATI error')}
+          </div>
+
+          <div style="font-size:0.9rem;color:var(--text-primary);margin-bottom:4px;">
+            Do you want to notify <strong>${escapeHtml(result.learner || 'the parent')}</strong> via email instead?
+          </div>
+          ${parentEmailDisplay}
+
+          <div style="display:flex;gap:10px;margin-top:20px;">
+            ${canEmail ? `<button id="watiFallbackSendBtn" style="flex:1;padding:10px;border-radius:8px;
+              background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;
+              font-weight:600;cursor:pointer;font-size:0.9rem;">
+              <i class="fas fa-envelope" style="margin-right:6px;"></i>Send Email to Parent
+            </button>` : ''}
+            <button onclick="document.getElementById('watiFallbackModal').remove()"
+              style="flex:1;padding:10px;border-radius:8px;background:rgba(255,255,255,0.06);
+              color:var(--text-light);border:1px solid rgba(255,255,255,0.12);cursor:pointer;font-size:0.9rem;">
+              Dismiss
+            </button>
+          </div>
+        </div>`;
+
+      document.body.appendChild(modal);
+
+      if (canEmail) {
+        document.getElementById('watiFallbackSendBtn').addEventListener('click', function() {
+          this.disabled = true;
+          this.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Sending...';
+          // Pass full migrationData so server can call getWatiParameters with same data
+          const ctx = {
+            learner:             result.learner       || migrationData.learner || '',
+            newTeacher:          result.newTeacher    || migrationData.newTeacher || '',
+            course:              result.course        || migrationData.course || '',
+            oldTeacher:          migrationData.oldTeacher || '',
+            reasonOfMigration:   migrationData.reasonOfMigration || '',
+            watiTemplateName:    migrationData.watiTemplateName || '',
+            classSessions:       migrationData.classSessions || [],
+            startDate:           migrationData.startDate || '',
+            classLink:           migrationData.classLink || '',
+            manualTimezone:      migrationData.manualTimezone || '',
+            parentEmail:         result.parentEmail || ''
+          };
+          const performedBy = currentUser ? currentUser.username : '';
+          google.script.run
+            .withSuccessHandler(function(res) {
+              document.getElementById('watiFallbackModal').remove();
+              if (res && res.success) {
+                showToast('success', 'Parent Notified', 'Email sent to parent successfully.');
+              } else {
+                showToast('error', 'Email Failed', (res && res.message) ? res.message : 'Failed to send fallback email.');
+              }
+            })
+            .withFailureHandler(function(err) {
+              document.getElementById('watiFallbackModal').remove();
+              showToast('error', 'Email Failed', err.message || 'Unknown error.');
+            })
+            .sendMigrationParentFallbackEmail(result.jlid || migrationData.jlid, ctx, performedBy);
+        });
+      }
+
+      // Close on backdrop click
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) modal.remove();
+      });
+
+      // Also show a warning toast
+      showToast('warning', 'Migration Complete (Partial)', 'Emails sent. WhatsApp failed — review the popup.', 8000);
     }
 
     function cleanJlidForZoom(jlid) {
@@ -1643,9 +1816,10 @@ function collectEmailFormData(emailType) {
             sendWhatsapp: document.getElementById('sendOnboardingWhatsapp').checked, 
             // ------------------------
             
-            generateAndAttachInvoice: generateAndAttachInvoice.checked
+            generateAndAttachInvoice: generateAndAttachInvoice.checked,
+            performedBy: currentUser ? currentUser.username : ''
         };
-        
+
         formData.classSessions = Array.from(onboardingParentClassSessionsContainer.querySelectorAll('.class-session-group')).map(group => {
             const day = group.querySelector('.class-day-select').value;
             const hour = group.querySelector('.class-hour-select').value;
@@ -1674,6 +1848,7 @@ function collectEmailFormData(emailType) {
             course: minecraftCourse.value.trim(),
             comments: minecraftComments.value.trim(),
             recipientEmail: minecraftRecipientEmail.value.trim(),
+            performedBy: currentUser ? currentUser.username : ''
         };
     } else if (emailType === 'roblox') {
         currentFormId = 'robloxEmailForm';
@@ -1684,6 +1859,7 @@ function collectEmailFormData(emailType) {
             course: robloxCourse.value.trim(),
             comments: robloxComments.value.trim(),
             recipientEmail: robloxRecipientEmail.value.trim(),
+            performedBy: currentUser ? currentUser.username : ''
         };
     }
     return { formData: formData, currentFormId: currentFormId };
@@ -1699,10 +1875,11 @@ function collectEmailFormData(emailType) {
     // Client-side function to validate form fields for generic emails
     function validateEmailForm(formData, emailType) {
         const errors = [];
-        if (!formData.parentEmail || !isValidEmail(formData.parentEmail)) errors.push('Valid Parent Email is required.');
+        const _emailToCheck = formData.parentEmail || formData.recipientEmail;
+        if (!_emailToCheck || !isValidEmail(_emailToCheck)) errors.push('Valid Recipient Email is required.');
         if (!formData.parentName) errors.push('Parent Name is required.');
         if (!formData.learnerName) errors.push('Learner Name is required.');
-        if (!formData.course) errors.push('Course is required.');
+        if (emailType !== 'minecraft' && emailType !== 'roblox' && !formData.course) errors.push('Course is required.');
 
         if (emailType === 'onboardingParent') {
             if (!formData.startDate) errors.push('Start Date is required.');
@@ -1874,6 +2051,7 @@ function collectEmailFormData(emailType) {
             return;
         }
         auditLogBody.innerHTML = '';
+        console.log('[AuditLog] Server result:', result);
         if (!result || !Array.isArray(result.data) || result.data.length === 0) {
             auditLogBody.innerHTML = '<tr><td colspan="8" style="text-align: center;">No records found.</td></tr>';
             startItemSpan.textContent = '0';
@@ -2778,7 +2956,130 @@ function renderCourseDetailPanel(data) {
         })
         .withFailureHandler(showError)
         .getCourseNames();
+      // Load trait chips from sheet
+      _pLoadTraitChips();
     }
+
+    // ── Trait Chip Multi-Select ──────────────────────────────────────────────
+    var _pTraitState = { tech: [], math: [] }; // selected traits per type
+
+    function _pLoadTraitChips() {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          _pRenderSuggestions('tech', (res && res.techTraits) || []);
+          _pRenderSuggestions('math', (res && res.mathTraits) || []);
+        })
+        .withFailureHandler(function() {
+          _pRenderSuggestions('tech', []);
+          _pRenderSuggestions('math', []);
+        })
+        .getUniquePersonaTraits();
+    }
+
+    function _pRenderSuggestions(type, traits) {
+      var id  = 'p' + (type === 'tech' ? 'Tech' : 'Math') + 'TraitsSuggestions';
+      var box = document.getElementById(id);
+      if (!box) return;
+      if (!traits.length) {
+        box.innerHTML = '<span style="font-size:0.68rem;color:#94a3b8;">No traits in sheet yet</span>';
+        return;
+      }
+      box.innerHTML = traits.map(function(t) {
+        var sel = _pTraitState[type].indexOf(t) > -1;
+        return '<span data-trait="' + escapeHtml(t) + '" data-type="' + type + '" '
+          + 'onclick="window._pToggleTrait(\'' + type + '\',this)" '
+          + 'style="display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:0.7rem;cursor:pointer;'
+          + 'border:1.5px solid ' + (sel ? '#6366f1' : '#e2e8f0') + ';'
+          + 'background:' + (sel ? '#ede9fe' : '#f8fafc') + ';'
+          + 'color:' + (sel ? '#4f46e5' : '#475569') + ';'
+          + 'font-weight:' + (sel ? '700' : 'normal') + ';transition:all .12s;user-select:none;">'
+          + escapeHtml(t) + '</span>';
+      }).join('');
+    }
+
+    window._pToggleTrait = function(type, el) {
+      var trait = el.getAttribute('data-trait');
+      var arr   = _pTraitState[type];
+      var idx   = arr.indexOf(trait);
+      if (idx === -1) {
+        arr.push(trait);
+        el.style.background  = '#ede9fe'; el.style.borderColor = '#6366f1';
+        el.style.color       = '#4f46e5'; el.style.fontWeight  = '700';
+      } else {
+        arr.splice(idx, 1);
+        el.style.background  = '#f8fafc'; el.style.borderColor = '#e2e8f0';
+        el.style.color       = '#475569'; el.style.fontWeight  = '';
+      }
+      _pSyncTraitInput(type);
+      _pRenderSelectedChips(type);
+    };
+
+    function _pSyncTraitInput(type) {
+      var hid = document.getElementById(type === 'tech' ? 'pInpTechTraits' : 'pInpMathTraits');
+      if (hid) hid.value = _pTraitState[type].join(', ');
+    }
+
+    function _pRenderSelectedChips(type) {
+      var selId = 'p' + (type === 'tech' ? 'Tech' : 'Math') + 'TraitsSelected';
+      var sel   = document.getElementById(selId);
+      if (!sel) return;
+      sel.innerHTML = _pTraitState[type].map(function(t) {
+        return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;'
+          + 'font-size:0.72rem;background:#ede9fe;border:1.5px solid #6366f1;color:#4f46e5;font-weight:700;">'
+          + escapeHtml(t)
+          + ' <span onclick="window._pRemoveTrait(\'' + type + '\',\'' + t.replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')" '
+          + 'style="cursor:pointer;line-height:1;opacity:0.7;font-size:1rem;">×</span></span>';
+      }).join('');
+    }
+
+    window._pRemoveTrait = function(type, trait) {
+      var arr = _pTraitState[type], idx = arr.indexOf(trait);
+      if (idx > -1) arr.splice(idx, 1);
+      var sugsBox = document.getElementById('p' + (type === 'tech' ? 'Tech' : 'Math') + 'TraitsSuggestions');
+      if (sugsBox) {
+        var chip = sugsBox.querySelector('[data-trait="' + trait.replace(/"/g,'\\"') + '"]');
+        if (chip) { chip.style.background='#f8fafc'; chip.style.borderColor='#e2e8f0'; chip.style.color='#475569'; chip.style.fontWeight=''; }
+      }
+      _pSyncTraitInput(type);
+      _pRenderSelectedChips(type);
+    };
+
+    window._pTraitCustomKeydown = function(e, type) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        var val = e.target.value.replace(/,/g,'').trim();
+        if (val && _pTraitState[type].indexOf(val) === -1) {
+          _pTraitState[type].push(val);
+          _pSyncTraitInput(type);
+          _pRenderSelectedChips(type);
+        }
+        e.target.value = '';
+      }
+      if (e.key === 'Backspace' && e.target.value === '' && _pTraitState[type].length > 0) {
+        var removed = _pTraitState[type].pop();
+        _pSyncTraitInput(type);
+        _pRenderSelectedChips(type);
+        // also deselect in suggestions if exists
+        var sugsBox = document.getElementById('p' + (type === 'tech' ? 'Tech' : 'Math') + 'TraitsSuggestions');
+        if (sugsBox && removed) {
+          var chip = sugsBox.querySelector('[data-trait="' + removed.replace(/"/g,'\\"') + '"]');
+          if (chip) { chip.style.background='#f8fafc'; chip.style.borderColor='#e2e8f0'; chip.style.color='#475569'; chip.style.fontWeight=''; }
+        }
+      }
+    };
+
+    window._pClearTraits = function() {
+      _pTraitState.tech = []; _pTraitState.math = [];
+      ['tech','math'].forEach(function(type) {
+        _pSyncTraitInput(type);
+        _pRenderSelectedChips(type);
+        var sugsBox = document.getElementById('p' + (type === 'tech' ? 'Tech' : 'Math') + 'TraitsSuggestions');
+        if (sugsBox) sugsBox.querySelectorAll('[data-trait]').forEach(function(c) {
+          c.style.background='#f8fafc'; c.style.borderColor='#e2e8f0'; c.style.color='#475569'; c.style.fontWeight='';
+        });
+      });
+    };
+    // ─────────────────────────────────────────────────────────────────────────
 
     // JLID Fetch is handled by handleSmartFetchAction (wired via initPersonaSmartLogic)
 
@@ -3911,7 +4212,8 @@ function collectInvoiceFormData() {
             paymentType: document.querySelector('input[name="paymentType"]:checked').value,
             numberOfInstallments: invoiceNumberOfInstallments.value,
             installmentType: invoiceInstallmentType.value,
-            dueDayToPay: invoiceDueDayToPay.value
+            dueDayToPay: invoiceDueDayToPay.value,
+            performedBy: currentUser ? currentUser.username : ''
         };
     }
 
@@ -4920,15 +5222,19 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V44';
+    const CURRENT_APP_VERSION = 'V51';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
+            <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+                <strong>🗺️ Course Planner — Smart Migration System</strong><br>
+                New page: tracks every learner's course completion timeline from Athena data. Flags critical migrations (≤4 wks), checks teacher upskill for next 3 courses, pre-matches teachers, and auto-creates HubSpot CCTC tickets with one click.
+            </li>
             <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
-                <strong>\u1F4CA Latest Ticket Logic Fixed</strong><br>
+                <strong>📊 Latest Ticket Logic Fixed</strong><br>
                 Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
             </li>
             <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
-                <strong>\u1F9E9 Enhanced Data Mapping</strong><br>
+                <strong>🧩 Enhanced Data Mapping</strong><br>
                 Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
             </li>
         </ul>
@@ -4970,8 +5276,8 @@ google.script.run
     startSessionTimer();
     
     if (user.mustChangePassword) {
-        document.getElementById('forcePasswordModal').classList.add('active');
-        return; 
+        document.getElementById('forcePasswordModal').style.display = 'block';
+        return;
     }
 
     showToast('success', 'Login Successful', 'Welcome, ' + user.username + '!');
@@ -4984,6 +5290,21 @@ google.script.run
         loadNotifications(user.username);
         loadStuckMigrations();
     }, 800);
+
+    // Course Planner: update sidebar badge in background (non-blocking)
+    setTimeout(function() {
+        google.script.run
+            .withSuccessHandler(function(result) {
+                if (!result || !result.stats) return;
+                var badge = document.getElementById('coursePlannerAlertBadge');
+                if (!badge) return;
+                var cnt = (result.stats.criticalCount || 0);
+                if (cnt > 0) { badge.textContent = cnt; badge.style.display = 'inline-block'; }
+                else { badge.style.display = 'none'; }
+            })
+            .withFailureHandler(function() {}) // silent fail — badge just stays hidden
+            .getCoursePlannerSummary();
+    }, 3000); // delay 3s so login flow completes first
 }
 
 
@@ -5667,6 +5988,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addClassSessionBtn) addClassSessionBtn.addEventListener('click', () => classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration')));
     if (addOnboardingParentClassSessionBtn) addOnboardingParentClassSessionBtn.addEventListener('click', () => onboardingParentClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboardingParent')));
 
+    // ── CCTC course fields: show/hide on reason change ────────────────
+    if (reasonOfMigrationSelect) {
+      reasonOfMigrationSelect.addEventListener('change', function() {
+        var cctcFields = document.getElementById('cctcCourseFields');
+        if (!cctcFields) return;
+        var isCCTC = this.value === 'Course Change Teacher Change';
+        cctcFields.style.display = isCCTC ? 'block' : 'none';
+      });
+    }
+
+    // ── Keep migNewCourseDisplay in sync with Course dropdown ─────────
+    if (migrationCourseSelect) {
+      migrationCourseSelect.addEventListener('change', function() {
+        var migNewCourseEl = document.getElementById('migNewCourseDisplay');
+        if (migNewCourseEl) migNewCourseEl.value = this.options[this.selectedIndex] ? this.options[this.selectedIndex].text : this.value;
+      });
+    }
+
     // ==========================================
     // 7. FORM ACTIONS (FETCH / RESET / CANCEL)
     // ==========================================
@@ -5759,16 +6098,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (minecraftEmailForm) minecraftEmailForm.addEventListener('submit', submitGenericEmailForm);
     if (minecraftAttachmentsInput) minecraftAttachmentsInput.addEventListener('change', handleFileSelection);
     if (fetchMinecraftDataBtn) fetchMinecraftDataBtn.addEventListener('click', () => fetchHubspotData(
-        minecraftJlid, minecraftLearnerName, minecraftCourse, null, minecraftRecipientEmail, minecraftParentName, 
-        null, null, null, null, null, null, null, null, null, 'minecraft', null, null, null, null
+        minecraftJlid, minecraftLearnerName, minecraftCourse, null, minecraftRecipientEmail, minecraftParentName,
+        null, null, null, null, null, null, null, null, null, null, 'minecraft', null, null, null
     ));
 
     // Roblox
     if (robloxEmailForm) robloxEmailForm.addEventListener('submit', submitGenericEmailForm);
     if (robloxAttachmentsInput) robloxAttachmentsInput.addEventListener('change', handleFileSelection);
     if (fetchRobloxDataBtn) fetchRobloxDataBtn.addEventListener('click', () => fetchHubspotData(
-        robloxJlid, robloxLearnerName, robloxCourse, null, robloxRecipientEmail, robloxParentName, 
-        null, null, null, null, null, null, null, null, null, 'roblox', null, null, null, null
+        robloxJlid, robloxLearnerName, robloxCourse, null, robloxRecipientEmail, robloxParentName,
+        null, null, null, null, null, null, null, null, null, null, 'roblox', null, null, null
     ));
 
 
@@ -6176,6 +6515,15 @@ function triggerMigrationIntelligence() {
 
       if (newTeacherSelect) newTeacherSelect.addEventListener('change', triggerMigrationIntelligence);
       if (jlidInput)        jlidInput.addEventListener('change',        triggerMigrationIntelligence);
+
+      // Load WATI contacts when JLID is entered manually (blur)
+      if (jlidInput) {
+        jlidInput.addEventListener('blur', function() {
+          const val = this.value.trim();
+          if (val.length >= 8) _loadWatiContacts(val);
+          else _resetWatiContactPicker();
+        });
+      }
     })();
 
     function renderMigrationIntelPanel(result) {
@@ -6978,16 +7326,21 @@ function fetchMigrationSpecificData() {
                     if (migrationCourseSelect && data.course) {
                         addOptionIfNotExists(migrationCourseSelect, data.course);
                         migrationCourseSelect.value = data.course;
+                        // Lock the completed (old) course into dedicated read-only field
+                        // This field is NEVER changed by user — certificate always uses it
+                        var migOldCourseEl = document.getElementById('migOldCourse');
+                        if (migOldCourseEl) migOldCourseEl.value = data.course;
+                        // Sync new course display
+                        var migNewCourseEl = document.getElementById('migNewCourseDisplay');
+                        if (migNewCourseEl) migNewCourseEl.value = data.course;
                     }
 
                     if (reasonOfMigrationSelect && data.migrationReason) {
                         addOptionIfNotExists(reasonOfMigrationSelect, data.migrationReason);
                         reasonOfMigrationSelect.value = data.migrationReason;
-                        
-                        // --- ADD THIS LINE HERE ---
-                        // This forces the WATI Template logic to run immediately
+
+                        // Forces the WATI Template logic + CCTC fields show/hide
                         reasonOfMigrationSelect.dispatchEvent(new Event('change'));
-                        // --------------------------
                     }
 
                     if (clsManagerSelect) clsManagerSelect.value = data.clsManagerName || '';
@@ -7037,6 +7390,9 @@ function fetchMigrationSpecificData() {
                     });
 
                     showToast('success', 'Data Loaded', `Fetched from ${data.source}`);
+
+                    // Load WhatsApp contacts after successful fetch
+                    _loadWatiContacts(jlid);
                 } else {
                     showToast('error', 'Error', result.message);
                 }
@@ -7975,9 +8331,10 @@ function openCloneModal(teacherName) {
 }
 
 document.getElementById('forcePasswordSaveBtn').addEventListener('click', () => {
-    const newPass = document.getElementById('forceNewPassword').value;
-    const confirmPass = document.getElementById('forceConfirmPassword').value;
-    const errorEl = document.getElementById('forcePasswordError');
+    const newPass     = document.getElementById('forceNewPassword').value.trim();
+    const confirmPass = document.getElementById('forceConfirmPassword').value.trim();
+    const errorEl     = document.getElementById('forcePasswordError');
+    errorEl.textContent = '';
 
     if (newPass.length < 6) {
         errorEl.textContent = 'Password must be at least 6 characters.';
@@ -7988,23 +8345,32 @@ document.getElementById('forcePasswordSaveBtn').addEventListener('click', () => 
         return;
     }
 
-    showLoading('Saving new password...');
+    const btn = document.getElementById('forcePasswordSaveBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
     google.script.run
         .withSuccessHandler(result => {
-            hideLoading();
+            btn.disabled = false;
+            btn.textContent = 'Set Password & Continue';
             if (result && result.success) {
-                document.getElementById('forcePasswordModal').classList.remove('active');
-                showToast('success', 'Password Updated', 'Your password has been changed successfully.');
+                if (currentUser) currentUser.mustChangePassword = false;
+                sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+                document.getElementById('forcePasswordModal').style.display = 'none';
+                document.getElementById('forceNewPassword').value = '';
+                document.getElementById('forceConfirmPassword').value = '';
+                showToast('success', 'Password Updated', 'Your password has been changed. Welcome!');
                 switchPage('dashboardPage');
             } else {
                 errorEl.textContent = (result && result.message) ? result.message : 'Failed to save password.';
             }
         })
         .withFailureHandler(err => {
-            hideLoading();
-            document.getElementById('forcePasswordError').textContent = err.message;
+            btn.disabled = false;
+            btn.textContent = 'Set Password & Continue';
+            document.getElementById('forcePasswordError').textContent = err.message || String(err);
         })
-        .updateUser({ username: currentUser.username, password: newPass, isActive: true }, currentUser);
+        .changeOwnPassword(currentUser.username, newPass);
 });
 
 function loadProfilePage() {
@@ -8781,6 +9147,27 @@ function renderImpactScore(data) {
             scoreEl.textContent = Math.round(current * 10) / 10;
             if (current >= target) clearInterval(timer);
         }, 30);
+    }
+
+    // Super Admin: render team leaderboard below the card
+    const isSuperAdmin = currentUser && currentUser.role === 'Super Admin';
+    const leaderboardEl = document.getElementById('impactLeaderboard');
+    if (isSuperAdmin && leaderboardEl && data.leaderboard && data.leaderboard.length > 0) {
+        leaderboardEl.style.display = 'block';
+        const rows = data.leaderboard.map(function(u, i) {
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + '.';
+            const isMe  = u.username.toLowerCase() === (currentUser.username || '').toLowerCase();
+            return '<tr style="' + (isMe ? 'background:#f5f3ff;font-weight:700;' : '') + '">'
+                + '<td style="padding:6px 10px;font-size:0.8rem;color:#6366f1;">' + medal + '</td>'
+                + '<td style="padding:6px 10px;font-size:0.8rem;color:#1e293b;text-transform:capitalize;">' + escapeHtml(u.username) + (isMe ? ' <span style="font-size:0.65rem;color:#6366f1;">(you)</span>' : '') + '</td>'
+                + '<td style="padding:6px 10px;font-size:0.8rem;font-weight:700;color:#6366f1;text-align:right;">' + u.score + '</td>'
+                + '<td style="padding:6px 10px;font-size:0.75rem;color:#64748b;text-align:right;">' + u.migrations + ' mig</td>'
+                + '</tr>';
+        }).join('');
+        leaderboardEl.innerHTML = '<div style="margin-top:1rem;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">'
+            + '<div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:0.72rem;font-weight:700;color:#64748b;letter-spacing:0.5px;text-transform:uppercase;">Team Leaderboard — Last 30 Days</div>'
+            + '<table style="width:100%;border-collapse:collapse;">' + rows + '</table>'
+            + '</div>';
     }
 }
 
@@ -9722,6 +10109,21 @@ function renderPersonaCards() {
     D: { bg:'#fee2e2', text:'#b91c1c' }
   };
 
+  // Read actual course names from form dropdowns
+  var _cName  = ((document.getElementById('pInpCourse')  || {}).options || [])[(document.getElementById('pInpCourse')  || {}).selectedIndex || 0] ;
+  var _f1Name = ((document.getElementById('pInpFuture1') || {}).options || [])[(document.getElementById('pInpFuture1') || {}).selectedIndex || 0];
+  var _f2Name = ((document.getElementById('pInpFuture2') || {}).options || [])[(document.getElementById('pInpFuture2') || {}).selectedIndex || 0];
+  var _f3Name = ((document.getElementById('pInpFuture3') || {}).options || [])[(document.getElementById('pInpFuture3') || {}).selectedIndex || 0];
+  var courseLabel0 = _cName  ? (_cName.text  || '') : '';
+  var courseLabel1 = _f1Name ? (_f1Name.text || '') : '';
+  var courseLabel2 = _f2Name ? (_f2Name.text || '') : '';
+  var courseLabel3 = _f3Name ? (_f3Name.text || '') : '';
+  // Blank-out "none" placeholders
+  var _isNone = function(v) { return !v || /^-+\s*none\s*-+$/i.test(v.trim()) || v.trim() === ''; };
+  if (_isNone(courseLabel1)) courseLabel1 = '';
+  if (_isNone(courseLabel2)) courseLabel2 = '';
+  if (_isNone(courseLabel3)) courseLabel3 = '';
+
   grid.innerHTML = slice.map(function(t, i) {
     var rank = start + i;
     var gc   = gradeColors[t.auditGrade] || { bg:'#f1f5f9', text:'#64748b' };
@@ -9748,6 +10150,13 @@ function renderPersonaCards() {
       : isPartial
         ? '<span style="color:#d97706;font-size:0.78rem;">' + escapeHtml(slotRaw) + '</span>'
         : '<span style="color:#94a3b8;">\u2717 No match</span>';
+
+    // Alternate slots row (shown when no/partial match)
+    var altSlotsHtml = '';
+    if (!isMatch && t.alternateSlots && t.alternateSlots.trim().length > 0) {
+      altSlotsHtml = '<div style="font-size:0.68rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:3px 8px;color:#0369a1;margin-top:1px;">'
+        + '\uD83D\uDD50 Alt: ' + escapeHtml(t.alternateSlots) + '</div>';
+    }
 
     var hasAudit = t.avgClassScore && t.avgClassScore !== 'No data';
     var auditVal = hasAudit
@@ -9779,14 +10188,29 @@ function renderPersonaCards() {
         + '<span style="font-size:0.72rem;color:#64748b;">Slot Match</span>'
         + '<span style="font-size:0.8rem;">' + slotHtml + '</span>'
       + '</div>'
+      + altSlotsHtml
       + '<div style="display:flex;align-items:center;justify-content:space-between;">'
         + '<span style="font-size:0.72rem;color:#64748b;">Audit (45d)</span>'
         + '<span style="font-size:0.8rem;font-weight:600;color:' + gc.text + ';">' + auditVal + '</span>'
       + '</div>'
-      + '<div style="border-top:1px solid #f1f5f9;padding-top:0.45rem;display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:0.72rem;">'
-        + '<div style="color:#64748b;">Current: <span style="font-weight:600;color:' + pColor(t.currentCourseProgress) + ';">' + escapeHtml(t.currentCourseProgress||'N/A') + '</span></div>'
-        + '<div style="color:#64748b;">Future 1: <span style="font-weight:600;color:' + pColor(t.futureCourse1Progress) + ';">' + escapeHtml(t.futureCourse1Progress||'\u2014') + '</span></div>'
-      + '</div>'
+      + (function() {
+          // Build course readiness rows using actual course names from form
+          var rows = '';
+          function courseRow(label, prog) {
+            if (!label) return '';
+            var short = label.length > 24 ? label.substring(0,22) + '\u2026' : label;
+            return '<div style="color:#64748b;font-size:0.7rem;display:flex;justify-content:space-between;align-items:center;gap:4px;">'
+              + '<span title="' + escapeHtml(label) + '" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;">' + escapeHtml(short) + '</span>'
+              + '<span style="font-weight:700;color:' + pColor(prog) + ';flex-shrink:0;">' + escapeHtml(prog||'N/A') + '</span>'
+              + '</div>';
+          }
+          rows += courseRow(courseLabel0, t.currentCourseProgress);
+          rows += courseRow(courseLabel1, t.futureCourse1Progress);
+          rows += courseRow(courseLabel2, t.futureCourse2Progress);
+          rows += courseRow(courseLabel3, t.futureCourse3Progress);
+          if (!rows) return '';
+          return '<div style="border-top:1px solid #f1f5f9;padding-top:0.45rem;display:flex;flex-direction:column;gap:3px;">' + rows + '</div>';
+        })()
       + traitLine
       + '<button onclick="switchPage(\'teacherProfilePage\',\'' + escapeHtml(t.teacherName||'') + '\')" style="margin-top:2px;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;transition:background .15s;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile \u2192</button>'
       + '</div>';
@@ -9795,16 +10219,45 @@ function renderPersonaCards() {
   // Pagination
   if (pageEl) {
     if (totalPages <= 1) { pageEl.innerHTML = ''; return; }
+    var cur = _personaCurrentPage;
+    var btnBase = 'border-radius:8px;border:1.5px solid;font-size:0.78rem;font-weight:600;cursor:pointer;padding:4px 10px;transition:all .12s;';
     var pHtml = '';
-    for (var p = 1; p <= totalPages; p++) {
-      var active = p === _personaCurrentPage;
-      pHtml += '<button onclick="_goPersonaPage(' + p + ')" style="width:32px;height:32px;border-radius:8px;border:1.5px solid '+(active?'#6366f1':'#e2e8f0')+';background:'+(active?'#6366f1':'#fff')+';color:'+(active?'#fff':'#374151')+';font-size:0.8rem;font-weight:'+(active?'700':'400')+';cursor:pointer;">' + p + '</button>';
+
+    // Prev button
+    pHtml += '<button onclick="_goPersonaPage(' + (cur-1) + ')" '
+      + (cur === 1 ? 'disabled ' : '')
+      + 'style="' + btnBase + 'border-color:#e2e8f0;background:#f8fafc;color:' + (cur===1?'#cbd5e1':'#374151') + ';opacity:' + (cur===1?'0.5':'1') + ';">‹ Prev</button>';
+
+    // Page number buttons (show max 5 around current)
+    var pStart = Math.max(1, cur - 2);
+    var pEnd   = Math.min(totalPages, cur + 2);
+    if (pStart > 1) pHtml += '<span style="padding:0 4px;color:#94a3b8;align-self:center;">…</span>';
+    for (var p = pStart; p <= pEnd; p++) {
+      var active = p === cur;
+      pHtml += '<button onclick="_goPersonaPage(' + p + ')" style="' + btnBase
+        + 'border-color:' + (active?'#6366f1':'#e2e8f0') + ';background:' + (active?'#6366f1':'#fff') + ';color:' + (active?'#fff':'#374151') + ';min-width:32px;">' + p + '</button>';
     }
+    if (pEnd < totalPages) pHtml += '<span style="padding:0 4px;color:#94a3b8;align-self:center;">…</span>';
+
+    // Next button
+    pHtml += '<button onclick="_goPersonaPage(' + (cur+1) + ')" '
+      + (cur === totalPages ? 'disabled ' : '')
+      + 'style="' + btnBase + 'border-color:' + (cur===totalPages?'#e2e8f0':'#6366f1') + ';background:' + (cur===totalPages?'#f8fafc':'#6366f1') + ';color:' + (cur===totalPages?'#cbd5e1':'#fff') + ';opacity:' + (cur===totalPages?'0.5':'1') + ';">Next ›</button>';
+
+    // Page info
+    pHtml += '<span style="font-size:0.72rem;color:#64748b;align-self:center;margin-left:4px;">Page ' + cur + ' of ' + totalPages + '</span>';
+
     pageEl.innerHTML = pHtml;
+    pageEl.style.display = 'flex';
+    pageEl.style.alignItems = 'center';
+    pageEl.style.gap = '4px';
   }
 }
 
 function _goPersonaPage(p) {
+  var pageSize   = parseInt((document.getElementById('personaPageSizeSelect') || {}).value || '15');
+  var totalPages = Math.ceil((personaResults || []).length / pageSize);
+  if (p < 1 || p > totalPages) return;
   _personaCurrentPage = p;
   renderPersonaCards();
   var c = document.getElementById('personaResultsContainer');
@@ -10392,4 +10845,1444 @@ function mwConfirmMigration() {
         }
     );
 }
+
+// ════════════════════════════════════════════════════════════════════
+// COURSE PLANNER  — Client-side (V51)
+// loadCoursePlannerPage · renderCPCards · detail panel · migration modal
+// ════════════════════════════════════════════════════════════════════
+
+var _cpAllLearners  = [];
+// ══════════════════════════════════════════════════════════════════════
+// CERTIFICATES PAGE  — manual entry, single or bulk
+// ══════════════════════════════════════════════════════════════════════
+
+var _bcRowCount   = 0;
+var _bcCourseList = [
+  'Advanced Microbit',
+  'Advanced Minecraft with AI and Python',
+  'Advanced Robotics using Makey Makey',
+  'Advanced Scratch',
+  'Advanced Sprite Lab',
+  'Advanced Website Engineering',
+  'AI Architects: Designing Tomorrow\'s Smart Solutions',
+  'AI Changemakers: Building with Purpose & Heart',
+  'AI Creators : Imagination Meets Technology',
+  'AI Discovery: First Steps into the Future',
+  'AI Investors: Young Minds Solving Real Problems',
+  'AI with DeepSeek',
+  'AI with Pictoblox',
+  'Animation with Scratch Jr',
+  'App It Up',
+  'ARDUINO',
+  'Build GUI with Python',
+  'Building blocks of AI (TM)',
+  'Crack JavaScript Gaming',
+  'Data Science with Python',
+  'Data Structures and Algorithm using Python',
+  'Deep Learning with Python',
+  'Design Code and create with Roblox',
+  'Design Pro with Roblox',
+  'Design with Roblox',
+  'Explore GenAI',
+  'Fundamentals of Python with AI',
+  'Game Dev and AI with Scratch',
+  'GCSE Custom Revision',
+  'GCSE NC',
+  'GCSE Premium CS Pro',
+  'Immersive AR and VR Modeling (CoSpaces)',
+  'Immersive VR Experiences with Javascript',
+  'Introduction to Coding (code.org)',
+  'Introduction to Coding II (code.org)',
+  'Learn with Minecraft',
+  'Machine Learning and Artificial Intelligence with Python',
+  'Machine Learning Wizkids',
+  'Maths UK Revision Yr 2',
+  'Maths UK Revision Yr 3',
+  'Maths UK Revision Yr 4',
+  'Maths UK Revision Yr 5',
+  'Maths UK Revision Yr 6',
+  'Maths UK Year 1',
+  'Maths UK Year 2',
+  'Maths UK Year 3',
+  'Maths UK Year 4',
+  'Maths UK Year 5',
+  'Maths UK Year 6',
+  'Maths Year 1',
+  'Maths Year 2',
+  'Maths Year 3',
+  'Maths Year 4',
+  'Maths Year 5',
+  'Maths Year 6',
+  'Maths Year 7',
+  'Maths Year 8',
+  'Minecraft Edu',
+  'Open CV with Python',
+  'PCEP Certification Prep',
+  'Pro Game Developer in Python',
+  'Programming with Robotics (Microbit)',
+  'Python 2.0: Beyond the Basics',
+  'Python EduBlocks',
+  'Python Game Developer',
+  'Robotics with Microbit (Jr)',
+  'Science Adventures with Sprite Lab',
+  'Special Project',
+  'SQL',
+  'Summer Jam for Advanced',
+  'Summer Jam for Foundation',
+  'Summer Jam for Pro',
+  'Tynker Animation Lab',
+  'Unity',
+  'Web 3.0',
+  'Website Wizardry'
+];
+
+function loadBulkCertificatesPage() {
+  var container = document.getElementById('bcCourseRows');
+  _bcRowCount = 0;
+  document.getElementById('bcSendStatus').style.display = 'none';
+  container.innerHTML = '';
+  bcAddCourseRow();
+  document.getElementById('bcLearnerName').addEventListener('input', _bcUpdatePreview);
+  container.addEventListener('change', _bcUpdatePreview);
+}
+
+function bcAddCourseRow() {
+  var idx  = _bcRowCount++;
+  var year = new Date().getFullYear();
+
+  // Build <select> and populate via createElement — no innerHTML for options
+  var sel = document.createElement('select');
+  sel.className = 'form-control bc-course-select bc-course-name';
+  sel.style.cssText = 'height:40px;font-size:0.88rem;width:100%;';
+
+  var placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = _bcCourseList.length ? '-- Select Course --' : '(loading…)';
+  sel.appendChild(placeholder);
+
+  _bcCourseList.forEach(function(c) {
+    var opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    sel.appendChild(opt);
+  });
+
+  // Search filter input above the select
+  var searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.className = 'form-control';
+  searchInput.placeholder = 'Search course…';
+  searchInput.autocomplete = 'off';
+  searchInput.style.cssText = 'height:32px;font-size:0.82rem;margin-bottom:4px;border-color:#c7d2fe;';
+  searchInput.addEventListener('input', function() {
+    var q = this.value.toLowerCase().trim();
+    var saved = sel.value;
+    // Rebuild options — Chrome ignores display:none on <option>
+    while (sel.options.length > 1) sel.remove(1);
+    var matches = q
+      ? _bcCourseList.filter(function(c) { return c.toLowerCase().indexOf(q) > -1; })
+      : _bcCourseList;
+    matches.forEach(function(c) {
+      var opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      sel.appendChild(opt);
+    });
+    if (saved) sel.value = saved;
+    if (matches.length === 1) sel.value = matches[0];
+  });
+
+  var colDiv = document.createElement('div');
+  colDiv.style.cssText = 'flex:2;min-width:180px;display:flex;flex-direction:column;';
+  colDiv.appendChild(searchInput);
+  colDiv.appendChild(sel);
+
+  var yearInput = document.createElement('input');
+  yearInput.type = 'number';
+  yearInput.className = 'form-control bc-course-year';
+  yearInput.value = year;
+  yearInput.min = '2018'; yearInput.max = '2035';
+  yearInput.style.cssText = 'width:90px;height:36px;font-size:0.88rem;text-align:center;';
+
+  var removeBtn = document.createElement('button');
+  removeBtn.title = 'Remove';
+  removeBtn.style.cssText = 'background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1rem;padding:4px 6px;flex-shrink:0;align-self:flex-end;margin-bottom:2px;';
+  removeBtn.innerHTML = '<i class="fas fa-times-circle"></i>';
+  removeBtn.onclick = function() { bcRemoveRow(idx); };
+
+  var row = document.createElement('div');
+  row.id = 'bcRow_' + idx;
+  row.style.cssText = 'display:flex;gap:10px;align-items:flex-end;background:linear-gradient(135deg,#f8f9ff,#f5f3ff);border:1.5px solid #e0e7ff;border-radius:10px;padding:11px 14px;';
+  row.appendChild(colDiv);
+  row.appendChild(yearInput);
+  row.appendChild(removeBtn);
+
+  document.getElementById('bcCourseRows').appendChild(row);
+}
+
+function bcRemoveRow(idx) {
+  var el = document.getElementById('bcRow_' + idx);
+  if (el) el.remove();
+}
+
+function bcAutoFillFromHubspot() {
+  var jlid = (document.getElementById('bcJlid').value || '').trim();
+  if (!jlid) { showToast('error', 'Certificates', 'Enter a JLID first.'); return; }
+
+  var btn = document.querySelector('[onclick="bcAutoFillFromHubspot()"]');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magic"></i> Auto-fill'; }
+      if (res.success && res.data) {
+        var d = res.data;
+        if (d.parentEmail) document.getElementById('bcParentEmail').value = d.parentEmail;
+        if (d.parentName)  document.getElementById('bcParentName').value  = d.parentName;
+        if (d.learnerName) document.getElementById('bcLearnerName').value = d.learnerName;
+        showToast('success', 'Certificates', 'Details filled from HubSpot.');
+      } else {
+        showToast('warning', 'Certificates', 'No HubSpot data found for ' + jlid);
+      }
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magic"></i> Auto-fill'; }
+      showToast('error', 'Certificates', e.message);
+    })
+    .fetchHubspotByJlid(jlid);
+}
+
+function bcReset() {
+  document.getElementById('bcLearnerName').value = '';
+  document.getElementById('bcJlid').value        = '';
+  document.getElementById('bcParentEmail').value = '';
+  document.getElementById('bcParentName').value  = '';
+  document.getElementById('bcCourseRows').innerHTML = '';
+  _bcRowCount = 0;
+  bcAddCourseRow();
+  document.getElementById('bcSendStatus').style.display = 'none';
+}
+
+function bcSendSelected() {
+  var learnerName = (document.getElementById('bcLearnerName').value || '').trim();
+  var jlid        = (document.getElementById('bcJlid').value        || '').trim();
+  var parentEmail = (document.getElementById('bcParentEmail').value || '').trim();
+  var parentName  = (document.getElementById('bcParentName').value  || '').trim();
+
+  if (!learnerName)  { showToast('error', 'Certificates', 'Learner name is required.'); return; }
+  if (!parentEmail)  { showToast('error', 'Certificates', 'Parent email is required.'); return; }
+
+  var courses = [];
+  document.querySelectorAll('#bcCourseRows > div').forEach(function(row) {
+    var sel  = row.querySelector('.bc-course-name');
+    var name = sel ? (sel.value || '').trim() : '';
+    var year = parseInt(row.querySelector('.bc-course-year').value) || new Date().getFullYear();
+    if (name && name !== '-- Select Course --') courses.push({ name: name, year: year });
+  });
+
+  if (!courses.length) { showToast('error', 'Certificates', 'Add at least one course.'); return; }
+
+  var btn = document.getElementById('bcSendBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating & Sending…';
+
+  var data = {
+    jlid        : jlid,
+    learnerName : learnerName,
+    parentEmail : parentEmail,
+    parentName  : parentName,
+    performedBy : (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.email || '') : '',
+    courses     : courses
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Certificates';
+      if (res.success) {
+        showToast('success', 'Certificates', res.message);
+        var st = document.getElementById('bcSendStatus');
+        st.style.display = 'flex';
+        st.innerHTML = '<i class="fas fa-check-circle"></i>&nbsp;' + escapeHtml(res.message);
+        if (res.failed && res.failed.length) showToast('warning', 'Partial Failure', 'Failed: ' + res.failed.join(', '));
+      } else {
+        showToast('error', 'Certificates', res.message);
+      }
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Certificates';
+      showToast('error', 'Certificates', e.message);
+    })
+    .sendBulkCertificates(data);
+}
+
+function _bcUpdatePreview() {
+  var name = (document.getElementById('bcLearnerName').value || '').trim() || '—';
+  document.getElementById('bcPreviewName').textContent = name;
+  var courses = [];
+  document.querySelectorAll('#bcCourseRows .bc-course-name').forEach(function(sel) {
+    if (sel.value && sel.value !== '-- Select Course --') courses.push(sel.value);
+  });
+  document.getElementById('bcPreviewCourses').textContent = courses.length ? courses.join(', ') : '—';
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// END CERTIFICATES
+// ══════════════════════════════════════════════════════════════════════
+
+var _cpPage         = 1;
+var CP_PAGE_SIZE    = 9;
+var _cpMigrationJlid = null;
+
+// ── Page Loader ───────────────────────────────────────────────
+var CP_SESSION_KEY = 'cp_learners_v4';  // bumped — forces cache clear after migrationNeeded fix
+
+function loadCoursePlannerPage(forceRefresh) {
+  var grid = document.getElementById('cpCardsGrid');
+  if (!grid) return;
+
+  // ── 1. Try sessionStorage first (instant — no server call) ──────
+  if (!forceRefresh) {
+    try {
+      var raw = sessionStorage.getItem(CP_SESSION_KEY);
+      if (raw) {
+        var cached = JSON.parse(raw);
+        // Use if less than 10 minutes old
+        if (cached && cached._ts && (Date.now() - cached._ts) < 600000) {
+          _cpHandleData(cached);
+          _cpShowCacheNote(cached._ts);
+          return;
+        }
+      }
+    } catch(se) { /* sessionStorage unavailable */ }
+  }
+
+  // ── 2. Show spinner + fetch from server ─────────────────────────
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:2rem;margin-bottom:1rem;display:block;"></i>Loading learner progressions…<div style="font-size:0.78rem;margin-top:8px;color:#c4b5fd;">First load takes ~15s. Subsequent visits are instant.</div></div>';
+  ['cpKpiTotal','cpKpiCritical','cpKpiMigrations','cpKpiGaps'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.textContent = '…';
+  });
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      // Save to sessionStorage for instant re-use
+      try {
+        result._ts = Date.now();
+        sessionStorage.setItem(CP_SESSION_KEY, JSON.stringify(result));
+      } catch(se) {}
+      _cpHandleData(result);
+      _cpShowCacheNote(null); // live data, no stale note
+    })
+    .withFailureHandler(function(err) {
+      var g = document.getElementById('cpCardsGrid');
+      if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#ef4444;"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(err.message || String(err)) + '</div>';
+    })
+    .getLearnerProgressions(!!forceRefresh);
+}
+
+function refreshCoursePlanner() {
+  // Clear both caches then reload
+  try { sessionStorage.removeItem(CP_SESSION_KEY); } catch(e) {}
+  var btn = document.getElementById('cpRefreshBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing…'; }
+  google.script.run
+    .withSuccessHandler(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh'; }
+      loadCoursePlannerPage(true);
+    })
+    .withFailureHandler(function() {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh'; }
+      loadCoursePlannerPage(true);
+    })
+    .clearCoursePlannerCache();
+}
+
+function _cpShowCacheNote(ts) {
+  var noteEl = document.getElementById('cpCacheNote');
+  if (!noteEl) return;
+  if (!ts) { noteEl.style.display = 'none'; return; }
+  var ageMin = Math.round((Date.now() - ts) / 60000);
+  noteEl.style.display = 'inline-flex';
+  noteEl.innerHTML = '<i class="fas fa-clock" style="margin-right:4px;"></i> Data cached ' + (ageMin < 1 ? 'just now' : ageMin + 'm ago');
+}
+
+function _cpHandleData(result) {
+  if (!result || !result.success) {
+    var g = document.getElementById('cpCardsGrid');
+    if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#ef4444;"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((result && result.message) || 'Failed to load data. Ensure Athena CPRS and PRMS sheets exist.') + '</div>';
+    return;
+  }
+  _cpAllLearners = result.learners || [];
+  _cpPage = 1;
+
+  var s = result.stats || {};
+  function _cpSet(id, v) { var el = document.getElementById(id); if (el) el.textContent = (v !== undefined && v !== null) ? v : '—'; }
+  _cpSet('cpKpiTotal',      s.total);
+  _cpSet('cpKpiCritical',   s.criticalCount);
+  _cpSet('cpKpiMigrations', s.migrationsDue);
+  _cpSet('cpKpiGaps',       s.roadmapGaps !== undefined ? s.roadmapGaps : s.migrationsDue);
+
+  // Sidebar badge
+  var badge = document.getElementById('coursePlannerAlertBadge');
+  if (badge) {
+    if (s.criticalCount > 0) { badge.textContent = s.criticalCount; badge.style.display = 'inline-block'; }
+    else { badge.style.display = 'none'; }
+  }
+
+  renderCPCards();
+  // Load CLS queue in background (non-blocking)
+  setTimeout(function(){ loadCLSQueue(); }, 200);
+}
+
+// ── Card Grid ─────────────────────────────────────────────────
+function renderCPCards() {
+  var grid = document.getElementById('cpCardsGrid');
+  if (!grid) return;
+  var filterAlert     = (document.getElementById('cpFilterAlert')     || {}).value || '';
+  var filterWeeks     = parseFloat((document.getElementById('cpFilterWeeks') || {}).value || '0') || 0;
+  var filterMigration = (document.getElementById('cpFilterMigration') || {}).value || '';
+  var filterSubject   = (document.getElementById('cpFilterSubject')   || {}).value || '';
+  var filterCourseNum = parseInt((document.getElementById('cpFilterCourseNum') || {}).value || '0') || 0;
+  var searchQ         = ((document.getElementById('cpSearch')         || {}).value || '').toLowerCase().trim();
+
+  var filtered = _cpAllLearners.filter(function(l) {
+    if (filterAlert && l.alertLevel !== filterAlert) return false;
+    if (filterWeeks && (l.projectedWeeks != null ? l.projectedWeeks : 999) > filterWeeks) return false;
+    if (filterMigration === 'migration'   && !l.migrationNeeded)       return false;
+    if (filterMigration === 'ready'       &&  l.migrationNeeded)       return false;
+    if (filterMigration === 'unfinalized' &&  l.nextCoursesFinalized)  return false;
+    if (filterSubject && l.subject !== filterSubject)                  return false;
+    // Course # filter: "2" = show only 2nd course+ (default); "1" = 1st course only; "" = all
+    if (filterCourseNum === 2 && (l.courseNumberWithTeacher || 1) < 2) return false;
+    if (filterCourseNum === 1 && (l.courseNumberWithTeacher || 1) !== 1) return false;
+    if (searchQ) {
+      var hay = ((l.learnerName||'') + ' ' + (l.jlid||'') + ' ' + (l.teacher||'')).toLowerCase();
+      if (hay.indexOf(searchQ) === -1) return false;
+    }
+    return true;
+  });
+
+  var total      = filtered.length;
+  var totalPages = Math.max(1, Math.ceil(total / CP_PAGE_SIZE));
+  if (_cpPage > totalPages) _cpPage = totalPages;
+  var start     = (_cpPage - 1) * CP_PAGE_SIZE;
+  var pageItems = filtered.slice(start, start + CP_PAGE_SIZE);
+
+  var rc = document.getElementById('cpResultCount');
+  if (rc) rc.textContent = total + ' learner' + (total !== 1 ? 's' : '');
+
+  if (pageItems.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#94a3b8;"><i class="fas fa-search" style="font-size:2rem;margin-bottom:1rem;display:block;"></i>No learners match current filters.</div>';
+    var pag = document.getElementById('cpPagination');
+    if (pag) pag.innerHTML = '';
+    return;
+  }
+
+  var alertColors = { critical:'#ef4444', warning:'#f59e0b', ok:'#22c55e' };
+  var alertLabels = { critical:'Critical',  warning:'Warning',  ok:'On Track' };
+
+  var html = '';
+  // Debug: log migrationNeeded state for all visible learners (check browser console if CLS button missing)
+  console.log('[CP] renderCPCards: ' + pageItems.length + ' learners');
+  pageItems.forEach(function(l) {
+    if (l.migrationNeeded || l.courseNumberWithTeacher >= 2) {
+      console.log('[CP] ' + (l.learnerName||l.jlid) + ' | courseNum=' + l.courseNumberWithTeacher + ' | migNeeded=' + l.migrationNeeded + ' | alert=' + l.alertLevel + ' | nc0=' + ((l.nextCourses && l.nextCourses[0]) ? JSON.stringify({name:l.nextCourses[0].name,known:l.nextCourses[0].progressKnown,notStarted:l.nextCourses[0].notStarted}) : 'none'));
+    }
+    var dotColor = alertColors[l.alertLevel] || '#94a3b8';
+    var dotLabel = alertLabels[l.alertLevel] || l.alertLevel || '—';
+    var weeksText = l.projectedWeeks != null ? (Math.round(l.projectedWeeks * 10) / 10) + ' wks' : '—';
+    var dateText  = l.projectedDate  ? new Date(l.projectedDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    var freqText  = l.classFrequency ? (Math.round(l.classFrequency * 10) / 10) + '/wk' : '—';
+
+    // Next courses rows
+    var nextHtml = '';
+    if (l.nextCourses && l.nextCourses.length > 0) {
+      l.nextCourses.slice(0, 3).forEach(function(nc) {
+        var prog = nc.teacherProgress || '';
+        var isReady = (prog === '100%' || prog === '91-99%' || (parseFloat(prog) >= 71 && !isNaN(parseFloat(prog))));
+        var isUnknown = !prog || prog === 'N/A';  // truly no data
+        var isNotOnboarded = prog === 'Not Onboarded';
+        var icon = isUnknown
+          ? '<i class="fas fa-minus" style="color:#94a3b8;width:14px;font-size:0.7rem;"></i>'
+          : isReady
+            ? '<i class="fas fa-check-circle" style="color:#22c55e;width:14px;font-size:0.7rem;"></i>'
+            : '<i class="fas fa-times-circle" style="color:#ef4444;width:14px;font-size:0.7rem;"></i>';
+        var progTxt = (prog && prog !== 'N/A' && prog !== 'Not Onboarded')
+          ? ' <span style="color:#94a3b8;font-size:0.7rem;">(' + escapeHtml(prog) + ')</span>' : '';
+        nextHtml += '<div style="font-size:0.78rem;margin-bottom:3px;display:flex;align-items:center;gap:4px;">'
+          + icon + ' <span style="color:#374151;">' + escapeHtml(nc.name) + '</span>' + progTxt + '</div>';
+      });
+    } else {
+      nextHtml = '<div style="font-size:0.78rem;color:#94a3b8;font-style:italic;">No next courses in PRMS</div>';
+    }
+
+    var cancelBadge = l.recentCancellations > 0
+      ? '<span style="font-size:0.7rem;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:9px;" title="' + escapeHtml((l.cancelReasons||[]).join(', ')) + '">' + l.recentCancellations + ' cancel' + (l.recentCancellations !== 1 ? 's' : '') + '</span>' : '';
+    var healthBadge = l.learnerHealthCritical
+      ? '<span style="font-size:0.7rem;background:#fee2e2;color:#b91c1c;padding:2px 7px;border-radius:9px;">⚠ Critical</span>' : '';
+    var cctcBadge = l.migrationNeeded
+      ? '<span style="font-size:0.7rem;background:#ede9fe;color:#6d28d9;padding:2px 7px;border-radius:9px;">CCTC</span>' : '';
+    var finBadge = !l.nextCoursesFinalized
+      ? '<span style="font-size:0.7rem;background:#fef9c3;color:#854d0e;padding:2px 7px;border-radius:9px;" title="CLS has not finalized next courses">Roadmap Pending</span>' : '';
+    var renewalBadge = l.renewalApproaching
+      ? '<span style="font-size:0.7rem;background:#fce7f3;color:#9d174d;padding:2px 7px;border-radius:9px;" title="Renewal approaching in ' + (l.daysToRenewal||0) + ' days">🔄 Renewal in ' + (l.daysToRenewal||0) + 'd</span>'
+      : (l.isRenewalDeal ? '<span style="font-size:0.7rem;background:#e0f2fe;color:#075985;padding:2px 7px;border-radius:9px;">Renewal</span>' : '');
+
+    // Completed courses with current teacher (fix 2)
+    var completedCoursesHtml = '';
+    if (l.coursesWithTeacher && l.coursesWithTeacher.length > 1) {
+      var prev = l.coursesWithTeacher.slice(0, -1); // all except current
+      completedCoursesHtml = '<div style="font-size:0.72rem;color:#64748b;border-top:1px solid #f1f5f9;padding-top:6px;margin-top:2px;">'
+        + '<span style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px;">With this teacher: </span>'
+        + prev.map(function(c) { return '<span style="background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:7px;margin:1px 2px;display:inline-block;">✓ ' + escapeHtml(c) + '</span>'; }).join('')
+        + '</div>';
+    }
+
+    // Class day/time string (parsed [{day,time}] from HubSpot)
+    var sessionStr = '';
+    if (l.classSessions && l.classSessions.length > 0) {
+      sessionStr = l.classSessions.map(function(s) {
+        return s.time ? s.day + ' · ' + s.time + ' CET' : s.day;
+      }).join('  |  ');
+    } else if (l.classTimingsRaw) {
+      sessionStr = l.classTimingsRaw + ' (CET)';
+    }
+
+    // Ordinal: 1st / 2nd / 3rd / Nth course with teacher
+    var courseOrdinal = (function(n) {
+      var s = ['th','st','nd','rd'], v = n % 100;
+      return n + (s[(v-20)%10] || s[v] || s[0]) + ' course';
+    })(l.courseNumberWithTeacher || 1);
+
+    // Fix 6: HubSpot deal link
+    var hsLink = l.dealId ? 'https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(l.dealId) : '';
+    var learnerNameHtml = hsLink
+      ? '<a href="' + hsLink + '" target="_blank" style="font-weight:600;font-size:0.88rem;color:#1e293b;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;" title="Open in HubSpot: ' + escapeHtml(l.learnerName) + '">' + escapeHtml(l.learnerName) + ' <i class="fas fa-external-link-alt" style="font-size:0.6rem;color:#94a3b8;"></i></a>'
+      : '<div style="font-weight:600;font-size:0.88rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(l.learnerName) + '">' + escapeHtml(l.learnerName) + '</div>';
+
+    html += '<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;flex-direction:column;gap:8px;">'
+      // Header: dot + name + alert badge
+      + '<div style="display:flex;align-items:flex-start;gap:8px;">'
+        + '<span style="width:10px;height:10px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;margin-top:4px;box-shadow:0 0 0 3px ' + dotColor + '22;" title="' + escapeHtml(dotLabel) + '"></span>'
+        + '<div style="flex:1;min-width:0;">'
+          + learnerNameHtml
+          + '<div style="font-size:0.73rem;color:#94a3b8;">' + escapeHtml(l.jlid) + '</div>'
+        + '</div>'
+        + '<span style="font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:20px;background:' + dotColor + '22;color:' + dotColor + ';white-space:nowrap;">' + escapeHtml(dotLabel) + '</span>'
+      + '</div>'
+      // Teacher + course # with teacher + current course + class timing + freq
+      + '<div style="font-size:0.78rem;color:#475569;border-top:1px solid #f1f5f9;padding-top:7px;display:flex;flex-direction:column;gap:3px;">'
+        + '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">'
+          + '<i class="fas fa-chalkboard-teacher" style="width:14px;color:#94a3b8;"></i>'
+          + '<span>' + escapeHtml(l.teacher || '—') + '</span>'
+          + '<span style="font-size:0.68rem;background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:9px;font-weight:600;" title="Number of distinct courses with this teacher based on CPRS history">' + escapeHtml(courseOrdinal) + '</span>'
+        + '</div>'
+        + '<div><i class="fas fa-book-open" style="width:14px;color:#94a3b8;"></i> '
+          + escapeHtml(l.currentCourse || '—') + ' · '
+          + (l.classesLeft != null ? '<strong>' + l.classesLeft + '</strong> left' : '—')
+          + (l.totalCourseClasses > 0 ? ' <span style="color:#94a3b8;font-size:0.7rem;">/ ~' + l.totalCourseClasses + ' total</span>' : '')
+          + (l.sessionsDoneAfterPRM > 0 ? ' <span style="color:#94a3b8;font-size:0.68rem;" title="PRMS had ' + l.classesLeftRaw + ', minus ' + l.sessionsDoneAfterPRM + ' done since PRM date">(' + l.classesLeftRaw + '−' + l.sessionsDoneAfterPRM + ')</span>' : '')
+          + (l.prmStaleDays != null && l.prmStaleDays > 60 ? ' <span style="color:#f59e0b;font-size:0.68rem;font-weight:600;" title="PRM data is ' + l.prmStaleDays + ' days old — may be stale">⚠ ' + l.prmStaleDays + 'd</span>' : '')
+          + '</div>'
+        + (sessionStr ? '<div style="color:#6366f1;"><i class="fas fa-calendar-alt" style="width:14px;color:#94a3b8;"></i> ' + escapeHtml(sessionStr) + '</div>' : '')
+        + '<div><i class="fas fa-tachometer-alt" style="width:14px;color:#94a3b8;"></i> '
+          + escapeHtml(freqText) + ' → <strong>' + escapeHtml(weeksText) + '</strong> · ' + escapeHtml(dateText)
+          + '</div>'
+      + '</div>'
+      // Next courses
+      + '<div style="border-top:1px solid #f1f5f9;padding-top:7px;">'
+        + '<div style="font-size:0.7rem;font-weight:700;color:#94a3b8;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px;">Next Courses</div>'
+        + nextHtml
+      + '</div>'
+      // Completed courses with current teacher (fix 2)
+      + completedCoursesHtml
+      // Status badges
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap;border-top:1px solid #f1f5f9;padding-top:7px;">'
+        + cancelBadge + healthBadge + cctcBadge + finBadge + renewalBadge
+      + '</div>'
+      // Action buttons
+      + '<div style="display:flex;gap:7px;margin-top:2px;">'
+        + '<button onclick="openCPDetailPanel(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-secondary btn-sm" style="flex:1;font-size:0.73rem;padding:5px 0;"><i class="fas fa-map"></i> Roadmap</button>'
+        + (l.migrationNeeded
+            ? '<button id="clsBtn_' + escapeHtml(l.jlid) + '" onclick="requestCLSApproval(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-sm" style="flex:1;font-size:0.73rem;padding:5px 0;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:6px;cursor:pointer;"><i class="fas fa-paper-plane"></i> CLS Review</button>'
+            : '<button onclick="openCPMigrationModal(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-sm" style="flex:1;font-size:0.73rem;padding:5px 0;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:6px;cursor:pointer;"><i class="fas fa-exchange-alt"></i> Migrate</button>')
+      + '</div>'
+    + '</div>';
+  });
+
+  grid.innerHTML = html;
+  _cpRenderPagination(totalPages);
+}
+
+function _cpRenderPagination(totalPages) {
+  var p = document.getElementById('cpPagination');
+  if (!p) return;
+  if (totalPages <= 1) { p.innerHTML = ''; return; }
+  var cur = _cpPage;
+  var base = 'padding:5px 10px;border-radius:6px;border:1px solid #e2e8f0;cursor:pointer;font-size:0.78rem;background:#fff;color:#374151;';
+  var active = 'padding:5px 10px;border-radius:6px;border:1px solid #6366f1;cursor:pointer;font-size:0.78rem;background:#6366f1;color:#fff;font-weight:600;';
+  var html = '';
+  html += '<button onclick="_goCoursePlannerPage(' + (cur-1) + ')" ' + (cur===1?'disabled ':'') + 'style="' + base + '">‹ Prev</button>';
+  for (var i = 1; i <= totalPages; i++) {
+    if (totalPages > 7 && Math.abs(i - cur) > 2 && i !== 1 && i !== totalPages) {
+      if (i === 2 || i === totalPages - 1) html += '<span style="padding:5px 4px;color:#94a3b8;">…</span>';
+      continue;
+    }
+    html += '<button onclick="_goCoursePlannerPage(' + i + ')" style="' + (i === cur ? active : base) + '">' + i + '</button>';
+  }
+  html += '<button onclick="_goCoursePlannerPage(' + (cur+1) + ')" ' + (cur===totalPages?'disabled ':'') + 'style="' + base + '">Next ›</button>';
+  html += '<span style="font-size:0.76rem;color:#94a3b8;margin-left:4px;">Page ' + cur + ' of ' + totalPages + '</span>';
+  p.innerHTML = html;
+}
+
+function _goCoursePlannerPage(pg) {
+  var total = Math.max(1, Math.ceil(_cpAllLearners.length / CP_PAGE_SIZE));
+  _cpPage = Math.max(1, Math.min(pg, total));
+  renderCPCards();
+}
+
+// ── Detail Panel ──────────────────────────────────────────────
+function openCPDetailPanel(jlid) {
+  var panel   = document.getElementById('cpDetailPanel');
+  var content = document.getElementById('cpDetailContent');
+  if (!panel || !content) return;
+  content.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading roadmap…</div>';
+  panel.style.display = 'flex';
+
+  var learner = null;
+  for (var i = 0; i < _cpAllLearners.length; i++) {
+    if (_cpAllLearners[i].jlid === jlid) { learner = _cpAllLearners[i]; break; }
+  }
+  if (!learner) { content.innerHTML = '<div style="color:#ef4444;">Learner not found. Please refresh the page.</div>'; return; }
+
+  // Pass learner's class sessions for slot matching + calendar lookup
+  var learnerSlots = (learner.classSessions || []).map(function(s) {
+    return { day: s.day || '', time: s.time || '' };
+  });
+  google.script.run
+    .withSuccessHandler(function(result) {
+      var gapsArr = (result && result.gaps) ? result.gaps : (Array.isArray(result) ? result : []);
+      _cpRenderDetailPanel(learner, gapsArr, result);
+    })
+    .withFailureHandler(function(err) { content.innerHTML = '<div style="color:#ef4444;padding:1rem;"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(err.message||String(err)) + '</div>'; })
+    .getUpskillGapsForRoadmap(jlid, learnerSlots, learner.learnerName || '');
+}
+
+function _cpRenderDetailPanel(l, gaps, serverResult) {
+  var content = document.getElementById('cpDetailContent');
+  if (!content) return;
+
+  var alertColors = { critical:'#ef4444', warning:'#f59e0b', ok:'#22c55e' };
+  var dotColor    = alertColors[l.alertLevel] || '#94a3b8';
+  var dateText    = l.projectedDate ? new Date(l.projectedDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+  var weeksLeft   = l.projectedWeeks != null ? (Math.round(l.projectedWeeks * 10)/10) + ' wks' : '—';
+
+  // ── Section label helper ──────────────────────────────────────
+  function sectionLabel(txt) {
+    return '<div style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin:12px 0 6px;">' + txt + '</div>';
+  }
+
+  // ── 1. HEADER ─────────────────────────────────────────────────
+  var alertBadge = l.alertLevel === 'critical'
+    ? '<span style="font-size:0.65rem;background:#fee2e2;color:#b91c1c;padding:2px 7px;border-radius:20px;font-weight:700;margin-left:6px;">CRITICAL</span>'
+    : l.alertLevel === 'warning'
+    ? '<span style="font-size:0.65rem;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:20px;font-weight:700;margin-left:6px;">WARNING</span>'
+    : '';
+  var healthBadge = l.learnerHealthCritical
+    ? '<span style="font-size:0.65rem;background:#fee2e2;color:#b91c1c;padding:2px 7px;border-radius:20px;font-weight:700;margin-left:4px;">Health: Critical</span>'
+    : (l.learnerHealth ? '<span style="font-size:0.65rem;background:#f1f5f9;color:#64748b;padding:2px 7px;border-radius:20px;margin-left:4px;">' + escapeHtml(l.learnerHealth) + '</span>' : '');
+
+  // Fix 6: deal link in header
+  var hsDealLink = l.dealId ? 'https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(l.dealId) : '';
+  var learnerNameEl = hsDealLink
+    ? '<a href="' + hsDealLink + '" target="_blank" style="font-weight:700;font-size:0.95rem;color:#1e293b;text-decoration:none;line-height:1.3;">' + escapeHtml(l.learnerName) + ' <i class="fas fa-external-link-alt" style="font-size:0.6rem;color:#94a3b8;"></i></a>'
+    : '<span style="font-weight:700;font-size:0.95rem;color:#1e293b;line-height:1.3;">' + escapeHtml(l.learnerName) + '</span>';
+
+  // Fix 8: renewal + deal stage in header
+  var renewalHeaderNote = '';
+  if (l.renewalApproaching) {
+    renewalHeaderNote = '<div style="margin-top:5px;background:#fce7f3;border:1px solid #f9a8d4;border-radius:6px;padding:5px 9px;font-size:0.74rem;color:#9d174d;display:flex;align-items:center;gap:5px;">'
+      + '<i class="fas fa-sync-alt"></i>'
+      + '<strong>Renewal in ' + (l.daysToRenewal||0) + ' days</strong>'
+      + (l.migrationNeeded ? ' — migration expected before renewal' : '')
+      + '</div>';
+  } else if (l.isRenewalDeal) {
+    renewalHeaderNote = '<span style="font-size:0.65rem;background:#e0f2fe;color:#075985;padding:2px 7px;border-radius:20px;margin-left:6px;">Renewal Deal</span>';
+  }
+
+  var headerHtml = '<div style="padding-bottom:10px;border-bottom:1px solid #f1f5f9;">'
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;">'
+      + '<div style="flex:1;">'
+        + '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">' + learnerNameEl + alertBadge + (typeof renewalHeaderNote === 'string' && renewalHeaderNote.startsWith('<span') ? renewalHeaderNote : '') + '</div>'
+        + '<div style="font-size:0.73rem;color:#94a3b8;margin-top:2px;">' + escapeHtml(l.jlid) + '</div>'
+      + '</div>'
+      + '<button onclick="closeCPDetailPanel()" style="background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;padding:0;line-height:1;">&times;</button>'
+    + '</div>'
+    // Teacher row
+    + '<div style="margin-top:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+      + '<i class="fas fa-chalkboard-teacher" style="color:#6366f1;font-size:0.8rem;"></i>'
+      + '<span style="font-size:0.78rem;color:#374151;font-weight:600;">' + escapeHtml(l.teacher||'—') + '</span>'
+      + (l.teacherCode ? '<span style="font-size:0.68rem;color:#94a3b8;">(' + escapeHtml(l.teacherCode) + ')</span>' : '')
+      + healthBadge
+    + '</div>'
+    + (renewalHeaderNote.startsWith('<div') ? renewalHeaderNote : '')
+  + '</div>';
+
+  // ── 2. CURRENT COURSE PROGRESS ────────────────────────────────
+  var prmStaleNote = (l.prmStaleDays != null && l.prmStaleDays > 45)
+    ? '<span style="font-size:0.65rem;color:#f59e0b;margin-left:6px;" title="PRM data is ' + l.prmStaleDays + ' days old — count may be stale"><i class="fas fa-clock"></i> ' + l.prmStaleDays + 'd stale</span>'
+    : '';
+
+  var courseHtml = sectionLabel('Current Course')
+    + '<div style="background:#f8fafc;border-radius:8px;padding:9px 11px;">'
+      + '<div style="font-size:0.83rem;font-weight:600;color:#1e293b;margin-bottom:6px;">' + escapeHtml(l.currentCourse||'—') + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">'
+        + '<div style="text-align:center;background:#fff;border-radius:6px;padding:5px 4px;border:1px solid #f1f5f9;">'
+          + '<div style="font-size:0.78rem;font-weight:700;color:' + dotColor + ';">' + (l.classesLeft != null ? l.classesLeft : '—') + '</div>'
+          + '<div style="font-size:0.62rem;color:#94a3b8;">classes left' + prmStaleNote + '</div>'
+        + '</div>'
+        + '<div style="text-align:center;background:#fff;border-radius:6px;padding:5px 4px;border:1px solid #f1f5f9;">'
+          + '<div style="font-size:0.78rem;font-weight:700;color:#374151;">' + (l.classFrequency ? (Math.round(l.classFrequency*10)/10)+'/wk' : '—') + '</div>'
+          + '<div style="font-size:0.62rem;color:#94a3b8;">frequency</div>'
+        + '</div>'
+        + '<div style="text-align:center;background:#fff;border-radius:6px;padding:5px 4px;border:1px solid #f1f5f9;">'
+          + '<div style="font-size:0.78rem;font-weight:700;color:' + dotColor + ';">' + weeksLeft + '</div>'
+          + '<div style="font-size:0.62rem;color:#94a3b8;">to finish</div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="font-size:0.72rem;color:#64748b;margin-top:5px;text-align:right;">Est. <strong style="color:' + dotColor + ';">' + escapeHtml(dateText) + '</strong></div>'
+    + '</div>';
+
+  // ── 2b. COURSE JOURNEY WITH CURRENT TEACHER ──────────────────
+  var completedDetailHtml = '';
+  var totalKnown = l.courseNumberWithTeacher || 1;
+  var cprsKnown  = (l.coursesWithTeacher || []).length;
+  var hiddenCount = Math.max(0, totalKnown - cprsKnown);
+
+  completedDetailHtml = sectionLabel('Course Journey with ' + escapeHtml(l.teacher||'Teacher')
+    + ' <span style="font-weight:400;font-size:0.65rem;color:#94a3b8;">(' + totalKnown + ' course' + (totalKnown!==1?'s':'') + ' total)</span>');
+
+  completedDetailHtml += '<div style="display:flex;flex-direction:column;gap:4px;">';
+
+  // Placeholder rows for courses before CPRS window
+  if (hiddenCount > 0) {
+    for (var ph = 0; ph < hiddenCount; ph++) {
+      completedDetailHtml += '<div style="display:flex;align-items:center;gap:7px;padding:4px 9px;background:#f8f9fa;border:1px dashed #d1d5db;border-radius:7px;opacity:0.65;">'
+        + '<i class="fas fa-history" style="color:#9ca3af;width:12px;font-size:0.72rem;"></i>'
+        + '<span style="font-size:0.73rem;color:#6b7280;font-style:italic;">Previous course ' + (ph+1) + ' (not in current CPRS export)</span>'
+        + '<span style="font-size:0.63rem;color:#9ca3af;margin-left:auto;">Completed</span>'
+        + '</div>';
+    }
+  }
+
+  (l.coursesWithTeacher || [l.currentCourse]).forEach(function(c, idx) {
+    if (!c) return;
+    var isCurrent = (c === l.currentCourse) || (idx === (l.coursesWithTeacher||[]).length - 1 && hiddenCount === 0);
+    if (isCurrent) {
+      completedDetailHtml += '<div style="display:flex;align-items:center;gap:7px;padding:5px 9px;background:#ede9fe;border:1px solid #c4b5fd;border-radius:7px;">'
+        + '<i class="fas fa-book-open" style="color:#6366f1;width:12px;font-size:0.75rem;"></i>'
+        + '<span style="font-size:0.78rem;font-weight:700;color:#4c1d95;">' + escapeHtml(c) + '</span>'
+        + '<span style="font-size:0.65rem;background:#6366f1;color:#fff;padding:1px 6px;border-radius:20px;margin-left:auto;">Current</span>'
+        + '</div>';
+    } else {
+      completedDetailHtml += '<div style="display:flex;align-items:center;gap:7px;padding:4px 9px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:7px;">'
+        + '<i class="fas fa-check-circle" style="color:#22c55e;width:12px;font-size:0.75rem;"></i>'
+        + '<span style="font-size:0.76rem;color:#166534;">' + escapeHtml(c) + '</span>'
+        + '<span style="font-size:0.63rem;color:#94a3b8;margin-left:auto;">Completed</span>'
+        + '</div>';
+    }
+  });
+
+  completedDetailHtml += '</div>';
+
+  // ── 3. CLASS SCHEDULE ─────────────────────────────────────────
+  // Prefer calendar data (CET) > HubSpot timings
+  var calSchedule  = (serverResult && serverResult.calSchedule) || null;
+  var scheduleHtml = sectionLabel('Class Schedule (CET)');
+  if (calSchedule && calSchedule.found && calSchedule.slots && calSchedule.slots.length > 0) {
+    var slotRows = calSchedule.slots.slice(0, 3).map(function(s) {
+      return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">'
+        + '<i class="fas fa-calendar-check" style="color:#22c55e;font-size:0.75rem;width:14px;"></i>'
+        + '<span style="font-size:0.78rem;font-weight:600;color:#1e293b;">' + escapeHtml(s.day) + '</span>'
+        + '<span style="font-size:0.78rem;color:#6366f1;font-weight:700;">' + escapeHtml(s.timeCET) + ' CET</span>'
+        + (s.count > 1 ? '<span style="font-size:0.65rem;color:#94a3b8;">×' + s.count + '</span>' : '')
+      + '</div>';
+    }).join('');
+    scheduleHtml += '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 11px;">'
+      + slotRows
+      + '<div style="font-size:0.63rem;color:#94a3b8;margin-top:4px;"><i class="fas fa-info-circle"></i> From Google Calendar</div>'
+    + '</div>';
+  } else if (l.classSessions && l.classSessions.length > 0) {
+    // Fallback: HubSpot timings (no CET confirmation)
+    var hsRows = l.classSessions.slice(0, 3).map(function(s) {
+      return '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">'
+        + '<i class="fas fa-clock" style="color:#f59e0b;font-size:0.75rem;width:14px;"></i>'
+        + '<span style="font-size:0.78rem;font-weight:600;color:#1e293b;">' + escapeHtml(s.day||'') + '</span>'
+        + (s.time ? '<span style="font-size:0.78rem;color:#64748b;">' + escapeHtml(s.time) + '</span>' : '')
+      + '</div>';
+    }).join('');
+    scheduleHtml += '<div style="background:#fff8f0;border:1px solid #fed7aa;border-radius:8px;padding:8px 11px;">'
+      + hsRows
+      + '<div style="font-size:0.63rem;color:#94a3b8;margin-top:4px;"><i class="fas fa-info-circle"></i> HubSpot data — timezone not confirmed</div>'
+    + '</div>';
+  } else {
+    scheduleHtml += '<div style="font-size:0.76rem;color:#94a3b8;font-style:italic;">No schedule data found</div>';
+  }
+
+  // ── 4. CANCELLATIONS (only if > 0) ───────────────────────────
+  var cancelHtml = '';
+  if (l.recentCancellations > 0) {
+    cancelHtml = '<div style="background:#fef3c7;border-radius:7px;padding:7px 10px;font-size:0.75rem;color:#92400e;display:flex;align-items:center;gap:6px;margin-top:6px;">'
+      + '<i class="fas fa-exclamation-circle"></i>'
+      + '<div><strong>' + l.recentCancellations + ' cancellations</strong> in 30d'
+      + (l.cancelReasons && l.cancelReasons.length ? ' &middot; <span style="font-weight:400;">' + escapeHtml(l.cancelReasons.join(', ')) + '</span>' : '')
+      + '</div>'
+    + '</div>';
+  }
+
+  // ── 5. ROADMAP / TEACHER READINESS ───────────────────────────
+  var roadmapHtml = sectionLabel('Roadmap — Teacher Readiness');
+  if (gaps && gaps.length > 0) {
+    gaps.forEach(function(g, idx) {
+      var progKnown  = g.progressKnown !== false;  // default true for backward compat
+      // rc / label per tier:
+      //   Ready       → green
+      //   In progress (1–70%) → amber (fast-pace upskill, not migration)
+      //   Not started (0%)    → red   (migration risk)
+      //   Unknown             → grey  (name mismatch, verify manually)
+      var rc = g.teacherReady  ? '#22c55e'
+             : g.inProgress    ? '#f59e0b'
+             : g.notStarted    ? '#ef4444'
+             : '#94a3b8';  // unknown
+      var rdLabel = g.teacherReady ? 'Ready'
+                  : g.inProgress   ? 'In Progress'
+                  : g.notStarted   ? 'Not Started'
+                  : 'Unknown';
+      var pct  = parseFloat(g.teacherProgress) || 0;
+      var bw   = Math.min(100, pct);
+      var barHtml = (progKnown && g.teacherProgress && g.teacherProgress !== 'N/A' && g.teacherProgress !== 'Not Onboarded')
+        ? '<div style="background:#e5e7eb;border-radius:20px;height:4px;overflow:hidden;margin:4px 0 3px;"><div style="width:' + bw + '%;height:100%;background:' + rc + ';border-radius:20px;"></div></div>' : '';
+
+      // Alt teachers — only meaningful when teacher is confirmed below threshold
+      var altHtml = '';
+      if (!g.teacherReady) {
+        var matched   = g.matchedTeachers || [];
+        var fallback  = g.anyUpskilled    || [];
+        var progRaw   = String(g.teacherProgress || '').trim();
+        // progressKnown=false means course not found in Teacher Courses sheet (name mismatch).
+        // hasNumericProg is the safe check: only act when we have a real % below threshold.
+        var hasNumericProg = progKnown && /^\d/.test(progRaw);
+
+        if (matched.length > 0) {
+          // Verified slot-match teachers
+          altHtml = '<div style="margin-top:5px;">'
+            + '<div style="font-size:0.68rem;color:#15803d;font-weight:600;margin-bottom:3px;"><i class="fas fa-check-circle"></i> ' + matched.length + ' teacher' + (matched.length>1?'s':'') + ' — upskilled + slot match</div>'
+            + matched.slice(0,3).map(function(t){ return '<div style="font-size:0.74rem;color:#1e293b;padding:2px 0;display:flex;align-items:center;gap:4px;"><i class="fas fa-user" style="color:#6366f1;width:10px;"></i>' + escapeHtml(t.name) + '<span style="font-size:0.62rem;background:#dcfce7;color:#15803d;padding:1px 5px;border-radius:8px;margin-left:2px;">slot ok</span></div>'; }).join('')
+          + '</div>';
+        } else if (fallback.length > 0) {
+          // No slot-matched — show upskilled without slot guarantee
+          altHtml = '<div style="margin-top:5px;">'
+            + '<div style="font-size:0.68rem;color:#f59e0b;font-weight:600;margin-bottom:3px;"><i class="fas fa-exclamation-circle"></i> No slot match — ' + fallback.length + ' upskilled teacher' + (fallback.length>1?'s':'') + ' available</div>'
+            + fallback.slice(0,3).map(function(t){ return '<div style="font-size:0.74rem;color:#1e293b;padding:2px 0;display:flex;align-items:center;gap:4px;"><i class="fas fa-user" style="color:#94a3b8;width:10px;"></i>' + escapeHtml(t.name) + '</div>'; }).join('')
+          + '</div>';
+        } else {
+          altHtml = '<div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;"><i class="fas fa-minus-circle"></i> No upskilled alternatives found</div>';
+        }
+
+        var firstName = (l.teacher||'teacher').split(' ')[0];
+        if (hasNumericProg && g.inProgress) {
+          // 1–70%: teacher is being upskilled — request TP to fast-pace
+          altHtml += '<button onclick="cpRequestUpskill(\'' + escapeHtml(l.jlid) + '\',\'' + escapeHtml(l.teacher||'') + '\',\'' + escapeHtml(g.course) + '\',true)" '
+            + 'style="margin-top:5px;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:5px;padding:3px 9px;font-size:0.7rem;cursor:pointer;font-weight:600;width:100%;">'
+            + '<i class="fas fa-bolt"></i> Ask TP: fast-pace ' + escapeHtml(firstName) + ' on this course (' + escapeHtml(progRaw) + '% done)'
+            + '</button>';
+        } else if (g.notStarted) {
+          // Not Onboarded / 0%: teacher hasn't started — urgent upskill request
+          altHtml += '<button onclick="cpRequestUpskill(\'' + escapeHtml(l.jlid) + '\',\'' + escapeHtml(l.teacher||'') + '\',\'' + escapeHtml(g.course) + '\',false)" '
+            + 'style="margin-top:5px;background:#fff1f2;color:#be123c;border:1px solid #fecdd3;border-radius:5px;padding:3px 9px;font-size:0.7rem;cursor:pointer;font-weight:600;width:100%;">'
+            + '<i class="fas fa-exclamation-triangle"></i> Ask TP: urgently start upskilling ' + escapeHtml(firstName) + ' on ' + escapeHtml(g.course)
+            + '</button>';
+        } else if (!g.progressKnown) {
+          // progressKnown=false means teacher name genuinely not found in Teacher Courses sheet
+          altHtml += '<div style="margin-top:5px;background:#f8faff;border:1px dashed #c7d2fe;border-radius:5px;padding:5px 8px;font-size:0.69rem;color:#6366f1;">'
+            + '<i class="fas fa-question-circle"></i> <strong>' + escapeHtml(firstName) + '\'s</strong> name not found in Teacher Courses sheet. '
+            + 'Check spelling in the sheet matches "' + escapeHtml(l.teacher||'') + '".'
+            + '</div>';
+        }
+      }
+
+      // Fix 7: upskill request button even for ready courses (as a proactive option)
+      var proactiveUpskillHtml = '';
+      if (g.teacherReady) {
+        proactiveUpskillHtml = '<div style="margin-top:4px;">'
+          + '<button onclick="cpRequestUpskill(\'' + escapeHtml(l.jlid) + '\',\'' + escapeHtml(l.teacher||'') + '\',\'' + escapeHtml(g.course) + '\',true)" '
+          + 'style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:5px;padding:2px 8px;font-size:0.67rem;cursor:pointer;width:100%;">'
+          + '<i class="fas fa-check-circle"></i> Teacher ready — request early start / confirm upskilling'
+          + '</button>'
+          + '</div>';
+      }
+
+      roadmapHtml += '<div style="border-left:3px solid ' + rc + ';padding:7px 8px 7px 10px;background:#fafafa;border-radius:0 6px 6px 0;margin-bottom:6px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+          + '<div style="font-size:0.79rem;font-weight:600;color:#1e293b;">' + (idx+1) + '. ' + escapeHtml(g.course) + (g.count ? ' <span style="color:#94a3b8;font-weight:400;font-size:0.7rem;">(' + g.count + ' cls)</span>' : '') + '</div>'
+          + '<span style="font-size:0.65rem;padding:1px 7px;border-radius:20px;background:' + rc + '18;color:' + rc + ';font-weight:700;">' + rdLabel + '</span>'
+        + '</div>'
+        + '<div style="font-size:0.7rem;color:#64748b;margin-top:1px;">Teacher: <strong>' + escapeHtml(String(g.teacherProgress||'Not Onboarded')) + '</strong></div>'
+        + barHtml
+        + altHtml
+        + proactiveUpskillHtml
+      + '</div>';
+    });
+  } else {
+    roadmapHtml += '<div style="font-size:0.78rem;color:#94a3b8;font-style:italic;">No next courses in roadmap.</div>';
+  }
+
+  // Consolidated fast-pace button: if ≥2 courses need upskilling (in-progress or not-started)
+  // Ask TP to fast-pace future 1 + future 2 in a single request
+  var gapCourses = (gaps || []).filter(function(g){ return g.progressKnown !== false && !g.teacherReady; });
+  if (gapCourses.length >= 2) {
+    var courseList = gapCourses.slice(0,3).map(function(g){ return g.course; });
+    var allInProgress = gapCourses.every(function(g){ return g.inProgress; });
+    var btnLabel = allInProgress
+      ? '<i class="fas fa-bolt"></i> Fast-pace upskill: ' + courseList.map(function(c){ return escapeHtml(c); }).join(' + ')
+      : '<i class="fas fa-graduation-cap"></i> Request upskill for all ' + gapCourses.length + ' courses';
+    var btnStyle = allInProgress
+      ? 'background:#fffbeb;color:#92400e;border:1px solid #fde68a;'
+      : 'background:#fff1f2;color:#be123c;border:1px solid #fecdd3;';
+    roadmapHtml += '<button onclick="cpRequestUpskillMulti(\'' + escapeHtml(l.jlid) + '\',\'' + escapeHtml(l.teacher||'') + '\',' + JSON.stringify(courseList) + ')" '
+      + 'style="width:100%;margin-top:4px;' + btnStyle + 'border-radius:6px;padding:5px 10px;font-size:0.73rem;cursor:pointer;font-weight:600;">'
+      + btnLabel + '</button>';
+  }
+
+  // ── 6. PRM + CLS notes ───────────────────────────────────────
+  var notesHtml = '';
+  if (l.clsNotes) {
+    notesHtml = sectionLabel('CLS Notes')
+      + '<div style="background:#f8faff;border-radius:6px;padding:7px 10px;font-size:0.75rem;color:#374151;white-space:pre-wrap;">' + escapeHtml(l.clsNotes) + '</div>';
+  }
+
+  // ── Compose ───────────────────────────────────────────────────
+  var migBtnHtml = l.migrationNeeded
+    ? '<div style="display:flex;gap:8px;margin-top:14px;">'
+        + '<button id="clsBtn_' + escapeHtml(l.jlid) + '" onclick="requestCLSApproval(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-primary" style="flex:2;background:linear-gradient(135deg,#6366f1,#8b5cf6);font-size:0.82rem;"><i class="fas fa-paper-plane"></i> Request CLS Review</button>'
+        + '<button onclick="openCPMigrationModal(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-secondary btn-sm" style="flex:1;font-size:0.73rem;" title="Skip CLS review — create HubSpot ticket directly"><i class="fas fa-bolt"></i> Direct</button>'
+      + '</div>'
+    : '<button onclick="openCPMigrationModal(\'' + escapeHtml(l.jlid) + '\')" class="btn btn-primary" style="width:100%;margin-top:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);font-size:0.82rem;"><i class="fas fa-exchange-alt"></i> Trigger Migration</button>';
+
+  content.innerHTML = headerHtml + courseHtml + completedDetailHtml + scheduleHtml + cancelHtml + roadmapHtml + notesHtml + migBtnHtml;
+}
+
+function closeCPDetailPanel() {
+  var p = document.getElementById('cpDetailPanel');
+  if (p) p.style.display = 'none';
+}
+
+function cpRequestUpskill(jlid, teacherName, courseName, fastPace) {
+  var verb = fastPace ? 'fast-pace upskilling' : 'start upskilling';
+  if (!confirm((fastPace ? 'Ask TP to fast-pace' : 'Ask TP to urgently start') + ' upskilling for ' + teacherName + ' on "' + courseName + '"?')) return;
+  var btn = event && event.target ? event.target.closest('button') : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i> Request Sent'; btn.style.background = '#f0fdf4'; btn.style.color = '#15803d'; btn.style.borderColor = '#86efac'; }
+      showToast('success', fastPace ? 'Fast-pace Request' : 'Upskill Request', res.message || 'TP Manager notified for ' + teacherName);
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = fastPace ? '<i class="fas fa-bolt"></i> Fast-pace' : '<i class="fas fa-graduation-cap"></i> Ask TP'; }
+      showToast('error', 'Upskill Request', e.message);
+    })
+    .requestTPUpskilling(jlid, teacherName, courseName, fastPace || false);
+}
+
+function cpRequestUpskillMulti(jlid, teacherName, courseList) {
+  var courseStr = Array.isArray(courseList) ? courseList.join(' + ') : courseList;
+  if (!confirm('Ask TP to fast-pace upskilling for ' + teacherName + ' on:\n' + courseStr + '\n\nContinue?')) return;
+  var btn = event && event.target ? event.target.closest('button') : null;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'; }
+
+  var pending = Array.isArray(courseList) ? courseList.length : 1;
+  var errors  = [];
+
+  function done(err) {
+    if (err) errors.push(err);
+    pending--;
+    if (pending > 0) return;
+    if (btn) { btn.disabled = false; btn.innerHTML = errors.length ? '<i class="fas fa-exclamation-triangle"></i> Partial Error' : '<i class="fas fa-check"></i> All Requests Sent'; btn.style.background = errors.length ? '#fff1f2' : '#f0fdf4'; btn.style.color = errors.length ? '#be123c' : '#15803d'; }
+    showToast(errors.length ? 'warning' : 'success', 'Fast-pace Upskill', errors.length ? 'Sent with some errors. Check logs.' : 'TP Manager notified for all ' + courseStr + ' courses.');
+  }
+
+  (Array.isArray(courseList) ? courseList : [courseList]).forEach(function(course) {
+    google.script.run
+      .withSuccessHandler(function(){ done(null); })
+      .withFailureHandler(function(e){ done(e.message); })
+      .requestTPUpskilling(jlid, teacherName, course, true);
+  });
+}
+
+// ── Migration Modal ───────────────────────────────────────────
+// Single-step: triggerSmartMigration → creates HubSpot ticket with ALL fields
+// populated directly via API (Learner UID, Course, Future Courses, Not Onboarded etc.)
+// Form submission step removed — ticket API fills same fields.
+
+var _cpMigrationTicketResult = null; // store ticket result across steps
+
+function openCPMigrationModal(jlid) {
+  _cpMigrationJlid         = jlid;
+  _cpMigrationTicketResult = null;
+  var modal = document.getElementById('cpMigrationModal');
+  var body  = document.getElementById('cpMigrationModalBody');
+  var btn   = document.getElementById('cpMigrationConfirmBtn');
+  if (!modal || !body) return;
+  if (btn) btn.style.display = 'none';
+  body.innerHTML = _cpLoadingHtml('Finding best-matched teachers…', 'Searching teacher database + creating HubSpot ticket');
+  modal.style.display = 'flex';
+
+  google.script.run
+    .withSuccessHandler(function(result) { _cpHandleTicketResult(result); })
+    .withFailureHandler(function(err) {
+      var b = document.getElementById('cpMigrationModalBody');
+      if (b) b.innerHTML = '<div style="color:#ef4444;padding:1rem;"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(err.message||String(err)) + '</div>';
+    })
+    .triggerSmartMigration(jlid);
+}
+
+function _cpLoadingHtml(title, sub) {
+  return '<div style="text-align:center;padding:2rem 1rem;color:#94a3b8;">'
+    + '<i class="fas fa-spinner fa-spin" style="font-size:1.8rem;margin-bottom:12px;display:block;color:#6366f1;"></i>'
+    + '<div style="font-size:0.9rem;color:#374151;font-weight:600;margin-bottom:4px;">' + escapeHtml(title) + '</div>'
+    + (sub ? '<div style="font-size:0.78rem;color:#94a3b8;">' + escapeHtml(sub) + '</div>' : '')
+    + '</div>';
+}
+
+// Ticket created — show result
+function _cpHandleTicketResult(result) {
+  _cpMigrationTicketResult = result;
+  var body = document.getElementById('cpMigrationModalBody');
+  var btn  = document.getElementById('cpMigrationConfirmBtn');
+  if (!body) return;
+
+  if (!result || !result.success) {
+    body.innerHTML = '<div style="color:#ef4444;padding:1rem;"><i class="fas fa-exclamation-triangle"></i> '
+      + escapeHtml((result && result.message) || 'Failed to create migration ticket.') + '</div>';
+    return;
+  }
+
+  var l              = result.learner || {};
+  var teachers       = result.matchedTeachers || [];
+  var nextCourseName = (l.nextCourses && l.nextCourses[0]) ? l.nextCourses[0].name : '';
+  var nextCourse2    = (l.nextCourses && l.nextCourses[1]) ? l.nextCourses[1].name : '';
+  var nextCourse3    = (l.nextCourses && l.nextCourses[2]) ? l.nextCourses[2].name : '';
+
+  // CLS warning
+  var clsWarn = result.clsApprovalRequired
+    ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:0.8rem;color:#b91c1c;">'
+        + '<i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>'
+        + '<strong>CLS Approval Required</strong> — Critical health learner. Get CLS sign-off before proceeding.</div>' : '';
+
+  // Teacher matches
+  var teacherRows = '';
+  if (teachers.length > 0) {
+    teachers.forEach(function(t, i) {
+      var medal  = i===0?'🥇':i===1?'🥈':'🥉';
+      var rowBg  = i===0?'#f0fdf4':'#f8fafc';
+      var rowBdr = i===0?'#86efac':'#e2e8f0';
+      teacherRows += '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:'+rowBg+';border:1px solid '+rowBdr+';margin-bottom:5px;">'
+        +'<span>'+medal+'</span>'
+        +'<div style="flex:1;">'
+          +'<div style="font-weight:600;font-size:0.83rem;color:#1e293b;">'+escapeHtml(t.name)+'</div>'
+          +'<div style="font-size:0.71rem;color:#64748b;">Grade: '+escapeHtml(t.auditGrade||'—')+' · '+escapeHtml(nextCourseName)+': '+escapeHtml(t.courseReady||'—')+'</div>'
+        +'</div>'
+        +(i===0?'<span style="font-size:0.67rem;background:#dcfce7;color:#15803d;padding:2px 6px;border-radius:20px;font-weight:600;">Top Pick</span>':'')
+      +'</div>';
+    });
+  } else {
+    teacherRows = '<div style="color:#94a3b8;font-style:italic;font-size:0.8rem;padding:6px 0;">No pre-matched teachers found.</div>';
+  }
+
+  // Ticket field summary
+  var fieldRows = [
+    ['Learner UID',               l.jlid||'—'],
+    ['Current Course',            l.currentCourse||'—'],
+    ['Future Course 1',           nextCourseName||'—'],
+    ['Future Course 2',           nextCourse2||'NA'],
+    ['Future Course 3',           nextCourse3||'NA'],
+    ['Reason of Migration',       'Course Change Teacher Change'],
+    ['Migration Timeline',        'After Current Course Completion'],
+    ['Trained on next course?',   'Not Onboarded']
+  ].map(function(r, i) {
+    return '<div style="display:flex;gap:8px;padding:5px 8px;'+(i%2===0?'background:#f8fafc;':'')+'border-bottom:1px solid #f1f5f9;">'
+      +'<div style="width:160px;flex-shrink:0;font-size:0.72rem;color:#64748b;">'+escapeHtml(r[0])+'</div>'
+      +'<div style="font-size:0.76rem;color:#1e293b;font-weight:500;">'+escapeHtml(r[1])+'</div>'
+      +'</div>';
+  }).join('');
+
+  body.innerHTML = clsWarn
+    // ── Ticket created banner ──
+    + '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">'
+      + '<i class="fas fa-check-circle" style="color:#22c55e;font-size:1.3rem;flex-shrink:0;"></i>'
+      + '<div>'
+        + '<div style="font-weight:700;color:#15803d;font-size:0.88rem;">Migration Ticket Created in HubSpot</div>'
+        + '<div style="font-size:0.75rem;color:#374151;margin-top:2px;">All fields auto-populated · '
+          + '<a href="'+escapeHtml(result.hubspotLink||'#')+'" target="_blank" style="color:#6366f1;font-weight:600;">View Ticket #'+escapeHtml(result.ticketId||'')+' →</a>'
+        + '</div>'
+      + '</div>'
+    + '</div>'
+    // ── Ticket subject ──
+    + '<div style="font-size:0.8rem;font-weight:700;color:#1e293b;margin-bottom:8px;padding:0 2px;">'
+      + escapeHtml(result.subject||'')
+    + '</div>'
+    // ── Fields populated ──
+    + '<div style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Fields Populated on Ticket</div>'
+    + '<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:12px;">' + fieldRows + '</div>'
+    // ── Pre-matched teachers ──
+    + '<div style="font-size:0.68rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Pre-matched Teachers</div>'
+    + teacherRows
+    // ── Done button ──
+    + '<button onclick="closeCPMigrationModal()" class="btn btn-primary" style="width:100%;margin-top:14px;background:linear-gradient(135deg,#22c55e,#16a34a);font-size:0.83rem;">'
+      + '<i class="fas fa-check"></i> Done'
+    + '</button>';
+
+  if (btn) btn.style.display = 'none';
+}
+
+// Step 2: Load form field preview
+function _cpLoadFormPreview() {
+  var body = document.getElementById('cpMigrationModalBody');
+  if (!body) return;
+  var existingContent = body.innerHTML;
+  // Append loading below existing
+  body.innerHTML = existingContent.replace(/<div style="margin:14px[\s\S]*$/, '')
+    + '<div style="margin:14px 0 10px;border-top:1px solid #f1f5f9;padding-top:12px;">'
+    + _cpLoadingHtml('Loading form preview…', 'Building form fields from learner data')
+    + '</div>';
+
+  var userEmail = (currentUser && currentUser.email) ? currentUser.email : '';
+  google.script.run
+    .withSuccessHandler(function(result) { _cpRenderFormPreview(result); })
+    .withFailureHandler(function(err) {
+      var b = document.getElementById('cpMigrationModalBody');
+      if (b) {
+        var d = b.querySelector('#cpFormPreviewSection');
+        if (d) d.innerHTML = '<div style="color:#ef4444;font-size:0.8rem;padding:8px;"><i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(err.message||String(err)) + '</div>';
+      }
+    })
+    .getMigrationFormPreview(_cpMigrationJlid, userEmail);
+}
+
+// Step 2 render: show form fields for review
+function _cpRenderFormPreview(result) {
+  var body = document.getElementById('cpMigrationModalBody');
+  if (!body) return;
+
+  // Rebuild from ticket result + add form section
+  var ticketHtml = _cpRebuildTicketSection();
+
+  var formSection = '<div id="cpFormPreviewSection" style="margin-top:14px;border-top:1px solid #f1f5f9;padding-top:12px;">'
+    +'<div style="font-size:0.8rem;font-weight:600;color:#1e293b;margin-bottom:8px;">'
+      +'<i class="fas fa-file-alt" style="color:#6366f1;margin-right:6px;"></i>Migration Form — Auto-filled Values'
+    +'</div>';
+
+  if (!result || !result.success) {
+    formSection += '<div style="color:#ef4444;font-size:0.8rem;padding:8px;">'
+      + escapeHtml((result&&result.message)||'Failed to build form preview.') + '</div>';
+  } else {
+    var fields  = result.fieldPreview || [];
+    // Human-readable labels for display
+    var labels  = {
+      'email'                                       : 'Email',
+      'learner_uid'                                 : 'Learner UID',
+      'reason_of_migration__t_'                     : 'Reason of Migration',
+      'migration_timeline'                          : 'Migration Timeline',
+      'timeline_of_form_filled'                     : 'Timeline of Form Filled',
+      'pre_migration_last_class_conducted_date__t_' : 'Pre-Migration Last Class Date',
+      'current_course__t_'                          : 'Current Course',
+      'future_course_1'                             : 'Future Course 1',
+      'future_course_2'                             : 'Future Course 2',
+      'future_course_3'                             : 'Future Course 3',
+      'future_course_4'                             : 'Future Course 4',
+      'are_you_trained_on_the_next_course_'         : 'Teacher Trained on Next Course?',
+      'notes___additional_comments'                 : 'Notes'
+    };
+
+    formSection += '<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:10px;">';
+    fields.forEach(function(f, i) {
+      var label = labels[f.name] || f.name;
+      var val   = f.value;
+      var isNote = f.name === 'notes___additional_comments';
+      formSection += '<div style="display:flex;gap:8px;padding:7px 10px;'+(i%2===0?'background:#f8fafc;':'background:#fff;')+';border-bottom:1px solid #f1f5f9;">'
+        +'<div style="width:180px;flex-shrink:0;font-size:0.75rem;color:#64748b;padding-top:1px;">'+escapeHtml(label)+'</div>'
+        +'<div style="flex:1;font-size:0.78rem;color:#1e293b;font-weight:500;'+(isNote?'white-space:pre-wrap;font-size:0.72rem;color:#475569;':'')+'">'+escapeHtml(val)+'</div>'
+      +'</div>';
+    });
+    formSection += '</div>';
+
+    // Pre-fill link fallback
+    formSection += '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:10px;">'
+      +'<i class="fas fa-info-circle" style="margin-right:4px;"></i>'
+      +'If auto-submit fails, <a href="'+escapeHtml(result.prefillUrl||'#')+'" target="_blank" style="color:#6366f1;">open pre-filled form manually →</a>'
+    +'</div>';
+
+    // Submit button
+    formSection += '<button onclick="_cpDoSubmitForm()" id="cpFormSubmitBtn" class="btn btn-primary" style="width:100%;background:linear-gradient(135deg,#22c55e,#16a34a);font-size:0.83rem;">'
+      +'<i class="fas fa-paper-plane"></i> Submit Migration Form to HubSpot'
+    +'</button>';
+  }
+
+  formSection += '</div>';
+  body.innerHTML = ticketHtml + formSection;
+}
+
+// Helper: rebuild ticket + teacher section (used when swapping form section)
+function _cpRebuildTicketSection() {
+  if (!_cpMigrationTicketResult) return '';
+  var result   = _cpMigrationTicketResult;
+  var l        = result.learner || {};
+  var teachers = result.matchedTeachers || [];
+  var nextCourseName = (l.nextCourses && l.nextCourses[0]) ? l.nextCourses[0].name : '';
+  var clsWarn  = result.clsApprovalRequired
+    ? '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:0.78rem;color:#b91c1c;"><i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i><strong>CLS Approval Required</strong></div>' : '';
+  var teacherRows = '';
+  teachers.forEach(function(t, i) {
+    var medal = i===0?'🥇':i===1?'🥈':'🥉';
+    teacherRows += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;background:'+(i===0?'#f0fdf4':'#f8fafc')+';border:1px solid '+(i===0?'#86efac':'#e2e8f0')+';margin-bottom:4px;">'
+      +'<span>'+medal+'</span>'
+      +'<div style="flex:1;"><div style="font-weight:600;font-size:0.82rem;color:#1e293b;">'+escapeHtml(t.name)+'</div>'
+      +'<div style="font-size:0.7rem;color:#64748b;">Grade: '+escapeHtml(t.auditGrade||'—')+' · '+escapeHtml(nextCourseName)+': '+escapeHtml(t.courseReady||'—')+'</div></div>'
+      +(i===0?'<span style="font-size:0.67rem;background:#dcfce7;color:#15803d;padding:2px 6px;border-radius:20px;">Top Pick</span>':'')
+    +'</div>';
+  });
+  return clsWarn
+    +'<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78rem;display:flex;align-items:center;gap:8px;">'
+      +'<i class="fas fa-check-circle" style="color:#22c55e;"></i>'
+      +'<div><div style="font-weight:600;color:#15803d;">HubSpot Ticket Created</div>'
+      +'<a href="'+escapeHtml(result.hubspotLink||'#')+'" target="_blank" style="color:#6366f1;font-size:0.72rem;">View Ticket #'+escapeHtml(result.ticketId||'')+' →</a></div>'
+    +'</div>'
+    +'<div style="background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78rem;">'
+      +'<div style="font-weight:700;color:#1e293b;margin-bottom:2px;">'+escapeHtml(result.subject||'')+'</div>'
+      +'<div style="color:#64748b;">'+escapeHtml(l.currentCourse||'—')+' → '+escapeHtml(nextCourseName||'—')+'</div>'
+    +'</div>'
+    +'<div style="font-size:0.7rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Pre-matched Teachers</div>'
+    +(teacherRows || '<div style="color:#94a3b8;font-style:italic;font-size:0.78rem;">No pre-matched teachers found.</div>');
+}
+
+// Step 3: actually submit the form
+function _cpDoSubmitForm() {
+  var btn = document.getElementById('cpFormSubmitBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…'; }
+
+  var userEmail = (currentUser && currentUser.email) ? currentUser.email : '';
+  google.script.run
+    .withSuccessHandler(function(result) { _cpHandleFormSubmitResult(result); })
+    .withFailureHandler(function(err) {
+      var b = document.getElementById('cpFormSubmitBtn');
+      if (b) { b.disabled = false; b.innerHTML = '<i class="fas fa-paper-plane"></i> Submit Migration Form to HubSpot'; }
+      showToast('error','Form Submission Failed', err.message||String(err));
+    })
+    .submitMigrationHSForm(_cpMigrationJlid, userEmail);
+}
+
+// Step 3 result
+function _cpHandleFormSubmitResult(result) {
+  var section = document.getElementById('cpFormPreviewSection');
+  if (!section) return;
+
+  if (result && result.success) {
+    section.innerHTML = '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px;text-align:center;">'
+      +'<i class="fas fa-check-circle" style="font-size:2rem;color:#22c55e;display:block;margin-bottom:8px;"></i>'
+      +'<div style="font-weight:700;color:#15803d;font-size:0.9rem;">Migration Form Submitted!</div>'
+      +'<div style="color:#64748b;font-size:0.78rem;margin-top:4px;">Form sent to HubSpot successfully. The migration is now in motion.</div>'
+      +'</div>';
+    showToast('success','Form Submitted','Migration form sent to HubSpot.');
+    return;
+  }
+
+  // Failed — show error + fallback manual link
+  var errMsg     = (result && result.message) || 'Form submission failed.';
+  var prefillUrl = (result && result.prefillUrl) || '';
+  var isNotFound = result && result.formNotFound;
+
+  section.innerHTML = '<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:12px;font-size:0.8rem;">'
+    +'<div style="font-weight:600;color:#92400e;margin-bottom:6px;">'
+    +(isNotFound
+      ? '<i class="fas fa-search" style="margin-right:5px;"></i>Migration form not found in HubSpot'
+      : '<i class="fas fa-exclamation-triangle" style="margin-right:5px;"></i>Auto-submit failed')
+    +'</div>'
+    +'<div style="color:#78350f;margin-bottom:10px;font-size:0.75rem;">'+escapeHtml(errMsg)+'</div>'
+    +(prefillUrl
+      ? '<a href="'+escapeHtml(prefillUrl)+'" target="_blank" class="btn btn-primary" style="display:inline-block;text-decoration:none;font-size:0.8rem;background:linear-gradient(135deg,#f59e0b,#d97706);">'
+          +'<i class="fas fa-external-link-alt"></i> Open Pre-filled Form Manually →'
+        +'</a>'
+      : '')
+    +(isNotFound
+      ? '<div style="margin-top:8px;font-size:0.72rem;color:#78350f;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Fix: ensure your HubSpot form name contains the word "migration".</div>'
+      : '<div style="margin-top:8px;font-size:0.72rem;color:#78350f;"><i class="fas fa-info-circle" style="margin-right:4px;"></i>Tip: use "Open Pre-filled Form" to submit manually. Field names may need adjustment.</div>')
+  +'</div>';
+}
+
+function closeCPMigrationModal() {
+  var modal = document.getElementById('cpMigrationModal');
+  if (modal) modal.style.display = 'none';
+  _cpMigrationJlid         = null;
+  _cpMigrationTicketResult = null;
+}
+
+function confirmCPMigration() {
+  closeCPMigrationModal();
+  showToast('success','Migration Triggered','HubSpot ticket created successfully.');
+}
+
+// ── Upload Guide ──────────────────────────────────────────────
+function openCPDataGuide() {
+  var guideHtml = '<div style="font-size:0.85rem;line-height:1.65;color:#374151;">'
+    + '<ol style="padding-left:1.3rem;">'
+    + '<li style="margin-bottom:8px;">Open <strong>Athena</strong> → export <strong>CPRS</strong> (class session log) as CSV.</li>'
+    + '<li style="margin-bottom:8px;">In the Google Sheet, open tab <strong>"Athena CPRS"</strong> → clear old rows → paste the new CSV content.</li>'
+    + '<li style="margin-bottom:8px;">Export <strong>PRMS</strong> (PRM prep / next course data) → paste into the <strong>"Athena PRMS"</strong> tab.</li>'
+    + '<li style="margin-bottom:8px;">Return here and click <strong>Refresh</strong>.</li>'
+    + '</ol>'
+    + '<p style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border-radius:8px;font-size:0.8rem;color:#15803d;">'
+    + '<i class="fas fa-lightbulb" style="margin-right:5px;"></i>Best practice: update every 1–2 days for accurate completion forecasts.</p>'
+    + '</div>';
+  if (typeof showConfirmModal === 'function') {
+    showConfirmModal('How to Update Athena Data', guideHtml, function(){}, { confirmText: 'Got it', cancelText: '' });
+  } else {
+    alert('Paste fresh Athena CPRS and PRMS CSV data into the matching sheet tabs, then click Refresh.');
+  }
+}
+// ════════════════════════════════════════════════════════════════════
+// END COURSE PLANNER
+// ════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════
+// CLS APPROVAL QUEUE — client-side
+// ════════════════════════════════════════════════════════════════════
+
+var _clsQueueData = [];
+
+// ── Request CLS approval for a CCTC learner ───────────────────────────
+function requestCLSApproval(jlid) {
+  var btn = document.getElementById('clsBtn_' + jlid);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending\u2026'; }
+
+  var userEmail = (typeof currentUser !== 'undefined' && currentUser && currentUser.email) ? currentUser.email : '';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!btn) return;
+      if (result && result.success) {
+        btn.innerHTML = '<i class="fas fa-check"></i> Sent to CLS';
+        btn.style.background = 'linear-gradient(135deg,#22c55e,#16a34a)';
+        btn.disabled = true;
+        showToast('success', 'CLS Review Requested', 'Slack notification sent for ' + (result.learnerName || jlid));
+        loadCLSQueue();   // refresh the queue table
+      } else if (result && result.alreadyPending) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-clock"></i> Already Pending';
+        btn.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+        showToast('warning', 'Already Pending', result.message || 'Request already sent to CLS.');
+      } else {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> CLS Review';
+        showToast('error', 'Failed', (result && result.message) || 'Could not send to Slack.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> CLS Review'; }
+      showToast('error', 'Error', err.message || String(err));
+    })
+    .sendCLSMigrationRequest(jlid, userEmail);
+}
+
+// ── Load CLS queue from server ────────────────────────────────────────
+function loadCLSQueue(forceRefresh) {
+  var grid = document.getElementById('clsQueueGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:0.8rem;"><i class="fas fa-spinner fa-spin"></i> Loading queue\u2026</div>';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      _clsQueueData = (result && result.queue) ? result.queue : [];
+      // Update pending badge in queue header
+      var badge = document.getElementById('clsQueuePendingBadge');
+      if (badge) {
+        var pending = (result && result.stats) ? (result.stats.pending || 0) : 0;
+        if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline-flex'; }
+        else { badge.style.display = 'none'; }
+      }
+      renderCLSQueue();
+    })
+    .withFailureHandler(function(err) {
+      var g = document.getElementById('clsQueueGrid');
+      if (g) g.innerHTML = '<div style="color:#ef4444;font-size:0.8rem;padding:8px;">' + escapeHtml(err.message || String(err)) + '</div>';
+    })
+    .getCLSApprovalQueue();
+}
+
+// ── Render CLS queue table ────────────────────────────────────────────
+function renderCLSQueue() {
+  var grid = document.getElementById('clsQueueGrid');
+  if (!grid) return;
+
+  var filterStatus = ((document.getElementById('clsQueueFilter') || {}).value || '');
+  var items = _clsQueueData.filter(function(item) {
+    return !filterStatus || item.status === filterStatus;
+  });
+
+  if (items.length === 0) {
+    grid.innerHTML = '<div style="text-align:center;padding:1.5rem;color:#94a3b8;font-size:0.8rem;font-style:italic;">'
+      + (filterStatus ? 'No ' + filterStatus.toLowerCase() + ' requests.' : 'No CLS approval requests yet. Click \u201cCLS Review\u201d on any CCTC learner card.')
+      + '</div>';
+    return;
+  }
+
+  var statusStyle = {
+    Pending : { bg: '#fef3c722', color: '#d97706', icon: 'fa-clock' },
+    Approved: { bg: '#f0fdf422', color: '#15803d', icon: 'fa-check-circle' },
+    Declined: { bg: '#fee2e222', color: '#b91c1c', icon: 'fa-times-circle' }
+  };
+
+  var html = '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
+    + '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;white-space:nowrap;">Learner</th>'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;">Status</th>'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;">Teacher</th>'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;">Current \u2192 Next Course</th>'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;white-space:nowrap;">Sent</th>'
+    + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;">Decline Reason</th>'
+    + '</tr></thead><tbody>';
+
+  items.forEach(function(item, idx) {
+    var ss = statusStyle[item.status] || { bg: '#f8fafc', color: '#64748b', icon: 'fa-minus' };
+    var sentDate = '';
+    if (item.triggeredAt) {
+      try { sentDate = new Date(item.triggeredAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); } catch(de) { sentDate = item.triggeredAt; }
+    }
+    html += '<tr style="border-bottom:1px solid #f1f5f9;' + (idx%2===0?'background:#fff;':'background:#f8fafc;') + '">'
+      + '<td style="padding:8px 12px;">'
+        + '<div style="font-weight:600;color:#1e293b;font-size:0.8rem;">' + escapeHtml(item.learnerName || item.jlid) + '</div>'
+        + '<div style="font-size:0.68rem;color:#94a3b8;">' + escapeHtml(item.jlid) + '</div>'
+      + '</td>'
+      + '<td style="padding:8px 12px;white-space:nowrap;">'
+        + '<span style="font-size:0.73rem;font-weight:700;padding:2px 9px;border-radius:20px;background:' + ss.bg + ';color:' + ss.color + ';border:1px solid ' + ss.color + '33;">'
+          + '<i class="fas ' + ss.icon + '" style="margin-right:3px;"></i>' + escapeHtml(item.status)
+        + '</span>'
+      + '</td>'
+      + '<td style="padding:8px 12px;color:#374151;font-size:0.78rem;">' + escapeHtml(item.teacher || '\u2014') + '</td>'
+      + '<td style="padding:8px 12px;font-size:0.78rem;">'
+        + '<span style="color:#374151;">' + escapeHtml(item.curCourse || '\u2014') + '</span>'
+        + (item.nextCourse ? ' <span style="color:#94a3b8;">\u2192</span> <strong style="color:#6366f1;">' + escapeHtml(item.nextCourse) + '</strong>' : '')
+      + '</td>'
+      + '<td style="padding:8px 12px;color:#64748b;font-size:0.73rem;white-space:nowrap;">' + escapeHtml(sentDate || '\u2014') + '</td>'
+      + '<td style="padding:8px 12px;color:#64748b;font-size:0.73rem;font-style:italic;">' + (item.reason ? escapeHtml(item.reason) : '\u2014') + '</td>'
+    + '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  grid.innerHTML = html;
+}
+// ════════════════════════════════════════════════════════════════════
+// END CLS APPROVAL QUEUE
+// ════════════════════════════════════════════════════════════════════
 </script>
