@@ -5261,7 +5261,8 @@ google.script.run
         return;
     }
     hideLoading();
-    currentUser = user;
+    currentUser = currentUser = user;
+    if (user.sessionToken) sessionStorage.setItem('sessionToken', user.sessionToken);
     sessionStorage.setItem('currentUser', JSON.stringify(user));
     userAvatar.textContent = user.username.substring(0, 2).toUpperCase();
     userName.textContent = user.username;
@@ -5371,14 +5372,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleLogout() {
       showConfirm('Confirm Logout', 'Are you sure you want to log out?', confirmed => {
         if (confirmed) {
-          currentUser = null;
-          sessionStorage.removeItem('currentUser');
-          stopPolling();
-          stopSessionTimer();
-          appContainer.style.display = 'none';
-          loginPage.style.display = 'flex';
-          switchLoginView('loginView');
-          loginForm.reset();
+        var token = sessionStorage.getItem('sessionToken');
+        if (token) google.script.run.logoutUser(token);
+        currentUser = null;
+        sessionStorage.removeItem('currentUser');
+        sessionStorage.removeItem('sessionToken');
+        stopPolling();
+        stopSessionTimer();
+        appContainer.style.display = 'none';
+        loginPage.style.display = 'flex';
+        switchLoginView('loginView');
+        loginForm.reset();
         }
       });
     }
@@ -5903,7 +5907,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.warn('Background session check failed (transient):', err);
                         // Stay logged in \u2014 don't log out on GAS errors
                     })
-                    .verifyUserSession(storedUser.username);
+                    .verifyUserSession(sessionStorage.getItem('sessionToken') || '');
             } catch (e) {
                 console.error("JSON Parse Error", e);
                 switchLoginView('loginView');

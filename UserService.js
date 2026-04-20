@@ -10,19 +10,20 @@ function getUserProfiles() {
   try {
     const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
     if (!data || data.length <= 1) return [];
-    
+
     const headers = data[0].map(h => String(h).trim().toLowerCase().replace(/\s/g, ''));
-    
+
     return data.slice(1).map(row => ({
-      username: row[headers.indexOf('username')],
-      password: row[headers.indexOf('password')],
-      role: row[headers.indexOf('role')],
-      email: row[headers.indexOf('email')],
-      isActive: row[headers.indexOf('isactive')] === true || 
-                String(row[headers.indexOf('isactive')]).toLowerCase() === 'true',
-      lastLogin: row[headers.indexOf('lastlogin')],
-      mustChangePassword: row[headers.indexOf('mustchangepassword')] === true || 
-                          String(row[headers.indexOf('mustchangepassword')]).toLowerCase() === 'true'
+      username:          row[headers.indexOf('username')],
+      password:          row[headers.indexOf('password')],
+      passwordSalt:      row[headers.indexOf('passwordsalt')] || '',
+      role:              row[headers.indexOf('role')],
+      email:             row[headers.indexOf('email')],
+      isActive:          row[headers.indexOf('isactive')] === true ||
+                         String(row[headers.indexOf('isactive')]).toLowerCase() === 'true',
+      lastLogin:         row[headers.indexOf('lastlogin')],
+      mustChangePassword: row[headers.indexOf('mustchangepassword')] === true ||
+                         String(row[headers.indexOf('mustchangepassword')]).toLowerCase() === 'true'
     }));
   } catch (e) {
     Logger.log('Error in getUserProfiles: ' + e.message);
@@ -38,14 +39,34 @@ function authenticateUser(username, password) {
   }
 
   try {
+    // Check lockout before doing anything
+    var lockout = _checkLoginLockout(username);
+    if (lockout.locked) {
+      return { success: false, role: ROLES.GUEST, message: lockout.message };
+    }
+
     const userProfiles = getUserProfiles();
     const user = userProfiles.find(u => u.username === username);
 
     if (!user) {
+      _recordFailedAttempt(username);
       return { success: false, role: ROLES.GUEST, message: 'Invalid credentials' };
     }
 
-    if (user.password !== password) {
+    // Verify password
+    var passwordValid = false;
+    if (user.passwordSalt) {
+      passwordValid = (_hashPassword(password, user.passwordSalt) === user.password);
+    } else {
+      passwordValid = (user.password === password);
+      if (passwordValid) {
+        Logger.log('[Auth] Upgrading plaintext password for: ' + username);
+        _upgradePasswordHash(username, password);
+      }
+    }
+
+    if (!passwordValid) {
+      _recordFailedAttempt(username);
       logUserActivity(username, 'Failed Login', 'Invalid credentials');
       return { success: false, role: ROLES.GUEST, message: 'Invalid credentials' };
     }
@@ -54,17 +75,21 @@ function authenticateUser(username, password) {
       return { success: false, role: ROLES.GUEST, message: 'Account inactive' };
     }
 
-    // ✅ Build response FIRST, then do slow writes after
+    // Successful login — clear any failed attempts
+    _clearFailedAttempts(username);
+
+    var sessionToken = _createSession(username, user.role);
+
     const response = {
       success: true,
       role: user.role,
       username: username,
+      sessionToken: sessionToken,
       permissions: PERMISSIONS[user.role] || [],
       mustChangePassword: user.mustChangePassword === true ||
                           String(user.mustChangePassword).toLowerCase() === 'true'
     };
 
-    // ✅ Do sheet writes AFTER preparing response (still sync but ordered for clarity)
     try { updateUserLastLogin(username); } catch(e) { Logger.log('LastLogin update failed: ' + e.message); }
     try { logUserActivity(username, 'Successful Login', 'User logged in'); } catch(e) {}
 
@@ -76,56 +101,175 @@ function authenticateUser(username, password) {
   }
 }
 
-
-function verifyUserSession(username) {
-  Logger.log('verifyUserSession called for: ' + username);
+// Auto-upgrades a plaintext password to hashed on first login after migration
+function _upgradePasswordHash(username, plainPassword) {
   try {
-      const userProfiles = getUserProfiles();
-      // Empty list = sheet unreadable (permission/quota error) — treat as transient
-      if (!userProfiles || userProfiles.length === 0) {
-        Logger.log('verifyUserSession: user list empty (transient sheet error)');
-        return { success: false, transient: true, message: 'Session check temporarily unavailable.' };
-      }
-      const user = userProfiles.find(u => u.username === username);
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID)
+                  .getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+    var data    = sheet.getDataRange().getValues();
+    var headers = data[0].map(function(h) {
+      return String(h).trim().toLowerCase().replace(/\s/g, '');
+    });
 
-      if (!user || !user.isActive) {
-        Logger.log('Session verification failed for user: ' + username);
-        return { success: false, message: 'Invalid or inactive session.' };
-      }
+    var passIdx = headers.indexOf('password');
+    var saltIdx = headers.indexOf('passwordsalt');
 
-      Logger.log('Session verification successful for user: ' + username);
-      return {
-        success: true,
-        role: user.role,
-        username: user.username,
-        permissions: PERMISSIONS[user.role] || []
-      };
-  } catch (error) {
-    Logger.log('Error in verifyUserSession: ' + error.message);
-    return { success: false, transient: true, message: 'Session verification error.' };
+    // Add salt column if missing
+    if (saltIdx === -1) {
+      var newCol = data[0].length + 1;
+      sheet.getRange(1, newCol).setValue('PasswordSalt');
+      saltIdx = newCol - 1;
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === username) {
+        var salt = _generateSalt();
+        var hash = _hashPassword(plainPassword, salt);
+        sheet.getRange(i + 1, passIdx + 1).setValue(hash);
+        sheet.getRange(i + 1, saltIdx + 1).setValue(salt);
+        SpreadsheetApp.flush();
+        delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
+        Logger.log('[Auth] Password upgraded to hash for: ' + username);
+        break;
+      }
+    }
+  } catch (e) {
+    Logger.log('[Auth] _upgradePasswordHash failed: ' + e.message);
+  }
+}
+
+var SESSION_TTL = 28800; // 8 hours in seconds
+
+function _createSession(username, role) {
+  var token = Utilities.getUuid();
+  var sessionData = JSON.stringify({
+    username: username,
+    role: role,
+    permissions: PERMISSIONS[role] || [],
+    createdAt: new Date().toISOString()
+  });
+  CacheService.getScriptCache().put('SESSION_' + token, sessionData, SESSION_TTL);
+  Logger.log('[Session] Created for: ' + username);
+  return token;
+}
+
+function _getSession(token) {
+  if (!token) return null;
+  try {
+    var raw = CacheService.getScriptCache().get('SESSION_' + token);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) {
+    Logger.log('[Session] _getSession error: ' + e.message);
+    return null;
+  }
+}
+
+function _destroySession(token) {
+  if (!token) return;
+  try {
+    CacheService.getScriptCache().remove('SESSION_' + token);
+    Logger.log('[Session] Destroyed token: ' + token.substring(0, 8) + '...');
+  } catch(e) {
+    Logger.log('[Session] _destroySession error: ' + e.message);
   }
 }
 
 
-function createDefaultUsers() {
+function verifyUserSession(token) {
+  Logger.log('verifyUserSession called');
   try {
-    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
-
-    if (sheet.getLastRow() === 0 || sheet.getRange('A1').isBlank()) {
-      sheet.getRange(1, 1, 1, 9).setValues([
-        ['Username', 'Password', 'Role', 'Email', 'IsActive', 'LastLogin', 'CreatedDate', 'ResetToken', 'TokenExpiry']
-      ]);
+    if (!token) {
+      return { success: false, message: 'No session token provided.' };
     }
 
+    var session = _getSession(token);
+    if (!session) {
+      return { success: false, message: 'Session expired or invalid. Please log in again.' };
+    }
+
+    // Also verify the user is still active in the sheet
+    const userProfiles = getUserProfiles();
+    if (!userProfiles || userProfiles.length === 0) {
+      // Transient sheet error — don't invalidate a valid cache session
+      Logger.log('[Session] verifyUserSession: sheet unreadable, trusting cache');
+      return {
+        success: true,
+        username: session.username,
+        role: session.role,
+        permissions: session.permissions
+      };
+    }
+
+    const user = userProfiles.find(u => u.username === session.username);
+    if (!user || !user.isActive) {
+      _destroySession(token);
+      return { success: false, message: 'Account inactive or not found.' };
+    }
+
+    return {
+      success: true,
+      username: session.username,
+      role: session.role,
+      permissions: session.permissions
+    };
+
+  } catch(e) {
+    Logger.log('[Session] verifyUserSession error: ' + e.message);
+    return { success: false, transient: true, message: 'Session check temporarily unavailable.' };
+  }
+}
+
+function logoutUser(token) {
+  _destroySession(token);
+  return { success: true };
+}
+
+
+
+
+function createDefaultUsers() {
+  try {
+    const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID)
+                    .getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+
+    if (sheet.getLastRow() === 0 || sheet.getRange('A1').isBlank()) {
+      sheet.getRange(1, 1, 1, 10).setValues([[
+        'Username', 'Password', 'Role', 'Email',
+        'IsActive', 'LastLogin', 'CreatedDate',
+        'ResetToken', 'TokenExpiry', 'PasswordSalt'
+      ]]);
+    }
+
+    // Don't overwrite existing users
+    if (sheet.getLastRow() > 1) {
+      Logger.log('[createDefaultUsers] Users already exist — skipping.');
+      return;
+    }
+
+    // Generate random passwords — never hardcoded
+    var adminPass = generateTempPassword();
+    var opsPass   = generateTempPassword();
+
+    var adminSalt = _generateSalt();
+    var opsSalt   = _generateSalt();
+
+    var adminHash = _hashPassword(adminPass, adminSalt);
+    var opsHash   = _hashPassword(opsPass, opsSalt);
+
     const defaultUsers = [
-      ['Admin', 'JetLearn2025$', ROLES.ADMIN, 'admin@jet-learn.com', true, '', new Date(), '', ''],
-      ['Ops_team', 'Opsteam@2025$', ROLES.USER, 'ops@jet-learn.com', true, '', new Date(), '', '']
+      ['Admin',    adminHash, ROLES.ADMIN, 'admin@jet-learn.com', true, '', new Date(), '', '', adminSalt],
+      ['Ops_team', opsHash,   ROLES.USER,  'ops@jet-learn.com',   true, '', new Date(), '', '', opsSalt]
     ];
 
-    sheet.getRange(sheet.getLastRow() + 1, 1, defaultUsers.length, 9).setValues(defaultUsers);
-    Logger.log('Default users created');
-
+    sheet.getRange(sheet.getLastRow() + 1, 1, defaultUsers.length, 10).setValues(defaultUsers);
     delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
+
+    // Temp passwords logged ONCE for first login — delete these two lines after setup
+    Logger.log('[SETUP] Admin temp password: '    + adminPass);
+    Logger.log('[SETUP] Ops_team temp password: ' + opsPass);
+
+    return { success: true };
 
   } catch (error) {
     Logger.log('Error creating default users: ' + error.message);
@@ -199,11 +343,10 @@ function requestPasswordReset(email) {
 
     sheet.getRange(userSheetRowIndex, tokenCol + 1).setValue(token);
     sheet.getRange(userSheetRowIndex, expiryCol + 1).setValue(expiry);
-    Logger.log(`Generated token for ${email}: ${token}, expires: ${expiry.toLocaleString()}`);
-
+    Logger.log('Generated reset token for: ' + _maskValue(email) + ', expires: ' + expiry.toLocaleString());
     const webAppUrl = ScriptApp.getService().getUrl();
     const resetUrl = `${webAppUrl}?resetToken=${token}`;
-    Logger.log('Generated reset URL: ' + resetUrl);
+    Logger.log('Generated reset URL for: ' + _maskValue(email));
 
     const username = data[userRowDataIndex][usernameCol];
 
@@ -237,24 +380,23 @@ function requestPasswordReset(email) {
 }
 
 function resetPassword(token, newPassword) {
-  Logger.log('resetPassword called with token: ' + token);
+  Logger.log('resetPassword called with token: ' + token.substring(0, 8) + '...');
   try {
     const sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
     const data = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
 
     if (data.length < 1) {
-        Logger.log("User Profiles sheet is empty or does not have headers. Cannot process password reset.");
-        return { success: false, message: "Server configuration error: User profiles not set up." };
+      return { success: false, message: 'Server configuration error: User profiles not set up.' };
     }
 
     const headers = data[0].map(h => h.toLowerCase().replace(/\s/g, ''));
-    const tokenCol = headers.indexOf('resettoken');
-    const expiryCol = headers.indexOf('tokenexpiry');
+    const tokenCol    = headers.indexOf('resettoken');
+    const expiryCol   = headers.indexOf('tokenexpiry');
     const passwordCol = headers.indexOf('password');
+    const saltCol     = headers.indexOf('passwordsalt');
 
     if (tokenCol === -1 || expiryCol === -1 || passwordCol === -1) {
-      Logger.log("User Profiles sheet missing one or more required columns for password reset (ResetToken, TokenExpiry, Password).");
-      return { success: false, message: "Server configuration error: Required columns for password reset not found. Please check 'User Profiles' sheet headers." };
+      return { success: false, message: 'Server configuration error: Required columns not found.' };
     }
 
     let userRowDataIndex = -1;
@@ -266,45 +408,44 @@ function resetPassword(token, newPassword) {
     }
 
     if (userRowDataIndex === -1) {
-      Logger.log('Invalid or non-existent reset token provided: ' + token);
       return { success: false, message: 'Invalid or expired reset token.' };
     }
 
     const userSheetRowIndex = userRowDataIndex + 1;
-
     const expiryDate = new Date(data[userRowDataIndex][expiryCol]);
+
     if (isNaN(expiryDate.getTime())) {
-        Logger.log(`Invalid expiry date for token ${token}: ${data[userRowDataIndex][expiryCol]}`);
-        return { success: false, message: 'Invalid token expiry date. Please request a new link.' };
+      return { success: false, message: 'Invalid token expiry. Please request a new link.' };
     }
 
     if (expiryDate < new Date()) {
-      Logger.log(`Token ${token} has expired.`);
       sheet.getRange(userSheetRowIndex, tokenCol + 1).setValue('');
       sheet.getRange(userSheetRowIndex, expiryCol + 1).setValue('');
-      delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
+      delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
       return { success: false, message: 'Password reset token has expired.' };
     }
 
     if (!newPassword || newPassword.length < 6) {
-        return { success: false, message: 'New password must be at least 6 characters long.' };
+      return { success: false, message: 'New password must be at least 6 characters long.' };
     }
 
-    sheet.getRange(userSheetRowIndex, passwordCol + 1).setValue(newPassword);
-    Logger.log(`Password updated for user at row ${userSheetRowIndex}.`);
+    // Hash the new password
+    var salt = _generateSalt();
+    var hash = _hashPassword(newPassword, salt);
 
+    sheet.getRange(userSheetRowIndex, passwordCol + 1).setValue(hash);
+    if (saltCol > -1) sheet.getRange(userSheetRowIndex, saltCol + 1).setValue(salt);
+
+    // Invalidate token
     sheet.getRange(userSheetRowIndex, tokenCol + 1).setValue('');
     sheet.getRange(userSheetRowIndex, expiryCol + 1).setValue('');
-    Logger.log(`Token ${token} invalidated after use.`);
 
-    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
-
+    delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
+    Logger.log('resetPassword: password updated for row ' + userSheetRowIndex);
     return { success: true, message: 'Your password has been reset successfully.' };
+
   } catch (error) {
     Logger.log('Error in resetPassword: ' + error.message);
-    if (error.stack) {
-        Logger.log('Stack trace: ' + error.stack);
-    }
     return { success: false, message: 'An error occurred while resetting the password.' };
   }
 }
@@ -425,6 +566,7 @@ function changeOwnPassword(username, newPassword) {
 
     var headers = data[0].map(function(h){ return String(h).toLowerCase().replace(/\s/g,''); });
     var passIdx = headers.indexOf('password');
+    var saltIdx = headers.indexOf('passwordsalt');
     var mcpIdx  = headers.indexOf('mustchangepassword');
 
     var rowIndex = -1;
@@ -433,14 +575,18 @@ function changeOwnPassword(username, newPassword) {
     }
     if (rowIndex === -1) return { success: false, message: 'User not found.' };
 
-    if (passIdx > -1) sheet.getRange(rowIndex, passIdx + 1).setValue(newPassword);
+    // Hash the new password
+    var salt = _generateSalt();
+    var hash = _hashPassword(newPassword, salt);
+
+    if (passIdx > -1) sheet.getRange(rowIndex, passIdx + 1).setValue(hash);
+    if (saltIdx > -1) sheet.getRange(rowIndex, saltIdx + 1).setValue(salt);
     if (mcpIdx  > -1) sheet.getRange(rowIndex, mcpIdx  + 1).setValue(false);
 
-    // Bust cache so next login reads fresh data
     var cacheKey = CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES;
     if (typeof _sheetDataCache !== 'undefined') delete _sheetDataCache[cacheKey];
 
-    Logger.log('[Users] changeOwnPassword: ' + username + ' — password updated, mustChangePassword cleared');
+    Logger.log('[Users] changeOwnPassword: password hashed and updated for ' + username);
     return { success: true, message: 'Password updated successfully.' };
   } catch(e) {
     Logger.log('[Users] changeOwnPassword error: ' + e.message);
@@ -1152,5 +1298,144 @@ function getUserImpactScore(username) {
   } catch(e) {
     Logger.log('[getUserImpactScore] Error: ' + e.message);
     return { success: false, message: e.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PASSWORD HASHING UTILITIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _generateSalt() {
+  return Utilities.base64Encode(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    Utilities.getUuid()
+  ));
+}
+
+function _hashPassword(password, salt) {
+  var combined = password + salt;
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    combined,
+    Utilities.Charset.UTF_8
+  );
+  return digest.map(function(b) {
+    return ('0' + (b & 0xff).toString(16)).slice(-2);
+  }).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE-TIME MIGRATION — run once from GAS editor, then delete
+// Hashes all plaintext passwords in the User Profiles sheet
+// ─────────────────────────────────────────────────────────────────────────────
+function migratePasswordsToHashed() {
+  var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID)
+                .getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+  var data  = sheet.getDataRange().getValues();
+  var headers = data[0].map(function(h) {
+    return String(h).trim().toLowerCase().replace(/\s/g, '');
+  });
+
+  var passIdx = headers.indexOf('password');
+  var saltIdx = headers.indexOf('passwordsalt');
+
+  // Add PasswordSalt column if it doesn't exist
+  if (saltIdx === -1) {
+    var newCol = data[0].length + 1;
+    sheet.getRange(1, newCol).setValue('PasswordSalt');
+    saltIdx = newCol - 1;
+    Logger.log('[Migration] Added PasswordSalt column at col ' + newCol);
+  }
+
+  var migrated = 0;
+  for (var i = 1; i < data.length; i++) {
+    var existingPass = String(data[i][passIdx] || '').trim();
+    var existingSalt = String(data[i][saltIdx] || '').trim();
+
+    // Skip already-hashed rows (64 hex chars = SHA-256 output)
+    if (existingSalt && existingPass.length === 64) {
+      Logger.log('[Migration] Row ' + (i+1) + ' already hashed — skipping');
+      continue;
+    }
+
+    if (!existingPass) continue;
+
+    var salt = _generateSalt();
+    var hash = _hashPassword(existingPass, salt);
+
+    sheet.getRange(i + 1, passIdx + 1).setValue(hash);
+    sheet.getRange(i + 1, saltIdx + 1).setValue(salt);
+    migrated++;
+    Logger.log('[Migration] Row ' + (i+1) + ' hashed.');
+  }
+
+  SpreadsheetApp.flush();
+  delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
+  Logger.log('[Migration] Done. ' + migrated + ' passwords hashed.');
+  return { success: true, migrated: migrated };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRUTE FORCE PROTECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+var MAX_LOGIN_ATTEMPTS = 5;
+var LOCKOUT_DURATION   = 900; // 15 minutes in seconds
+
+function _checkLoginLockout(username) {
+  try {
+    var cache     = CacheService.getScriptCache();
+    var lockKey   = 'LOCKOUT_' + username.toLowerCase();
+    var countKey  = 'ATTEMPTS_' + username.toLowerCase();
+
+    // Check if locked out
+    var locked = cache.get(lockKey);
+    if (locked) {
+      var remaining = Math.ceil(parseInt(locked) - (Date.now() / 1000));
+      return {
+        locked: true,
+        message: 'Account temporarily locked due to too many failed attempts. Try again in 15 minutes.'
+      };
+    }
+
+    return { locked: false };
+  } catch(e) {
+    Logger.log('[Lockout] _checkLoginLockout error: ' + e.message);
+    return { locked: false }; // fail open so a cache error doesn't block all logins
+  }
+}
+
+function _recordFailedAttempt(username) {
+  try {
+    var cache    = CacheService.getScriptCache();
+    var countKey = 'ATTEMPTS_' + username.toLowerCase();
+    var lockKey  = 'LOCKOUT_'  + username.toLowerCase();
+
+    var current  = parseInt(cache.get(countKey) || '0');
+    var newCount = current + 1;
+
+    if (newCount >= MAX_LOGIN_ATTEMPTS) {
+      // Lock the account
+      var expiryTs = String(Math.floor(Date.now() / 1000) + LOCKOUT_DURATION);
+      cache.put(lockKey,  expiryTs, LOCKOUT_DURATION);
+      cache.remove(countKey);
+      Logger.log('[Lockout] Account locked: ' + username + ' after ' + newCount + ' failed attempts');
+    } else {
+      // Increment counter — expires after 15 min automatically
+      cache.put(countKey, String(newCount), LOCKOUT_DURATION);
+      Logger.log('[Lockout] Failed attempt ' + newCount + '/' + MAX_LOGIN_ATTEMPTS + ' for: ' + username);
+    }
+  } catch(e) {
+    Logger.log('[Lockout] _recordFailedAttempt error: ' + e.message);
+  }
+}
+
+function _clearFailedAttempts(username) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove('ATTEMPTS_' + username.toLowerCase());
+    cache.remove('LOCKOUT_'  + username.toLowerCase());
+  } catch(e) {
+    Logger.log('[Lockout] _clearFailedAttempts error: ' + e.message);
   }
 }

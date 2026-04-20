@@ -10,7 +10,6 @@ const CONFIG = {
   AUDIT_SHEET_ID:   '1iNrejNX3HA01UqYEch94HuKLQCffSPofB8KbD4D9sI4',
   APP_DATA_SHEET_ID: '1XxC8Y0sWkBqoOa0Ntw6zhd5EYXTvaTAN4XhIH1hOwDE',
   DRIVE_FOLDER_ID: '1K-Zb9BO2dm_dPg2AWTDT5t-ghkPoRNSW', 
-  HUBSPOT_API_KEY: 'pat-na1-840cfb1a-acb3-45d6-8b0d-31f8c3f7cb34', 
   CLASS_SCHEDULE_CALENDAR_ID: 'hello@jet-learn.com',
   EXCHANGE_RATE_API_URL: 'https://v6.exchangerate-api.com/v6/YOUR_API_KEY/latest/EUR', // Ensure this is set if using live rates
 
@@ -26,8 +25,8 @@ const CONFIG = {
     COURSE_HS_DATA: 'Course HS values',
     HS_USER_DATA: 'HS User Values',
     PERSONA_DATA: 'Main Sheet',
-    ATHENA_CPRS:  'CPR',   // tab in Athena spreadsheet (1EodMl-ls6hJe7ONOp4Yyt5r901J4d5PtjgF5iXeYDk8)
-    ATHENA_PRMS:  'PRM'    // tab in Athena spreadsheet
+    ATHENA_CPRS:  'CPR',   
+    ATHENA_PRMS:  'PRM' 
   },
   // Sheets that live in JetLearn App Data spreadsheet (logs that grow over time)
   APP_DATA_SHEETS: {
@@ -167,7 +166,12 @@ function doGet(e) {
 
   } catch (error) {
     Logger.log('Error in doGet: ' + error.message);
-    return HtmlService.createHtmlOutput('<h1>Error loading application: ' + error.message + '</h1>');
+      return HtmlService.createHtmlOutput(
+            '<div style="font-family:sans-serif;padding:40px;text-align:center;">' +
+            '<h2 style="color:#c0392b;">Something went wrong</h2>' +
+            '<p style="color:#555;">Please try refreshing the page. If the problem persists, contact your system administrator.</p>' +
+            '</div>'
+    );
   }
 }
 
@@ -388,7 +392,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "481";
+const APP_VERSION = "513";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -453,62 +457,12 @@ function setupCheckRepliesTrigger() {
   Logger.log('checkReplies trigger set up successfully — runs every 2 hours.');
 }
 
-function debugCourseMatch() {
-  var data = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
-  // Find the real header row (same logic as main code)
-  var tcHeaderIdx = 0;
-  for (var hi = 0; hi < Math.min(data.length, 10); hi++) {
-    if (String(data[hi][0]).trim().toLowerCase() === 'teacher') { tcHeaderIdx = hi; break; }
-  }
-  var headers = data[tcHeaderIdx];
-  data.slice(tcHeaderIdx + 1).forEach(function(row) {
-    var name = String(row[0] || '').trim().toLowerCase();
-    if (name.indexOf('shweta') > -1 || name.indexOf('simleen') > -1) {
-      Logger.log('=== ' + row[0] + ' ===');
-      for (var i = 4; i < headers.length; i++) {
-        var course = String(headers[i] || '').trim();
-        var prog = String(row[i] || '').trim();
-        if (course) Logger.log('  ' + course + ' = ' + (prog || 'blank'));
-      }
-    }
-  });
-}
 
-function debugCourseLabel() {
-  // Check what the HubSpot ticket's current_course__t_ internal value maps to
-  var data = _getCachedSheetData(CONFIG.SHEETS.COURSE_HS_DATA);
-  Logger.log('COURSE_HS_DATA rows: ' + data.length);
-  for (var i = 1; i < data.length; i++) {
-    var internal = String(data[i][0] || '').trim();
-    var label = String(data[i][1] || '').trim();
-    if (label.toLowerCase().indexOf('scratch') > -1 || label.toLowerCase().indexOf('game') > -1) {
-      Logger.log('internal: ' + internal + ' → label: ' + label);
-    }
-  }
-}
 
 /**
  * ONE-TIME TEST — Run from Apps Script editor to verify HubSpot task creation.
  * Creates a test upskilling task assigned to sourav.pal@jet-learn.com on deal JL39611449152C2.
  */
-function testCreateUpskillTask() {
-  var jlid          = 'JL39611449152C2';
-  var teacherName   = 'Demo Teacher';
-  // Pass your HubSpot Record ID from the HS User Values sheet directly
-  var tpManagerHsId = '594932888'; // Sourav Pal
-  var gapCourses    = ['Python 2.0: Beyond the Basics', 'Python Game Developer', 'Pro Game Developer in Python'];
-
-  // Fetch deal to get dealId and learner name
-  var hsResult    = fetchHubspotByJlid(jlid);
-  var dealId      = (hsResult.success && hsResult.data) ? hsResult.data.dealId      : '';
-  var learnerName = (hsResult.success && hsResult.data) ? hsResult.data.learnerName : 'Test Learner';
-
-  Logger.log('[testCreateUpskillTask] dealId=' + dealId + ', learner=' + learnerName + ', ownerId=' + tpManagerHsId);
-
-  createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsId, gapCourses, dealId);
-
-  Logger.log('[testCreateUpskillTask] Done. Check HubSpot tasks.');
-}
 
 function clearOldHiddenTeachers() {
   PropertiesService.getScriptProperties().deleteProperty('HIDDEN_TEACHERS');
@@ -562,29 +516,6 @@ function setupAppDataSpreadsheet() {
   return id;
 }
 
-function findFormGuid() {
-  var result = getMigrationFormFields();
-  Logger.log(JSON.stringify(result));
-}
-
-
-function diagnoseCourseSheet() {
-  var ss = SpreadsheetApp.openById(CONFIG.MIGRATION_SHEET_ID);
-  var cn = ss.getSheetByName('Course Name');
-  Logger.log('Course Name sheet exists: ' + !!cn);
-  if (cn) {
-    var data = cn.getDataRange().getValues();
-    Logger.log('Rows: ' + data.length);
-    Logger.log('First 5 rows: ' + JSON.stringify(data.slice(0,5)));
-  }
-  var tc = ss.getSheetByName('Teacher Courses');
-  Logger.log('Teacher Courses exists: ' + !!tc);
-  if (tc) {
-    var tcData = tc.getRange(1,1,3,10).getValues();
-    Logger.log('Teacher Courses first 3 rows x 10 cols: ' + JSON.stringify(tcData));
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // doPost — Slack Interactivity callback handler
 // Receives interactive payloads from Slack (button clicks, modal submits)
@@ -596,6 +527,10 @@ function diagnoseCourseSheet() {
 // ─────────────────────────────────────────────────────────────────────
 function doPost(e) {
   try {
+     // Verify this request genuinely came from Slack
+    if (!_verifySlackSignature(e)) {
+      return _slackAck('', false);
+    }
     // Slack sends interactive payloads as application/x-www-form-urlencoded
     // with a single field called "payload" containing a URL-encoded JSON string.
     var rawPayload = '';
@@ -774,4 +709,55 @@ function _slackAck(body, isJson) {
     ? ContentService.MimeType.JSON
     : ContentService.MimeType.TEXT;
   return ContentService.createTextOutput(body || '').setMimeType(mime);
+}
+
+function _verifySlackSignature(e) {
+  try {
+    var secret = PropertiesService.getScriptProperties()
+                   .getProperty('SLACK_SIGNING_SECRET');
+    if (!secret) {
+      Logger.log('[Slack] SLACK_SIGNING_SECRET not set — rejecting request');
+      return false;
+    }
+
+    var timestamp  = e.parameter['X-Slack-Request-Timestamp'] ||
+                     (e.headers && e.headers['X-Slack-Request-Timestamp']) || '';
+    var sigHeader  = e.parameter['X-Slack-Signature'] ||
+                     (e.headers && e.headers['X-Slack-Signature']) || '';
+
+    if (!timestamp || !sigHeader) {
+      Logger.log('[Slack] Missing timestamp or signature header');
+      return false;
+    }
+
+    // Reject requests older than 5 minutes — prevents replay attacks
+    var now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - parseInt(timestamp)) > 300) {
+      Logger.log('[Slack] Request timestamp too old — possible replay attack');
+      return false;
+    }
+
+    // Reconstruct the base string Slack signs
+    var rawBody = e.postData ? e.postData.contents : '';
+    var baseString = 'v0:' + timestamp + ':' + rawBody;
+
+    // Compute HMAC-SHA256
+    var computedBytes = Utilities.computeHmacSha256Signature(baseString, secret);
+    var computedHex   = computedBytes.map(function(b) {
+      return ('0' + (b & 0xff).toString(16)).slice(-2);
+    }).join('');
+    var computedSig = 'v0=' + computedHex;
+
+    if (computedSig !== sigHeader) {
+      Logger.log('[Slack] Signature mismatch — request rejected');
+      return false;
+    }
+
+    Logger.log('[Slack] Signature verified OK');
+    return true;
+
+  } catch(e) {
+    Logger.log('[Slack] _verifySlackSignature error: ' + e.message);
+    return false;
+  }
 }

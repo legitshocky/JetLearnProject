@@ -389,3 +389,14 @@ function convertCetToLocal(timeStr, targetTzString) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SAFE LOGGING — never logs sensitive values in full
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _maskValue(value, visibleChars) {
+  if (!value) return '[empty]';
+  var str = String(value);
+  var show = visibleChars || 4;
+  if (str.length <= show) return '****';
+  return str.substring(0, show) + '...[masked]';
+}
