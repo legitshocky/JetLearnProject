@@ -7768,6 +7768,74 @@ document.addEventListener('DOMContentLoaded', () => {
       "**Certificate Center — Pool Architecture**: Bulk certificate generation now uses a 3-copy pool (one per slide type) instead of N copies, eliminating Drive API rate limiting. PDF export switched from UrlFetchApp to DriveApp.getAs() to prevent bandwidth quota errors.",
       "**Certificate Center — Resend Failed**: Failed certificates in the log now have checkboxes. Select any failed certs and click Resend Selected to retry them in bulk."
     ],
+    'V51': [
+      "**Kit Tracking Dashboard**: New Kit Tracking page with KPI strip (Total / Delivered / Awaiting / Not Received / Overdue / Escalated), filterable table, row expand for details, and inline Edit button.",
+      "**Kit Follow-up Automation**: Daily 8am trigger sends WATI follow-up to parents of overdue kits. WATI webhook auto-fills Delivery Date and updates HubSpot kit status on 'Kit Received' reply.",
+      "**Fuzzy Text Matching**: Free-text parent replies (e.g. 'received it', 'haven't got it') are fuzzy-matched to kit button responses — no button tap required.",
+      "**Manual Kit Edit**: Inline Edit button on every kit row — set Delivery Date, response, JLID manually. Saving 'Kit Received' manually also updates HubSpot kit status.",
+      "**Send Follow-up Button**: Per-row button to manually trigger WATI follow-up with JLID auto-lookup fallback."
+    ],
+    'V50': [
+      "**Course Planner Page**: New sidebar page that ingests Athena CPRS + PRMS CSV data to predict learner course completions.",
+      "**Completion Timeline**: Computes sessions done, class frequency (last 28 days), classes left, and projected completion date per learner.",
+      "**Alert Levels**: 🔴 Critical (≤4 weeks + migration needed), 🟡 Warning (≤6 weeks), 🟢 OK — sidebar badge shows critical count on every page load.",
+      "**Smart Migration Trigger**: One-click trigger searches matching teachers, pre-fills top 3 matches, and creates a HubSpot ticket. Critical learners show CLS Approval Required warning.",
+      "**HubSpot Course History**: Full course journey pulled from HubSpot property history (Fundamentals → Edublocks → Game Dev → Python 2.0) — fixes courseNumberWithTeacher showing wrong ordinal."
+    ],
+    'V49': [
+      "**Certificate Center**: New bulk certificate generation page — select learner and courses, generate PDFs from Google Slides template, email to parent.",
+      "**HubSpot Deal Note**: After sending, a note is auto-written to the learner's HubSpot deal listing all certificates sent with Drive links.",
+      "**Certificate Log**: Every send is logged with learner, courses, status (Sent / Failed), date, and sent-by."
+    ],
+    'V48': [
+      "**Security Hardening**: Strengthened authentication across all forms — session validation tightened, input sanitisation improved, XSS vectors closed.",
+      "**Force Password Reset**: First-time users and reset-link recipients are forced to set a new password before accessing the dashboard.",
+      "**Session Timeout**: Inactivity logout banner shown on login page when session expires."
+    ],
+    'V47': [
+      "**MigrationSheetSync**: Daily pipeline syncs HubSpot migration ticket data into a Google Sheet for reporting and audit trails.",
+      "**Learner Migration Center**: Dedicated page to view and manage all active migration tickets with status, teacher, reason, and HubSpot link."
+    ],
+    'V46': [
+      "**Dashboard Bell Notification**: Bell icon in dashboard header shows unread system alerts.",
+      "**AI Action Center Removed**: Streamlined dashboard by removing the AI Action Center widget — replaced by dedicated page-level AI tools.",
+      "**Dashboard KPI Fix**: Resolved KPI cards not loading due to missing getNewDashboardData call."
+    ],
+    'V45': [
+      "**Teacher Persona — Course Detection Fix**: RANGES.TEACHER_COURSES widened to A1:ZZ — courses start at column E (index 4) so the old A2:D range always produced an empty course map, causing 0 results.",
+      "**Relaxed Fallback Search**: If no teachers pass the strict ≥71% upskill filter, a relaxed fallback (≥51%) runs automatically so results are never empty.",
+      "**Teacher Browse Grid**: 3-per-row teacher cards with pagination and page size selector."
+    ],
+    'V44': [
+      "**Parallel Calendar Fetching**: All teacher calendars fetched simultaneously via UrlFetchApp.fetchAll() REST batch — significantly faster than sequential CalendarApp calls.",
+      "**Master Calendar Block Fix**: Name-part matching changed from .some() to .every() to prevent false blocks on common surnames (e.g. 'Kaur', 'Mittal').",
+      "**Teacher Email Matching**: JetLearn email from Teacher Data sheet used to match teachers against master calendar guest lists — fixes missing results for some teachers."
+    ],
+    'V43': [
+      "**Persona Card Grid**: Teacher persona results redesigned as a card grid with pagination.",
+      "**Stuck Migrations Modal**: Flags migrations open longer than expected with a dedicated modal view.",
+      "**Teacher Profile Enrichment**: Profile panel now shows course load, age groups, traits, and calendar availability in one view."
+    ],
+    'V42': [
+      "**Migration Intelligence UI Overhaul**: Migration Intel panel redesigned with improved layout, course upskill cards, and override flow.",
+      "**Teacher Persona Results Table**: Redesigned to match reference UI with traits gap score numbers, colour coding, and slot match indicators.",
+      "**Course Name Normalisation**: HubSpot course labels fuzzy-matched to Teacher Courses sheet names — both server-side and in dropdowns."
+    ],
+    'V41': [
+      "**Learner Migration Center V1**: First version of dedicated migration management page — list view, status filters, HubSpot ticket links.",
+      "**Grade & Chunk Fix**: Resolved boundary cleanup issues causing incorrect grade display in reports.",
+      "**Course Detail Redesign**: Course detail panel in Teacher Intelligence Center redesigned for clarity."
+    ],
+    'V40': [
+      "**Teacher Persona 0-Results Fix**: Fixed root cause — course map was always empty due to wrong sheet range. Teacher search now returns correct results.",
+      "**Session Restore on Reload**: Page refresh no longer logs the user out — transient flag distinguishes sheet-read failures from genuine invalid sessions.",
+      "**Future Courses from HubSpot**: future_course_1/2/3 properties fetched from HubSpot migration tickets and auto-populated into Teacher Intelligence Center form."
+    ],
+    'V39': [
+      "**Dashboard Bell Icon**: Bell notification icon added to dashboard header for system alerts.",
+      "**AI Action Center Cleanup**: Removed AI Action Center widget from dashboard to reduce noise — AI tools accessible per page.",
+      "**Stability Fixes**: Resolved dashboard errors on load, improved error boundaries across KPI cards."
+    ],
     'V38': [
       "**Migration Intelligence \u2014 Future Courses Panel**: Migration Intelligence popup now shows a third card listing all 3 future courses from the HubSpot ticket with upskilling status (\u2713 Upskilled / \u2717 Not upskilled) for the selected new teacher.",
       "**Confirm / Override Per Course**: Each future course row has an Override button that opens a dropdown to correct the course if HubSpot data is wrong \u2014 confirmed values are stored and passed through on submission.",
