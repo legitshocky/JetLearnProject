@@ -237,6 +237,9 @@ function initializeSystem() {
         invoiceProductsSheet.appendRow(['Monthly', 149.00, 125.00, 167.00, 13889, 1, 1, 1, 0]); 
     }
 
+    // ── Kit Tracking daily trigger ────────────────────────────────────────
+    setupKitTrackingTrigger();
+
     Logger.log('System initialization completed successfully');
     return { success: true, message: 'System initialized successfully' };
   } catch (error) {
@@ -392,7 +395,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "513";
+const APP_VERSION = "529";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -527,7 +530,79 @@ function setupAppDataSpreadsheet() {
 // ─────────────────────────────────────────────────────────────────────
 function doPost(e) {
   try {
-     // Verify this request genuinely came from Slack
+    // ── WATI webhook (kit delivery button replies) ───────────────────────────
+    // WATI does NOT send Slack's X-Slack-Signature header — handle BEFORE
+    // the Slack signature check so it doesn't get rejected.
+    try {
+      var rawBody = (e.postData && e.postData.contents) ? e.postData.contents : '';
+      if (rawBody && rawBody.indexOf('{') === 0) {
+        var watiPayload = JSON.parse(rawBody);
+        // WATI message webhooks always have eventType + waId
+        if (watiPayload.eventType === 'message' && watiPayload.waId) {
+          var rawText = (watiPayload.text || '').trim();
+          var KIT_BTNS = ['Kit Received', 'Not Received yet', 'Need To check'];
+          var btnText  = rawText;
+
+          // ── Exact button match first ─────────────────────────────────────────
+          if (KIT_BTNS.indexOf(btnText) === -1 && rawText) {
+            // ── Fuzzy / predictive matching ──────────────────────────────────
+            var lower = rawText.toLowerCase();
+
+            // RECEIVED signals
+            var receivedWords  = ['received', 'delivered', 'got it', 'got the', 'have it',
+                                  'arrived', 'yes', 'yep', 'yup', 'confirmed', 'confirm',
+                                  'received it', 'kit received', 'we got', 'i got',
+                                  'thank', 'thanks', 'great', 'perfect', 'awesome'];
+            // NOT RECEIVED signals
+            var notReceivedWords = ['not received', 'not yet', 'haven\'t', 'havent',
+                                    'didn\'t', 'didnt', 'no kit', 'not delivered',
+                                    'still waiting', 'not arrived', 'not got',
+                                    'nothing yet', 'not here', 'not come'];
+            // NEED TO CHECK signals
+            var checkWords = ['check', 'not sure', 'unsure', 'maybe', 'possibly',
+                              'i\'ll check', 'ill check', 'let me check', 'will check',
+                              'need to check', 'checking'];
+
+            // Check NOT RECEIVED first (more specific, avoid false positives)
+            var isNotReceived = notReceivedWords.some(function(w) { return lower.indexOf(w) > -1; });
+            var isCheck       = !isNotReceived && checkWords.some(function(w) { return lower.indexOf(w) > -1; });
+            var isReceived    = !isNotReceived && !isCheck &&
+                                receivedWords.some(function(w) { return lower.indexOf(w) > -1; });
+
+            if (isNotReceived)   btnText = 'Not Received yet';
+            else if (isCheck)    btnText = 'Need To check';
+            else if (isReceived) btnText = 'Kit Received';
+
+            if (btnText !== rawText) {
+              Logger.log('[doPost] WATI fuzzy matched "' + rawText + '" → "' + btnText + '"');
+            } else {
+              Logger.log('[doPost] WATI text unmatched (ignored): "' + rawText + '"');
+            }
+          }
+
+          if (KIT_BTNS.indexOf(btnText) > -1) {
+            Logger.log('[doPost] WATI kit reply queued: ' + btnText + ' from ' + watiPayload.waId);
+            // Queue for async processing — return 200 to WATI immediately (avoid timeout failures)
+            var sc = CacheService.getScriptCache();
+            sc.put('WATI_KIT_LAST', JSON.stringify({ waId: watiPayload.waId, btnText: btnText }), 300);
+            try {
+              ScriptApp.newTrigger('_processWatiKitReply').timeBased().after(5000).create();
+            } catch(te) {
+              // Trigger limit hit — process inline as fallback
+              Logger.log('[doPost] Trigger create failed, processing inline: ' + te.message);
+              handleKitReply(watiPayload.waId, btnText);
+            }
+          }
+          return ContentService.createTextOutput('ok');
+        }
+      }
+    } catch (watiErr) {
+      // Not a WATI payload — fall through to Slack handling
+      Logger.log('[doPost] WATI parse skipped: ' + watiErr.message);
+    }
+
+    // ── Slack interactive webhook ────────────────────────────────────────────
+    // Verify this request genuinely came from Slack
     if (!_verifySlackSignature(e)) {
       return _slackAck('', false);
     }
@@ -544,6 +619,13 @@ function doPost(e) {
 
     var payload = JSON.parse(rawPayload);
     Logger.log('[doPost] Slack payload type: ' + payload.type);
+
+    // ── Allowlist: only process known Slack payload types ────────────
+    var ALLOWED_TYPES = ['block_actions', 'view_submission'];
+    if (ALLOWED_TYPES.indexOf(payload.type) === -1) {
+      Logger.log('[doPost] Rejected unknown payload type: ' + payload.type);
+      return _slackAck('', false);
+    }
 
     // ── Block actions: button clicks ─────────────────────────────────
     if (payload.type === 'block_actions') {
@@ -566,11 +648,13 @@ function doPost(e) {
           text: { type: 'mrkdwn', text: '⏳ *Processing approval for JLID ' + jlid + '...*\nCreating HubSpot ticket. This takes ~1 minute.' }
         }], 'Processing CLS approval...');
 
-        // 2. Store data + fire background trigger
+        // 2. Store data + fire background trigger (UUID key avoids JLID collision on concurrent approvals)
         var scA = CacheService.getScriptCache();
-        scA.put('CLS_APR_PENDING', JSON.stringify({
+        var aprUuid = Utilities.getUuid();
+        scA.put('CLS_APR_PENDING', aprUuid, 600);  // pointer to actual data
+        scA.put('CLS_APR_' + aprUuid, JSON.stringify({
           jlid: jlid, userId: userId, userName: userName, responseUrl: responseUrl
-        }), 300);
+        }), 600);
         try {
           ScriptApp.getProjectTriggers().forEach(function(t) {
             if (t.getHandlerFunction() === '_processPendingCLSApproval') ScriptApp.deleteTrigger(t);
@@ -672,15 +756,63 @@ function _processPendingCLSApproval() {
     });
   } catch(te) {}
 
-  var sc  = CacheService.getScriptCache();
-  var raw = sc.get('CLS_APR_PENDING');
-  if (!raw) { Logger.log('[CLS] _processPendingCLSApproval: no pending data'); return; }
+  var sc    = CacheService.getScriptCache();
+  var uuid  = sc.get('CLS_APR_PENDING');
+  if (!uuid) { Logger.log('[CLS] _processPendingCLSApproval: no pending data'); return; }
+  var raw   = sc.get('CLS_APR_' + uuid);
+  sc.remove('CLS_APR_PENDING');
+  sc.remove('CLS_APR_' + uuid);
+  if (!raw) { Logger.log('[CLS] _processPendingCLSApproval: data expired for uuid ' + uuid); return; }
   var data;
   try { data = JSON.parse(raw); } catch(pe) { return; }
-  sc.remove('CLS_APR_PENDING');
 
   Logger.log('[CLS] _processPendingCLSApproval: ' + data.jlid + ' by ' + data.userName);
   handleCLSMigrationApproval(data.jlid, data.userId, data.userName, data.responseUrl);
+}
+
+// ── Background processor for WATI kit replies ────────────────────────
+// Fires ~5s after doPost returns 200 to WATI — avoids timeout failures.
+function _processWatiKitReply() {
+  // Self-delete this trigger first
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_processWatiKitReply') ScriptApp.deleteTrigger(t);
+    });
+  } catch(e) {}
+
+  var sc = CacheService.getScriptCache();
+  // Scan cache for any queued WATI kit replies
+  // Keys are WATI_KIT_<waId> — we can't enumerate cache keys directly,
+  // so we store a queue index separately.
+  var queueRaw = sc.get('WATI_KIT_QUEUE');
+  var queue = queueRaw ? JSON.parse(queueRaw) : [];
+
+  // Also check if the trigger was fired for a specific waId stored as last
+  var lastRaw = sc.get('WATI_KIT_LAST');
+  if (lastRaw) {
+    try {
+      var last = JSON.parse(lastRaw);
+      if (last.waId && last.btnText) {
+        Logger.log('[_processWatiKitReply] Processing: ' + last.btnText + ' from ' + last.waId);
+        handleKitReply(last.waId, last.btnText);
+        sc.remove('WATI_KIT_LAST');
+      }
+    } catch(e) {
+      Logger.log('[_processWatiKitReply] Parse error: ' + e.message);
+    }
+  }
+
+  queue.forEach(function(item) {
+    try {
+      Logger.log('[_processWatiKitReply] Queue processing: ' + item.btnText + ' from ' + item.waId);
+      handleKitReply(item.waId, item.btnText);
+      sc.remove('WATI_KIT_' + item.waId);
+    } catch(e) {
+      Logger.log('[_processWatiKitReply] Error for ' + item.waId + ': ' + e.message);
+    }
+  });
+
+  if (queue.length > 0) sc.remove('WATI_KIT_QUEUE');
 }
 
 // ── Background processor for Slack decline modal submissions ──────────
@@ -709,6 +841,48 @@ function _slackAck(body, isJson) {
     ? ContentService.MimeType.JSON
     : ContentService.MimeType.TEXT;
   return ContentService.createTextOutput(body || '').setMimeType(mime);
+}
+
+// ── Background processor: HubSpot note + checkbox tick after bulk cert send ──
+function _processPendingCertHS() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_processPendingCertHS') ScriptApp.deleteTrigger(t);
+    });
+  } catch(te) {}
+
+  var sc = CacheService.getScriptCache();
+  // Find any pending cert HS jobs — scan known pattern (jlid unknown here, so use a sentinel key)
+  // We store by jlid — need to iterate. Use a queue key approach.
+  // Queue: CERT_HS_QUEUE stores list of jlids with pending jobs
+  var queueRaw = sc.get('CERT_HS_QUEUE');
+  var queue = [];
+  try { if (queueRaw) queue = JSON.parse(queueRaw); } catch(e) {}
+
+  // Also check if any CERT_HS_PENDING_* was stored without queue (single send)
+  // sendBulkCertificates stores jlid in CERT_HS_QUEUE
+  queue.forEach(function(jlid) {
+    var raw = sc.get('CERT_HS_PENDING_' + jlid);
+    if (!raw) return;
+    sc.remove('CERT_HS_PENDING_' + jlid);
+    try {
+      var d = JSON.parse(raw);
+      var hsToken = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+      if (!hsToken || !d.jlid) return;
+      var dealResult = fetchHubspotByJlid(d.jlid);
+      var dealId = (dealResult && dealResult.success && dealResult.data) ? dealResult.data.dealId : null;
+      if (!dealId) { Logger.log('[CertHS] No dealId for ' + d.jlid); return; }
+      var noteLines = ['📜 Certificates Sent', 'Learner : ' + d.learnerName + ' (' + d.jlid + ')',
+        'Sent to : ' + d.parentEmail, 'Sent by : ' + (d.performedBy || 'System'), 'Courses:'];
+      (d.courses || []).forEach(function(c){ noteLines.push('  • ' + c.name + ' (' + c.year + ')'); });
+      _certCreateDealNote(dealId, noteLines.join('\n'), hsToken);
+      (d.courses || []).forEach(function(c) {
+        if ((d.failed || []).indexOf(c.name) === -1) _certTickCourseSent(dealId, c.name, hsToken);
+      });
+      Logger.log('[CertHS] Done for ' + d.jlid);
+    } catch(je) { Logger.log('[CertHS] Error for ' + jlid + ': ' + je.message); }
+  });
+  sc.remove('CERT_HS_QUEUE');
 }
 
 function _verifySlackSignature(e) {

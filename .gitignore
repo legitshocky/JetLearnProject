@@ -1,0 +1,34 @@
+# ── Credentials & secrets ────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+secrets.json
+credentials.json
+service-account.json
+token.json
+
+# ── clasp auth (contains Google OAuth tokens) ────────────────────────────────
+.clasprc.json
+**/.clasprc.json
+
+# ── clasp project file (contains Script ID) ──────────────────────────────────
+.clasp.json
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Node / npm (if ever used locally) ────────────────────────────────────────
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# ── Editor & IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.sublime-workspace
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/

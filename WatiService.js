@@ -466,11 +466,43 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
 
   } catch (e) {
     Logger.log(`[WATI] Exception: ${e.message}`);
-    throw e; 
+    throw e;
   }
 }
 
+// ── Send free-text session message (within 24hr window after parent reply) ──
+function sendWatiSessionMessage(phoneNumber, messageText) {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var API_ENDPOINT_BASE = (scriptProperties.getProperty('WATI_API_ENDPOINT') || '').trim();
+  var ACCESS_TOKEN      = (scriptProperties.getProperty('WATI_ACCESS_TOKEN')  || '').trim();
 
+  if (!API_ENDPOINT_BASE || !ACCESS_TOKEN) {
+    Logger.log('[WATI] sendWatiSessionMessage: missing config.');
+    return { success: false, message: 'Missing WATI config' };
+  }
+  if (!ACCESS_TOKEN.startsWith('Bearer ')) ACCESS_TOKEN = 'Bearer ' + ACCESS_TOKEN;
+  if (API_ENDPOINT_BASE.endsWith('/')) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
+
+  var cleanPhone = String(phoneNumber).replace(/\D/g, '');
+  var url = API_ENDPOINT_BASE + '/api/v1/sendSessionMessage/' + cleanPhone;
+
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'post',
+      headers: { 'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ messageText: messageText }),
+      muteHttpExceptions: true
+    });
+    var code = resp.getResponseCode();
+    var body = resp.getContentText();
+    Logger.log('[WATI] sendWatiSessionMessage to ' + cleanPhone + ' → HTTP ' + code);
+    if (code === 200) return { success: true };
+    return { success: false, message: 'HTTP ' + code + ': ' + body.substring(0, 200) };
+  } catch (e) {
+    Logger.log('[WATI] sendWatiSessionMessage ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
 
 function processMigrationSubmission(data, sendEmail, sendWhatsapp) {
   const results = { email: 'Skipped', whatsapp: 'Skipped' };

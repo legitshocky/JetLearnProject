@@ -622,7 +622,11 @@ function getLearnerProgressions(forceRefresh) {
       // PRM staleness (days since PRM date)
       var prmStaleDays = prmDate ? Math.floor((today.getTime() - prmDate.getTime()) / 86400000) : null;
 
-      var classesDone   = cprsRows.filter(function(r){ return r.happened; }).length;
+      var happenedRows  = cprsRows.filter(function(r){ return r.happened; });
+      var classesDone   = happenedRows.length;
+      var lastClassDate = happenedRows.reduce(function(max, r) {
+        return (r.date && (!max || r.date.getTime() > max.getTime())) ? r.date : max;
+      }, null);
       var frequency     = _computeFrequency(cprsRows);
       var projectedWeeks = frequency > 0 ? Math.round((classesLeft / frequency) * 10) / 10 : null;
       var projectedDate  = projectedWeeks != null
@@ -807,7 +811,8 @@ function getLearnerProgressions(forceRefresh) {
         courseNumberWithTeacher: courseNumberWithTeacher,
         coursesWithTeacher   : coursesWithTeacher,
         recentCancellations  : recentCancels.length,
-        cancelReasons        : Object.keys(cancelReasonSet)
+        cancelReasons        : Object.keys(cancelReasonSet),
+        lastClassDate        : lastClassDate ? Utilities.formatDate(lastClassDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : null
       });
     });
 
@@ -1161,16 +1166,23 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
     var fc2Val        = nc1 ? _matchCourseToHubspotOption(nc1, fc2Opts) : '';
     var fc3Val        = nc2 ? _matchCourseToHubspotOption(nc2, fc3Opts) : '';
     var tlVal         = _pickMigrationTimeline(learner.projectedWeeks, tlOpts);
+    // timeline_of_form_filled: pick closest to weeks remaining (same logic as migration_timeline)
     var tlfVal        = _pickMigrationTimeline(learner.projectedWeeks, tlfOpts);
+    Logger.log('[LP] tlfOpts (' + tlfOpts.length + '): ' + JSON.stringify(tlfOpts.slice(0,5)));
+    Logger.log('[LP] tlOpts  (' + tlOpts.length  + '): ' + JSON.stringify(tlOpts.slice(0,5)));
+    // pre_migration_last_class_conducted_date__t_ — HubSpot date field expects midnight UTC epoch ms
+    var lastClassEpoch = '';
+    if (learner.lastClassDate) {
+      try { lastClassEpoch = String(new Date(learner.lastClassDate + 'T00:00:00.000Z').getTime()); } catch(de) {}
+    }
+    // new_teacher — top pre-matched teacher
+    var newTeacherVal = (matchedTeachers.length > 0 && matchedTeachers[0].name) ? matchedTeachers[0].name : '';
+    // current_teacher__t_ — HubSpot ticket field for current teacher
+    var curTeacherVal = learner.teacher || '';
 
-    Logger.log('[LP] Enum auto-fill: curCourse=' + curCourseVal + ' fc1=' + fc1Val + ' fc2=' + fc2Val + ' timeline=' + tlVal);
+    Logger.log('[LP] Enum auto-fill: curCourse=' + curCourseVal + ' fc1=' + fc1Val + ' fc2=' + fc2Val
+      + ' tl=' + tlVal + ' tlf=' + tlfVal + ' lastClass=' + lastClassEpoch + ' newTeacher=' + newTeacherVal);
 
-    // Only send text/ID fields on creation to avoid 400 from invalid enum values.
-    // Enum fields (migration_timeline, timeline_of_form_filled, are_you_trained_on_the_next_course_)
-    // and date picker fields (pre_migration_last_class_conducted_date__t_) are omitted here —
-    // CLS will fill them manually, or update via a follow-up PATCH once enum values are confirmed.
-    // Build ticket properties — enum fields auto-filled via HubSpot property API lookup.
-    // Only included when a valid match was found; notes always have the full details as fallback.
     var ticketProps = {
       subject                : subject,
       hs_pipeline            : '66161281',
@@ -1179,26 +1191,50 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
       learner_uid            : jlid,
       reason_of_migration__t_: 'Course Change Teacher Change'
     };
-    if (curCourseVal) ticketProps['current_course__t_']      = curCourseVal;
-    if (fc1Val)       ticketProps['future_course_1']         = fc1Val;
-    if (fc2Val)       ticketProps['future_course_2']         = fc2Val;
-    if (fc3Val)       ticketProps['future_course_3']         = fc3Val;
-    if (tlVal)        ticketProps['migration_timeline']      = tlVal;
-    if (tlfVal)       ticketProps['timeline_of_form_filled'] = tlfVal;
-    var ticketPayload = { properties: ticketProps };
+    if (curCourseVal)   ticketProps['current_course__t_']                      = curCourseVal;
+    if (fc1Val)         ticketProps['future_course_1']                         = fc1Val;
+    if (fc2Val)         ticketProps['future_course_2']                         = fc2Val;
+    if (fc3Val)         ticketProps['future_course_3']                         = fc3Val;
+    if (tlVal)          ticketProps['migration_timeline']                      = tlVal;
+    if (tlfVal)         ticketProps['timeline_of_form_filled']                 = tlfVal;
+    if (lastClassEpoch) ticketProps['pre_migration_last_class_conducted_date__t_'] = lastClassEpoch;
+    if (newTeacherVal)  ticketProps['new_teacher']                             = newTeacherVal;
+    if (curTeacherVal)  ticketProps['current_teacher__t_']                     = curTeacherVal;
+    // ── Ticket creation with auto-retry on field validation errors ───────
+    // If HubSpot returns 400 for a specific field (e.g. enum mismatch, unknown free-text),
+    // parse which field(s) failed, remove them, retry. Up to 3 attempts.
+    var ticketCode, ticketBody, ticketResp;
+    var attempts = 0;
+    while (attempts < 3) {
+      attempts++;
+      ticketResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets', {
+        method : 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ properties: ticketProps }),
+        muteHttpExceptions: true
+      });
+      ticketCode = ticketResp.getResponseCode();
+      ticketBody = ticketResp.getContentText();
+      if (ticketCode === 200 || ticketCode === 201) break;      // success
+      if (ticketCode !== 400) break;                            // non-field error, stop retrying
+      // Parse bad fields from HubSpot error response
+      var badFields = [];
+      try {
+        var errJson = JSON.parse(ticketBody);
+        (errJson.errors || []).forEach(function(e) {
+          var ctx = e.context || {};
+          if (ctx.propertyName) badFields = badFields.concat(ctx.propertyName);
+          // Also catch "fieldName" context key
+          if (ctx.fieldName) badFields = badFields.concat(ctx.fieldName);
+        });
+      } catch(pe) {}
+      if (badFields.length === 0) break;  // can't identify field, stop retrying
+      Logger.log('[LP] Ticket 400 — removing invalid fields: ' + badFields.join(', ') + ' (attempt ' + attempts + ')');
+      badFields.forEach(function(f) { delete ticketProps[f]; });
+    }
 
-    var ticketResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets', {
-      method: 'post',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(ticketPayload),
-      muteHttpExceptions: true
-    });
-
-    var ticketCode = ticketResp.getResponseCode();
-    var ticketBody = ticketResp.getContentText();
     if (ticketCode !== 201 && ticketCode !== 200) {
-      Logger.log('[LP] Ticket creation failed (' + ticketCode + '): ' + ticketBody);
-      // Parse HubSpot error for specific field that failed
+      Logger.log('[LP] Ticket creation failed after ' + attempts + ' attempt(s) (' + ticketCode + '): ' + ticketBody);
       var errMsg = 'HubSpot ticket creation failed (' + ticketCode + ').';
       try {
         var errData = JSON.parse(ticketBody);
@@ -1908,7 +1944,7 @@ function sendCLSMigrationRequest(jlid, triggeredBy) {
 function diagTicket() {
   var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   if (!token) { Logger.log('[DIAG] ❌ HUBSPOT_API_KEY not set'); return; }
-  Logger.log('[DIAG] token starts: ' + token.substring(0, 12));
+  Logger.log('[DIAG] HUBSPOT_API_KEY configured: yes');
 
   // Step 1: minimal payload — just required fields
   var payload1 = {
@@ -1967,7 +2003,7 @@ function diagSlack() {
   var props   = PropertiesService.getScriptProperties().getProperties();
   var token   = props['SLACK_BOT_TOKEN']   || '';
   var channel = props['SLACK_CLS_CHANNEL'] || '';
-  Logger.log('[DIAG] SLACK_BOT_TOKEN set: ' + (token.length > 0) + ' (length=' + token.length + ', starts=' + token.substring(0,10) + ')');
+  Logger.log('[DIAG] SLACK_BOT_TOKEN configured: ' + (token.length > 0));
   Logger.log('[DIAG] SLACK_CLS_CHANNEL: "' + channel + '"');
   if (!token) { Logger.log('[DIAG] ❌ No token — set SLACK_BOT_TOKEN in Script Properties'); return; }
   // Test: post a simple message

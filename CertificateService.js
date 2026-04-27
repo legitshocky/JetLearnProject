@@ -104,6 +104,53 @@ function _logCertificate(jlid, learnerName, courseName, year, parentEmail, sentB
   }
 }
 
+// ── Get Certificate Log (for live log on dashboard) ──────────────────
+/**
+ * Returns last N rows from Certificate Log sheet.
+ * Groups by date so UI can show "Today", "Yesterday", etc.
+ */
+function getCertificateLog(limit) {
+  try {
+    limit = limit || 50;
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.CERTIFICATE_LOG);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, rows: [], todayCount: 0 };
+
+    var startRow = Math.max(2, lastRow - limit + 1);
+    var numRows  = lastRow - startRow + 1;
+    var data     = sheet.getRange(startRow, 1, numRows, 10).getValues();
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var todayCount = 0;
+
+    // Reverse so newest first
+    var rows = data.reverse().map(function(r) {
+      var ts = r[0] ? new Date(r[0]) : null;
+      var isToday = ts && ts >= today;
+      if (isToday) todayCount++;
+      return {
+        timestamp:   ts ? Utilities.formatDate(ts, Session.getScriptTimeZone(), 'dd MMM yyyy HH:mm') : '',
+        jlid:        String(r[1] || ''),
+        learnerName: String(r[2] || ''),
+        course:      String(r[3] || ''),
+        year:        String(r[4] || ''),
+        parentEmail: String(r[5] || ''),
+        sentBy:      String(r[6] || ''),
+        status:      String(r[7] || 'Sent'),
+        driveUrl:    String(r[8] || ''),
+        notes:       String(r[9] || ''),
+        isToday:     isToday
+      };
+    });
+
+    return { success: true, rows: rows, todayCount: todayCount };
+  } catch(e) {
+    Logger.log('[Cert] getCertificateLog error: ' + e.message);
+    return { success: false, message: e.message, rows: [], todayCount: 0 };
+  }
+}
+
 // ── Verify placeholders exist on all 3 slides (run once to check) ────
 function verifyCertificateTemplate() {
   try {
@@ -162,8 +209,21 @@ function generateCertificatePDF(learnerName, courseName, yearOverride) {
 
     // 2. Copy the ENTIRE template (preserves page dimensions / custom size)
     //    then remove every slide except the one we need
-    var tempFile = DriveApp.getFileById(CERT_TEMPLATE_ID)
-                           .makeCopy('_cert_temp_' + Date.now());
+    //    Drive API can be flaky — retry up to 3 times
+    var tempFile = null;
+    var copyErr  = null;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) Utilities.sleep(2000);
+        tempFile = DriveApp.getFileById(CERT_TEMPLATE_ID).makeCopy('_cert_temp_' + Date.now());
+        copyErr  = null;
+        break;
+      } catch(ce) {
+        copyErr = ce;
+        Logger.log('[Cert] makeCopy attempt ' + (attempt + 1) + ' failed: ' + ce.message);
+      }
+    }
+    if (!tempFile) throw new Error('Drive copy failed after 3 attempts: ' + (copyErr ? copyErr.message : 'unknown'));
     tempPresId   = tempFile.getId();
     var tempPres = SlidesApp.openById(tempPresId);
 
@@ -207,20 +267,9 @@ function generateCertificatePDF(learnerName, courseName, yearOverride) {
 
     tempPres.saveAndClose();
 
-    // 4. Export as PDF via Drive API
-    var token    = ScriptApp.getOAuthToken();
-    var exportUrl = 'https://docs.google.com/presentation/d/' + tempPresId + '/export/pdf';
-    var response  = UrlFetchApp.fetch(exportUrl, {
-      headers: { Authorization: 'Bearer ' + token },
-      muteHttpExceptions: true
-    });
-
-    if (response.getResponseCode() !== 200) {
-      throw new Error('PDF export failed: HTTP ' + response.getResponseCode());
-    }
-
+    // 4. Export as PDF via DriveApp.getAs() — avoids UrlFetch bandwidth quota
     var fileName = learnerName.replace(/\s+/g, '_') + '_' + courseName.replace(/\s+/g, '_') + '_Certificate.pdf';
-    var pdfBlob  = response.getBlob().setName(fileName);
+    var pdfBlob  = DriveApp.getFileById(tempPresId).getAs('application/pdf').setName(fileName);
 
     // Save to Drive folder
     var savedFile = null;
@@ -242,8 +291,9 @@ function generateCertificatePDF(learnerName, courseName, yearOverride) {
     return pdfBlob;
 
   } catch(e) {
-    Logger.log('[Cert] generateCertificatePDF error: ' + e.message);
-    return null;
+    Logger.log('[Cert] generateCertificatePDF ERROR for "' + courseName + '": ' + e.message);
+    // Re-throw so caller can surface actual error message (not just null)
+    throw new Error(e.message);
   } finally {
     // Always clean up temp presentation
     if (tempPresId) {
@@ -425,6 +475,28 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
     } catch(ae) {}
 
     Logger.log('[Cert] Certificate sent to ' + parentEmail);
+
+    // 5. HubSpot: note on deal + tick checkbox — via background trigger (avoids timeout)
+    try {
+      if (jlid) {
+        var sc2 = CacheService.getScriptCache();
+        var singlePayload = { jlid: jlid, learnerName: learnerName, parentEmail: parentEmail,
+          performedBy: performedBy || '',
+          courses: [{ name: courseName, year: new Date().getFullYear() }], failed: [] };
+        sc2.put('CERT_HS_PENDING_' + jlid, JSON.stringify(singlePayload), 600);
+        var qRaw2 = sc2.get('CERT_HS_QUEUE');
+        var q2 = []; try { if (qRaw2) q2 = JSON.parse(qRaw2); } catch(e) {}
+        if (q2.indexOf(jlid) === -1) q2.push(jlid);
+        sc2.put('CERT_HS_QUEUE', JSON.stringify(q2), 600);
+        ScriptApp.getProjectTriggers().forEach(function(t) {
+          if (t.getHandlerFunction() === '_processPendingCertHS') ScriptApp.deleteTrigger(t);
+        });
+        ScriptApp.newTrigger('_processPendingCertHS').timeBased().after(5000).create();
+      }
+    } catch(hse) {
+      Logger.log('[Cert] Single cert HS trigger (non-fatal): ' + hse.message);
+    }
+
     return {
       success  : true,
       message  : 'Certificate sent to ' + parentEmail,
@@ -435,6 +507,100 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
   } catch(e) {
     Logger.log('[Cert] sendCourseCertificateEmail error: ' + e.message);
     return { success: false, message: e.message };
+  }
+}
+
+// ── HubSpot: create a note engagement on a deal ──────────────────────
+// Uses legacy engagements v1 API — simpler, reliable, no association type guessing.
+function _certCreateDealNote(dealId, noteBody, token) {
+  try {
+    // CRM v3 Notes API — associates directly with deal only (not tickets)
+    var payload = {
+      properties: {
+        hs_note_body : noteBody,
+        hs_timestamp : String(new Date().getTime())
+      },
+      associations: [{
+        to   : { id: Number(dealId) },
+        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]
+      }]
+    };
+    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    Logger.log('[Cert] Deal note (v3) → ' + resp.getResponseCode() + ' ' + resp.getContentText().substring(0, 200));
+  } catch(e) {
+    Logger.log('[Cert] _certCreateDealNote error: ' + e.message);
+  }
+}
+
+// ── HubSpot: tick course_completion_certificates_sent_to_the_parent ──
+function _certTickCourseSent(dealId, courseName, token) {
+  try {
+    var PROP = 'course_completion_certificates_sent_to_the_parent';
+
+    // 1. Fetch current ticked values
+    var getResp = UrlFetchApp.fetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=' + PROP,
+      { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    var currentVal = '';
+    if (getResp.getResponseCode() === 200) {
+      try { currentVal = JSON.parse(getResp.getContentText()).properties[PROP] || ''; } catch(pe) {}
+    }
+
+    // 2. Find matching option value from HubSpot property definition
+    var optionVal = courseName; // fallback: raw name
+    try {
+      var propResp = UrlFetchApp.fetch(
+        'https://api.hubapi.com/crm/v3/properties/deals/' + PROP,
+        { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+      );
+      if (propResp.getResponseCode() === 200) {
+        var options = JSON.parse(propResp.getContentText()).options || [];
+        var norm = function(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); };
+        var cn = norm(courseName);
+        // Exact value match → label match → substring match
+        var matched = '';
+        for (var i = 0; i < options.length; i++) {
+          if (norm(options[i].value) === cn) { matched = options[i].value; break; }
+        }
+        if (!matched) {
+          for (var i = 0; i < options.length; i++) {
+            if (norm(options[i].label) === cn) { matched = options[i].value; break; }
+          }
+        }
+        if (!matched) {
+          var bestLen = 0;
+          options.forEach(function(o) {
+            var ol = norm(o.label);
+            if ((cn.indexOf(ol) > -1 || ol.indexOf(cn) > -1) && ol.length > bestLen) {
+              matched = o.value; bestLen = ol.length;
+            }
+          });
+        }
+        if (matched) optionVal = matched;
+      }
+    } catch(oe) { Logger.log('[Cert] option fetch warn: ' + oe.message); }
+
+    // 3. Append to existing semicolon-separated list (no duplicates)
+    var existing = currentVal ? currentVal.split(';').map(function(s){ return s.trim(); }).filter(Boolean) : [];
+    if (existing.indexOf(optionVal) === -1) existing.push(optionVal);
+    var newVal = existing.join(';');
+
+    // 4. PATCH deal
+    var patchResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+      method: 'patch',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ properties: { [PROP]: newVal } }),
+      muteHttpExceptions: true
+    });
+    Logger.log('[Cert] Tick cert checkbox → ' + patchResp.getResponseCode() + ' val=' + newVal);
+  } catch(e) {
+    Logger.log('[Cert] _certTickCourseSent error: ' + e.message);
   }
 }
 
@@ -511,6 +677,164 @@ function getLearnerCourseHistory(query) {
   }
 }
 
+// ── Pool-based bulk PDF generation ───────────────────────────────────
+/**
+ * Generates N certificate PDFs using 3 shared pool copies (one per slide type).
+ * Only 3 makeCopy calls regardless of how many certs — eliminates Drive rate limits.
+ *
+ * @param {string} learnerName
+ * @param {Array<{name:string, year:number}>} courses
+ * @returns {Array<{name, year, blob, driveUrl, error}>}
+ */
+function _generateBulkCertPDFs(learnerName, courses) {
+  var SLIDE_NAMES = ['Foundation', 'Maths', 'Pro'];
+  var poolIds     = {};   // slideIndex → fileId
+  var origSizes   = {};   // 'si:placeholder' → fontSize (for reset)
+
+  try {
+    // ── Step 1: Read original font sizes from template (once) ──────────
+    try {
+      var tmpl = SlidesApp.openById(CERT_TEMPLATE_ID);
+      [0, 1, 2].forEach(function(si) {
+        var slide = tmpl.getSlides()[si];
+        if (!slide) return;
+        slide.getShapes().forEach(function(shape) {
+          try {
+            var txt = shape.getText().asString().trim();
+            if (txt === '{{learnerName}}' || txt === '{{courseName}}' || txt === '{{year}}') {
+              var sz = shape.getText().getTextStyle().getFontSize();
+              if (sz) origSizes[si + ':' + txt] = sz;
+            }
+          } catch(e) {}
+        });
+      });
+    } catch(re) {
+      Logger.log('[Cert] origSizes read warn: ' + re.message);
+    }
+
+    // ── Step 2: Make 3 slim pool copies (one per slide type), with retry ─
+    [0, 1, 2].forEach(function(si) {
+      for (var a = 0; a < 4; a++) {
+        try {
+          if (a > 0) Utilities.sleep(3000);
+          var copy  = DriveApp.getFileById(CERT_TEMPLATE_ID).makeCopy('_cert_pool_' + SLIDE_NAMES[si]);
+          var pres  = SlidesApp.openById(copy.getId());
+          var slides = pres.getSlides();
+          for (var s = slides.length - 1; s >= 0; s--) {
+            if (s !== si) slides[s].remove();
+          }
+          pres.saveAndClose();
+          poolIds[si] = copy.getId();
+          Logger.log('[Cert] Pool ready: ' + SLIDE_NAMES[si] + ' (' + copy.getId() + ')');
+          break;
+        } catch(ce) {
+          Logger.log('[Cert] Pool ' + SLIDE_NAMES[si] + ' attempt ' + (a + 1) + ': ' + ce.message);
+          if (a === 3) Logger.log('[Cert] Pool ' + SLIDE_NAMES[si] + ' UNAVAILABLE after 4 attempts');
+        }
+      }
+    });
+
+    // ── Step 3: Generate each cert using its pool copy ──────────────────
+    var results = [];
+
+    courses.forEach(function(c, idx) {
+      if (idx > 0) Utilities.sleep(1500);
+      var result = { name: c.name, year: c.year, blob: null, driveUrl: null, error: null };
+
+      try {
+        var si     = _getCertSlideIndex(c.name);
+        var poolId = poolIds[si];
+        if (!poolId) throw new Error('Pool unavailable for slide type ' + SLIDE_NAMES[si]);
+
+        var year     = c.year ? String(c.year) : String(new Date().getFullYear());
+        var fileName = learnerName.replace(/\s+/g,'_') + '_' + c.name.replace(/\s+/g,'_') + '_Certificate.pdf';
+        Logger.log('[Cert] → ' + c.name + ' (' + year + ') pool=' + SLIDE_NAMES[si]);
+
+        // Open pool, fill
+        var pres  = SlidesApp.openById(poolId);
+        var slide = pres.getSlides()[0];
+        slide.replaceAllText('{{learnerName}}', learnerName);
+        slide.replaceAllText('{{courseName}}',  c.name);
+        slide.replaceAllText('{{year}}',        year);
+
+        // Font scaling
+        slide.getShapes().forEach(function(shape) {
+          try {
+            var txt = shape.getText().asString().trim();
+            if (txt === learnerName) {
+              var ns = learnerName.length <= 14 ? 36 : learnerName.length <= 20 ? 32 :
+                       learnerName.length <= 26 ? 28 : 24;
+              shape.getText().getTextStyle().setFontSize(ns);
+            }
+            if (txt === c.name) {
+              var cs = c.name.length <= 18 ? 28 : c.name.length <= 26 ? 24 :
+                       c.name.length <= 36 ? 20 : 16;
+              shape.getText().getTextStyle().setFontSize(cs);
+            }
+          } catch(se) {}
+        });
+        pres.saveAndClose();
+
+        // Export PDF — retry up to 3 times
+        var blob = null;
+        for (var pa = 0; pa < 3; pa++) {
+          try {
+            if (pa > 0) Utilities.sleep(3000);
+            blob = DriveApp.getFileById(poolId).getAs('application/pdf').setName(fileName);
+            break;
+          } catch(pe) {
+            Logger.log('[Cert] getAs attempt ' + (pa+1) + ' "' + c.name + '": ' + pe.message);
+            if (pa === 2) throw pe;
+          }
+        }
+
+        // Save to Drive folder
+        try {
+          var saved = DriveApp.getFolderById(CERT_SAVE_FOLDER).createFile(blob);
+          result.driveUrl  = saved.getUrl();
+          blob._driveUrl   = result.driveUrl;
+        } catch(fe) {
+          Logger.log('[Cert] Drive folder save (non-fatal): ' + fe.message);
+        }
+
+        result.blob = blob;
+        Logger.log('[Cert] ✅ ' + c.name);
+
+        // Reset pool slide for next reuse
+        var presR  = SlidesApp.openById(poolId);
+        var slideR = presR.getSlides()[0];
+        slideR.replaceAllText(learnerName, '{{learnerName}}');
+        slideR.replaceAllText(c.name,      '{{courseName}}');
+        slideR.replaceAllText(year,        '{{year}}');
+        // Restore original font sizes
+        slideR.getShapes().forEach(function(shape) {
+          try {
+            var txt = shape.getText().asString().trim();
+            var origSz = origSizes[si + ':' + txt];
+            if (origSz) shape.getText().getTextStyle().setFontSize(origSz);
+          } catch(se) {}
+        });
+        presR.saveAndClose();
+
+      } catch(e) {
+        result.error = e.message;
+        Logger.log('[Cert] ❌ "' + c.name + '": ' + e.message);
+      }
+
+      results.push(result);
+    });
+
+    return results;
+
+  } finally {
+    // Always trash pool copies
+    Object.keys(poolIds).forEach(function(si) {
+      try { DriveApp.getFileById(poolIds[si]).setTrashed(true); } catch(e) {}
+    });
+    Logger.log('[Cert] Pool copies cleaned up');
+  }
+}
+
 // ── Send multiple certificates in one email ───────────────────────────
 /**
  * @param {object} data
@@ -530,21 +854,18 @@ function sendBulkCertificates(data) {
     if (!parentEmail) return { success: false, message: 'No parent email.' };
     if (!courses.length) return { success: false, message: 'No courses selected.' };
 
+    // ── Generate all PDFs via pool approach (3 makeCopy calls max) ─────
+    var results  = _generateBulkCertPDFs(learnerName, courses);
     var blobs    = [];
     var failed   = [];
     var sentList = [];
 
-    courses.forEach(function(c) {
-      try {
-        var blob = generateCertificatePDF(learnerName, c.name, c.year);
-        if (blob) {
-          blobs.push(blob);
-          sentList.push(c.name + ' (' + c.year + ')');
-        } else {
-          failed.push(c.name);
-        }
-      } catch(e) {
-        failed.push(c.name + ': ' + e.message);
+    results.forEach(function(r) {
+      if (r.blob) {
+        blobs.push(r.blob);
+        sentList.push(r.name + ' (' + r.year + ')');
+      } else {
+        failed.push(r.name + (r.error ? ' [' + r.error + ']' : ''));
       }
     });
 
@@ -692,15 +1013,14 @@ function sendBulkCertificates(data) {
       replyTo    : 'hello@jet-learn.com'
     });
 
-    // ── Log each cert ─────────────────────────────────────────────────────────
-    courses.forEach(function(c) {
-      var matchBlob = blobs.filter(function(b){ return b.getName().indexOf(c.name.replace(/\s+/g,'_')) > -1; });
-      var driveUrl  = matchBlob.length ? (matchBlob[0]._driveUrl || '') : '';
+    // ── Log each cert (use results array for accurate status + driveUrl) ─────
+    results.forEach(function(r) {
       _logCertificate(
-        jlid, learnerName, c.name, c.year,
-        parentEmail, performedBy, driveUrl,
-        failed.indexOf(c.name) > -1 ? 'Failed' : 'Sent',
-        'Bulk send — ' + blobs.length + ' certificate(s)'
+        jlid, learnerName, r.name, r.year,
+        parentEmail, performedBy,
+        r.driveUrl || '',
+        r.blob ? 'Sent' : 'Failed',
+        r.blob ? ('Bulk send — ' + blobs.length + ' certificate(s)') : ('Failed: ' + (r.error || 'unknown'))
       );
     });
 
@@ -713,6 +1033,30 @@ function sendBulkCertificates(data) {
     } catch(ae) {}
 
     Logger.log('[Cert] Bulk: ' + blobs.length + ' certs sent to ' + parentEmail);
+
+    // ── HubSpot: note + checkbox tick — fire via 1-min trigger to avoid timeout ──
+    try {
+      if (jlid) {
+        var sc3 = CacheService.getScriptCache();
+        // Strip error detail from failed names before storing in HS payload
+        var failedNames = failed.map(function(f){ return f.replace(/\s*\[.*\]$/, ''); });
+        var certPayload = { jlid: jlid, learnerName: learnerName, parentEmail: parentEmail,
+                            performedBy: performedBy || '', courses: courses, failed: failedNames };
+        sc3.put('CERT_HS_PENDING_' + jlid, JSON.stringify(certPayload), 600);
+        // Queue: append jlid so trigger knows which keys to process
+        var qRaw = sc3.get('CERT_HS_QUEUE');
+        var q = []; try { if (qRaw) q = JSON.parse(qRaw); } catch(e) {}
+        if (q.indexOf(jlid) === -1) q.push(jlid);
+        sc3.put('CERT_HS_QUEUE', JSON.stringify(q), 600);
+        ScriptApp.getProjectTriggers().forEach(function(t) {
+          if (t.getHandlerFunction() === '_processPendingCertHS') ScriptApp.deleteTrigger(t);
+        });
+        ScriptApp.newTrigger('_processPendingCertHS').timeBased().after(5000).create();
+      }
+    } catch(hse2) {
+      Logger.log('[Cert] Bulk HS trigger setup (non-fatal): ' + hse2.message);
+    }
+
     return {
       success : true,
       sent    : blobs.length,
@@ -723,6 +1067,69 @@ function sendBulkCertificates(data) {
 
   } catch(e) {
     Logger.log('[Cert] sendBulkCertificates error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Resend failed certificates from log ──────────────────────────────
+/**
+ * Called from the Certificate Log "Resend Selected" button.
+ * @param {Array<{jlid, learnerName, course, year, parentEmail, sentBy}>} items
+ * @returns {{ success:boolean, message:string }}
+ */
+function resendFailedCertificates(items) {
+  try {
+    if (!items || !items.length) return { success: false, message: 'No items to resend.' };
+
+    // Group by learner+email (multiple learners could be selected)
+    var groups = {};
+    items.forEach(function(item) {
+      var key = (item.jlid || item.learnerName) + '||' + item.parentEmail;
+      if (!groups[key]) {
+        groups[key] = {
+          jlid       : item.jlid        || '',
+          learnerName: item.learnerName  || '',
+          parentEmail: item.parentEmail  || '',
+          parentName : 'Parent',
+          performedBy: item.sentBy       || '',
+          courses    : []
+        };
+      }
+      groups[key].courses.push({ name: item.course, year: item.year || new Date().getFullYear() });
+    });
+
+    var totalSent   = 0;
+    var totalFailed = [];
+    var messages    = [];
+
+    Object.keys(groups).forEach(function(key) {
+      var g = groups[key];
+      Logger.log('[Cert] Resending ' + g.courses.length + ' cert(s) for ' + g.learnerName);
+      var result = sendBulkCertificates(g);
+      if (result.success) {
+        totalSent += result.sent || 0;
+        if (result.failed && result.failed.length) {
+          result.failed.forEach(function(f){ totalFailed.push(f); });
+        }
+        messages.push(g.learnerName + ': ' + (result.sent || 0) + ' sent');
+      } else {
+        totalFailed.push(g.learnerName + ': ' + (result.message || 'failed'));
+        messages.push(g.learnerName + ': failed — ' + result.message);
+      }
+    });
+
+    var msg = totalSent + ' certificate(s) resent.'
+      + (totalFailed.length ? ' Failed: ' + totalFailed.join(', ') : '');
+
+    return {
+      success: totalSent > 0 || totalFailed.length === 0,
+      sent   : totalSent,
+      failed : totalFailed,
+      message: msg
+    };
+
+  } catch(e) {
+    Logger.log('[Cert] resendFailedCertificates error: ' + e.message);
     return { success: false, message: e.message };
   }
 }

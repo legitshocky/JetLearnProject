@@ -729,7 +729,11 @@ function switchPage(pageId, context = null) {
         onboardingTrackerPage: loadOnboardingTracker,
         learnerMigrationPage:  loadLearnerMigrationPage,
         coursePlanner:         loadCoursePlannerPage,
-        bulkCertificates:      loadBulkCertificatesPage
+        coursePlannerPage:     loadCoursePlannerPage,
+        bulkCertificates:      loadBulkCertificatesPage,
+        bulkCertificatesPage:  loadBulkCertificatesPage,
+        kitTracking:           loadKitTrackingPage,
+        kitTrackingPage:       loadKitTrackingPage
     };
 
     if (pageLoaders[pageId]) {
@@ -5222,7 +5226,7 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V51';
+    const CURRENT_APP_VERSION = 'V52';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
@@ -5647,28 +5651,72 @@ function loadUsers() {
     // =============================================
     // SESSION TIMEOUT
     // =============================================
-    const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-    const WARNING_BEFORE_MS  =  2 * 60 * 1000; // warn 2 mins before
+    const SESSION_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
+    const WARNING_BEFORE_MS  =  5 * 60 * 1000; // warn 5 mins before
     let sessionTimer = null;
     let sessionWarningTimer = null;
+    let sessionCountdownInterval = null;
+
+    function _showSessionWarningModal(secondsLeft) {
+      let modal = document.getElementById('sessionWarningModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'sessionWarningModal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(15,23,42,0.6);display:flex;align-items:center;justify-content:center;';
+        modal.innerHTML = `
+          <div style="background:#fff;border-radius:16px;padding:2rem;max-width:400px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+            <div style="width:56px;height:56px;border-radius:50%;background:#fef3c7;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+              <i class="fas fa-clock" style="font-size:1.5rem;color:#d97706;"></i>
+            </div>
+            <h3 style="margin:0 0 0.5rem;font-size:1.1rem;font-weight:700;color:#1e293b;">Session Expiring Soon</h3>
+            <p style="color:#64748b;font-size:0.88rem;margin:0 0 1rem;">You will be logged out in <strong id="sessionCountdownDisplay" style="color:#ef4444;">5:00</strong> due to inactivity.</p>
+            <p style="color:#94a3b8;font-size:0.78rem;margin:0 0 1.5rem;">Click anywhere or press any key to stay logged in.</p>
+            <button onclick="resetSessionTimer();document.getElementById('sessionWarningModal').remove();clearInterval(sessionCountdownInterval);"
+              style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%;">
+              <i class="fas fa-check"></i> Keep Me Logged In
+            </button>
+          </div>`;
+        document.body.appendChild(modal);
+      }
+
+      // Countdown timer in modal
+      clearInterval(sessionCountdownInterval);
+      let remaining = secondsLeft;
+      const display = document.getElementById('sessionCountdownDisplay');
+      sessionCountdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) { clearInterval(sessionCountdownInterval); return; }
+        const m = Math.floor(remaining / 60);
+        const s = remaining % 60;
+        if (display) display.textContent = m + ':' + String(s).padStart(2, '0');
+      }, 1000);
+    }
 
     function resetSessionTimer() {
         if (!currentUser) return;
         clearTimeout(sessionTimer);
         clearTimeout(sessionWarningTimer);
+        clearInterval(sessionCountdownInterval);
+
+        // Remove warning modal if visible
+        const existing = document.getElementById('sessionWarningModal');
+        if (existing) existing.remove();
 
         sessionWarningTimer = setTimeout(() => {
             if (!currentUser) return;
-            showToast('warning', 'Session Expiring', 'You will be logged out in 2 minutes due to inactivity.', 10000);
+            _showSessionWarningModal(WARNING_BEFORE_MS / 1000);
         }, SESSION_TIMEOUT_MS - WARNING_BEFORE_MS);
 
         sessionTimer = setTimeout(() => {
             if (!currentUser) return;
-          currentUser = null;
-          sessionStorage.removeItem('currentUser');
-          stopPolling();
-          stopSessionTimer();
-          appContainer.style.display = 'none';
+            clearInterval(sessionCountdownInterval);
+            const warnModal = document.getElementById('sessionWarningModal');
+            if (warnModal) warnModal.remove();
+            currentUser = null;
+            sessionStorage.removeItem('currentUser');
+            stopPolling();
+            stopSessionTimer();
+            appContainer.style.display = 'none';
             loginPage.style.display = 'flex';
             switchLoginView('loginView');
             loginForm.reset();
@@ -5688,6 +5736,7 @@ function loadUsers() {
     function stopSessionTimer() {
         clearTimeout(sessionTimer);
         clearTimeout(sessionWarningTimer);
+        clearInterval(sessionCountdownInterval);
         ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
             document.removeEventListener(event, resetSessionTimer);
         });
@@ -6280,49 +6329,13 @@ function recalcRenewalTotals(e) {
         });
     }
 
-    const renewalForm = document.getElementById('renewalForm');
-    if(renewalForm) {
-        renewalForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const formData = getRenewalFormData();
-            showLoading('Sending Renewal...');
-            google.script.run
-                .withSuccessHandler(res => {
-                    hideLoading();
-                    if(res.success) {
-                        showToast('success', 'Sent', 'Renewal communication sent successfully.');
-                        renewalForm.reset();
-                    } else {
-                        showToast('error', 'Failed', res.message);
-                    }
-                })
-                .withFailureHandler(showError)
-                .sendRenewalCommunication(formData);
-        });
-    }
-   
-
 // 5. Submit Handler
 document.getElementById('renewalForm').addEventListener('submit', (e) => {
     e.preventDefault();
     showConfirm('Send Renewal', 'Generate PDF invoice and email to parent?', (yes) => {
         if(yes) {
             showLoading('Generating Renewal Invoice...');
-            const formData = {
-                jlid: document.getElementById('renewalJlid').value,
-                learnerName: document.getElementById('renewalLearnerName').value,
-                parentName: document.getElementById('renewalParentName').value,
-                parentEmail: document.getElementById('renewalParentEmail').value,
-                planName: document.getElementById('renewalPlanName').value,
-                currency: document.getElementById('renewalCurrency').value,
-                unitPrice: document.getElementById('renewalUnitPrice').value,
-                discount: document.getElementById('renewalDiscount').value,
-                netPrice: document.getElementById('renewalNetPrice').value,
-                paymentDate: document.getElementById('renewalPaymentDate').value,
-                paymentType: document.querySelector('input[name="renewalPaymentType"]:checked').value,
-                installments: document.getElementById('renewalInstallmentCount').value,
-                frequency: document.getElementById('renewalInstallmentFreq').value
-            };
+            const formData = getRenewalFormData();
             
             google.script.run
                 .withSuccessHandler(res => {
@@ -6439,8 +6452,8 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     
     // Reports
     if (generateReportBtn) generateReportBtn.addEventListener('click', generateReport);
-    if (exportCsvBtn) exportCsvBtn.addEventListener('click', handleCsvExport);
-    if (exportPdfBtn) exportPdfBtn.addEventListener('click', handlePdfExport);
+    if (exportCsvBtn) exportCsvBtn.addEventListener('click', (e) => { e.preventDefault(); handleCsvExport(); });
+    if (exportPdfBtn) exportPdfBtn.addEventListener('click', (e) => { e.preventDefault(); handlePdfExport(); });
     if (emailReportBtn) emailReportBtn.addEventListener('click', emailReport);
     
     // Settings & Batch
@@ -7744,6 +7757,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V52': [
+      "**Kit Tracking — WATI Webhook Fix**: Webhook now returns HTTP 200 to WATI instantly — reply processing queued via CacheService and fired 5s later via background trigger, eliminating timeout failures that were causing constant retries.",
+      "**Kit Tracking — Auto-Reply Messages**: Parents now receive instant automated replies after tapping a button — Kit Received: confirmation message; Not Received yet: logistics check message; Need To Check: 12-24hr follow-up promise. Uses WATI session messages (no template required).",
+      "**Kit Tracking — Fuzzy Reply Support**: Free-text parent replies (e.g. 'received it', 'haven't got it', 'let me check') are fuzzy-matched and trigger the same auto-reply flow as button taps.",
+      "**Kit Tracking — JLID Normalisation**: HubSpot kit status update now strips trailing stray characters from JLIDs (e.g. JL39611449152C2 → JL39611449152C) before lookup, fixing silent update failures.",
+      "**Kit Tracking — Escalation System**: If a parent doesn't reply within 2 days of the 1st follow-up, a 2nd WATI reminder is sent automatically. Status becomes 🔴 Escalated on the dashboard with red row styling, Needs Attention banner, and learner chips.",
+      "**Kit Tracking — Add Entry Fix**: New entries now write to the correct row (scans col A from bottom for actual last data row, not sheet.getLastRow()). Col H (formula) is no longer overwritten.",
+      "**Kit Tracking — Mandatory Fields**: Add Entry form now enforces all required fields: Learner Name, Kit, Country, Price (EUR), Site, Date of Order, ETA, Reason, Subscription, Roadmap, Name (Sent By). Error shows exactly which fields are missing.",
+      "**Certificate Center — Pool Architecture**: Bulk certificate generation now uses a 3-copy pool (one per slide type) instead of N copies, eliminating Drive API rate limiting. PDF export switched from UrlFetchApp to DriveApp.getAs() to prevent bandwidth quota errors.",
+      "**Certificate Center — Resend Failed**: Failed certificates in the log now have checkboxes. Select any failed certs and click Resend Selected to retry them in bulk."
+    ],
     'V38': [
       "**Migration Intelligence \u2014 Future Courses Panel**: Migration Intelligence popup now shows a third card listing all 3 future courses from the HubSpot ticket with upskilling status (\u2713 Upskilled / \u2717 Not upskilled) for the selected new teacher.",
       "**Confirm / Override Per Course**: Each future course row has an Override button that opens a dropdown to correct the course if HubSpot data is wrong \u2014 confirmed values are stored and passed through on submission.",
@@ -10940,6 +10964,568 @@ var _bcCourseList = [
   'Website Wizardry'
 ];
 
+// ══════════════════════════════════════════════════════════════════════════════
+// KIT TRACKING PAGE
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _kitTrackingData = [];
+
+function loadKitTrackingPage() {
+  const tbody = document.getElementById('ktTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="11" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>';
+
+  // Reset KPIs
+  ['ktKpiTotal','ktKpiDelivered','ktKpiAwaiting','ktKpiNotReceived','ktKpiOverdue','ktKpiEscalated'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  const bannerReset = document.getElementById('ktEscalatedBanner');
+  if (bannerReset) bannerReset.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!result || !result.success) {
+        tbody.innerHTML = '<tr><td colspan="11" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"></i> ' + escapeHtml((result && result.message) || 'Failed to load kit data.') + '</td></tr>';
+        return;
+      }
+      _kitTrackingData = result.rows || [];
+
+      // Populate month dropdown from data
+      const monthSel = document.getElementById('ktFilterMonth');
+      if (monthSel) {
+        const months = [...new Set(_kitTrackingData.map(r => r.orderMonth).filter(Boolean))];
+        // Sort chronologically
+        const monthOrder = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        months.sort(function(a, b) {
+          const [am, ay] = a.split(' '); const [bm, by] = b.split(' ');
+          return (parseInt(ay) - parseInt(by)) || (monthOrder.indexOf(am) - monthOrder.indexOf(bm));
+        });
+        const current = monthSel.value;
+        monthSel.innerHTML = '<option value="">All Months</option>' +
+          months.map(m => `<option value="${m}"${m === current ? ' selected' : ''}>${m}</option>`).join('');
+      }
+
+      // Update sidebar pending badge (always use all-data stats)
+      const s = result.stats || {};
+      const badge = document.getElementById('kitPendingBadge');
+      if (badge) {
+        const pending = (s.overdue || 0) + (s.awaiting || 0);
+        if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline-flex'; }
+        else badge.style.display = 'none';
+      }
+
+      renderKitTrackingTable();
+    })
+    .withFailureHandler(function(err) {
+      tbody.innerHTML = '<tr><td colspan="11" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"></i> ' + escapeHtml(err.message || String(err)) + '</td></tr>';
+    })
+    .getKitTrackingData();
+}
+
+function renderKitTrackingTable(filterArg) {
+  const tbody    = document.getElementById('ktTableBody');
+  if (!tbody) return;
+
+  // If called with a status arg (e.g. from banner "View Escalated" button), set the dropdown first
+  if (filterArg) {
+    const statusEl = document.getElementById('ktFilterStatus');
+    if (statusEl) statusEl.value = filterArg;
+  }
+
+  const filterMonth  = (document.getElementById('ktFilterMonth')  || {}).value || '';
+  const filterStatus = (document.getElementById('ktFilterStatus') || {}).value || '';
+  const filterKit    = (document.getElementById('ktFilterKit')    || {}).value || '';
+  const search       = ((document.getElementById('ktSearch')      || {}).value || '').toLowerCase().trim();
+
+  const statusConfig = {
+    delivered:    { label: '✅ Delivered',          color: '#10b981', bg: '#f0fdf4' },
+    awaiting:     { label: '⏳ Awaiting Reply',      color: '#d97706', bg: '#fffbeb' },
+    not_received: { label: '❌ Not Received',        color: '#ef4444', bg: '#fef2f2' },
+    need_check:   { label: '🔍 Need To Check',       color: '#8b5cf6', bg: '#faf5ff' },
+    overdue:      { label: '🚨 Overdue',             color: '#6366f1', bg: '#eef2ff' },
+    pending:      { label: '📭 Not Sent Yet',        color: '#94a3b8', bg: '#f8fafc' },
+    escalated:    { label: '🔴 Escalated',           color: '#dc2626', bg: '#fef2f2' }
+  };
+
+  // Base filter (month + kit + search) — used for KPI recalc
+  let baseFiltered = _kitTrackingData.filter(function(row) {
+    if (filterMonth && row.orderMonth !== filterMonth) return false;
+    if (filterKit && row.kit.indexOf(filterKit) === -1) return false;
+    if (search && !row.learnerName.toLowerCase().includes(search) && !row.jlid.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  // Recalculate KPIs based on base filter (ignoring status filter so KPIs always show full picture)
+  const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setKpi('ktKpiTotal',       baseFiltered.length);
+  setKpi('ktKpiDelivered',   baseFiltered.filter(r => r.status === 'delivered').length);
+  setKpi('ktKpiAwaiting',    baseFiltered.filter(r => r.status === 'awaiting').length);
+  setKpi('ktKpiNotReceived', baseFiltered.filter(r => r.status === 'not_received' || r.status === 'need_check').length);
+  setKpi('ktKpiOverdue',     baseFiltered.filter(r => r.status === 'overdue').length);
+  const escalatedRows = baseFiltered.filter(r => r.status === 'escalated');
+  setKpi('ktKpiEscalated', escalatedRows.length);
+
+  // Escalated banner
+  const banner = document.getElementById('ktEscalatedBanner');
+  const escCount = document.getElementById('ktEscalatedCount');
+  const escList  = document.getElementById('ktEscalatedList');
+  if (banner) {
+    if (escalatedRows.length > 0) {
+      banner.style.display = 'block';
+      if (escCount) escCount.textContent = escalatedRows.length;
+      if (escList) {
+        escList.innerHTML = escalatedRows.map(function(r) {
+          return '<span style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:5px 10px;font-size:0.76rem;color:#374151;display:inline-flex;align-items:center;gap:6px;">'
+            + '<i class="fas fa-box-open" style="color:#dc2626;font-size:0.68rem;"></i>'
+            + '<strong>' + escapeHtml(r.learnerName) + '</strong>'
+            + '<span style="color:#9ca3af;">— ' + escapeHtml(r.kit) + '</span>'
+            + (r.sentAt2 ? '<span style="color:#dc2626;font-size:0.68rem;">2nd sent ' + escapeHtml(r.sentAt2) + '</span>' : '')
+            + '</span>';
+        }).join('');
+      }
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // Table filter also applies status
+  let filtered = baseFiltered.filter(function(row) {
+    if (filterStatus && row.status !== filterStatus) return false;
+    return true;
+  });
+
+  const countEl = document.getElementById('ktResultCount');
+  if (countEl) countEl.textContent = filtered.length + ' of ' + baseFiltered.length + (filterMonth ? ' in ' + filterMonth : ' kits');
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-box-open" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>No kits match filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(function(row, i) {
+    const sc = statusConfig[row.status] || statusConfig.pending;
+    const statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:${sc.color};background:${sc.bg};border:1px solid ${sc.color}30;border-radius:20px;padding:2px 8px;">${sc.label}</span>`;
+
+    // Action buttons
+    let actionBtn = '';
+    const editBtn = `<button onclick="ktOpenEdit(${row.rowIndex}, '${escapeHtml(row.jlid)}', '${escapeHtml(row.learnerName)}', '${escapeHtml(row.kit)}', '${escapeHtml(row.deliveryDate)}', '${escapeHtml(row.response)}', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Edit row"><i class="fas fa-pencil-alt"></i></button>`;
+    if (row.status === 'overdue' || row.status === 'pending') {
+      // Try send — works with or without JLID (server auto-lookups)
+      actionBtn = `<button onclick="ktSendFollowUp(${row.rowIndex}, '${escapeHtml(row.jlid)}', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"></i> Send Follow-up</button>${editBtn}`;
+    } else if (row.status === 'escalated') {
+      actionBtn = `<button onclick="ktSendFollowUp(${row.rowIndex}, '${escapeHtml(row.jlid)}', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"></i> Re-send Urgent</button>${editBtn}`;
+    } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
+      actionBtn = `<button onclick="ktSendFollowUp(${row.rowIndex}, '${escapeHtml(row.jlid)}', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"></i> Resend</button>${editBtn}`;
+    } else {
+      actionBtn = editBtn;
+    }
+
+    const jlidBadge = row.jlid
+      ? `<span style="font-size:0.68rem;color:#94a3b8;display:block;margin-top:1px;font-family:monospace;">${escapeHtml(row.jlid)}</span>`
+      : '';
+
+    const fupCell = row.followupSent
+      ? `<span style="color:#10b981;font-size:0.75rem;">✔ Sent</span>${row.sentAt ? `<span style="font-size:0.68rem;color:#94a3b8;display:block;">${escapeHtml(row.sentAt)}</span>` : ''}`
+      : `<span style="color:#94a3b8;font-size:0.75rem;">—</span>`;
+
+    const responseCell = row.response
+      ? `<span style="font-size:0.78rem;font-weight:500;color:${row.response === 'Kit Received' ? '#10b981' : row.response === 'Not Received yet' ? '#ef4444' : '#8b5cf6'};">${escapeHtml(row.response)}</span>`
+      : `<span style="color:#94a3b8;font-size:0.75rem;">—</span>`;
+
+    // Details expand row
+    const detailRowId = 'ktDetail_' + row.rowIndex;
+    const detailHtml = `<tr id="${detailRowId}" style="display:none;background:#f8fafc;">
+      <td colspan="11" style="padding:10px 18px 14px;">
+        <div style="display:flex;gap:2rem;flex-wrap:wrap;font-size:0.78rem;color:#475569;">
+          ${row.country      ? `<span><b style="color:#94a3b8;">Country</b><br>${escapeHtml(row.country)}</span>` : ''}
+          ${row.price        ? `<span><b style="color:#94a3b8;">Price</b><br>€${escapeHtml(row.price)}</span>` : ''}
+          ${row.site         ? `<span><b style="color:#94a3b8;">Site</b><br>${escapeHtml(row.site)}</span>` : ''}
+          ${row.orderDate    ? `<span><b style="color:#94a3b8;">Order Date</b><br>${escapeHtml(row.orderDate)}</span>` : ''}
+          ${row.reason       ? `<span><b style="color:#94a3b8;">Reason</b><br>${escapeHtml(row.reason)}</span>` : ''}
+          ${row.subscription ? `<span><b style="color:#94a3b8;">Subscription</b><br>${escapeHtml(row.subscription)}</span>` : ''}
+          ${row.roadmap      ? `<span><b style="color:#94a3b8;">Roadmap</b><br>${escapeHtml(row.roadmap)}</span>` : ''}
+          ${row.sentBy       ? `<span><b style="color:#94a3b8;">Sent By</b><br>${escapeHtml(row.sentBy)}</span>` : ''}
+        </div>
+      </td>
+    </tr>`;
+
+    const rowBg = row.status === 'escalated' ? '#fff5f5' : (i % 2 === 0 ? '#fff' : '#fafbfc');
+    const rowBorder = row.status === 'escalated'
+      ? 'border-bottom:1px solid #fecaca;border-left:3px solid #dc2626;'
+      : 'border-bottom:1px solid #f1f5f9;';
+
+    return `<tr style="background:${rowBg};${rowBorder}cursor:pointer;" onclick="ktToggleDetail('${detailRowId}', this)">
+      <td style="padding:10px 14px;color:#94a3b8;font-size:0.78rem;">${row.srNo}</td>
+      <td style="padding:10px 14px;font-weight:500;color:#1e293b;">${escapeHtml(row.learnerName)}${jlidBadge}</td>
+      <td style="padding:10px 14px;color:#475569;">${escapeHtml(row.kit) || '—'}</td>
+      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;font-size:0.76rem;">${escapeHtml(row.orderMonth) || '—'}</td>
+      <td style="padding:10px 14px;color:#475569;white-space:nowrap;">${escapeHtml(row.eta) || '—'}</td>
+      <td style="padding:10px 14px;color:${row.deliveryDate ? '#10b981' : '#94a3b8'};font-weight:${row.deliveryDate ? '600' : '400'};white-space:nowrap;">${escapeHtml(row.deliveryDate) || '—'}</td>
+      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;">${escapeHtml(row.timeTaken) || '—'}</td>
+      <td style="padding:10px 14px;">${fupCell}</td>
+      <td style="padding:10px 14px;">${responseCell}</td>
+      <td style="padding:10px 14px;">${statusBadge}</td>
+      <td style="padding:10px 14px;" onclick="event.stopPropagation()">${actionBtn}</td>
+    </tr>${detailHtml}`;
+  }).join('');
+}
+
+function ktToggleDetail(detailRowId, mainRow) {
+  const detail = document.getElementById(detailRowId);
+  if (!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'table-row';
+  mainRow.style.background = isOpen ? '' : '#eef2ff';
+}
+
+function ktSendFollowUp(rowIndex, jlid, btn) {
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      if (result && result.success) {
+        showToast('success', 'Follow-up Sent', result.message || 'WhatsApp message sent.');
+        loadKitTrackingPage();
+      } else if (result && result.needJlid) {
+        // Auto-lookup failed — ask for JLID manually
+        const jlidInput = prompt('Could not auto-find JLID for this learner.\nEnter JLID manually (e.g. JL52767973402C):');
+        if (jlidInput && jlidInput.trim()) {
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+          btn.disabled = true;
+          google.script.run
+            .withSuccessHandler(function(r2) {
+              btn.innerHTML = origHTML;
+              btn.disabled = false;
+              if (r2 && r2.success) {
+                showToast('success', 'Follow-up Sent', r2.message || 'WhatsApp message sent.');
+                loadKitTrackingPage();
+              } else {
+                showToast('error', 'Failed', (r2 && r2.message) || 'Unknown error.');
+              }
+            })
+            .withFailureHandler(function(err) {
+              btn.innerHTML = origHTML;
+              btn.disabled = false;
+              showToast('error', 'Failed', err.message || String(err));
+            })
+            .sendKitFollowUpByRow(rowIndex, jlidInput.trim());
+        }
+      } else {
+        showToast('error', 'Failed', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      showToast('error', 'Failed', err.message || String(err));
+    })
+    .sendKitFollowUpByRow(rowIndex, jlid || '');
+}
+
+function ktResendFollowUp(jlid, btn) {
+  if (!jlid) return;
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  btn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      if (result && result.success) {
+        showToast('success', 'Follow-up Sent', result.message || 'WhatsApp message sent.');
+        loadKitTrackingPage();
+      } else {
+        showToast('error', 'Resend Failed', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      showToast('error', 'Resend Failed', err.message || String(err));
+    })
+    .resendKitFollowUp(jlid);
+}
+
+// ── Kit Row Edit Modal ──────────────────────────────────────────────────────
+function ktOpenEdit(rowIndex, jlid, learnerName, kitName, deliveryDate, response, triggerBtn) {
+  // Build / reuse modal
+  let modal = document.getElementById('ktEditModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktEditModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.18);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+          <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-pencil-alt" style="color:#6366f1;margin-right:8px;"></i>Edit Kit Row</h3>
+          <button onclick="ktCloseEdit()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕</button>
+        </div>
+        <p id="ktEditSubtitle" style="margin:0 0 18px;font-size:0.82rem;color:#64748b;"></p>
+
+        <label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">JLID</label>
+        <input id="ktEditJlid" type="text" placeholder="JL52767973402C"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;font-family:monospace;">
+
+        <label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Delivery Date</label>
+        <input id="ktEditDelivery" type="date"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">
+
+        <label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Parent Response</label>
+        <select id="ktEditResponse"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;background:#fff;">
+          <option value="">— no response —</option>
+          <option value="Kit Received">✅ Kit Received</option>
+          <option value="Not Received yet">❌ Not Received yet</option>
+          <option value="Need To check">🔍 Need To check</option>
+        </select>
+
+        <div style="display:flex;gap:10px;">
+          <button onclick="ktCloseEdit()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel</button>
+          <button id="ktEditSaveBtn" onclick="ktSaveEdit()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-save"></i> Save Changes</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  // Pre-fill
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktEditSubtitle').textContent = learnerName + (kitName ? ' — ' + kitName : '');
+  document.getElementById('ktEditJlid').value = jlid || '';
+
+  // Convert DD/MM/YYYY → YYYY-MM-DD for date input
+  const delivInput = document.getElementById('ktEditDelivery');
+  if (deliveryDate && deliveryDate !== 'undefined') {
+    const parts = deliveryDate.split('/');
+    if (parts.length === 3) {
+      delivInput.value = parts[2] + '-' + parts[1].padStart(2,'0') + '-' + parts[0].padStart(2,'0');
+    } else {
+      delivInput.value = '';
+    }
+  } else {
+    delivInput.value = '';
+  }
+
+  const respSel = document.getElementById('ktEditResponse');
+  respSel.value = (response && response !== 'undefined') ? response : '';
+
+  modal.style.display = 'flex';
+}
+
+function ktCloseEdit() {
+  const modal = document.getElementById('ktEditModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function ktSaveEdit() {
+  const modal   = document.getElementById('ktEditModal');
+  const rowIndex = parseInt(modal.dataset.rowIndex, 10);
+  const saveBtn  = document.getElementById('ktEditSaveBtn');
+
+  const jlid     = (document.getElementById('ktEditJlid').value     || '').trim();
+  const dateVal  = (document.getElementById('ktEditDelivery').value  || '').trim();
+  const response = (document.getElementById('ktEditResponse').value  || '').trim();
+
+  // Convert YYYY-MM-DD → DD/MM/YYYY for sheet
+  let deliveryDate = '';
+  if (dateVal) {
+    const p = dateVal.split('-');
+    if (p.length === 3) deliveryDate = p[2] + '/' + p[1] + '/' + p[0];
+  }
+
+  const origHTML = saveBtn.innerHTML;
+  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  saveBtn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      if (result && result.success) {
+        ktCloseEdit();
+        // Show warning toast if HubSpot wasn't updated
+        const hsOk = result.hsStatus === 'updated' || result.hsStatus === 'skipped';
+        if (result.hsStatus && result.hsStatus !== 'updated' && result.hsStatus !== 'skipped') {
+          showToast('warning', 'Sheet Saved — HubSpot Issue', result.message || 'Sheet updated but HubSpot not updated.');
+        } else {
+          showToast('success', 'Row Updated', result.message || 'Changes saved.');
+        }
+        loadKitTrackingPage();
+      } else {
+        showToast('error', 'Save Failed', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      showToast('error', 'Save Failed', err.message || String(err));
+    })
+    .updateKitRow({ rowIndex: rowIndex, jlid: jlid, deliveryDate: deliveryDate, response: response });
+}
+
+function openAddKitModal() {
+  const today = new Date();
+  const iso = today.toISOString().split('T')[0];
+  const orderEl = document.getElementById('ktfOrderDate');
+  if (orderEl && !orderEl.value) { orderEl.value = iso; ktAutoFillMonth(); }
+  const errEl = document.getElementById('ktfError');
+  if (errEl) errEl.style.display = 'none';
+  const fetchRes = document.getElementById('ktfFetchResult');
+  if (fetchRes) fetchRes.style.display = 'none';
+  const jlidEl = document.getElementById('ktfJlid');
+  if (jlidEl) jlidEl.value = '';
+  const btn = document.getElementById('ktfSubmitBtn');
+  if (btn) { btn.innerHTML = '<i class="fas fa-plus"></i> Add Entry'; btn.disabled = false; }
+  document.getElementById('addKitModal').style.display = 'flex';
+}
+
+function ktFetchByJlid() {
+  const jlid = ((document.getElementById('ktfJlid') || {}).value || '').trim();
+  if (!jlid) return;
+  const fetchBtn = document.getElementById('ktfFetchBtn');
+  const resultEl = document.getElementById('ktfFetchResult');
+  fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  fetchBtn.disabled = true;
+  resultEl.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      fetchBtn.innerHTML = '<i class="fas fa-search"></i> Fetch';
+      fetchBtn.disabled = false;
+      if (!r || !r.success) {
+        resultEl.style.cssText = 'display:block;color:#ef4444;';
+        resultEl.textContent = '✗ ' + ((r && r.message) || 'Learner not found.');
+        return;
+      }
+      // Auto-fill form fields
+      const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+      set('ktfLearner',      r.learnerName);
+      set('ktfSubscription', r.subscription);
+      set('ktfCountry',      r.country);
+
+      // Map subscription label to dropdown option
+      const subEl = document.getElementById('ktfSubscription');
+      if (subEl && r.subscription) {
+        // Try to match option — e.g. "yearly" → "Yearly"
+        Array.from(subEl.options).forEach(opt => {
+          if (opt.value.toLowerCase() === r.subscription.toLowerCase()) subEl.value = opt.value;
+        });
+      }
+
+      const existing = r.kitCostSoFar || 0;
+      resultEl.style.cssText = 'display:block;color:#059669;background:#f0fdf4;padding:6px 10px;border-radius:6px;';
+      resultEl.innerHTML = '✔ Found: <strong>' + escapeHtml(r.learnerName) + '</strong>' +
+        (r.subscription ? ' · ' + escapeHtml(r.subscription) : '') +
+        (r.country ? ' · ' + escapeHtml(r.country) : '') +
+        (existing > 0 ? ' · <span style="color:#d97706;">Existing kit cost: €' + existing + '</span>' : '');
+    })
+    .withFailureHandler(function(err) {
+      fetchBtn.innerHTML = '<i class="fas fa-search"></i> Fetch';
+      fetchBtn.disabled = false;
+      resultEl.style.cssText = 'display:block;color:#ef4444;';
+      resultEl.textContent = '✗ ' + (err.message || String(err));
+    })
+    .fetchKitLearnerDetails(jlid);
+}
+
+function closeAddKitModal() {
+  document.getElementById('addKitModal').style.display = 'none';
+}
+
+function ktAutoFillMonth() {
+  const dateVal = (document.getElementById('ktfOrderDate') || {}).value;
+  if (!dateVal) return;
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const d = new Date(dateVal + 'T00:00:00');
+  const label = months[d.getMonth()] + '-' + String(d.getFullYear()).slice(2);
+  const el = document.getElementById('ktfMonth');
+  if (el) el.value = label;
+}
+
+function submitAddKitEntry() {
+  const get = id => (document.getElementById(id) || {}).value || '';
+  const errEl = document.getElementById('ktfError');
+  const btn   = document.getElementById('ktfSubmitBtn');
+
+  const learner      = get('ktfLearner').trim();
+  const kit          = get('ktfKit').trim();
+  const country      = get('ktfCountry').trim();
+  const price        = get('ktfPrice').trim();
+  const site         = get('ktfSite').trim();
+  const orderDate    = get('ktfOrderDate').trim();
+  const eta          = get('ktfEta').trim();
+  const reason       = get('ktfReason').trim();
+  const subscription = get('ktfSubscription').trim();
+  const roadmap      = get('ktfRoadmap').trim();
+  const sentBy       = get('ktfSentBy').trim();
+
+  const missing = [];
+  if (!learner)      missing.push('Learner Name');
+  if (!kit)          missing.push('Kit');
+  if (!country)      missing.push('Country');
+  if (!price)        missing.push('Price (EUR)');
+  if (!site)         missing.push('Site');
+  if (!orderDate)    missing.push('Date of Order');
+  if (!eta)          missing.push('ETA');
+  if (!reason)       missing.push('Reason to send kit');
+  if (!subscription) missing.push('Current Subscription');
+  if (!roadmap)      missing.push('Roadmap');
+  if (!sentBy)       missing.push('Name (Sent By)');
+
+  if (missing.length) {
+    errEl.textContent = '⚠ Required: ' + missing.join(' · ');
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+  btn.disabled = true;
+
+  const data = {
+    jlid:         get('ktfJlid').trim(),
+    learnerName:  learner,
+    kit:          kit,
+    country:      country,
+    price:        get('ktfPrice'),
+    site:         get('ktfSite'),
+    orderDate:    orderDate,
+    eta:          eta,
+    deliveryDate: get('ktfDeliveryDate'),
+    reason:       get('ktfReason'),
+    subscription: get('ktfSubscription'),
+    roadmap:      get('ktfRoadmap'),
+    sentBy:       get('ktfSentBy')
+  };
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.innerHTML = '<i class="fas fa-plus"></i> Add Entry';
+      btn.disabled = false;
+      if (result && result.success) {
+        closeAddKitModal();
+        ['ktfJlid','ktfLearner','ktfKit','ktfCountry','ktfPrice','ktfSite','ktfOrderDate','ktfMonth',
+         'ktfEta','ktfDeliveryDate','ktfReason','ktfSubscription','ktfRoadmap','ktfSentBy'
+        ].forEach(function(id) { const el = document.getElementById(id); if (el) el.value = ''; });
+        showToast('success', 'Kit Entry Added', 'Sr #' + result.srNo + ' — ' + learner + ' (' + kit + ')');
+        loadKitTrackingPage();
+      } else {
+        errEl.textContent = (result && result.message) || 'Failed to add entry.';
+        errEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = '<i class="fas fa-plus"></i> Add Entry';
+      btn.disabled = false;
+      errEl.textContent = err.message || String(err);
+      errEl.style.display = 'block';
+    })
+    .addKitEntry(data);
+}
+
 function loadBulkCertificatesPage() {
   var container = document.getElementById('bcCourseRows');
   _bcRowCount = 0;
@@ -10948,6 +11534,8 @@ function loadBulkCertificatesPage() {
   bcAddCourseRow();
   document.getElementById('bcLearnerName').addEventListener('input', _bcUpdatePreview);
   container.addEventListener('change', _bcUpdatePreview);
+  // Load certificate log
+  bcLoadLog();
 }
 
 function bcAddCourseRow() {
@@ -11108,6 +11696,8 @@ function bcSendSelected() {
         st.style.display = 'flex';
         st.innerHTML = '<i class="fas fa-check-circle"></i>&nbsp;' + escapeHtml(res.message);
         if (res.failed && res.failed.length) showToast('warning', 'Partial Failure', 'Failed: ' + res.failed.join(', '));
+        // Refresh log after short delay (allow sheet write to complete)
+        setTimeout(bcLoadLog, 2000);
       } else {
         showToast('error', 'Certificates', res.message);
       }
@@ -11128,6 +11718,149 @@ function _bcUpdatePreview() {
     if (sel.value && sel.value !== '-- Select Course --') courses.push(sel.value);
   });
   document.getElementById('bcPreviewCourses').textContent = courses.length ? courses.join(', ') : '—';
+}
+
+// ── Certificate Log ──────────────────────────────────────────────────
+var _bcLogRows = [];  // cached rows for resend
+
+function _bcUpdateResendBar() {
+  var checked = document.querySelectorAll('.bc-fail-chk:checked');
+  var bar     = document.getElementById('bcResendBar');
+  var cnt     = document.getElementById('bcResendCount');
+  if (!bar) return;
+  if (checked.length > 0) {
+    bar.style.display = 'flex';
+    if (cnt) cnt.textContent = checked.length + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function bcLoadLog() {
+  var container = document.getElementById('bcLogContainer');
+  if (!container) return;
+  container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#94a3b8;font-size:0.82rem;"><i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i>Loading…</div>';
+  // Hide resend bar while loading
+  var bar = document.getElementById('bcResendBar');
+  if (bar) bar.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!result || !result.success) {
+        container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;font-size:0.82rem;">Failed to load log.</div>';
+        return;
+      }
+      // Update badges
+      var badge = document.getElementById('bcLogTodayBadge');
+      if (badge) {
+        if (result.todayCount > 0) { badge.textContent = result.todayCount + ' today'; badge.style.display = 'inline-block'; }
+        else { badge.style.display = 'none'; }
+      }
+      var sentCount = document.getElementById('bcSentCount');
+      if (sentCount) sentCount.textContent = result.todayCount || 0;
+
+      _bcLogRows = result.rows || [];
+
+      if (!_bcLogRows.length) {
+        container.innerHTML = '<div style="padding:2rem;text-align:center;color:#94a3b8;font-size:0.82rem;"><i class="fas fa-certificate" style="display:block;font-size:1.5rem;margin-bottom:8px;"></i>No certificates sent yet.</div>';
+        return;
+      }
+
+      var failCount = _bcLogRows.filter(function(r){ return r.status === 'Failed'; }).length;
+
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">'
+        + '<thead><tr style="background:#f1f5f9;border-bottom:2px solid #e2e8f0;">'
+        + '<th style="padding:8px 12px;width:32px;">'
+        +   (failCount > 0
+              ? '<input type="checkbox" id="bcSelectAllFailed" title="Select all failed" onchange="bcToggleAllFailed(this.checked)" style="cursor:pointer;accent-color:#ef4444;">'
+              : '')
+        + '</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Time</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Learner</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Course</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Year</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Sent To</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">By</th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Status</th>'
+        + '</tr></thead><tbody>';
+
+      _bcLogRows.forEach(function(r, i) {
+        var isFailed  = r.status === 'Failed';
+        var rowBg     = isFailed ? '#fff5f5' : (r.isToday ? '#faf5ff' : (i % 2 === 0 ? '#fff' : '#fafbfc'));
+        var statusColor = isFailed ? '#ef4444' : '#10b981';
+        var todayDot  = r.isToday ? '<span style="display:inline-block;width:6px;height:6px;background:#6366f1;border-radius:50%;margin-right:4px;vertical-align:middle;"></span>' : '';
+
+        // Encode row data into checkbox value for resend
+        var rowData = isFailed ? encodeURIComponent(JSON.stringify({
+          jlid: r.jlid, learnerName: r.learnerName, course: r.course,
+          year: r.year, parentEmail: r.parentEmail, sentBy: r.sentBy
+        })) : '';
+
+        html += '<tr style="background:' + rowBg + ';border-bottom:1px solid #f1f5f9;">'
+          + '<td style="padding:8px 12px;">'
+          +   (isFailed
+                ? '<input type="checkbox" class="bc-fail-chk" value="' + rowData + '" onchange="_bcUpdateResendBar()" style="cursor:pointer;accent-color:#ef4444;">'
+                : '<span style="display:inline-block;width:14px;"></span>')
+          + '</td>'
+          + '<td style="padding:8px 12px;color:#64748b;white-space:nowrap;">' + todayDot + escapeHtml(r.timestamp) + '</td>'
+          + '<td style="padding:8px 12px;font-weight:500;color:#1e293b;">' + escapeHtml(r.learnerName)
+            + (r.jlid ? '<span style="display:block;font-size:0.68rem;color:#94a3b8;font-family:monospace;">' + escapeHtml(r.jlid) + '</span>' : '') + '</td>'
+          + '<td style="padding:8px 12px;color:#475569;">' + escapeHtml(r.course) + '</td>'
+          + '<td style="padding:8px 12px;color:#64748b;">' + escapeHtml(r.year) + '</td>'
+          + '<td style="padding:8px 12px;color:#64748b;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.parentEmail) + '">' + escapeHtml(r.parentEmail) + '</td>'
+          + '<td style="padding:8px 12px;color:#64748b;">' + escapeHtml(r.sentBy || '—') + '</td>'
+          + '<td style="padding:8px 12px;">'
+          +   '<span style="color:' + statusColor + ';font-weight:600;">' + escapeHtml(r.status) + '</span>'
+          +   (r.driveUrl ? ' <a href="' + r.driveUrl + '" target="_blank" style="color:#6366f1;font-size:0.7rem;margin-left:4px;"><i class="fas fa-external-link-alt"></i></a>' : '')
+          +   (isFailed && r.notes ? '<span style="display:block;font-size:0.67rem;color:#94a3b8;margin-top:2px;" title="' + escapeHtml(r.notes) + '">' + escapeHtml(r.notes.substring(0, 40)) + (r.notes.length > 40 ? '…' : '') + '</span>' : '')
+          + '</td>'
+          + '</tr>';
+      });
+
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    })
+    .withFailureHandler(function(err) {
+      container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;font-size:0.82rem;">' + escapeHtml(err.message || String(err)) + '</div>';
+    })
+    .getCertificateLog(50);
+}
+
+function bcToggleAllFailed(checked) {
+  document.querySelectorAll('.bc-fail-chk').forEach(function(cb) { cb.checked = checked; });
+  _bcUpdateResendBar();
+}
+
+function bcResendSelected() {
+  var checked = document.querySelectorAll('.bc-fail-chk:checked');
+  if (!checked.length) return;
+
+  // Parse selected rows
+  var items = [];
+  checked.forEach(function(cb) {
+    try { items.push(JSON.parse(decodeURIComponent(cb.value))); } catch(e) {}
+  });
+  if (!items.length) return;
+
+  var btn = document.getElementById('bcResendBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:5px;"></i>Resending…'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo" style="margin-right:5px;"></i>Resend Selected'; }
+      if (res && res.success) {
+        showToast('success', 'Resend Complete', res.message);
+        setTimeout(bcLoadLog, 2000);
+      } else {
+        showToast('error', 'Resend Failed', (res && res.message) || 'Unknown error');
+        setTimeout(bcLoadLog, 1500);
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-redo" style="margin-right:5px;"></i>Resend Selected'; }
+      showToast('error', 'Resend Error', err.message || String(err));
+    })
+    .resendFailedCertificates(items);
 }
 
 // ══════════════════════════════════════════════════════════════════════

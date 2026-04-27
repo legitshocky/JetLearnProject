@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JetLearn — UI Design Options</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:#0f0f0f; color:#fff; }
+
+/* ── Nav ── */
+.top-nav { background:#111; border-bottom:1px solid #1f1f1f; padding:16px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+.nav-logo { font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:1.2rem; color:#f7d317; letter-spacing:-0.5px; }
+.nav-tabs { display:flex; gap:8px; }
+.nav-tab { padding:8px 18px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; border:1px solid transparent; transition:all .2s; color:#888; }
+.nav-tab.active { background:#f7d317; color:#111; border-color:#f7d317; }
+.nav-tab:hover:not(.active) { background:#1a1a1a; color:#fff; border-color:#333; }
+.nav-hint { font-size:0.75rem; color:#555; }
+
+/* ── Section titles ── */
+.section { padding:40px 32px; border-bottom:1px solid #1a1a1a; }
+.section-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 12px; border-radius:99px; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; }
+.badge-new { background:rgba(247,211,23,.12); color:#f7d317; border:1px solid rgba(247,211,23,.2); }
+.badge-current { background:rgba(156,163,175,.1); color:#9ca3af; border:1px solid rgba(156,163,175,.15); }
+.section-title { font-family:'Plus Jakarta Sans',sans-serif; font-size:1.6rem; font-weight:800; margin-bottom:6px; }
+.section-desc { font-size:0.88rem; color:#666; max-width:600px; line-height:1.6; }
+.preview-wrap { margin-top:28px; border-radius:16px; overflow:hidden; border:1px solid #222; box-shadow:0 24px 60px rgba(0,0,0,0.5); }
+
+/* ═══════════════════════════════════════════
+   DESIGN A — "Linear / Vercel" Minimal Dark
+   ═══════════════════════════════════════════ */
+.da { background:#0a0a0a; min-height:520px; display:flex; font-family:'Inter',sans-serif; }
+.da-sidebar { width:220px; background:#0d0d0d; border-right:1px solid #1a1a1a; display:flex; flex-direction:column; padding:20px 0; flex-shrink:0; }
+.da-logo { padding:0 16px 20px; font-weight:800; font-size:1rem; color:#fff; letter-spacing:-0.3px; display:flex; align-items:center; gap:8px; }
+.da-logo span { color:#f7d317; }
+.da-nav-group { padding:0 8px; margin-bottom:4px; }
+.da-nav-label { font-size:10px; font-weight:600; color:#333; text-transform:uppercase; letter-spacing:1.2px; padding:8px 8px 4px; }
+.da-nav-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; font-size:0.8rem; color:#555; cursor:pointer; transition:all .15s; }
+.da-nav-item:hover { background:#151515; color:#aaa; }
+.da-nav-item.active { background:#161616; color:#fff; }
+.da-nav-item i { font-size:0.78rem; width:16px; text-align:center; }
+.da-nav-dot { width:6px; height:6px; border-radius:50%; background:#ef4444; margin-left:auto; }
+.da-main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.da-topbar { padding:14px 24px; border-bottom:1px solid #141414; display:flex; align-items:center; justify-content:space-between; }
+.da-breadcrumb { font-size:0.78rem; color:#444; }
+.da-breadcrumb span { color:#888; }
+.da-topbar-actions { display:flex; gap:8px; align-items:center; }
+.da-icon-btn { width:30px; height:30px; border-radius:6px; background:#141414; border:1px solid #1e1e1e; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#555; font-size:0.72rem; }
+.da-avatar { width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#f7d317,#f59e0b); display:flex; align-items:center; justify-content:center; font-size:0.68rem; font-weight:700; color:#111; }
+.da-content { padding:24px; flex:1; overflow:hidden; }
+.da-page-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+.da-page-title { font-size:1.1rem; font-weight:700; color:#e5e5e5; }
+.da-page-sub { font-size:0.75rem; color:#444; margin-top:2px; }
+.da-btn { padding:7px 14px; border-radius:7px; font-size:0.75rem; font-weight:600; cursor:pointer; border:none; display:inline-flex; align-items:center; gap:6px; }
+.da-btn-primary { background:#f7d317; color:#111; }
+.da-btn-ghost { background:#141414; color:#666; border:1px solid #1e1e1e; }
+.da-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+.da-kpi { background:#0d0d0d; border:1px solid #1a1a1a; border-radius:10px; padding:14px 16px; }
+.da-kpi-label { font-size:10px; color:#444; text-transform:uppercase; letter-spacing:0.8px; font-weight:600; margin-bottom:8px; }
+.da-kpi-val { font-size:1.5rem; font-weight:800; color:#e5e5e5; letter-spacing:-1px; }
+.da-kpi-change { font-size:0.7rem; color:#10b981; margin-top:4px; }
+.da-kpi-change.neg { color:#ef4444; }
+.da-table-wrap { background:#0d0d0d; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; }
+.da-table-head { padding:12px 16px; border-bottom:1px solid #141414; display:flex; align-items:center; justify-content:space-between; }
+.da-table-title { font-size:0.82rem; font-weight:600; color:#aaa; }
+.da-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.da-table th { padding:10px 16px; text-align:left; font-size:10px; color:#333; text-transform:uppercase; letter-spacing:0.8px; border-bottom:1px solid #141414; font-weight:600; }
+.da-table td { padding:11px 16px; color:#666; border-bottom:1px solid #0f0f0f; }
+.da-table tr:last-child td { border:none; }
+.da-table tr:hover td { background:#0f0f0f; color:#aaa; }
+.da-pill { display:inline-flex; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; }
+.da-pill-green { background:rgba(16,185,129,.1); color:#10b981; }
+.da-pill-yellow { background:rgba(247,211,23,.1); color:#f7d317; }
+.da-pill-red { background:rgba(239,68,68,.1); color:#ef4444; }
+
+/* ═══════════════════════════════════════════
+   DESIGN B — "Notion / Craft" Warm Light
+   ═══════════════════════════════════════════ */
+.db { background:#fafaf8; min-height:520px; display:flex; font-family:'Inter',sans-serif; color:#1a1a1a; }
+.db-sidebar { width:240px; background:#f3f3f0; border-right:1px solid #e8e8e4; display:flex; flex-direction:column; padding:16px 0; flex-shrink:0; }
+.db-logo { padding:4px 14px 16px; font-weight:800; font-size:0.95rem; color:#111; display:flex; align-items:center; gap:8px; border-bottom:1px solid #e8e8e4; margin-bottom:8px; }
+.db-logo-icon { width:28px; height:28px; background:#111; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; color:#f7d317; font-weight:800; }
+.db-section-label { font-size:10px; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:1px; padding:10px 16px 4px; }
+.db-nav-item { display:flex; align-items:center; gap:9px; padding:7px 14px; font-size:0.82rem; color:#666; cursor:pointer; border-radius:0; transition:all .15s; margin:1px 8px; border-radius:6px; }
+.db-nav-item:hover { background:#eaeae6; color:#111; }
+.db-nav-item.active { background:#fff; color:#111; font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+.db-nav-item i { font-size:0.78rem; width:16px; color:#888; }
+.db-nav-item.active i { color:#f59e0b; }
+.db-badge { margin-left:auto; background:#ef4444; color:#fff; font-size:9px; font-weight:700; padding:2px 6px; border-radius:99px; }
+.db-main { flex:1; background:#fafaf8; overflow:hidden; display:flex; flex-direction:column; }
+.db-topbar { padding:16px 28px; border-bottom:1px solid #e8e8e4; display:flex; align-items:center; justify-content:space-between; background:#fff; }
+.db-search { display:flex; align-items:center; gap:8px; background:#f3f3f0; border:1px solid #e8e8e4; border-radius:8px; padding:7px 12px; font-size:0.8rem; color:#888; width:220px; }
+.db-topbar-right { display:flex; gap:8px; align-items:center; }
+.db-topbar-btn { padding:7px 14px; border-radius:8px; font-size:0.78rem; font-weight:600; cursor:pointer; border:1.5px solid #e8e8e4; background:#fff; color:#444; display:flex; align-items:center; gap:6px; }
+.db-topbar-btn.primary { background:#111; color:#f7d317; border-color:#111; }
+.db-content { padding:28px; flex:1; }
+.db-page-title { font-family:'Plus Jakarta Sans',sans-serif; font-size:1.4rem; font-weight:800; color:#111; letter-spacing:-0.5px; margin-bottom:4px; }
+.db-page-sub { font-size:0.82rem; color:#999; margin-bottom:24px; }
+.db-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
+.db-kpi { background:#fff; border:1.5px solid #e8e8e4; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.04); transition:box-shadow .2s; }
+.db-kpi:hover { box-shadow:0 4px 12px rgba(0,0,0,.08); }
+.db-kpi-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.82rem; margin-bottom:12px; }
+.db-kpi-label { font-size:11px; color:#999; font-weight:500; margin-bottom:4px; }
+.db-kpi-val { font-size:1.6rem; font-weight:800; color:#111; letter-spacing:-1px; }
+.db-kpi-trend { font-size:0.72rem; margin-top:4px; display:flex; align-items:center; gap:3px; }
+.db-cards { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.db-card { background:#fff; border:1.5px solid #e8e8e4; border-radius:12px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+.db-card-head { padding:14px 16px; border-bottom:1px solid #f0f0ec; display:flex; align-items:center; justify-content:space-between; }
+.db-card-title { font-size:0.85rem; font-weight:700; color:#111; }
+.db-card-action { font-size:0.75rem; color:#f59e0b; font-weight:600; cursor:pointer; }
+.db-list-item { display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:1px solid #f5f5f2; font-size:0.8rem; }
+.db-list-item:last-child { border:none; }
+.db-list-avatar { width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; flex-shrink:0; }
+.db-list-name { font-weight:600; color:#111; font-size:0.8rem; }
+.db-list-sub { font-size:0.72rem; color:#999; }
+.db-chip { display:inline-flex; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:600; }
+.db-chip-amber { background:#fef3c7; color:#92400e; }
+.db-chip-green { background:#d1fae5; color:#065f46; }
+.db-chip-red { background:#fee2e2; color:#991b1b; }
+
+/* ═══════════════════════════════════════════
+   DESIGN C — "Stripe / Linear" Structured Light
+   ═══════════════════════════════════════════ */
+.dc { background:#f6f8fa; min-height:520px; display:flex; font-family:'Inter',sans-serif; color:#1a1a1a; }
+.dc-sidebar { width:230px; background:#fff; border-right:1px solid #e1e5ea; display:flex; flex-direction:column; padding:0; flex-shrink:0; }
+.dc-logo-wrap { padding:18px 20px; border-bottom:1px solid #e1e5ea; display:flex; align-items:center; gap:10px; }
+.dc-logo-mark { width:32px; height:32px; background:#f7d317; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:900; color:#111; }
+.dc-logo-text { font-weight:800; font-size:0.92rem; color:#111; }
+.dc-logo-sub { font-size:0.65rem; color:#9ca3af; font-weight:400; }
+.dc-nav { padding:12px 12px; flex:1; overflow-y:auto; }
+.dc-nav-section { margin-bottom:20px; }
+.dc-nav-section-label { font-size:10px; font-weight:700; color:#b0b8c4; text-transform:uppercase; letter-spacing:1.2px; padding:0 8px; margin-bottom:6px; }
+.dc-nav-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; font-size:0.8rem; color:#6b7280; cursor:pointer; transition:all .15s; margin-bottom:1px; }
+.dc-nav-item:hover { background:#f6f8fa; color:#374151; }
+.dc-nav-item.active { background:#eef2ff; color:#4f46e5; font-weight:600; }
+.dc-nav-item i { font-size:0.78rem; width:16px; text-align:center; }
+.dc-nav-badge { margin-left:auto; background:#ef4444; color:#fff; font-size:9px; font-weight:700; padding:1px 6px; border-radius:99px; }
+.dc-nav-badge.green { background:#10b981; }
+.dc-bottom { padding:12px; border-top:1px solid #e1e5ea; }
+.dc-user-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+.dc-user-row:hover { background:#f6f8fa; }
+.dc-avatar { width:30px; height:30px; border-radius:8px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:0.72rem; font-weight:700; color:#fff; }
+.dc-user-name { font-size:0.78rem; font-weight:600; color:#374151; }
+.dc-user-role { font-size:0.68rem; color:#9ca3af; }
+.dc-main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.dc-topbar { background:#fff; border-bottom:1px solid #e1e5ea; padding:12px 24px; display:flex; align-items:center; justify-content:space-between; }
+.dc-title { font-size:1rem; font-weight:700; color:#111; }
+.dc-topbar-actions { display:flex; gap:8px; align-items:center; }
+.dc-btn { padding:7px 14px; border-radius:7px; font-size:0.78rem; font-weight:600; cursor:pointer; border:1px solid #e1e5ea; background:#fff; color:#374151; display:flex; align-items:center; gap:6px; }
+.dc-btn-primary { background:#6366f1; color:#fff; border-color:#6366f1; }
+.dc-content { padding:24px; flex:1; overflow:hidden; }
+.dc-kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+.dc-kpi { background:#fff; border:1px solid #e1e5ea; border-radius:10px; padding:16px; position:relative; overflow:hidden; }
+.dc-kpi::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+.dc-kpi.blue::before { background:#6366f1; }
+.dc-kpi.green::before { background:#10b981; }
+.dc-kpi.amber::before { background:#f59e0b; }
+.dc-kpi.red::before { background:#ef4444; }
+.dc-kpi-label { font-size:11px; color:#9ca3af; font-weight:500; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
+.dc-kpi-val { font-size:1.55rem; font-weight:800; color:#111; letter-spacing:-1px; }
+.dc-kpi-footer { font-size:0.72rem; color:#9ca3af; margin-top:4px; }
+.dc-kpi-footer .up { color:#10b981; }
+.dc-kpi-footer .dn { color:#ef4444; }
+.dc-grid { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+.dc-card { background:#fff; border:1px solid #e1e5ea; border-radius:10px; overflow:hidden; }
+.dc-card-head { padding:14px 18px; border-bottom:1px solid #f3f4f6; display:flex; align-items:center; justify-content:space-between; }
+.dc-card-title { font-size:0.85rem; font-weight:700; color:#111; display:flex; align-items:center; gap:8px; }
+.dc-card-sub { font-size:0.72rem; color:#9ca3af; margin-top:1px; }
+.dc-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.dc-table th { padding:10px 18px; text-align:left; font-size:10px; color:#9ca3af; text-transform:uppercase; letter-spacing:0.8px; border-bottom:1px solid #f3f4f6; font-weight:600; }
+.dc-table td { padding:10px 18px; color:#374151; border-bottom:1px solid #f9fafb; }
+.dc-table tr:last-child td { border:none; }
+.dc-status { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; }
+.dc-status::before { content:''; width:5px; height:5px; border-radius:50%; }
+.dc-status.active { background:#d1fae5; color:#065f46; } .dc-status.active::before { background:#10b981; }
+.dc-status.pending { background:#fef3c7; color:#92400e; } .dc-status.pending::before { background:#f59e0b; }
+.dc-status.critical { background:#fee2e2; color:#991b1b; } .dc-status.critical::before { background:#ef4444; }
+.dc-activity { padding:12px 18px; display:flex; align-items:flex-start; gap:12px; border-bottom:1px solid #f9fafb; }
+.dc-activity:last-child { border:none; }
+.dc-activity-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.7rem; flex-shrink:0; }
+.dc-activity-text { font-size:0.78rem; color:#374151; line-height:1.5; }
+.dc-activity-time { font-size:0.68rem; color:#9ca3af; margin-top:2px; }
+
+/* Selector tabs */
+.design-selector { display:flex; gap:0; background:#1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:0; }
+.ds-btn { flex:1; padding:10px; text-align:center; cursor:pointer; font-size:0.78rem; font-weight:600; color:#555; transition:all .2s; border:none; background:transparent; }
+.ds-btn.active { background:#f7d317; color:#111; }
+.ds-btn:hover:not(.active) { color:#aaa; background:#222; }
+
+.design-view { display:none; }
+.design-view.active { display:block; }
+
+.choose-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 22px; border-radius:8px; font-size:0.82rem; font-weight:700; cursor:pointer; border:none; transition:all .2s; margin-top:16px; }
+.choose-btn-a { background:#f7d317; color:#111; }
+.choose-btn-b { background:#f59e0b; color:#111; }
+.choose-btn-c { background:#6366f1; color:#fff; }
+.choose-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+
+.feature-tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.ftag { padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:600; background:#1a1a1a; color:#666; border:1px solid #252525; }
+.ftag.highlight { background:rgba(247,211,23,.08); color:#f7d317; border-color:rgba(247,211,23,.2); }
+
+.current-label { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; background:#1a1a1a; color:#555; font-size:0.72rem; font-weight:600; border:1px solid #252525; margin-left:8px; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<div class="top-nav">
+  <div class="nav-logo">✈ JetLearn <span>Design Lab</span></div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showDesign('a',this)">A — Dark Minimal</div>
+    <div class="nav-tab" onclick="showDesign('b',this)">B — Warm Light</div>
+    <div class="nav-tab" onclick="showDesign('c',this)">C — Clean Pro</div>
+  </div>
+  <div class="nav-hint">Click a tab to switch • Pick favourite to implement</div>
+</div>
+
+
+<!-- ══════════════ DESIGN A ══════════════ -->
+<div id="view-a" class="design-view active">
+  <div class="section">
+    <div class="section-badge badge-new">⚡ Option A</div>
+    <h2 class="section-title">Dark Minimal <span style="color:#f7d317">— Linear / Vercel Style</span></h2>
+    <p class="section-desc">Ultra-clean dark canvas. Data speaks loudest. Zero decoration. Used by Linear, Vercel, Raycast, Resend. Best for power users who live in the app all day.</p>
+    <div class="feature-tags">
+      <span class="ftag highlight">Dark canvas</span>
+      <span class="ftag highlight">Zero noise</span>
+      <span class="ftag highlight">Yellow accent</span>
+      <span class="ftag">High information density</span>
+      <span class="ftag">Perfect for long sessions</span>
+      <span class="ftag">Monochrome tables</span>
+    </div>
+  </div>
+
+  <div style="padding:0 32px 32px">
+    <div class="preview-wrap">
+      <div class="da">
+        <!-- Sidebar -->
+        <div class="da-sidebar">
+          <div class="da-logo"><span style="background:#f7d317;color:#111;width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;">✈</span> <span>JetLearn</span></div>
+          <div class="da-nav-group">
+            <div class="da-nav-label">Overview</div>
+            <div class="da-nav-item"><i class="fas fa-grid-2"></i> Dashboard</div>
+            <div class="da-nav-item active"><i class="fas fa-exchange-alt"></i> Migration Center <div class="da-nav-dot"></div></div>
+            <div class="da-nav-item"><i class="fas fa-route"></i> Course Planner</div>
+            <div class="da-nav-item"><i class="fas fa-paper-plane"></i> Communications</div>
+          </div>
+          <div class="da-nav-group">
+            <div class="da-nav-label">Tools</div>
+            <div class="da-nav-item"><i class="fas fa-certificate"></i> Certificates</div>
+            <div class="da-nav-item"><i class="fas fa-user-tie"></i> Teacher Persona</div>
+            <div class="da-nav-item"><i class="fas fa-robot"></i> AI Manager</div>
+          </div>
+          <div class="da-nav-group" style="margin-top:auto; padding-top:8px;">
+            <div class="da-nav-item"><i class="fas fa-cog"></i> Settings</div>
+          </div>
+        </div>
+        <!-- Main -->
+        <div class="da-main">
+          <div class="da-topbar">
+            <div class="da-breadcrumb">Operations <span>/ Migration Center</span></div>
+            <div class="da-topbar-actions">
+              <div class="da-icon-btn"><i class="fas fa-search"></i></div>
+              <div class="da-icon-btn"><i class="fas fa-bell"></i></div>
+              <div class="da-avatar">AK</div>
+            </div>
+          </div>
+          <div class="da-content">
+            <div class="da-page-header">
+              <div>
+                <div class="da-page-title">Migration Center</div>
+                <div class="da-page-sub">14 active · 3 pending review</div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="da-btn da-btn-ghost"><i class="fas fa-filter"></i> Filter</button>
+                <button class="da-btn da-btn-primary"><i class="fas fa-plus"></i> New Migration</button>
+              </div>
+            </div>
+            <div class="da-kpi-row">
+              <div class="da-kpi">
+                <div class="da-kpi-label">Active Learners</div>
+                <div class="da-kpi-val">2,546</div>
+                <div class="da-kpi-change">↑ 12 this week</div>
+              </div>
+              <div class="da-kpi">
+                <div class="da-kpi-label">Migrations (30d)</div>
+                <div class="da-kpi-val">147</div>
+                <div class="da-kpi-change">↑ 8% vs last month</div>
+              </div>
+              <div class="da-kpi">
+                <div class="da-kpi-label">Critical Alerts</div>
+                <div class="da-kpi-val" style="color:#ef4444">3</div>
+                <div class="da-kpi-change neg">↑ 1 new today</div>
+              </div>
+              <div class="da-kpi">
+                <div class="da-kpi-label">Success Rate</div>
+                <div class="da-kpi-val">97.2%</div>
+                <div class="da-kpi-change">↑ 0.4%</div>
+              </div>
+            </div>
+            <div class="da-table-wrap">
+              <div class="da-table-head">
+                <div class="da-table-title">Recent Migrations</div>
+                <div style="font-size:0.72rem;color:#333;cursor:pointer;">View all →</div>
+              </div>
+              <table class="da-table">
+                <thead><tr><th>Learner</th><th>From Teacher</th><th>To Teacher</th><th>Course</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td>Aryan Shah <span style="color:#444;font-size:10px;">JL5276</span></td><td>Ayesha Ahmed</td><td>Riya Sharma</td><td>Python 2.0</td><td><span class="da-pill da-pill-green">Done</span></td></tr>
+                  <tr><td>Sofia Chen <span style="color:#444;font-size:10px;">JL8832</span></td><td>Marco R.</td><td>TBD</td><td>Game Dev</td><td><span class="da-pill da-pill-yellow">Pending</span></td></tr>
+                  <tr><td>Liam Patel <span style="color:#444;font-size:10px;">JL3341</span></td><td>—</td><td>—</td><td>Minecraft Edu</td><td><span class="da-pill da-pill-red">Critical</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="choose-btn choose-btn-a" onclick="selectDesign('A — Dark Minimal')">Choose This Design →</button>
+  </div>
+</div>
+
+
+<!-- ══════════════ DESIGN B ══════════════ -->
+<div id="view-b" class="design-view">
+  <div class="section">
+    <div class="section-badge badge-new">🌿 Option B</div>
+    <h2 class="section-title">Warm Light <span style="color:#f59e0b">— Notion / Craft Style</span></h2>
+    <p class="section-desc">Cream-white canvas with warm neutrals. Feels like a thoughtful workspace rather than a tool. Used by Notion, Linear (light), Craft. Easier on the eyes for document-heavy work.</p>
+    <div class="feature-tags">
+      <span class="ftag highlight">Warm off-white</span>
+      <span class="ftag highlight">Amber accents</span>
+      <span class="ftag highlight">Card-heavy layout</span>
+      <span class="ftag">Easy on eyes</span>
+      <span class="ftag">Spacious feel</span>
+      <span class="ftag">Great for forms</span>
+    </div>
+  </div>
+
+  <div style="padding:0 32px 32px">
+    <div class="preview-wrap" style="border-color:#e8e8e4;">
+      <div class="db">
+        <!-- Sidebar -->
+        <div class="db-sidebar">
+          <div class="db-logo">
+            <div class="db-logo-icon">JL</div>
+            <div><div style="font-size:0.85rem;font-weight:800;color:#111;">JetLearn</div><div style="font-size:0.62rem;color:#aaa;">Operations Hub</div></div>
+          </div>
+          <div class="db-section-label">Main</div>
+          <div class="db-nav-item"><i class="fas fa-home"></i> Dashboard</div>
+          <div class="db-nav-item active"><i class="fas fa-exchange-alt"></i> Migrations <span class="db-badge">3</span></div>
+          <div class="db-nav-item"><i class="fas fa-route"></i> Course Planner</div>
+          <div class="db-nav-item"><i class="fas fa-envelope"></i> Communications</div>
+          <div class="db-section-label">Tools</div>
+          <div class="db-nav-item"><i class="fas fa-certificate"></i> Certificates</div>
+          <div class="db-nav-item"><i class="fas fa-user-tie"></i> Teacher Persona</div>
+          <div class="db-nav-item"><i class="fas fa-robot"></i> AI Manager</div>
+          <div class="db-nav-item" style="margin-top:auto"><i class="fas fa-cog"></i> Settings</div>
+        </div>
+        <!-- Main -->
+        <div class="db-main">
+          <div class="db-topbar">
+            <div class="db-search"><i class="fas fa-search" style="font-size:0.72rem;"></i> Search learners, teachers…</div>
+            <div class="db-topbar-right">
+              <button class="db-topbar-btn"><i class="fas fa-filter"></i> Filter</button>
+              <button class="db-topbar-btn primary"><i class="fas fa-plus"></i> New Migration</button>
+            </div>
+          </div>
+          <div class="db-content">
+            <div class="db-page-title">Migration Center</div>
+            <div class="db-page-sub">Track and manage all learner teacher changes</div>
+            <div class="db-kpi-row">
+              <div class="db-kpi">
+                <div class="db-kpi-icon" style="background:#fef3c7;color:#f59e0b;"><i class="fas fa-users"></i></div>
+                <div class="db-kpi-label">Active Learners</div>
+                <div class="db-kpi-val">2,546</div>
+                <div class="db-kpi-trend" style="color:#10b981;"><i class="fas fa-arrow-up" style="font-size:9px;"></i> 12 this week</div>
+              </div>
+              <div class="db-kpi">
+                <div class="db-kpi-icon" style="background:#d1fae5;color:#10b981;"><i class="fas fa-check-circle"></i></div>
+                <div class="db-kpi-label">Migrations (30d)</div>
+                <div class="db-kpi-val">147</div>
+                <div class="db-kpi-trend" style="color:#10b981;"><i class="fas fa-arrow-up" style="font-size:9px;"></i> 8% vs last month</div>
+              </div>
+              <div class="db-kpi">
+                <div class="db-kpi-icon" style="background:#fee2e2;color:#ef4444;"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="db-kpi-label">Critical Alerts</div>
+                <div class="db-kpi-val" style="color:#ef4444;">3</div>
+                <div class="db-kpi-trend" style="color:#ef4444;"><i class="fas fa-arrow-up" style="font-size:9px;"></i> 1 new today</div>
+              </div>
+              <div class="db-kpi">
+                <div class="db-kpi-icon" style="background:#ede9fe;color:#6366f1;"><i class="fas fa-chart-line"></i></div>
+                <div class="db-kpi-label">Success Rate</div>
+                <div class="db-kpi-val">97.2%</div>
+                <div class="db-kpi-trend" style="color:#10b981;"><i class="fas fa-arrow-up" style="font-size:9px;"></i> 0.4%</div>
+              </div>
+            </div>
+            <div class="db-cards">
+              <div class="db-card">
+                <div class="db-card-head"><span class="db-card-title">Recent Migrations</span><span class="db-card-action">View all</span></div>
+                <div class="db-list-item"><div class="db-list-avatar" style="background:#fef3c7;color:#f59e0b;">AS</div><div style="flex:1"><div class="db-list-name">Aryan Shah</div><div class="db-list-sub">Python 2.0 · Ayesha → Riya</div></div><span class="db-chip db-chip-green">Done</span></div>
+                <div class="db-list-item"><div class="db-list-avatar" style="background:#ede9fe;color:#6366f1;">SC</div><div style="flex:1"><div class="db-list-name">Sofia Chen</div><div class="db-list-sub">Game Dev · Marco → TBD</div></div><span class="db-chip db-chip-amber">Pending</span></div>
+                <div class="db-list-item"><div class="db-list-avatar" style="background:#fee2e2;color:#ef4444;">LP</div><div style="flex:1"><div class="db-list-name">Liam Patel</div><div class="db-list-sub">Minecraft Edu · Critical</div></div><span class="db-chip db-chip-red">Critical</span></div>
+              </div>
+              <div class="db-card">
+                <div class="db-card-head"><span class="db-card-title">Quick Actions</span></div>
+                <div style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;">
+                  <button style="padding:10px 14px;background:#111;color:#f7d317;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;"><i class="fas fa-plus"></i> New Migration</button>
+                  <button style="padding:10px 14px;background:#fef3c7;color:#92400e;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;"><i class="fas fa-envelope"></i> Send Onboarding</button>
+                  <button style="padding:10px 14px;background:#f3f3f0;color:#374151;border:none;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px;"><i class="fas fa-certificate"></i> Issue Certificate</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="choose-btn choose-btn-b" onclick="selectDesign('B — Warm Light')">Choose This Design →</button>
+  </div>
+</div>
+
+
+<!-- ══════════════ DESIGN C ══════════════ -->
+<div id="view-c" class="design-view">
+  <div class="section">
+    <div class="section-badge badge-new">🔷 Option C</div>
+    <h2 class="section-title">Clean Pro <span style="color:#6366f1">— Stripe / Clerk Style</span></h2>
+    <p class="section-desc">Crisp white with indigo accents and coloured top-border KPI cards. The most "enterprise" feel. Familiar to anyone who uses Stripe, Clerk, Supabase, or Vercel dashboards. Closest to current but significantly refined.</p>
+    <div class="feature-tags">
+      <span class="ftag highlight">Indigo primary (current)</span>
+      <span class="ftag highlight">Coloured KPI borders</span>
+      <span class="ftag highlight">Structured layout</span>
+      <span class="ftag">Familiar to team</span>
+      <span class="ftag">Best for tables</span>
+      <span class="ftag">Easy migration from current</span>
+    </div>
+  </div>
+
+  <div style="padding:0 32px 32px">
+    <div class="preview-wrap" style="border-color:#e1e5ea;">
+      <div class="dc">
+        <!-- Sidebar -->
+        <div class="dc-sidebar">
+          <div class="dc-logo-wrap">
+            <div class="dc-logo-mark">JL</div>
+            <div><div class="dc-logo-text">JetLearn</div><div class="dc-logo-sub">Ops Platform</div></div>
+          </div>
+          <div class="dc-nav">
+            <div class="dc-nav-section">
+              <div class="dc-nav-section-label">Main</div>
+              <div class="dc-nav-item"><i class="fas fa-gauge"></i> Dashboard</div>
+              <div class="dc-nav-item active"><i class="fas fa-exchange-alt"></i> Migration Center <span class="dc-nav-badge">3</span></div>
+              <div class="dc-nav-item"><i class="fas fa-route"></i> Course Planner</div>
+              <div class="dc-nav-item"><i class="fas fa-paper-plane"></i> Communications</div>
+              <div class="dc-nav-item"><i class="fas fa-receipt"></i> Invoices</div>
+            </div>
+            <div class="dc-nav-section">
+              <div class="dc-nav-section-label">Tools</div>
+              <div class="dc-nav-item"><i class="fas fa-certificate"></i> Certificates <span class="dc-nav-badge green">New</span></div>
+              <div class="dc-nav-item"><i class="fas fa-user-tie"></i> Teacher Persona</div>
+              <div class="dc-nav-item"><i class="fas fa-robot"></i> AI Manager</div>
+            </div>
+            <div class="dc-nav-section">
+              <div class="dc-nav-section-label">System</div>
+              <div class="dc-nav-item"><i class="fas fa-heartbeat"></i> System Health</div>
+              <div class="dc-nav-item"><i class="fas fa-cog"></i> Settings</div>
+            </div>
+          </div>
+          <div class="dc-bottom">
+            <div class="dc-user-row">
+              <div class="dc-avatar">AK</div>
+              <div><div class="dc-user-name">Admin Khan</div><div class="dc-user-role">CLS Manager</div></div>
+              <i class="fas fa-ellipsis-h" style="margin-left:auto;font-size:0.72rem;color:#9ca3af;"></i>
+            </div>
+          </div>
+        </div>
+        <!-- Main -->
+        <div class="dc-main">
+          <div class="dc-topbar">
+            <div>
+              <div class="dc-title">Migration Center</div>
+              <div style="font-size:0.72rem;color:#9ca3af;margin-top:1px;">14 active · 3 require attention</div>
+            </div>
+            <div class="dc-topbar-actions">
+              <button class="dc-btn"><i class="fas fa-download"></i> Export</button>
+              <button class="dc-btn"><i class="fas fa-filter"></i> Filter</button>
+              <button class="dc-btn dc-btn-primary"><i class="fas fa-plus"></i> New Migration</button>
+            </div>
+          </div>
+          <div class="dc-content">
+            <div class="dc-kpi-row">
+              <div class="dc-kpi blue">
+                <div class="dc-kpi-label">Active Learners</div>
+                <div class="dc-kpi-val">2,546</div>
+                <div class="dc-kpi-footer"><span class="up">↑ 12</span> this week</div>
+              </div>
+              <div class="dc-kpi green">
+                <div class="dc-kpi-label">Migrations (30d)</div>
+                <div class="dc-kpi-val">147</div>
+                <div class="dc-kpi-footer"><span class="up">↑ 8%</span> vs last month</div>
+              </div>
+              <div class="dc-kpi red">
+                <div class="dc-kpi-label">Critical Alerts</div>
+                <div class="dc-kpi-val" style="color:#ef4444;">3</div>
+                <div class="dc-kpi-footer"><span class="dn">↑ 1</span> new today</div>
+              </div>
+              <div class="dc-kpi amber">
+                <div class="dc-kpi-label">Success Rate</div>
+                <div class="dc-kpi-val">97.2%</div>
+                <div class="dc-kpi-footer"><span class="up">↑ 0.4%</span> this month</div>
+              </div>
+            </div>
+            <div class="dc-grid">
+              <div class="dc-card">
+                <div class="dc-card-head">
+                  <div><div class="dc-card-title"><i class="fas fa-list" style="color:#6366f1;font-size:0.78rem;"></i> Recent Migrations</div><div class="dc-card-sub">Last 7 days</div></div>
+                  <div style="font-size:0.72rem;color:#6366f1;font-weight:600;cursor:pointer;">View all</div>
+                </div>
+                <table class="dc-table">
+                  <thead><tr><th>Learner</th><th>Course</th><th>Teacher</th><th>Status</th></tr></thead>
+                  <tbody>
+                    <tr><td><div style="font-weight:600;color:#111;font-size:0.8rem;">Aryan Shah</div><div style="font-size:10px;color:#9ca3af;">JL5276</div></td><td>Python 2.0</td><td>Riya Sharma</td><td><span class="dc-status active">Complete</span></td></tr>
+                    <tr><td><div style="font-weight:600;color:#111;font-size:0.8rem;">Sofia Chen</div><div style="font-size:10px;color:#9ca3af;">JL8832</div></td><td>Game Dev</td><td>Pending match</td><td><span class="dc-status pending">Pending</span></td></tr>
+                    <tr><td><div style="font-weight:600;color:#111;font-size:0.8rem;">Liam Patel</div><div style="font-size:10px;color:#9ca3af;">JL3341</div></td><td>Minecraft Edu</td><td>—</td><td><span class="dc-status critical">Critical</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="dc-card">
+                <div class="dc-card-head"><div class="dc-card-title"><i class="fas fa-bolt" style="color:#f59e0b;font-size:0.78rem;"></i> Activity Feed</div></div>
+                <div class="dc-activity"><div class="dc-activity-icon" style="background:#d1fae5;color:#10b981;"><i class="fas fa-check"></i></div><div><div class="dc-activity-text">Migration <strong>JL5276</strong> completed</div><div class="dc-activity-time">2 min ago</div></div></div>
+                <div class="dc-activity"><div class="dc-activity-icon" style="background:#fee2e2;color:#ef4444;"><i class="fas fa-exclamation"></i></div><div><div class="dc-activity-text">Critical alert for <strong>JL3341</strong></div><div class="dc-activity-time">18 min ago</div></div></div>
+                <div class="dc-activity"><div class="dc-activity-icon" style="background:#ede9fe;color:#6366f1;"><i class="fas fa-user-plus"></i></div><div><div class="dc-activity-text">New onboarding <strong>JL9901</strong></div><div class="dc-activity-time">1 hr ago</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="choose-btn choose-btn-c" onclick="selectDesign('C — Clean Pro')">Choose This Design →</button>
+  </div>
+</div>
+
+<div id="chosen-msg" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:12px 24px;border-radius:10px;font-weight:700;font-size:0.88rem;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:999;"></div>
+
+<script>
+function showDesign(id, tab) {
+  document.querySelectorAll('.design-view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  tab.classList.add('active');
+}
+function selectDesign(name) {
+  const msg = document.getElementById('chosen-msg');
+  msg.textContent = '✅ You chose Design ' + name + ' — tell Claude to implement it!';
+  msg.style.display = 'block';
+  setTimeout(() => msg.style.display = 'none', 4000);
+}
+</script>
+</body>
+</html>

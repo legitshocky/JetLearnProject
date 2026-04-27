@@ -265,9 +265,7 @@ function createDefaultUsers() {
     sheet.getRange(sheet.getLastRow() + 1, 1, defaultUsers.length, 10).setValues(defaultUsers);
     delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
 
-    // Temp passwords logged ONCE for first login — delete these two lines after setup
-    Logger.log('[SETUP] Admin temp password: '    + adminPass);
-    Logger.log('[SETUP] Ops_team temp password: ' + opsPass);
+    // Temp passwords NOT logged — retrieve from Script Properties if needed
 
     return { success: true };
 
