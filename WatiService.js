@@ -507,12 +507,14 @@ function sendWatiSessionMessage(phoneNumber, messageText) {
 function processMigrationSubmission(data, sendEmail, sendWhatsapp) {
   const results = { email: 'Skipped', whatsapp: 'Skipped' };
   
+  // Fetch HubSpot data once — reused for both email and WhatsApp paths
+  var _dealData = null;
+  try { _dealData = fetchHubspotByJlid(data.jlid); } catch(fe) {}
+
   // 1. Send Email (Teacher)
   if (sendEmail) {
      try {
-      const dealData = fetchHubspotByJlid(data.jlid);
-      const parentPhone = dealData.data.parentContact;
-       sendMigrationEmail(data); 
+       sendMigrationEmail(data);
        results.email = 'Success';
      } catch(e) {
        results.email = 'Failed: ' + e.message;
@@ -522,10 +524,9 @@ function processMigrationSubmission(data, sendEmail, sendWhatsapp) {
   // 2. Send WhatsApp (Parent)
   if (sendWhatsapp) {
     try {
-      // Re-fetch parent phone from Deal to be safe
-      const dealData = fetchHubspotByJlid(data.jlid);
-      const parentPhone = dealData.data.parentContact;
-      const parentName = dealData.data.parentName; // Get parent name from deal
+      const dealData = _dealData;
+      const parentPhone = dealData && dealData.data ? dealData.data.parentContact : null;
+      const parentName  = dealData && dealData.data ? dealData.data.parentName    : null;
       
       if(parentPhone) {
         // Inject fetched parent data into `data` object for the generator

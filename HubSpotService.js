@@ -9,10 +9,22 @@ function safeParseHubspotNumber(value, defaultValue = 0) {
 
 
 
+// ── Execution-level JLID cache ──────────────────────────────────────────────
+// GAS executions are isolated — this var resets each run, so it's safe to cache.
+// Eliminates duplicate HubSpot calls (deals/search + contacts + tickets) for the
+// same JLID within one trigger/function run.
+var _hubspotJlidCache = {};
+
 function fetchHubspotByJlid(jlid) {
   Logger.log('fetchHubspotByJlid called for JLID: ' + jlid);
-  
+
   if (!jlid) return { success: false, message: 'JLID is required.' };
+
+  // Return cached result — avoids 4 API calls per duplicate JLID lookup
+  if (_hubspotJlidCache[jlid]) {
+    Logger.log('fetchHubspotByJlid: cache hit for ' + jlid);
+    return _hubspotJlidCache[jlid];
+  }
 
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const hubspotApiUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
@@ -174,7 +186,9 @@ function fetchHubspotByJlid(jlid) {
         learningKitCost:         parseFloat(contactProperties.learning_kit_cost) || 0
       };
       
-      return { success: true, data: data };
+      var _cachedResult = { success: true, data: data };
+      _hubspotJlidCache[jlid] = _cachedResult; // Cache for remainder of this execution
+      return _cachedResult;
     } else {
       return { success: false, message: 'No learner found with this JLID.' };
     }
@@ -1272,9 +1286,18 @@ function verifySubscriptionWithCalendar(jlid, expectedStartDate, expectedEndDate
     }
 }
 
+// Execution-level phone cache — same deal queried multiple times in one run
+var _phoneByDealIdCache = {};
+
 function getBestPhoneNumberForDeal(dealId) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   if (!dealId || !token) return null;
+
+  // Cache hit — skip 2 API calls (associations + contacts/batch/read)
+  if (_phoneByDealIdCache[dealId] !== undefined) {
+    Logger.log('getBestPhoneNumberForDeal: cache hit for dealId=' + dealId);
+    return _phoneByDealIdCache[dealId];
+  }
 
   try {
     // 1. Get IDs of Contacts associated with this Deal
@@ -1339,6 +1362,7 @@ function getBestPhoneNumberForDeal(dealId) {
         }
     }
     
+    _phoneByDealIdCache[dealId] = bestNumber; // Cache result
     return bestNumber;
 
   } catch (e) {
@@ -1671,6 +1695,17 @@ function getComprehensiveLearnerHistory(jlid) {
  * Filters: Pipeline, Keywords (Kits/PRM), and Cancelled Stages.
  */
 function getMigrationHistoryStats(jlid) {
+  // CacheService cache — tickets/search with limit:100 returns large JSON.
+  // Cache for 5 min to avoid re-fetching on every fetchHubspotByJlid call for the same JLID.
+  var _cacheKey = 'MIG_STATS_' + jlid;
+  try {
+    var _cached = CacheService.getScriptCache().get(_cacheKey);
+    if (_cached) {
+      Logger.log('getMigrationHistoryStats: cache hit for ' + jlid);
+      return JSON.parse(_cached);
+    }
+  } catch(ce) {}
+
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
   
@@ -1760,7 +1795,10 @@ function getMigrationHistoryStats(jlid) {
       });
     });
 
-    return { total: events.length, inbound: inboundCount, outbound: outboundCount, events: events };
+    var _statsResult = { total: events.length, inbound: inboundCount, outbound: outboundCount, events: events };
+    // Store in CacheService — 300s (5 min) TTL
+    try { CacheService.getScriptCache().put(_cacheKey, JSON.stringify(_statsResult), 300); } catch(ce) {}
+    return _statsResult;
 
   } catch (e) {
     Logger.log("Error analyzing migration stats: " + e.message);
