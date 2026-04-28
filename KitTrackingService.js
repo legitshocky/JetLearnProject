@@ -48,10 +48,10 @@ var KIT_COL = {
 function _kitPropertyForType(kitName) {
   if (!kitName) return null;
   var k = kitName.toLowerCase().trim();
-  if (k.indexOf('vr')       > -1 || k.indexOf('oculus') > -1 || k.indexOf('headset') > -1) return 'vr_headset__oculus_status';
-  if (k.indexOf('microbit') > -1)                                                            return 'microbit_kit_status';
-  if (k.indexOf('makey')    > -1)                                                            return 'makey_makey_kit_status';
-  if (k.indexOf('arduino')  > -1)                                                            return 'arduino_kit_status';
+  if (k.indexOf('vr')       > -1 || k.indexOf('oculus') > -1 || k.indexOf('headset') > -1) return 'vr_headset__oculus_status'; // confirmed via API
+  if (k.indexOf('microbit') > -1)                                                            return 'microbit_kit_status';           // confirmed via API
+  if (k.indexOf('makey')    > -1)                                                            return 'makey_makey_kit_status';         // confirmed via API (no __t_)
+  if (k.indexOf('arduino')  > -1)                                                            return 'arduino_kit_status';             // confirmed via API
   return null;
 }
 
@@ -102,48 +102,51 @@ function _normalisePhone(raw) {
 // ALL KIT PROPERTIES  (used for multi-kit HubSpot search)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var KIT_HS_PROPS = [
-  'vr_headset__oculus_status',
-  'microbit_kit_status',
-  'makey_makey_kit_status',
-  'arduino_kit_status'
+  'vr_headset__oculus_status',   // confirmed
+  'microbit_kit_status',          // confirmed
+  'makey_makey_kit_status',       // confirmed (no __t_)
+  'arduino_kit_status'            // confirmed
 ];
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// AUTO-FIND JLID  â€” searches HubSpot deals where ANY kit property = "Sent by Us"
-// then matches by learner name. kitName used only as tiebreak log.
+// In-memory cache for the “Sent” deals list — fetched once per trigger run
+var _kitSentDealsCache = null;
+
+// AUTO-FIND JLID  â€” searches HubSpot deals where ANY kit property = “Sent” (internal enum value)
+// then matches by learner name. Fetches once per execution, reuses cached results for all rows.
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _findJlidByKitStatus(learnerName, kitName) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     if (!token) return null;
 
-    // Each filterGroup = OR condition â€” match deals where ANY kit = "Sent by Us"
-    var filterGroups = KIT_HS_PROPS.map(function(prop) {
-      return { filters: [{ propertyName: prop, operator: 'EQ', value: 'Sent by Us' }] };
-    });
+    // Use cached results if already fetched this execution
+    var results = _kitSentDealsCache;
+    if (!results) {
+      var filterGroups = KIT_HS_PROPS.map(function(prop) {
+        return { filters: [{ propertyName: prop, operator: 'EQ', value: 'Sent' }] };
+      });
+      var body = {
+        filterGroups: filterGroups,
+        properties: ['jetlearner_id', 'dealname'].concat(KIT_HS_PROPS),
+        limit: 200
+      };
+      var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+      var respCode = resp.getResponseCode();
+      var respText = resp.getContentText();
+      Logger.log('[KitTracking] _findJlidByKitStatus: HTTP ' + respCode + ' (fresh fetch)');
+      var data = JSON.parse(respText);
+      results = (data && data.results) || [];
+      _kitSentDealsCache = results; // cache for rest of run
+      Logger.log('[KitTracking] _findJlidByKitStatus: ' + results.length + ' deals cached with any kit=”Sent”');
+    }
 
-    var body = {
-      filterGroups: filterGroups,
-      properties: ['jetlearner_id', 'dealname'].concat(KIT_HS_PROPS),
-      limit: 200
-    };
-
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
-      method: 'post',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(body),
-      muteHttpExceptions: true
-    });
-
-    var respCode = resp.getResponseCode();
-    var respText = resp.getContentText();
-    Logger.log('[KitTracking] _findJlidByKitStatus: HTTP ' + respCode + ' body=' + respText.substring(0, 300));
-    var data    = JSON.parse(respText);
-    var results = (data && data.results) || [];
-
-    Logger.log('[KitTracking] _findJlidByKitStatus: ' + results.length + ' deals found with any kit="Sent by Us"');
-
-    if (!results.length) return null;
+    if (!results || !results.length) return null;
 
     var nameLower = learnerName.toLowerCase().trim();
     var match = null;
@@ -411,8 +414,8 @@ function handleKitReply(waId, buttonText) {
         sheet.getRange(matchRow, KIT_COL.TIME_TAKEN).setValue(diffDays + ' days');
       }
 
-      // Update HubSpot kit status
-      if (normJlid) _updateHubspotKitStatus(normJlid, kitName, 'Received by the Parents');
+      // Update HubSpot kit status — internal enum value is "Received" (label: "Received by the Parents")
+      if (normJlid) _updateHubspotKitStatus(normJlid, kitName, 'Received');
 
       // Auto-reply to parent — confirm we've noted receipt
       try {
@@ -471,6 +474,32 @@ function handleKitReply(waId, buttonText) {
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ONE-TIME DIAGNOSTIC — run manually to see valid enum values for kit properties
+function diagKitEnumValues() {
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  // Use exact property names from _kitPropertyForType + common variants
+  var props = [
+    'microbit_kit_status',
+    'vr_headset__oculus_status',    // double underscore
+    'vr_headset_oculus_status',     // single underscore variant
+    'makey_makey_kit_status',       // without __t_
+    'makey_makey_kit_status__t_',   // with __t_
+    'arduino_kit_status'
+  ];
+  props.forEach(function(prop) {
+    Utilities.sleep(1500); // avoid bandwidth quota
+    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    var code = resp.getResponseCode();
+    if (code !== 200) { Logger.log('[KitEnum] ' + prop + ': HTTP ' + code + ' (not found or error)'); return; }
+    var data = JSON.parse(resp.getContentText());
+    var options = (data.options || []).map(function(o) { return o.label + ' → "' + o.value + '"'; });
+    Logger.log('[KitEnum] ' + prop + ':\n  ' + (options.length ? options.join('\n  ') : '(no options — text field?)'));
+  });
+}
+
 // UPDATE HUBSPOT KIT STATUS  (PATCH deal property)
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function _updateHubspotKitStatus(jlid, kitName, statusValue) {
@@ -615,19 +644,9 @@ function getKitTrackingData() {
       }
       if (!orderDate || orderDate < cutoff) return;
 
-      // Build orderMonth label e.g. "January 2026"
-      var orderMonth = '';
-      if (tsMonth) {
-        // Sheet col H already has "March-26", "April-26" etc â€” normalise to "March 2026"
-        orderMonth = tsMonth.replace('-', ' 20').replace('-26', ' 2026').replace('-25', ' 2025');
-        // Handle "March-26" â†’ "March 2026"
-        if (orderMonth.match(/\w+ \d{2}$/)) {
-          orderMonth = orderMonth.replace(/(\w+ )(\d{2})$/, '$120$2');
-        }
-      } else if (orderDate) {
-        var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-        orderMonth = MONTHS[orderDate.getMonth()] + ' ' + orderDate.getFullYear();
-      }
+      // Build orderMonth label e.g. “April 2026” — always from parsed orderDate (never col H formula)
+      var MONTHS = [‘January’,’February’,’March’,’April’,’May’,’June’,’July’,’August’,’September’,’October’,’November’,’December’];
+      var orderMonth = orderDate ? (MONTHS[orderDate.getMonth()] + ‘ ‘ + orderDate.getFullYear()) : ‘’;
 
       // Parse ETA
       var etaStr = '';
@@ -830,22 +849,35 @@ function addKitEntry(data) {
     Logger.log('[KitTracking] addKitEntry: wrote to row ' + writeRow + ' sr=' + srNo);
     Logger.log('[KitTracking] addKitEntry: row added sr=' + srNo + ' learner=' + data.learnerName + ' jlid=' + jlid + ' row=' + writeRow);
 
-    // â”€â”€ Accumulate learning_kit_cost in HubSpot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â”€â”€ HubSpot updates on kit entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     var price = parseFloat(data.price) || 0;
-    if (jlid && price > 0) {
+    if (jlid) {
       try {
         var hs = fetchHubspotByJlid(jlid);
         if (hs && hs.success && hs.data && hs.data.dealId) {
-          var existing  = parseFloat(hs.data.learningKitCost) || 0;
-          var newTotal  = existing + price;
-          var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-          UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/' + hs.data.dealId, {
-            method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            payload: JSON.stringify({ properties: { learning_kit_cost: String(newTotal) } }),
-            muteHttpExceptions: true
-          });
-          Logger.log('[KitTracking] learning_kit_cost updated: ' + existing + ' + ' + price + ' = ' + newTotal + ' for dealId=' + hs.data.dealId);
+          var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+          var dealId   = hs.data.dealId;
+          var kitProp  = _kitPropertyForType(data.kit || '');
+          var hsProps  = {};
+
+          // Kit status → “Sent by Us”
+          if (kitProp) hsProps[kitProp] = 'Sent';
+
+          // Accumulate learning_kit_cost
+          if (price > 0) {
+            var existing = parseFloat(hs.data.learningKitCost) || 0;
+            hsProps['learning_kit_cost'] = String(existing + price);
+          }
+
+          if (Object.keys(hsProps).length > 0) {
+            var patchResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+              method: 'PATCH',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              payload: JSON.stringify({ properties: hsProps }),
+              muteHttpExceptions: true
+            });
+            Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchResp.getResponseCode() + ' props=' + JSON.stringify(hsProps));
+          }
         }
       } catch (hsErr) {
         Logger.log('[KitTracking] learning_kit_cost update ERROR (non-fatal): ' + hsErr.message);
@@ -1023,7 +1055,7 @@ function updateKitRow(data) {
               var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
               var url   = 'https://api.hubapi.com/crm/v3/objects/deals/' + hsLookup.data.dealId;
               var patchBody = {};
-              patchBody[prop] = 'Received by the Parents';
+              patchBody[prop] = 'Received'; // internal enum value (label: "Received by the Parents")
               var resp = UrlFetchApp.fetch(url, {
                 method: 'PATCH',
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -1031,8 +1063,10 @@ function updateKitRow(data) {
                 muteHttpExceptions: true
               });
               var code = resp.getResponseCode();
-              Logger.log('[KitTracking] updateKitRow: HubSpot PATCH ' + prop + ' HTTP ' + code + ' body=' + resp.getContentText().substring(0, 200));
-              hsStatus = (code === 200) ? 'updated' : ('http_' + code + ': ' + resp.getContentText().substring(0, 100));
+              var fullBody = resp.getContentText();
+              Logger.log('[KitTracking] updateKitRow: SENDING prop="' + prop + '" value="Received" dealId=' + hsLookup.data.dealId);
+              Logger.log('[KitTracking] updateKitRow: HubSpot PATCH HTTP ' + code + ' FULL_BODY=' + fullBody);
+              hsStatus = (code === 200) ? 'updated' : ('http_' + code + ': ' + fullBody.substring(0, 200));
             }
           } catch (hsErr) {
             hsStatus = 'error: ' + hsErr.message;
