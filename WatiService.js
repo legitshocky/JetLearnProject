@@ -442,7 +442,7 @@ function sendWatiMessage(phoneNumber, templateName, parameters) {
     Logger.log(`[WATI] Sending to: ${cleanPhone}`);
     Logger.log(`[WATI PAYLOAD] ${JSON.stringify(payload)}`);
     
-    const response = UrlFetchApp.fetch(FULL_API_ENDPOINT, options);
+    const response = monitoredFetch(FULL_API_ENDPOINT, options);
     const responseCode = response.getResponseCode();
     const content = response.getContentText();
 
@@ -484,19 +484,31 @@ function sendWatiSessionMessage(phoneNumber, messageText) {
   if (API_ENDPOINT_BASE.endsWith('/')) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
 
   var cleanPhone = String(phoneNumber).replace(/\D/g, '');
-  var url = API_ENDPOINT_BASE + '/api/v1/sendSessionMessage/' + cleanPhone;
+  // WATI sendSessionMessage reads messageText from query param, not body.
+  var encodedText = encodeURIComponent(String(messageText));
+  var url = API_ENDPOINT_BASE + '/api/v1/sendSessionMessage/' + cleanPhone
+            + '?messageText=' + encodedText;
 
   try {
-    var resp = UrlFetchApp.fetch(url, {
+    var resp = monitoredFetch(url, {
       method: 'post',
-      headers: { 'Authorization': ACCESS_TOKEN, 'Content-Type': 'application/json' },
-      payload: JSON.stringify({ messageText: messageText }),
+      headers: { 'Authorization': ACCESS_TOKEN },
       muteHttpExceptions: true
     });
     var code = resp.getResponseCode();
     var body = resp.getContentText();
-    Logger.log('[WATI] sendWatiSessionMessage to ' + cleanPhone + ' → HTTP ' + code);
-    if (code === 200) return { success: true };
+    Logger.log('[WATI] sendWatiSessionMessage to ' + cleanPhone + ' → HTTP ' + code + ' | ' + body.substring(0, 300));
+    if (code === 200) {
+      // WATI can return 200 with result:false — check body
+      try {
+        var parsed = JSON.parse(body);
+        if (parsed.result === false) {
+          Logger.log('[WATI] sendWatiSessionMessage SOFT FAIL: ' + (parsed.info || body));
+          return { success: false, message: parsed.info || 'WATI result:false' };
+        }
+      } catch(pe) {}
+      return { success: true };
+    }
     return { success: false, message: 'HTTP ' + code + ': ' + body.substring(0, 200) };
   } catch (e) {
     Logger.log('[WATI] sendWatiSessionMessage ERROR: ' + e.message);
@@ -630,7 +642,7 @@ function fetchWatiDirectLink(phoneNumber) {
     // 1. Ensure Contact Exists (addContact)
     // We still need this to handle the "New Contact" case gracefully and get a fallback ID
     const addContactUrl = `${API_ENDPOINT_BASE}/api/v1/addContact/${cleanPhone}`;
-    const contactRes = UrlFetchApp.fetch(addContactUrl, { ...options, "method": "post", "payload": JSON.stringify({ "name": "Unknown Parent" }) });
+    const contactRes = monitoredFetch(addContactUrl, { ...options, "method": "post", "payload": JSON.stringify({ "name": "Unknown Parent" }) });
     
     let contactId = null;
     // Extract contact ID just in case we don't find a conversation history
@@ -641,7 +653,7 @@ function fetchWatiDirectLink(phoneNumber) {
 
     // 2. Fetch Messages to get the actual Conversation ID (Chat Thread)
     const messagesUrl = `${API_ENDPOINT_BASE}/api/v1/getMessages/${cleanPhone}?pageSize=1`;
-    const msgRes = UrlFetchApp.fetch(messagesUrl, { ...options, "method": "get" });
+    const msgRes = monitoredFetch(messagesUrl, { ...options, "method": "get" });
     
     let finalId = null;
 

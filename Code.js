@@ -40,7 +40,9 @@ const CONFIG = {
     UPSKILL_TRACKER: 'Upskill Tracker',
     AUDIT_SUMMARY_CACHE: 'Audit Summary Cache',
     ONBOARDING_TRACKER: 'Onboarding Tracker',
-    CERTIFICATE_LOG: 'Certificate Log'
+    CERTIFICATE_LOG: 'Certificate Log',
+    API_FAILURE_LOG: 'API Failure Log',
+    API_DAILY_SUMMARY: 'API Daily Summary'
   },
   EMAIL: {
     FROM: 'hello@jet-learn.com',
@@ -195,6 +197,8 @@ function initializeSystem() {
     const auditSheet        = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     const userActivitySheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
     const tasksSheet        = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.TASKS);
+    const apiFailureSheet   = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.API_FAILURE_LOG);
+    const apiDailySummarySheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.API_DAILY_SUMMARY);
 
     const userProfilesData = _getCachedSheetData(CONFIG.SHEETS.USER_PROFILES);
     if (userProfilesData.length <= 1) {
@@ -239,6 +243,9 @@ function initializeSystem() {
 
     // ── Kit Tracking daily trigger ────────────────────────────────────────
     setupKitTrackingTrigger();
+
+    // ── Parent Will Buy daily trigger ─────────────────────────────────────
+    setupParentWillBuyTrigger();
 
     Logger.log('System initialization completed successfully');
     return { success: true, message: 'System initialized successfully' };
@@ -320,7 +327,7 @@ const TIMEZONE_IANA_MAP = {
       courses: courses,
       tpManagers: tpManagers,
       clsManagers: Array.from(clsManagers).sort(),
-      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Molishka Rai', 'Spreha Jain', 'Satyam Mehra', 'Sunil Amarnath', ],
+      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Satyam Mehra', 'Salima Chhatriwala', ],
       invoiceProducts: invoiceProducts,
       timezones: timezones
     };
@@ -334,9 +341,55 @@ function getSystemHealth() {
   Logger.log('getSystemHealth called');
 
   try {
+    const apiUsage = getApiUsageStats();
+    const apiFailures = getApiFailureLog();
+    const defaultServiceStats = {
+      total: 0,
+      success: 0,
+      fail: 0,
+      lastCallAt: '',
+      lastStatus: 'unknown',
+      lastResponseCode: 0,
+      lastError: '',
+      functions: {}
+    };
+    const buildServiceHealth = function(serviceName) {
+      const serviceStats = (apiUsage.services && apiUsage.services[serviceName]) || defaultServiceStats;
+      const currentStatus = serviceStats.lastStatus === 'fail'
+        ? 'error'
+        : (serviceStats.total > 0 ? 'healthy' : 'idle');
+      return {
+        name: serviceName,
+        currentStatus: currentStatus,
+        hadFailuresToday: (serviceStats.fail || 0) > 0,
+        callsToday: serviceStats.total || 0,
+        successToday: serviceStats.success || 0,
+        failToday: serviceStats.fail || 0,
+        lastCallAt: serviceStats.lastCallAt || '',
+        lastResponseCode: serviceStats.lastResponseCode || 0,
+        lastError: serviceStats.lastError || ''
+      };
+    };
+    const hubspotHealth = buildServiceHealth('HubSpot');
     const health = {
       spreadsheetAccess: false,
       emailService: false,
+      hubspot: hubspotHealth,
+      apiMonitoring: {
+        date: apiUsage.date || '',
+        totalCallsToday: apiUsage.total || 0,
+        successToday: apiUsage.success || 0,
+        failToday: apiUsage.fail || 0,
+        services: apiUsage.services || {},
+        failures: apiFailures || [],
+        serviceHealth: {
+          HubSpot: hubspotHealth,
+          WATI: buildServiceHealth('WATI'),
+          Gemini: buildServiceHealth('Gemini'),
+          Slack: buildServiceHealth('Slack'),
+          ExchangeRate: buildServiceHealth('ExchangeRate')
+        }
+      },
       sheets: {
         teacherData: false,
         courseName: false,
@@ -538,7 +591,8 @@ function doPost(e) {
       if (rawBody && rawBody.indexOf('{') === 0) {
         var watiPayload = JSON.parse(rawBody);
         // WATI message webhooks always have eventType + waId
-        if (watiPayload.eventType === 'message' && watiPayload.waId) {
+        // conversation_started fires when parent taps a template quick-reply button
+        if ((watiPayload.eventType === 'message' || watiPayload.eventType === 'conversation_started') && watiPayload.waId) {
           var rawText = (watiPayload.text || '').trim();
           var KIT_BTNS = ['Kit Received', 'Not Received yet', 'Need To check'];
           var btnText  = rawText;
@@ -576,20 +630,77 @@ function doPost(e) {
             if (btnText !== rawText) {
               Logger.log('[doPost] WATI fuzzy matched "' + rawText + '" → "' + btnText + '"');
             } else {
-              Logger.log('[doPost] WATI text unmatched (ignored): "' + rawText + '"');
+              // ── PWB fuzzy matching (runs BEFORE free-text fallback) ────────────
+              var pwbLower = lower;
+
+              // "Order Placed" signals — parent says they ordered / will order
+              var isOrderPlaced = ['order placed', 'ordered', 'i ordered', 'placed the order',
+                                   'placed order', 'have ordered', 'already ordered',
+                                   'bought it', 'i bought', 'purchased', 'i purchased',
+                                   'buying it', 'will buy', 'going to buy', 'just bought',
+                                   'will be delivered', 'delivery'].some(function(w) {
+                return pwbLower.indexOf(w) > -1;
+              });
+
+              // "Yet to place an order" signals — parent hasn't ordered yet
+              var isYetToOrder = ['yet to', 'not yet', 'haven\'t ordered', 'havent ordered',
+                                  'not ordered', 'didn\'t order', 'didnt order',
+                                  'still looking', 'not placed', 'will order',
+                                  'skip the course', 'skip course', 'no need',
+                                  'told by jetlearn', 'jetlearn will', 'you send',
+                                  'you will send', 'send me', 'send us'].some(function(w) {
+                return pwbLower.indexOf(w) > -1;
+              });
+
+              if (isOrderPlaced && !isYetToOrder) {
+                btnText = 'Order Placed';
+                Logger.log('[doPost] WATI PWB fuzzy → "Order Placed" from: "' + rawText + '"');
+              } else if (isYetToOrder) {
+                btnText = 'Yet to place an order';
+                Logger.log('[doPost] WATI PWB fuzzy → "Yet to place an order" from: "' + rawText + '"');
+              } else {
+                // Genuinely unrecognised — free text, alert CLS
+                Logger.log('[doPost] WATI free text from ' + watiPayload.waId + ': "' + rawText + '"');
+                sc.put('WATI_PWB_LAST', JSON.stringify({ waId: watiPayload.waId, btnText: rawText, freeText: true }), 300);
+                try {
+                  ScriptApp.newTrigger('_processWatiPWBReply').timeBased().after(5000).create();
+                } catch(ftErr) {
+                  handleParentWillBuyReply(watiPayload.waId, rawText, true);
+                }
+                return ContentService.createTextOutput('ok');
+              }
             }
           }
 
+          // ── Route by button text ──────────────────────────────────────────────
+          // PWB-only buttons (exclusive to Parent Will Buy flow)
+          var PWB_ONLY_BTNS = ['Yet to place an order', 'Order Placed'];
+          // 'Kit Received' exists in BOTH flows — fire both handlers, each checks its own sheet
+          var isKitReceived = (btnText === 'Kit Received');
+          var sc = CacheService.getScriptCache();
+
+          // Parent Will Buy handler
+          if (PWB_ONLY_BTNS.indexOf(btnText) > -1 || isKitReceived) {
+            Logger.log('[doPost] WATI PWB reply queued: ' + btnText + ' from ' + watiPayload.waId);
+            sc.put('WATI_PWB_LAST', JSON.stringify({ waId: watiPayload.waId, btnText: btnText }), 300);
+            try {
+              ScriptApp.newTrigger('_processWatiPWBReply').timeBased().after(5000).create();
+            } catch(tePwb) {
+              Logger.log('[doPost] PWB trigger failed, processing inline: ' + tePwb.message);
+              handleParentWillBuyReply(watiPayload.waId, btnText);
+            }
+            // If PWB-only button, stop here. If 'Kit Received', fall through to also fire Kit handler.
+            if (!isKitReceived) return ContentService.createTextOutput('ok');
+          }
+
+          // Kit Tracking handler ('Kit Received', 'Not Received yet', 'Need To check')
           if (KIT_BTNS.indexOf(btnText) > -1) {
             Logger.log('[doPost] WATI kit reply queued: ' + btnText + ' from ' + watiPayload.waId);
-            // Queue for async processing — return 200 to WATI immediately (avoid timeout failures)
-            var sc = CacheService.getScriptCache();
             sc.put('WATI_KIT_LAST', JSON.stringify({ waId: watiPayload.waId, btnText: btnText }), 300);
             try {
               ScriptApp.newTrigger('_processWatiKitReply').timeBased().after(5000).create();
             } catch(te) {
-              // Trigger limit hit — process inline as fallback
-              Logger.log('[doPost] Trigger create failed, processing inline: ' + te.message);
+              Logger.log('[doPost] Kit trigger failed, processing inline: ' + te.message);
               handleKitReply(watiPayload.waId, btnText);
             }
           }
@@ -815,6 +926,29 @@ function _processWatiKitReply() {
   if (queue.length > 0) sc.remove('WATI_KIT_QUEUE');
 }
 
+// ── Background processor for WATI Parent Will Buy replies ────────────
+function _processWatiPWBReply() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === '_processWatiPWBReply') ScriptApp.deleteTrigger(t);
+    });
+  } catch(e) {}
+
+  var sc      = CacheService.getScriptCache();
+  var lastRaw = sc.get('WATI_PWB_LAST');
+  if (!lastRaw) return;
+  try {
+    var last = JSON.parse(lastRaw);
+    if (last.waId && last.btnText) {
+      Logger.log('[_processWatiPWBReply] Processing: ' + last.btnText + ' from ' + last.waId);
+      handleParentWillBuyReply(last.waId, last.btnText, last.freeText || false);
+      sc.remove('WATI_PWB_LAST');
+    }
+  } catch(e) {
+    Logger.log('[_processWatiPWBReply] Error: ' + e.message);
+  }
+}
+
 // ── Background processor for Slack decline modal submissions ──────────
 // Fired ~1 min after doPost returns ack, so we're well within the 30-min response_url window.
 function _processPendingCLSDecline() {
@@ -887,51 +1021,77 @@ function _processPendingCertHS() {
 
 function _verifySlackSignature(e) {
   try {
-    var secret = PropertiesService.getScriptProperties()
-                   .getProperty('SLACK_SIGNING_SECRET');
-    if (!secret) {
-      Logger.log('[Slack] SLACK_SIGNING_SECRET not set — rejecting request');
+    // ── GAS LIMITATION NOTE ──────────────────────────────────────────────────
+    // Google Apps Script web apps do NOT expose HTTP request headers in doPost(e).
+    // Slack sends its signature in HTTP headers (X-Slack-Request-Timestamp,
+    // X-Slack-Signature) which GAS silently drops — they are NEVER in e.parameter
+    // or e.headers. So we cannot do HMAC verification here.
+    //
+    // Defence strategy: verify payload structure (must parse as valid Slack JSON
+    // with known type + action_id) instead of HMAC. Reject anything that doesn't
+    // look like a genuine Slack interactive payload.
+    // ────────────────────────────────────────────────────────────────────────
+
+    // Must have a postData body
+    if (!e.postData || !e.postData.contents) {
+      Logger.log('[Slack] No postData — rejected');
       return false;
     }
 
-    var timestamp  = e.parameter['X-Slack-Request-Timestamp'] ||
-                     (e.headers && e.headers['X-Slack-Request-Timestamp']) || '';
-    var sigHeader  = e.parameter['X-Slack-Signature'] ||
-                     (e.headers && e.headers['X-Slack-Signature']) || '';
+    // Slack interactive payloads arrive as form-encoded with a "payload" field
+    var rawBody = e.postData.contents;
 
-    if (!timestamp || !sigHeader) {
-      Logger.log('[Slack] Missing timestamp or signature header');
+    // Quick structural check: must contain "payload=" or be JSON with "type"
+    var hasPayloadField = rawBody.indexOf('payload=') > -1 || rawBody.indexOf('"type"') > -1;
+    if (!hasPayloadField) {
+      Logger.log('[Slack] postData does not look like Slack payload — rejected');
       return false;
     }
 
-    // Reject requests older than 5 minutes — prevents replay attacks
-    var now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - parseInt(timestamp)) > 300) {
-      Logger.log('[Slack] Request timestamp too old — possible replay attack');
+    // Try to extract + parse the payload field
+    var jsonStr = '';
+    if (rawBody.indexOf('payload=') > -1) {
+      var m = rawBody.match(/(?:^|&)payload=([^&]+)/);
+      if (m) jsonStr = decodeURIComponent(m[1]);
+    } else {
+      jsonStr = rawBody;
+    }
+    if (!jsonStr) {
+      Logger.log('[Slack] Could not extract payload JSON — rejected');
       return false;
     }
 
-    // Reconstruct the base string Slack signs
-    var rawBody = e.postData ? e.postData.contents : '';
-    var baseString = 'v0:' + timestamp + ':' + rawBody;
-
-    // Compute HMAC-SHA256
-    var computedBytes = Utilities.computeHmacSha256Signature(baseString, secret);
-    var computedHex   = computedBytes.map(function(b) {
-      return ('0' + (b & 0xff).toString(16)).slice(-2);
-    }).join('');
-    var computedSig = 'v0=' + computedHex;
-
-    if (computedSig !== sigHeader) {
-      Logger.log('[Slack] Signature mismatch — request rejected');
+    var parsed;
+    try { parsed = JSON.parse(jsonStr); } catch(pe) {
+      Logger.log('[Slack] Payload JSON parse failed — rejected');
       return false;
     }
 
-    Logger.log('[Slack] Signature verified OK');
+    // Must be a known Slack payload type
+    var ALLOWED_TYPES = ['block_actions', 'view_submission'];
+    if (ALLOWED_TYPES.indexOf(parsed.type) === -1) {
+      Logger.log('[Slack] Unknown payload type "' + parsed.type + '" — rejected');
+      return false;
+    }
+
+    // block_actions must have at least one action with a recognised action_id
+    if (parsed.type === 'block_actions') {
+      var KNOWN_ACTIONS = ['cls_approve_migration', 'cls_decline_migration'];
+      var actions = parsed.actions || [];
+      var hasKnownAction = actions.some(function(a) {
+        return KNOWN_ACTIONS.indexOf(a.action_id) > -1;
+      });
+      if (!hasKnownAction) {
+        Logger.log('[Slack] No recognised action_id in block_actions — rejected');
+        return false;
+      }
+    }
+
+    Logger.log('[Slack] Payload structure verified OK (type=' + parsed.type + ')');
     return true;
 
-  } catch(e) {
-    Logger.log('[Slack] _verifySlackSignature error: ' + e.message);
+  } catch(err) {
+    Logger.log('[Slack] _verifySlackSignature error: ' + err.message);
     return false;
   }
 }

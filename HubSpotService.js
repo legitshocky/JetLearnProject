@@ -57,7 +57,7 @@ function fetchHubspotByJlid(jlid) {
   };
 
   try {
-    const response = UrlFetchApp.fetch(hubspotApiUrl, options);
+    const response = monitoredFetch(hubspotApiUrl, options);
     const responseBody = response.getContentText();
 
     if (response.getResponseCode() !== 200) {
@@ -249,7 +249,7 @@ function logEmailToHubspot(dealId, subject, htmlBody) {
   };
 
   try {
-    const response = UrlFetchApp.fetch(hubspotApiUrl, options);
+    const response = monitoredFetch(hubspotApiUrl, options);
     const responseCode = response.getResponseCode();
     if (responseCode === 201) { // 201 Created is the success code for this API call
       Logger.log(`[HubSpot Logging] Successfully logged email to deal ${dealId}.`);
@@ -301,7 +301,7 @@ function fetchLatestMigrationTicket(jlid) {
       muteHttpExceptions: true
     };
     
-    const response = UrlFetchApp.fetch(hubspotApiUrl, options);
+    const response = monitoredFetch(hubspotApiUrl, options);
     if (response.getResponseCode() !== 200) {
       Logger.log(`HubSpot ticket search error (${response.getResponseCode()}): ${response.getContentText()}`);
       return { found: false, message: `HubSpot API Error (${response.getResponseCode()})` };
@@ -401,7 +401,7 @@ function fetchHubspotRenewalData(jlid) {
   };
   
   try {
-    const searchRes = UrlFetchApp.fetch(searchUrl, {
+    const searchRes = monitoredFetch(searchUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(searchPayload),
@@ -422,7 +422,7 @@ function fetchHubspotRenewalData(jlid) {
 
     for (const deal of searchJson.results) {
         const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${deal.id}/associations/line_items`;
-        const assocRes = UrlFetchApp.fetch(assocUrl, {
+        const assocRes = monitoredFetch(assocUrl, {
             method: 'get',
             headers: { 'Authorization': 'Bearer ' + token },
             muteHttpExceptions: true
@@ -456,7 +456,7 @@ function fetchHubspotRenewalData(jlid) {
         inputs: lineItemIds
     };
     
-    const batchRes = UrlFetchApp.fetch(batchUrl, {
+    const batchRes = monitoredFetch(batchUrl, {
         method: 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload: JSON.stringify(batchPayload),
@@ -565,7 +565,7 @@ function fetchDealsByOnboardingCompletionDate(fromDate, toDate) {
     muteHttpExceptions: true
   };
 
-  const response = UrlFetchApp.fetch(hubspotApiUrl, options);
+  const response = monitoredFetch(hubspotApiUrl, options);
   if (response.getResponseCode() !== 200) {
     throw new Error(`HubSpot API Error (${response.getResponseCode()}): ${response.getContentText()}`);
   }
@@ -580,7 +580,7 @@ function fetchLatestSalesNoteForDeal(dealId) {
   // 1. Get associations to the 5 most recent notes
   const associationUrl = `https://api.hubapi.com/crm/v4/objects/deal/${dealId}/associations/note?limit=5`;
   const assocOptions = { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true };
-  const assocResponse = UrlFetchApp.fetch(associationUrl, assocOptions);
+  const assocResponse = monitoredFetch(associationUrl, assocOptions);
 
   if (assocResponse.getResponseCode() !== 200) {
       Logger.log(`Could not fetch note associations for deal ${dealId}. Status: ${assocResponse.getResponseCode()}`);
@@ -607,7 +607,7 @@ function fetchLatestSalesNoteForDeal(dealId) {
     muteHttpExceptions: true
   };
 
-  const notesResponse = UrlFetchApp.fetch(notesUrl, notesOptions);
+  const notesResponse = monitoredFetch(notesUrl, notesOptions);
   if (notesResponse.getResponseCode() !== 200) {
       Logger.log(`Could not fetch note details for deal ${dealId}. Status: ${notesResponse.getResponseCode()}`);
       return null;
@@ -721,7 +721,7 @@ function getAuditDetails(dealId) {
         };
         
         Logger.log("Fetching deal from HubSpot...");
-        const dealResponse = UrlFetchApp.fetch(dealUrl, dealOptions);
+        const dealResponse = monitoredFetch(dealUrl, dealOptions);
 
         if (dealResponse.getResponseCode() !== 200) {
             const errorBody = dealResponse.getContentText();
@@ -920,7 +920,7 @@ function getAIAgentAnalysis(hubspotProps, noteData, calendarData, promptForBrief
       }
     };
     
-    const response = UrlFetchApp.fetch(endpoint, {
+    const response = monitoredFetch(endpoint, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
@@ -1308,7 +1308,7 @@ function getBestPhoneNumberForDeal(dealId) {
       muteHttpExceptions: true
     };
     
-    const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    const assocRes = monitoredFetch(assocUrl, assocOptions);
     if (assocRes.getResponseCode() !== 200) return null;
     const assocData = JSON.parse(assocRes.getContentText());
 
@@ -1327,7 +1327,7 @@ function getBestPhoneNumberForDeal(dealId) {
       inputs: contactIds
     };
 
-    const contactsRes = UrlFetchApp.fetch(contactsUrl, {
+    const contactsRes = monitoredFetch(contactsUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(contactsPayload),
@@ -1379,7 +1379,7 @@ function getPhoneNumbersForDeal(dealId) {
     // 1. Get IDs of Contacts
     const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/contacts`;
     const assocOptions = { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true };
-    const assocRes = UrlFetchApp.fetch(assocUrl, assocOptions);
+    const assocRes = monitoredFetch(assocUrl, assocOptions);
     if (assocRes.getResponseCode() !== 200) return { best: null, all: [] };
     const assocData = JSON.parse(assocRes.getContentText());
 
@@ -1394,7 +1394,7 @@ function getPhoneNumbersForDeal(dealId) {
       inputs: contactIds
     };
 
-    const contactsRes = UrlFetchApp.fetch(contactsUrl, {
+    const contactsRes = monitoredFetch(contactsUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(contactsPayload),
@@ -1445,7 +1445,7 @@ function fetchHubspotHistory(dealId) {
   try {
     // 1. Fetch Associated TICKETS
     const ticketUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/tickets`;
-    const ticketRes = UrlFetchApp.fetch(ticketUrl, { headers: headers, muteHttpExceptions: true });
+    const ticketRes = monitoredFetch(ticketUrl, { headers: headers, muteHttpExceptions: true });
     if (ticketRes.getResponseCode() !== 200) return [];
     const ticketAssoc = JSON.parse(ticketRes.getContentText()).results || [];
 
@@ -1454,7 +1454,7 @@ function fetchHubspotHistory(dealId) {
         properties: ["subject", "content", "createdate", "hs_pipeline_stage"],
         inputs: ticketAssoc.map(t => ({ id: t.toObjectId }))
       };
-      const detailsRes = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/batch/read', {
+      const detailsRes = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/batch/read', {
         method: 'post',
         headers: { ...headers, 'Content-Type': 'application/json' },
         payload: JSON.stringify(batchBody),
@@ -1574,7 +1574,7 @@ function getComprehensiveLearnerHistory(jlid) {
         sorts: [{ propertyName: 'createdate', direction: 'ASCENDING' }],
         limit: 100
       };
-      var ticketRes  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+      var ticketRes  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
         method: 'post', headers: headers, payload: JSON.stringify(ticketBody), muteHttpExceptions: true
       });
       var ticketData = JSON.parse(ticketRes.getContentText());
@@ -1739,7 +1739,7 @@ function getMigrationHistoryStats(jlid) {
   };
 
   try {
-    const response = UrlFetchApp.fetch(searchUrl, {
+    const response = monitoredFetch(searchUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(requestBody),
@@ -2107,7 +2107,7 @@ function checkTeacherSlotForMigration(teacherName, slotParams) {
                     + '/events?timeMin=' + encodeURIComponent(tMinStr)
                     + '&timeMax=' + encodeURIComponent(tMaxStr)
                     + '&singleEvents=true&maxResults=50';
-    var masterResp  = UrlFetchApp.fetch(masterUrl, {
+    var masterResp  = monitoredFetch(masterUrl, {
       headers: { 'Authorization': 'Bearer ' + oauthToken },
       muteHttpExceptions: true
     });
@@ -2136,7 +2136,7 @@ function checkTeacherSlotForMigration(teacherName, slotParams) {
                    + '/events?timeMin=' + encodeURIComponent(tMinStr)
                    + '&timeMax=' + encodeURIComponent(tMaxStr)
                    + '&singleEvents=true&maxResults=20';
-      var persResp = UrlFetchApp.fetch(persUrl, {
+      var persResp = monitoredFetch(persUrl, {
         headers: { 'Authorization': 'Bearer ' + oauthToken },
         muteHttpExceptions: true
       });
@@ -2301,7 +2301,7 @@ function getHubSpotOwnerIdByEmail(email) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     var url = 'https://api.hubapi.com/crm/v3/owners?email=' + encodeURIComponent(email) + '&limit=1';
-    var resp = UrlFetchApp.fetch(url, {
+    var resp = monitoredFetch(url, {
       headers: { 'Authorization': 'Bearer ' + token },
       muteHttpExceptions: true
     });
@@ -2362,7 +2362,7 @@ function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsI
       }];
     }
 
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tasks', {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tasks', {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(payload),
@@ -2386,7 +2386,7 @@ function addNoteToHubSpotTicket(ticketId, noteBody) {
       associations: { ticketIds: [parseInt(ticketId, 10)] },
       metadata: { body: noteBody }
     };
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/engagements/v1/engagements', {
+    var resp = monitoredFetch('https://api.hubapi.com/engagements/v1/engagements', {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(payload),
@@ -2549,7 +2549,7 @@ function getTeacherAttritionReport(teacherName) {
   };
  
   try {
-    var response = UrlFetchApp.fetch(searchUrl, {
+    var response = monitoredFetch(searchUrl, {
       method:             'post',
       headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload:            JSON.stringify(requestBody),
@@ -2696,7 +2696,7 @@ function getMigrationHistoryStatsByTeacher(teacherName) {
   };
  
   try {
-    var response = UrlFetchApp.fetch(searchUrl, {
+    var response = monitoredFetch(searchUrl, {
       method:             'post',
       headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload:            JSON.stringify(requestBody),
@@ -2738,7 +2738,7 @@ function getActiveLearnersPerTeacher() {
       };
       if (after) body.after = after;
 
-      const response = UrlFetchApp.fetch(searchUrl, {
+      const response = monitoredFetch(searchUrl, {
         method:           'post',
         headers:          { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload:          JSON.stringify(body),
@@ -2797,7 +2797,7 @@ function getEscalatedTeachersLast90Days() {
         limit: 200, sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
       };
       if (after) requestBody.after = after;
-      var response = UrlFetchApp.fetch(searchUrl, {
+      var response = monitoredFetch(searchUrl, {
         method: 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload: JSON.stringify(requestBody), muteHttpExceptions: true
@@ -2866,7 +2866,7 @@ function getTeacherEscalationHistory(teacherName) {
     limit: 200, sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }]
   };
   try {
-    var response = UrlFetchApp.fetch(searchUrl, {
+    var response = monitoredFetch(searchUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(requestBody), muteHttpExceptions: true
@@ -2926,7 +2926,7 @@ function getTotalActiveLearnerCount() {
       properties: ['hs_object_id'],
       limit: 1  // We only need the total count, not the actual records
     };
-    const response = UrlFetchApp.fetch(searchUrl, {
+    const response = monitoredFetch(searchUrl, {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(body),
@@ -3183,7 +3183,7 @@ function getTeacherReplacementHistory(teacherName) {
         sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
         limit: 100
       };
-      var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+      var res  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
         method: 'post', headers: headers,
         payload: JSON.stringify(body), muteHttpExceptions: true
       });
@@ -3303,7 +3303,7 @@ function getStuckMigrations(thresholdDays) {
       sorts: [{ propertyName: 'createdate', direction: 'ASCENDING' }],
       limit: 100
     };
-    var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+    var res  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
       method: 'post', headers: headers, payload: JSON.stringify(body), muteHttpExceptions: true
     });
     var data = JSON.parse(res.getContentText());
@@ -3377,7 +3377,7 @@ function getMigrationRegistry() {
       limit:  100
     };
 
-    var res  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+    var res  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
       method: 'post', headers: headers,
       payload: JSON.stringify(body), muteHttpExceptions: true
     });

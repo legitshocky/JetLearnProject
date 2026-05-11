@@ -1,19 +1,19 @@
 ﻿/**
  * KitTrackingService.js
- * â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ * ─────────────────────────────────────────────────────────────────────────────
  * Automates kit delivery follow-up via WATI WhatsApp.
  *
  * Flow:
- *   Daily trigger â†’ sendKitFollowUps()
- *     â†’ reads Kit Tracking sheet
- *     â†’ sends WATI "migration_kit_fup_sent_by_us" template for overdue rows
- *     â†’ marks Follow-up Sent + stores phone
+ *   Daily trigger → sendKitFollowUps()
+ *     → reads Kit Tracking sheet
+ *     → sends WATI "migration_kit_fup_sent_by_us" template for overdue rows
+ *     → marks Follow-up Sent + stores phone
  *
- *   WATI webhook â†’ handleKitReply(waId, buttonText)
- *     â†’ matches phone to sheet row
- *     â†’ "Kit Received"     â†’ fills Delivery Date, updates HubSpot kit status
- *     â†’ "Not Received yet" â†’ flags sheet, adds HubSpot deal note
- *     â†’ "Need To Check"    â†’ flags sheet for manual review
+ *   WATI webhook → handleKitReply(waId, buttonText)
+ *     → matches phone to sheet row
+ *     → "Kit Received"     → fills Delivery Date, updates HubSpot kit status
+ *     → "Not Received yet" → flags sheet, adds HubSpot deal note
+ *     → "Need To Check"    → flags sheet for manual review
  *
  * Sheet: "Kit Tracking" (SHEET_ID_KIT_TRACKING)
  * Columns (1-indexed):
@@ -26,7 +26,7 @@
  *   S(19) Parent Response  T(20) Phone Sent To
  */
 
-// â”€â”€ Column indices (1-based for getRange) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Column indices (1-based for getRange) ─────────────────────────────────────
 var KIT_COL = {
   SR_NO:              1,
   LEARNER_NAME:       2,
@@ -40,11 +40,11 @@ var KIT_COL = {
   FOLLOWUP_SENT_AT:   18,
   PARENT_RESPONSE:    19,
   PHONE_SENT_TO:      20,
-  FOLLOWUP2_SENT:     21,   // T — "TRUE" when 2nd reminder sent
-  FOLLOWUP2_SENT_AT:  22    // U — timestamp of 2nd reminder
+  FOLLOWUP2_SENT:     21,   // T � "TRUE" when 2nd reminder sent
+  FOLLOWUP2_SENT_AT:  22    // U � timestamp of 2nd reminder
 };
 
-// â”€â”€ HubSpot kit property map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── HubSpot kit property map ──────────────────────────────────────────────────
 function _kitPropertyForType(kitName) {
   if (!kitName) return null;
   var k = kitName.toLowerCase().trim();
@@ -55,7 +55,7 @@ function _kitPropertyForType(kitName) {
   return null;
 }
 
-// â”€â”€ Get Kit Tracking sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Get Kit Tracking sheet ────────────────────────────────────────────────────
 function _getKitSheet() {
   var ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING');
   if (!ssId) {
@@ -68,7 +68,7 @@ function _getKitSheet() {
   return sheet;
 }
 
-// â”€â”€ Parse DD/MM/YYYY â†’ Date â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Parse DD/MM/YYYY → Date ───────────────────────────────────────────────────
 function _parseDMY(str) {
   if (!str) return null;
   var s = String(str).trim();
@@ -84,7 +84,7 @@ function _parseDMY(str) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-// â”€â”€ Format Date â†’ DD/MM/YYYY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Format Date → DD/MM/YYYY ──────────────────────────────────────────────────
 function _formatDMY(date) {
   var d = date.getDate();
   var m = date.getMonth() + 1;
@@ -92,15 +92,15 @@ function _formatDMY(date) {
   return (d < 10 ? '0' + d : d) + '/' + (m < 10 ? '0' + m : m) + '/' + y;
 }
 
-// â”€â”€ Normalise phone â†’ digits only, no leading + â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Normalise phone → digits only, no leading + ───────────────────────────────
 function _normalisePhone(raw) {
   if (!raw) return '';
   return String(raw).replace(/[^0-9]/g, '');
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // ALL KIT PROPERTIES  (used for multi-kit HubSpot search)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 var KIT_HS_PROPS = [
   'vr_headset__oculus_status',   // confirmed
   'microbit_kit_status',          // confirmed
@@ -108,13 +108,13 @@ var KIT_HS_PROPS = [
   'arduino_kit_status'            // confirmed
 ];
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// In-memory cache for the “Sent” deals list — fetched once per trigger run
+// ─────────────────────────────────────────────────────────────────────────────
+// In-memory cache for the �Sent� deals list � fetched once per trigger run
 var _kitSentDealsCache = null;
 
-// AUTO-FIND JLID  â€” searches HubSpot deals where ANY kit property = “Sent” (internal enum value)
+// AUTO-FIND JLID  — searches HubSpot deals where ANY kit property = �Sent� (internal enum value)
 // then matches by learner name. Fetches once per execution, reuses cached results for all rows.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function _findJlidByKitStatus(learnerName, kitName) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
@@ -131,7 +131,7 @@ function _findJlidByKitStatus(learnerName, kitName) {
         properties: ['jetlearner_id', 'dealname'].concat(KIT_HS_PROPS),
         limit: 200
       };
-      var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+      var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
         method: 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload: JSON.stringify(body),
@@ -143,7 +143,7 @@ function _findJlidByKitStatus(learnerName, kitName) {
       var data = JSON.parse(respText);
       results = (data && data.results) || [];
       _kitSentDealsCache = results; // cache for rest of run
-      Logger.log('[KitTracking] _findJlidByKitStatus: ' + results.length + ' deals cached with any kit=”Sent”');
+      Logger.log('[KitTracking] _findJlidByKitStatus: ' + results.length + ' deals cached with any kit=�Sent�');
     }
 
     if (!results || !results.length) return null;
@@ -151,7 +151,7 @@ function _findJlidByKitStatus(learnerName, kitName) {
     var nameLower = learnerName.toLowerCase().trim();
     var match = null;
 
-    // Pass 1 â€” full name match
+    // Pass 1 — full name match
     results.forEach(function(deal) {
       if (match) return;
       var dealName = String((deal.properties && deal.properties.dealname) || '').toLowerCase();
@@ -159,7 +159,7 @@ function _findJlidByKitStatus(learnerName, kitName) {
       if (jlid && dealName.indexOf(nameLower) > -1) match = jlid;
     });
 
-    // Pass 2 â€” first name only (fallback)
+    // Pass 2 — first name only (fallback)
     if (!match) {
       var firstName = nameLower.split(' ')[0];
       if (firstName.length > 2) {
@@ -185,9 +185,9 @@ function _findJlidByKitStatus(learnerName, kitName) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // SEND KIT FOLLOW-UPS  (daily trigger at 8am)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function sendKitFollowUps() {
   Logger.log('[KitTracking] sendKitFollowUps started');
   try {
@@ -218,7 +218,7 @@ function sendKitFollowUps() {
       if (followupSent === 'TRUE' || followupSent === 'true' || followupSent === true) return;
       if (!learnerName || !kitName) return;
 
-      // Only process 2026+ rows — skip if no order date or order date < 2026
+      // Only process 2026+ rows � skip if no order date or order date < 2026
       var orderRawCheck  = row[KIT_COL.DATE_OF_ORDER - 1];
       var orderYearCheck = null;
       if (orderRawCheck instanceof Date) orderYearCheck = orderRawCheck.getFullYear();
@@ -227,7 +227,7 @@ function sendKitFollowUps() {
 
       // Auto-fill JLID from HubSpot if missing
       if (!jlid) {
-        Logger.log('[KitTracking] Row ' + sheetRow + ': no JLID â€” auto-searching HubSpot for "' + learnerName + '" / ' + kitName);
+        Logger.log('[KitTracking] Row ' + sheetRow + ': no JLID — auto-searching HubSpot for "' + learnerName + '" / ' + kitName);
         jlid = _findJlidByKitStatus(learnerName, kitName) || '';
         if (jlid) {
           sheet.getRange(sheetRow, KIT_COL.JLID).setValue(jlid);
@@ -238,7 +238,7 @@ function sendKitFollowUps() {
         }
       }
 
-      // Parse ETA â€” skip if future
+      // Parse ETA — skip if future
       var etaDate = null;
       if (etaRaw instanceof Date) {
         etaDate = etaRaw;
@@ -258,7 +258,7 @@ function sendKitFollowUps() {
       // Fetch parent phone + name from HubSpot
       var hs = fetchHubspotByJlid(jlid);
       if (!hs || !hs.success || !hs.data.parentContact) {
-        Logger.log('[KitTracking] Row ' + sheetRow + ': HubSpot lookup failed for ' + jlid + ' â€” ' + (hs && hs.message));
+        Logger.log('[KitTracking] Row ' + sheetRow + ': HubSpot lookup failed for ' + jlid + ' — ' + (hs && hs.message));
         return;
       }
 
@@ -288,7 +288,7 @@ function sendKitFollowUps() {
 
     Logger.log('[KitTracking] sendKitFollowUps done. Sent ' + sent + ' first reminders.');
 
-    // ── 2nd reminder pass ─────────────────────────────────────────────
+    // -- 2nd reminder pass ---------------------------------------------
     // Rows where: 1st follow-up sent 2+ days ago, no response, no 2nd follow-up sent
     var sent2 = 0;
     var twoDaysAgo = new Date(today);
@@ -354,9 +354,9 @@ function sendKitFollowUps() {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // HANDLE KIT REPLY  (called from doPost WATI webhook)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function handleKitReply(waId, buttonText) {
   Logger.log('[KitTracking] handleKitReply waId=' + waId + ' btn="' + buttonText + '"');
   try {
@@ -394,9 +394,9 @@ function handleKitReply(waId, buttonText) {
     var learnerName  = String(dataRow[KIT_COL.LEARNER_NAME - 1] || '').trim();
     var orderDateRaw = dataRow[KIT_COL.DATE_OF_ORDER - 1];
 
-    // Normalise JLID — strip trailing non-alphanumeric chars (e.g. JL39611449152C2 → JL39611449152C)
+    // Normalise JLID � strip trailing non-alphanumeric chars (e.g. JL39611449152C2 ? JL39611449152C)
     var normJlid = jlid.replace(/[^A-Z0-9]$/i, '').trim();
-    if (normJlid !== jlid) Logger.log('[KitTracking] JLID normalised: “' + jlid + '” → “' + normJlid + '”');
+    if (normJlid !== jlid) Logger.log('[KitTracking] JLID normalised: �' + jlid + '� ? �' + normJlid + '�');
 
     Logger.log('[KitTracking] Matched row ' + matchRow + ' JLID=' + normJlid + ' kit=' + kitName);
 
@@ -414,18 +414,20 @@ function handleKitReply(waId, buttonText) {
         sheet.getRange(matchRow, KIT_COL.TIME_TAKEN).setValue(diffDays + ' days');
       }
 
-      // Update HubSpot kit status — internal enum value is "Received" (label: "Received by the Parents")
+      // Update HubSpot kit status � internal enum value is "Received" (label: "Received by the Parents")
       if (normJlid) _updateHubspotKitStatus(normJlid, kitName, 'Received');
 
-      // Auto-reply to parent — confirm we've noted receipt
+      // Auto-reply to parent - confirm via template (session messages unreliable)
       try {
-        sendWatiSessionMessage(normPhone,
-          '✅ Thank you for confirming! We\'ve updated our records — the ' + kitName + ' for ' +
-          learnerName + ' is marked as delivered. 🎉 Get ready for an amazing learning experience!\n\n— Team JetLearn ✨'
-        );
+        var confirmResult = sendWatiMessage(normPhone, 'kit_received_confirmation', [
+          { name: 'kit',     value: kitName     },
+          { name: 'learner', value: learnerName }
+        ]);
+        Logger.log('[KitTracking] Confirmation template result: ' + JSON.stringify(confirmResult));
       } catch(re) { Logger.log('[KitTracking] Auto-reply error: ' + re.message); }
 
-      Logger.log('[KitTracking] Kit confirmed received — row ' + matchRow + ' updated.');
+
+      Logger.log('[KitTracking] Kit confirmed received � row ' + matchRow + ' updated.');
 
     } else if (buttonText === 'Not Received yet') {
       // Add HubSpot note
@@ -433,19 +435,19 @@ function handleKitReply(waId, buttonText) {
         var hs1 = fetchHubspotByJlid(normJlid);
         if (hs1 && hs1.success && hs1.data.dealId) {
           _addNoteToDeal(hs1.data.dealId,
-            '[Kit Follow-up] Parent replied “Not Received yet” for kit: ' + kitName +
+            '[Kit Follow-up] Parent replied �Not Received yet� for kit: ' + kitName +
             ' on ' + _formatDMY(new Date()) + '. Verify with logistics and update parent.');
         }
       }
-      // Auto-reply to parent — we're checking with logistics
+      // Auto-reply via template
       try {
-        sendWatiSessionMessage(normPhone,
-          '😟 We\'re sorry to hear that! We\'re checking with our logistics team right away.\n\n' +
-          'We\'ll update you as soon as we have more information. Thank you for letting us know!\n\n— Team JetLearn ✨'
-        );
+        sendWatiMessage(normPhone, 'kit_not_received_reply', [
+          { name: 'kit',     value: kitName     },
+          { name: 'learner', value: learnerName }
+        ]);
       } catch(re) { Logger.log('[KitTracking] Auto-reply error: ' + re.message); }
 
-      Logger.log('[KitTracking] Not received — row ' + matchRow + ' flagged, HS note added.');
+      Logger.log('[KitTracking] Not received � row ' + matchRow + ' flagged, HS note added.');
 
     } else if (buttonText === 'Need To check') {
       // Add HubSpot note
@@ -453,19 +455,19 @@ function handleKitReply(waId, buttonText) {
         var hs2 = fetchHubspotByJlid(normJlid);
         if (hs2 && hs2.success && hs2.data.dealId) {
           _addNoteToDeal(hs2.data.dealId,
-            '[Kit Follow-up] Parent replied “Need To Check” for kit: ' + kitName +
+            '[Kit Follow-up] Parent replied �Need To Check� for kit: ' + kitName +
             ' on ' + _formatDMY(new Date()) + '. Awaiting parent confirmation in 12-24 hrs.');
         }
       }
-      // Auto-reply to parent — we'll follow up in 12-24 hrs
+      // Auto-reply via template
       try {
-        sendWatiSessionMessage(normPhone,
-          '👍 No problem! Please check when you get a chance.\n\n' +
-          'We\'ll follow up with you in 12-24 hours to confirm. Thank you!\n\n— Team JetLearn ✨'
-        );
+        sendWatiMessage(normPhone, 'kit_need_to_check_reply', [
+          { name: 'kit',     value: kitName     },
+          { name: 'learner', value: learnerName }
+        ]);
       } catch(re) { Logger.log('[KitTracking] Auto-reply error: ' + re.message); }
 
-      Logger.log('[KitTracking] Need to check — row ' + matchRow + ' flagged, HS note added.');
+      Logger.log('[KitTracking] Need to check � row ' + matchRow + ' flagged, HS note added.');
     }
 
   } catch (e) {
@@ -473,8 +475,8 @@ function handleKitReply(waId, buttonText) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ONE-TIME DIAGNOSTIC — run manually to see valid enum values for kit properties
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE-TIME DIAGNOSTIC � run manually to see valid enum values for kit properties
 function diagKitEnumValues() {
   var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   // Use exact property names from _kitPropertyForType + common variants
@@ -488,31 +490,31 @@ function diagKitEnumValues() {
   ];
   props.forEach(function(prop) {
     Utilities.sleep(1500); // avoid bandwidth quota
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
       headers: { 'Authorization': 'Bearer ' + token },
       muteHttpExceptions: true
     });
     var code = resp.getResponseCode();
     if (code !== 200) { Logger.log('[KitEnum] ' + prop + ': HTTP ' + code + ' (not found or error)'); return; }
     var data = JSON.parse(resp.getContentText());
-    var options = (data.options || []).map(function(o) { return o.label + ' → "' + o.value + '"'; });
-    Logger.log('[KitEnum] ' + prop + ':\n  ' + (options.length ? options.join('\n  ') : '(no options — text field?)'));
+    var options = (data.options || []).map(function(o) { return o.label + ' ? "' + o.value + '"'; });
+    Logger.log('[KitEnum] ' + prop + ':\n  ' + (options.length ? options.join('\n  ') : '(no options � text field?)'));
   });
 }
 
 // UPDATE HUBSPOT KIT STATUS  (PATCH deal property)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function _updateHubspotKitStatus(jlid, kitName, statusValue) {
   try {
     var prop = _kitPropertyForType(kitName);
     if (!prop) {
-      Logger.log('[KitTracking] Unknown kit type "' + kitName + '" â€” no HubSpot property to update.');
+      Logger.log('[KitTracking] Unknown kit type "' + kitName + '" — no HubSpot property to update.');
       return;
     }
 
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success || !hs.data.dealId) {
-      Logger.log('[KitTracking] Cannot update HubSpot â€” no dealId for ' + jlid);
+      Logger.log('[KitTracking] Cannot update HubSpot — no dealId for ' + jlid);
       return;
     }
 
@@ -523,7 +525,7 @@ function _updateHubspotKitStatus(jlid, kitName, statusValue) {
     }
 
     var url = 'https://api.hubapi.com/crm/v3/objects/deals/' + hs.data.dealId;
-    var resp = UrlFetchApp.fetch(url, {
+    var resp = monitoredFetch(url, {
       method: 'PATCH',
       headers: {
         'Authorization': 'Bearer ' + token,
@@ -534,7 +536,7 @@ function _updateHubspotKitStatus(jlid, kitName, statusValue) {
     });
 
     var code = resp.getResponseCode();
-    Logger.log('[KitTracking] HubSpot PATCH ' + prop + '="' + statusValue + '" â†’ HTTP ' + code);
+    Logger.log('[KitTracking] HubSpot PATCH ' + prop + '="' + statusValue + '" → HTTP ' + code);
     if (code !== 200) {
       Logger.log('[KitTracking] HubSpot error body: ' + resp.getContentText().substring(0, 300));
     }
@@ -543,9 +545,9 @@ function _updateHubspotKitStatus(jlid, kitName, statusValue) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // ADD NOTE TO HUBSPOT DEAL
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function _addNoteToDeal(dealId, noteBody) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
@@ -558,7 +560,7 @@ function _addNoteToDeal(dealId, noteBody) {
         hs_timestamp:      String(new Date().getTime())
       }
     };
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/notes', {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(payload),
@@ -570,7 +572,7 @@ function _addNoteToDeal(dealId, noteBody) {
 
     // Associate note to deal
     if (noteId) {
-      UrlFetchApp.fetch(
+      monitoredFetch(
         'https://api.hubapi.com/crm/v3/objects/notes/' + noteId + '/associations/deals/' + dealId + '/note_to_deal',
         {
           method: 'put',
@@ -586,9 +588,9 @@ function _addNoteToDeal(dealId, noteBody) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // GET KIT TRACKING DATA  (called from client dashboard)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function getKitTrackingData() {
   try {
     var sheet   = _getKitSheet();
@@ -601,7 +603,7 @@ function getKitTrackingData() {
     var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_COL.FOLLOWUP2_SENT_AT).getValues();
     var rows = [];
 
-    var cutoff = new Date(2026, 0, 1); // Jan 1 2026 â€” ignore older rows
+    var cutoff = new Date(2026, 0, 1); // Jan 1 2026 — ignore older rows
 
     raw.forEach(function(r, idx) {
       var srNo         = r[KIT_COL.SR_NO - 1];
@@ -610,7 +612,7 @@ function getKitTrackingData() {
       var orderRaw     = r[KIT_COL.DATE_OF_ORDER - 1];
       var tsMonth      = String(r[7]                           || '').trim(); // col H = Timestamp month
       var etaRaw       = r[KIT_COL.ETA - 1];
-      // Delivery date â€” handle both Date objects and DD/MM/YYYY strings
+      // Delivery date — handle both Date objects and DD/MM/YYYY strings
       var deliveryRaw  = r[KIT_COL.DELIVERY_DATE - 1];
       var deliveryDate = '';
       if (deliveryRaw instanceof Date && !isNaN(deliveryRaw.getTime())) {
@@ -635,7 +637,7 @@ function getKitTrackingData() {
 
       if (!learnerName && !kit) return; // blank row
 
-      // Parse order date â€” skip rows before Jan 2026
+      // Parse order date — skip rows before Jan 2026
       var orderDate = null;
       if (orderRaw instanceof Date) {
         orderDate = orderRaw;
@@ -644,9 +646,9 @@ function getKitTrackingData() {
       }
       if (!orderDate || orderDate < cutoff) return;
 
-      // Build orderMonth label e.g. “April 2026” — always from parsed orderDate (never col H formula)
-      var MONTHS = [‘January’,’February’,’March’,’April’,’May’,’June’,’July’,’August’,’September’,’October’,’November’,’December’];
-      var orderMonth = orderDate ? (MONTHS[orderDate.getMonth()] + ‘ ‘ + orderDate.getFullYear()) : ‘’;
+      // Build orderMonth label e.g. �April 2026� � always from parsed orderDate (never col H formula)
+      var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      var orderMonth = orderDate ? (MONTHS[orderDate.getMonth()] + ' ' + orderDate.getFullYear()) : '';
 
       // Parse ETA
       var etaStr = '';
@@ -686,7 +688,7 @@ function getKitTrackingData() {
       } else if (response === 'Need To check') {
         status = 'need_check';
       } else if (fup2SentBool && !response) {
-        // 2nd reminder sent, still no reply → escalated
+        // 2nd reminder sent, still no reply ? escalated
         status = 'escalated';
       } else if (fupSentBool && !response) {
         status = 'awaiting';
@@ -746,12 +748,12 @@ function getKitTrackingData() {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // RESEND KIT FOLLOW-UP  (manual resend from dashboard)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // FETCH LEARNER DETAILS FOR KIT FORM  (JLID lookup in Add Kit modal)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function fetchKitLearnerDetails(jlid) {
   try {
     var hs = fetchHubspotByJlid(jlid);
@@ -771,15 +773,15 @@ function fetchKitLearnerDetails(jlid) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // ADD KIT ENTRY  (called from client Add Kit modal)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function addKitEntry(data) {
   try {
     var sheet   = _getKitSheet();
     var sheetLastRow = sheet.getLastRow();
 
-    // Find actual last data row — scan col A from bottom, skip empty/formatted rows
+    // Find actual last data row � scan col A from bottom, skip empty/formatted rows
     var lastDataRow = 1;
     if (sheetLastRow >= 2) {
       var colA = sheet.getRange(2, 1, sheetLastRow - 1, 1).getValues();
@@ -824,7 +826,7 @@ function addKitEntry(data) {
 
     var jlid = String(data.jlid || '').trim();
 
-    // Write per-column to skip col H (formulated in sheet — never overwrite)
+    // Write per-column to skip col H (formulated in sheet � never overwrite)
     var writeRow = lastDataRow + 1;
     var writeMap = [
       [1,  srNo],                        // A: Sr No
@@ -834,7 +836,7 @@ function addKitEntry(data) {
       [5,  data.price       || ''],      // E: Price (EUR)
       [6,  data.site        || ''],      // F: Site
       [7,  fmtDate(data.orderDate)],     // G: Date of Order
-      // col 8 (H) = SKIP — formula in sheet
+      // col 8 (H) = SKIP � formula in sheet
       [9,  fmtDate(data.eta)],           // I: ETA
       [10, fmtDate(data.deliveryDate)],  // J: Delivery Date
       [12, data.reason       || ''],     // L: Reason
@@ -849,7 +851,7 @@ function addKitEntry(data) {
     Logger.log('[KitTracking] addKitEntry: wrote to row ' + writeRow + ' sr=' + srNo);
     Logger.log('[KitTracking] addKitEntry: row added sr=' + srNo + ' learner=' + data.learnerName + ' jlid=' + jlid + ' row=' + writeRow);
 
-    // â”€â”€ HubSpot updates on kit entry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── HubSpot updates on kit entry ──────────────────────────────────
     var price = parseFloat(data.price) || 0;
     if (jlid) {
       try {
@@ -860,7 +862,7 @@ function addKitEntry(data) {
           var kitProp  = _kitPropertyForType(data.kit || '');
           var hsProps  = {};
 
-          // Kit status → “Sent by Us”
+          // Kit status ? �Sent by Us�
           if (kitProp) hsProps[kitProp] = 'Sent';
 
           // Accumulate learning_kit_cost
@@ -870,7 +872,7 @@ function addKitEntry(data) {
           }
 
           if (Object.keys(hsProps).length > 0) {
-            var patchResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+            var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
               method: 'PATCH',
               headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
               payload: JSON.stringify({ properties: hsProps }),
@@ -892,9 +894,9 @@ function addKitEntry(data) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// SEND FOLLOW-UP BY ROW INDEX  (manual send â€” handles missing JLID via auto-lookup)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
+// SEND FOLLOW-UP BY ROW INDEX  (manual send — handles missing JLID via auto-lookup)
+// ─────────────────────────────────────────────────────────────────────────────
 function sendKitFollowUpByRow(rowIndex, jlidOverride) {
   try {
     var sheet = _getKitSheet();
@@ -938,9 +940,9 @@ function sendKitFollowUpByRow(rowIndex, jlidOverride) {
   }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // RESEND KIT FOLLOW-UP  (manual resend from dashboard)
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 function resendKitFollowUp(jlid) {
   try {
     if (!jlid) return { success: false, message: 'No JLID provided.' };
@@ -989,9 +991,9 @@ function resendKitFollowUp(jlid) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UPDATE KIT ROW  (manual edit from dashboard — pencil button)
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// UPDATE KIT ROW  (manual edit from dashboard � pencil button)
+// -----------------------------------------------------------------------------
 function updateKitRow(data) {
   try {
     var rowIndex     = parseInt(data.rowIndex, 10);
@@ -1030,21 +1032,21 @@ function updateKitRow(data) {
     // Update parent response
     if (response) {
       sheet.getRange(rowIndex, KIT_COL.PARENT_RESPONSE).setValue(response);
-      Logger.log('[KitTracking] updateKitRow: Response=”' + response + '” row=' + rowIndex);
+      Logger.log('[KitTracking] updateKitRow: Response=�' + response + '� row=' + rowIndex);
     }
 
     var hsStatus = 'skipped';
 
-    // Kit Received → update HubSpot kit status
+    // Kit Received ? update HubSpot kit status
     if (response === 'Kit Received') {
       if (!effectiveJlid) {
         hsStatus = 'no_jlid';
-        Logger.log('[KitTracking] updateKitRow: Kit Received but no JLID — HubSpot NOT updated.');
+        Logger.log('[KitTracking] updateKitRow: Kit Received but no JLID � HubSpot NOT updated.');
       } else {
         var prop = _kitPropertyForType(kitName);
         if (!prop) {
           hsStatus = 'unknown_kit';
-          Logger.log('[KitTracking] updateKitRow: unknown kit type "' + kitName + '" — cannot map to HubSpot property.');
+          Logger.log('[KitTracking] updateKitRow: unknown kit type "' + kitName + '" � cannot map to HubSpot property.');
         } else {
           try {
             var hsLookup = fetchHubspotByJlid(effectiveJlid);
@@ -1056,7 +1058,7 @@ function updateKitRow(data) {
               var url   = 'https://api.hubapi.com/crm/v3/objects/deals/' + hsLookup.data.dealId;
               var patchBody = {};
               patchBody[prop] = 'Received'; // internal enum value (label: "Received by the Parents")
-              var resp = UrlFetchApp.fetch(url, {
+              var resp = monitoredFetch(url, {
                 method: 'PATCH',
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 payload: JSON.stringify({ properties: patchBody }),
@@ -1076,12 +1078,12 @@ function updateKitRow(data) {
       }
     }
 
-    // Not Received / Need To Check → add HubSpot note
+    // Not Received / Need To Check ? add HubSpot note
     if ((response === 'Not Received yet' || response === 'Need To check') && effectiveJlid) {
       try {
         var hsN = fetchHubspotByJlid(effectiveJlid);
         if (hsN && hsN.success && hsN.data.dealId) {
-          _addNoteToDeal(hsN.data.dealId, '[Kit Tracking] Manual update: ' + response + ' for ' + kitName + ' — ' + learnerName);
+          _addNoteToDeal(hsN.data.dealId, '[Kit Tracking] Manual update: ' + response + ' for ' + kitName + ' � ' + learnerName);
         }
       } catch (noteErr) {
         Logger.log('[KitTracking] updateKitRow: note failed: ' + noteErr.message);
@@ -1091,11 +1093,11 @@ function updateKitRow(data) {
     // Build user-facing message
     var msg = 'Sheet updated.';
     if (response === 'Kit Received') {
-      if (hsStatus === 'updated')       msg = 'Sheet updated ✓  HubSpot ' + prop + ' → Received by the Parents ✓';
-      else if (hsStatus === 'no_jlid')  msg = 'Sheet updated ✓  HubSpot SKIPPED — JLID missing. Add JLID and save again.';
-      else if (hsStatus === 'no_deal')  msg = 'Sheet updated ✓  HubSpot SKIPPED — deal not found for ' + effectiveJlid;
-      else if (hsStatus === 'unknown_kit') msg = 'Sheet updated ✓  HubSpot SKIPPED — kit type "' + kitName + '" not mapped.';
-      else                              msg = 'Sheet updated ✓  HubSpot failed: ' + hsStatus;
+      if (hsStatus === 'updated')       msg = 'Sheet updated ?  HubSpot ' + prop + ' ? Received by the Parents ?';
+      else if (hsStatus === 'no_jlid')  msg = 'Sheet updated ?  HubSpot SKIPPED � JLID missing. Add JLID and save again.';
+      else if (hsStatus === 'no_deal')  msg = 'Sheet updated ?  HubSpot SKIPPED � deal not found for ' + effectiveJlid;
+      else if (hsStatus === 'unknown_kit') msg = 'Sheet updated ?  HubSpot SKIPPED � kit type "' + kitName + '" not mapped.';
+      else                              msg = 'Sheet updated ?  HubSpot failed: ' + hsStatus;
     }
 
     return { success: true, message: msg, hsStatus: hsStatus };
@@ -1121,3 +1123,158 @@ function setupKitTrackingTrigger() {
   Logger.log('[KitTracking] Daily trigger registered for sendKitFollowUps at 8am.');
 }
 
+function testKaiConfirmMsg() {
+  var result = sendWatiMessage('447711736472', 'kit_received_confirmation', [
+    { name: 'kit',     value: 'VR Headset'   },
+    { name: 'learner', value: 'Kai Thobani' }
+  ]);
+  Logger.log('Result: ' + JSON.stringify(result));
+}
+
+
+// ── addPWBEntry — called from UI "Add Entry" in Parent Will Buy mode ───────
+function addPWBEntry(data) {
+  try {
+    var sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING')
+                  || '17Jsa2Kl2AkI5SgtlITYGqb-Q-PxfzkNFzzG5HwBJp_Q';
+    var sheet = SpreadsheetApp.openById(sheetId).getSheetByName('Parent_will_buy');
+    if (!sheet) return { success: false, message: 'Parent_will_buy sheet not found' };
+
+    // Fetch HubSpot data for names/phone
+    var learnerName = '';
+    var parentName  = '';
+    var phone       = '';
+    try {
+      var hs = fetchHubspotByJlid((data.jlid || '').trim());
+      if (hs && hs.success && hs.data) {
+        learnerName = hs.data.learnerName || '';
+        parentName  = hs.data.parentName  || '';
+        phone       = _normalisePhone(hs.data.parentContact || hs.data.phone || '');
+      }
+    } catch(e) { Logger.log('[addPWBEntry] HS lookup failed: ' + e.message); }
+
+    var kit = _getKitForCourse(data.courseName || '') || '';
+    var lastRow = sheet.getLastRow();
+    var srNo = lastRow < 2 ? 1 : (sheet.getRange(lastRow, 1).getValue() || 0) + 1;
+
+    var now        = new Date();
+    var entryDate  = Utilities.formatDate(now, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+    var entryMonth = Utilities.formatDate(now, Session.getScriptTimeZone(), 'MMMM yyyy');
+
+    sheet.appendRow([
+      srNo,                      // A: Sr No
+      entryDate,                 // B: Date
+      entryMonth,                // C: Month
+      (data.jlid || '').trim(),  // D: JLID
+      learnerName,               // E: Learner Name
+      parentName,                // F: Parent Name
+      phone,                     // G: Parent Phone
+      data.courseName || '',     // H: Course Name
+      kit,                       // I: Kit
+      data.courseStartDate || '',// J: Course Start Date
+      data.amazonLink || '',     // K: Amazon Link
+      'Pending',                 // L: Status
+      '', '', '', '', '', '', '', '', // M-T: timestamps / response / escalation / interval
+      data.entryBy || ''         // U: Entry By
+    ]);
+
+    // Fire initial message immediately — don't wait for 9am trigger
+    try {
+      var newRow    = sheet.getLastRow();
+      var rowData   = sheet.getRange(newRow, 1, 1, 21).getValues()[0]; // 21 cols = A–U
+      var today     = new Date(); today.setHours(0,0,0,0);
+      _processPWBRow(sheet, newRow, rowData, today);
+      Logger.log('[addPWBEntry] Immediate processing triggered for row ' + newRow);
+    } catch(triggerErr) {
+      Logger.log('[addPWBEntry] Immediate trigger failed: ' + triggerErr.message);
+      // Row is saved — 9am trigger will catch it as fallback
+    }
+
+    return { success: true };
+  } catch(e) {
+    Logger.log('[addPWBEntry] ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Next FUP label helper ──────────────────────────────────────────────────
+function _pwbNextFupLabel(r) {
+  // r = raw row array (0-indexed, 21 cols A-U)
+  // PWB_COL is 1-based so subtract 1
+  var interval      = Number(r[19]) || 0; // T = col 20 → index 19
+  var initialSentAt = r[12]; // M = col 13 → index 12
+  var fup1SentAt    = r[13]; // N
+  var fup2SentAt    = r[14]; // O
+  var finalSentAt   = r[15]; // P
+  var status        = String(r[11] || ''); // L = col 12 → index 11
+
+  var TERMINAL = ['Order Placed', 'Kit Received', "Parent Didn't Buy - Roadmap Changed",
+                  '⚠️ CLS Notified - Awaiting Response'];
+  if (TERMINAL.some(function(t){ return status.indexOf(t) > -1; })) return '—';
+  if (!initialSentAt) return 'Sends tonight';
+
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  function label(sentAt, step) {
+    if (!interval) return 'Unknown interval';
+    var d = new Date(sentAt); d.setHours(0,0,0,0);
+    var due = new Date(d); due.setDate(due.getDate() + interval);
+    var diff = Math.round((due - today) / 86400000);
+    var stepLabel = step + ' in ';
+    if (diff < 0)  return '🔴 ' + step + ' overdue by ' + Math.abs(diff) + 'd';
+    if (diff === 0) return '🟡 ' + step + ' today';
+    if (diff === 1) return '🟡 ' + step + ' tomorrow';
+    return '🟢 ' + step + ' in ' + diff + 'd';
+  }
+
+  if (!fup1SentAt)  return label(initialSentAt, 'FUP 1');
+  if (!fup2SentAt)  return label(fup1SentAt,    'FUP 2');
+  if (!finalSentAt) return label(fup2SentAt,    'Final FUP');
+  return '⏳ Awaiting reply';
+}
+
+// ── getPWBEntries — returns all rows for UI table ──────────────────────────
+function getPWBEntries() {
+  try {
+    var sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING')
+                  || '17Jsa2Kl2AkI5SgtlITYGqb-Q-PxfzkNFzzG5HwBJp_Q';
+    var sheet = SpreadsheetApp.openById(sheetId).getSheetByName('Parent_will_buy');
+    if (!sheet) return [];
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    var rows = sheet.getRange(2, 1, lastRow - 1, 21).getValues(); // A–U
+    var tz = Session.getScriptTimeZone();
+    function fmtDate(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy') : String(v || ''); }
+    function fmtTs(v)   { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy HH:mm') : String(v || ''); }
+
+    return rows.map(function(r) {
+      return {
+        srNo:           r[0],
+        entryDate:      fmtDate(r[1]),
+        entryMonth:     String(r[2]  || ''),
+        jlid:           String(r[3]  || ''),
+        learnerName:    String(r[4]  || ''),
+        parentName:     String(r[5]  || ''),
+        parentPhone:    String(r[6]  || ''),
+        courseName:     String(r[7]  || ''),
+        kit:            String(r[8]  || ''),
+        courseStartDate:fmtDate(r[9]),
+        amazonLink:     String(r[10] || ''),
+        status:         String(r[11] || 'Pending'),
+        initialSentAt:  fmtTs(r[12]),
+        fup1SentAt:     fmtTs(r[13]),
+        fup2SentAt:     fmtTs(r[14]),
+        finalFupSentAt: fmtTs(r[15]),
+        parentResponse: String(r[16] || ''),
+        escalated:      String(r[17] || ''),
+        escalatedAt:    fmtTs(r[18]),
+        interval:       Number(r[19]) || 0,
+        entryBy:        String(r[20] || ''),
+        nextFup:        _pwbNextFupLabel(r)
+      };
+    }).filter(function(r) { return r.jlid; });
+  } catch(e) {
+    Logger.log('[getPWBEntries] ERROR: ' + e.message);
+    return [];
+  }
+}

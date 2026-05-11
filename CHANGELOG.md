@@ -2,6 +2,42 @@
 
 ---
 
+## [2026-04-30] — Parent Will Buy Kit Automation (V53–V55)
+
+### Parent Will Buy — Full WhatsApp Follow-Up System (V53)
+- New `ParentWillBuyService.js` — complete automation for kits parents procure themselves
+- Initial WhatsApp message fires the moment entry is added via UI (no waiting for 9am trigger)
+- Adaptive interval system: >21d=7d, 15–21d=5d, 8–14d=3d, 4–7d=2d, ≤3d=1d between FUPs
+- Always runs full sequence (Initial → FUP1 → FUP2 → Final) — never skips steps
+- Rows with ≤7 days to course start marked `In Progress - URGENT 🔴`
+- CLS notified (email + HubSpot note) when course is 2 days away with no confirmation
+- Full escalation (HubSpot task + email to learner's CLS manager) when course has started
+- CLS email resolved per-learner from HubSpot `cls_manager` deal property via `findClsEmailByManagerName()`
+- New `Parent_will_buy` sheet tab + `getPWBEntries()` / `addPWBEntry()` server functions
+- Kit Tracking page: JetLearn Sends / Parent Will Buy tab toggle with separate KPI strips
+
+### Parent Will Buy — Dashboard & Entry Improvements (V54)
+- Entry By dropdown (Sourav / Shubham / Ankita) — mandatory field on Add Entry modal
+- Date (B) and Month (C) auto-filled on row creation for monthly reporting
+- Interval locked into sheet col T at initial send — immune to course date drift
+- Next FUP countdown in dashboard: 🟢 in Xd / 🟡 tomorrow / 🔴 overdue
+- `renderPWBTable` updated with all new columns
+
+### Parent Will Buy — Reply Handling & HubSpot Sync (V55)
+- Kit-specific HubSpot property updates at every stage:
+  - VR Headset → `vr_headset__oculus_status`
+  - Microbit → `microbit_kit_status`
+  - Makey-Makey → `makey_makey_kit_status`
+  - Arduino → `arduino_kit_status`
+- Status values: Reminder 1 sent → Reminder 2 sent → Final reminder sent → Parent bought it → Escalated to CLS
+- Free text reply capture: unmatched messages logged to sheet + HubSpot note + CLS email
+- PWB fuzzy matching: "Order Placed, delivery on 2nd May" → `Order Placed`; "told by JetLearn" → `Yet to place an order`
+- Bug fix: reply handler matches from first message (not just after final FUP)
+- Bug fix: sibling phone conflict — picks most-recently-active row when two learners share phone
+- `discoverPWBHubspotProperty()` utility added for future property discovery
+
+---
+
 ## [2026-04-28] — Kit Tracking Automation + Certificate Reliability
 
 ### Kit Tracking — WATI Webhook Fix

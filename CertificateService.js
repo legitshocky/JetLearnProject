@@ -525,7 +525,7 @@ function _certCreateDealNote(dealId, noteBody, token) {
         types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]
       }]
     };
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/notes', {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(payload),
@@ -543,7 +543,7 @@ function _certTickCourseSent(dealId, courseName, token) {
     var PROP = 'course_completion_certificates_sent_to_the_parent';
 
     // 1. Fetch current ticked values
-    var getResp = UrlFetchApp.fetch(
+    var getResp = monitoredFetch(
       'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=' + PROP,
       { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
     );
@@ -555,7 +555,7 @@ function _certTickCourseSent(dealId, courseName, token) {
     // 2. Find matching option value from HubSpot property definition
     var optionVal = courseName; // fallback: raw name
     try {
-      var propResp = UrlFetchApp.fetch(
+      var propResp = monitoredFetch(
         'https://api.hubapi.com/crm/v3/properties/deals/' + PROP,
         { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
       );
@@ -592,7 +592,7 @@ function _certTickCourseSent(dealId, courseName, token) {
     var newVal = existing.join(';');
 
     // 4. PATCH deal
-    var patchResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+    var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
       method: 'patch',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify({ properties: { [PROP]: newVal } }),

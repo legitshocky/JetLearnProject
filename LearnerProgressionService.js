@@ -507,7 +507,7 @@ function _buildHealthMap(jlids) {
         propertiesWithHistory : ['current_course__t_'],
         limit                 : batchSize
       };
-      var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+      var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
         method: 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload: JSON.stringify(body),
@@ -1017,7 +1017,7 @@ function _getHubspotEnumOptions(propertyName) {
   if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    var resp  = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/properties/tickets/' + propertyName, {
+    var resp  = monitoredFetch('https://api.hubapi.com/crm/v3/properties/tickets/' + propertyName, {
       headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
     });
     if (resp.getResponseCode() !== 200) return [];
@@ -1079,7 +1079,32 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
     for (var i = 0; i < prog.learners.length; i++) {
       if (prog.learners[i].jlid === jlid) { learner = prog.learners[i]; break; }
     }
-    if (!learner) return { success: false, message: 'Learner ' + jlid + ' not found in PRMS data.' };
+    if (!learner) {
+      // PRMS data empty or stale — fall back to CLS Queue entry (has all fields needed for ticket)
+      Logger.log('[LP] triggerSmartMigration: not in PRMS — trying CLS queue fallback for ' + jlid);
+      var qEntry = _clsQueueGetEntry(jlid);
+      if (!qEntry) return { success: false, message: 'Learner ' + jlid + ' not found in PRMS data or CLS queue.' };
+      var qNext = String(qEntry.data[CLS_Q.NEXT_COURSE] || '');
+      learner = {
+        jlid                : jlid,
+        learnerName         : String(qEntry.data[CLS_Q.LEARNER]    || jlid),
+        teacher             : String(qEntry.data[CLS_Q.TEACHER]    || ''),
+        teacherCode         : '',
+        currentCourse       : String(qEntry.data[CLS_Q.CUR_COURSE] || ''),
+        nextCourses         : qNext ? [{ name: qNext, teacherProgress: '—' }] : [],
+        classesLeft         : '—',
+        classFrequency      : null,
+        projectedWeeks      : null,
+        projectedDate       : null,
+        migrationNeeded     : true,
+        learnerHealth       : '—',
+        learnerHealthCritical: false,
+        clsApprovalRequired : false,
+        dealStage           : '—',
+        lastClassDate       : null
+      };
+      Logger.log('[LP] triggerSmartMigration: queue fallback loaded for ' + jlid + ' — ' + learner.learnerName);
+    }
 
     var nextCourse  = learner.nextCourses.length > 0 ? learner.nextCourses[0].name : learner.currentCourse;
     var nc1         = learner.nextCourses.length > 1 ? learner.nextCourses[1].name : '';
@@ -1200,17 +1225,29 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
     if (lastClassEpoch) ticketProps['pre_migration_last_class_conducted_date__t_'] = lastClassEpoch;
     if (newTeacherVal)  ticketProps['new_teacher']                             = newTeacherVal;
     if (curTeacherVal)  ticketProps['current_teacher__t_']                     = curTeacherVal;
-    // ── Ticket creation with auto-retry on field validation errors ───────
-    // If HubSpot returns 400 for a specific field (e.g. enum mismatch, unknown free-text),
-    // parse which field(s) failed, remove them, retry. Up to 3 attempts.
+    // ── Resolve deal ID for association ──────────────────────────────────
+    var dealIdForAssoc = '';
+    try {
+      var hsLookup = fetchHubspotByJlid(jlid);
+      if (hsLookup && hsLookup.success && hsLookup.data && hsLookup.data.dealId) {
+        dealIdForAssoc = String(hsLookup.data.dealId);
+      }
+    } catch(ae) { Logger.log('[LP] Deal lookup for association failed: ' + ae.message); }
+
+    // ── Ticket creation (NO inline associations — added separately after) ──
+    // HubSpot v3 inline associations fail with INVALID_FROM_OBJECT when the
+    // associationTypeId direction doesn't match the "from" object being created.
+    // Safer: create ticket first, then call v4 batch associations API.
     var ticketCode, ticketBody, ticketResp;
     var attempts = 0;
     while (attempts < 3) {
       attempts++;
-      ticketResp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets', {
+      var ticketBody_ = { properties: ticketProps };
+      // No inline associations — handled separately below
+      ticketResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets', {
         method : 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        payload: JSON.stringify({ properties: ticketProps }),
+        payload: JSON.stringify(ticketBody_),
         muteHttpExceptions: true
       });
       ticketCode = ticketResp.getResponseCode();
@@ -1224,11 +1261,10 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
         (errJson.errors || []).forEach(function(e) {
           var ctx = e.context || {};
           if (ctx.propertyName) badFields = badFields.concat(ctx.propertyName);
-          // Also catch "fieldName" context key
-          if (ctx.fieldName) badFields = badFields.concat(ctx.fieldName);
+          if (ctx.fieldName)    badFields = badFields.concat(ctx.fieldName);
         });
       } catch(pe) {}
-      if (badFields.length === 0) break;  // can't identify field, stop retrying
+      if (badFields.length === 0) break;
       Logger.log('[LP] Ticket 400 — removing invalid fields: ' + badFields.join(', ') + ' (attempt ' + attempts + ')');
       badFields.forEach(function(f) { delete ticketProps[f]; });
     }
@@ -1249,6 +1285,35 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
     var ticketData = JSON.parse(ticketResp.getContentText());
     var ticketId   = ticketData.id || '';
     var hsLink     = ticketId ? 'https://app.hubspot.com/contacts/7729491/record/0-5/' + ticketId : '';
+
+    // ── Associate ticket → deal via v4 batch API (separate call) ──────────
+    // Using v4 avoids the direction-ambiguity issue with v3 inline associations.
+    // typeId 26 = TICKET_TO_DEAL when called from the tickets→deals endpoint.
+    if (ticketId && dealIdForAssoc) {
+      try {
+        var assocResp = monitoredFetch(
+          'https://api.hubapi.com/crm/v4/associations/tickets/deals/batch/create', {
+          method : 'post',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          payload: JSON.stringify({
+            inputs: [{
+              from : { id: ticketId },
+              to   : { id: dealIdForAssoc },
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 26 }]
+            }]
+          }),
+          muteHttpExceptions: true
+        });
+        var assocCode = assocResp.getResponseCode();
+        if (assocCode === 200 || assocCode === 201) {
+          Logger.log('[LP] Ticket ' + ticketId + ' associated to deal ' + dealIdForAssoc);
+        } else {
+          Logger.log('[LP] Association call returned ' + assocCode + ': ' + assocResp.getContentText());
+        }
+      } catch(assocErr) {
+        Logger.log('[LP] Association step failed (non-fatal): ' + assocErr.message);
+      }
+    }
 
     Logger.log('[LP] Ticket created: ' + ticketId + ' for ' + jlid);
     return {
@@ -1309,7 +1374,7 @@ function _findMigrationFormGuid() {
   // The share form page embeds the GUID in its HTML as "formId":"xxxxxxxx-..."
   try {
     Logger.log('[LP] Fetching share URL to extract form GUID: ' + LP_MIGRATION_FORM_SHARE);
-    var shareResp = UrlFetchApp.fetch(LP_MIGRATION_FORM_SHARE, {
+    var shareResp = monitoredFetch(LP_MIGRATION_FORM_SHARE, {
       muteHttpExceptions: true,
       followRedirects: true
     });
@@ -1341,7 +1406,7 @@ function _findMigrationFormGuid() {
   // 3. Try Forms API (requires forms scope — may fail if token lacks it)
   var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   try {
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/forms/v2/forms?limit=500', {
+    var resp = monitoredFetch('https://api.hubapi.com/forms/v2/forms?limit=500', {
       headers: { 'Authorization': 'Bearer ' + token },
       muteHttpExceptions: true
     });
@@ -1384,7 +1449,7 @@ function getMigrationFormFields() {
   if (!guid) return { success: false, message: 'Migration form not found in HubSpot.' };
 
   try {
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/forms/v2/forms/' + guid, {
+    var resp = monitoredFetch('https://api.hubapi.com/forms/v2/forms/' + guid, {
       headers: { 'Authorization': 'Bearer ' + token },
       muteHttpExceptions: true
     });
@@ -1514,7 +1579,7 @@ function submitMigrationHSForm(jlid, userEmail) {
       }
     };
 
-    var resp = UrlFetchApp.fetch(
+    var resp = monitoredFetch(
       'https://api.hsforms.com/submissions/v3/integration/submit/' + LP_HS_PORTAL_ID + '/' + guid,
       {
         method          : 'post',
@@ -1779,7 +1844,7 @@ function _buildCLSSlackBlocks(learner, matchedTeachers) {
 function _slackUpdateMessage(responseUrl, blocks, fallbackText) {
   if (!responseUrl) return;
   try {
-    UrlFetchApp.fetch(responseUrl, {
+    monitoredFetch(responseUrl, {
       method            : 'post',
       headers           : { 'Content-Type': 'application/json' },
       payload           : JSON.stringify({ replace_original: true, text: fallbackText || '', blocks: blocks }),
@@ -1815,7 +1880,7 @@ function openSlackDeclineModal(triggerId, jlid, learnerName) {
     ]
   };
   try {
-    UrlFetchApp.fetch('https://slack.com/api/views.open', {
+    monitoredFetch('https://slack.com/api/views.open', {
       method            : 'post',
       headers           : { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json; charset=utf-8' },
       payload           : JSON.stringify({ trigger_id: triggerId, view: modal }),
@@ -1894,7 +1959,7 @@ function sendCLSMigrationRequest(jlid, triggeredBy) {
       unfurl_links: false
     };
 
-    var resp     = UrlFetchApp.fetch('https://slack.com/api/chat.postMessage', {
+    var resp     = monitoredFetch('https://slack.com/api/chat.postMessage', {
       method            : 'post',
       headers           : { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json; charset=utf-8' },
       payload           : JSON.stringify(msgPayload),
@@ -1954,7 +2019,7 @@ function diagTicket() {
       hs_pipeline_stage: '128913747'
     }
   };
-  var r1 = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets', {
+  var r1 = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets', {
     method: 'post',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     payload: JSON.stringify(payload1),
@@ -1967,7 +2032,7 @@ function diagTicket() {
   Logger.log('[DIAG] ✅ Ticket created: ' + ticketId + ' — deleting now');
 
   // Step 2: delete test ticket
-  UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
+  monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
     method: 'delete',
     headers: { 'Authorization': 'Bearer ' + token },
     muteHttpExceptions: true
@@ -1982,7 +2047,7 @@ function diagTicket() {
     future_course_2        : '',
     future_course_3        : ''
   };
-  var r2 = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets', {
+  var r2 = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets', {
     method: 'post',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
     payload: JSON.stringify({ properties: Object.assign({ subject: '[DIAG TEST 2] Delete me', hs_pipeline: '66161281', hs_pipeline_stage: '128913747' }, customFields) }),
@@ -1992,7 +2057,7 @@ function diagTicket() {
   if (r2.getResponseCode() === 201) {
     var t2id = JSON.parse(r2.getContentText()).id;
     Logger.log('[DIAG] ✅ Custom fields OK — deleting ticket ' + t2id);
-    UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/' + t2id, { method: 'delete', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true });
+    monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + t2id, { method: 'delete', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true });
   } else {
     Logger.log('[DIAG] ❌ Custom fields causing 400 — check error above for which field');
   }
@@ -2007,7 +2072,7 @@ function diagSlack() {
   Logger.log('[DIAG] SLACK_CLS_CHANNEL: "' + channel + '"');
   if (!token) { Logger.log('[DIAG] ❌ No token — set SLACK_BOT_TOKEN in Script Properties'); return; }
   // Test: post a simple message
-  var resp = UrlFetchApp.fetch('https://slack.com/api/chat.postMessage', {
+  var resp = monitoredFetch('https://slack.com/api/chat.postMessage', {
     method: 'post',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json; charset=utf-8' },
     payload: JSON.stringify({ channel: channel || '#general', text: '✅ JetLearn Slack test from GAS — if you see this, Slack is connected!' }),

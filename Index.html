@@ -24,12 +24,7 @@
   <!-- Data Store for Live Currency Rates -->
   <div id="data-store" data-rates='<?= currencyRatesJson ?>' style="display: none;"></div>
 
-  <!-- Inactivity Logout Banner -->
-  <div id="inactivityMessage" style="display:none; position:fixed; top:0; left:0; right:0; z-index:999999; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; padding:0.85rem 1.5rem; text-align:center; font-size:0.92rem; font-weight:500; font-family:'Inter',sans-serif; box-shadow:0 4px 18px rgba(99,102,241,0.45); align-items:center; justify-content:center; gap:0.6rem;">
-    <i class="fas fa-clock" style="opacity:0.85;"></i>
-    <span>You've been logged out due to inactivity. Please sign in again.</span>
-    <button onclick="document.getElementById('inactivityMessage').style.display='none';" style="margin-left:1rem;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.35);color:#fff;border-radius:6px;padding:2px 10px;cursor:pointer;font-size:0.82rem;">Dismiss</button>
-  </div>
+  <div id="inactivityMessage" style="display:none;" aria-live="polite"></div>
 
   <!-- Login Page Container -->
   <div id="loginPage" class="login-container">
@@ -52,40 +47,41 @@
           <div class="login-left">
               <div class="login-left-inner">
                   <div class="login-logo"><i class="fas fa-rocket"></i><h1>JetLearn</h1></div>
-                  <h2 class="login-title">Migration<span>System</span></h2>
-                  <p class="login-subtitle">Streamlining learner migrations, onboarding, and analytics — all in one place.</p>
+                  <div class="login-kicker">Operational intelligence at scale</div>
+                  <h2 class="login-title">Command<span>Center</span></h2>
+                  <p class="login-subtitle">Run migrations, onboarding, learner communication, and intervention workflows from one sharp operational cockpit.</p>
                   <div class="login-features">
-                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-paper-plane"></i></div><div class="feature-text"><h3>Automated Onboarding</h3><p>Professional emails in a few clicks</p></div></div>
-                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-exchange-alt"></i></div><div class="feature-text"><h3>Seamless Migrations</h3><p>Full tracking &amp; audit trail</p></div></div>
-                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-chart-line"></i></div><div class="feature-text"><h3>Real-time Analytics</h3><p>Live performance metrics</p></div></div>
-                      <div class="feature-item" style="border-color: rgba(168,85,247,0.25) !important; background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.10)) !important;">
-                        <div class="feature-icon" style="background: linear-gradient(135deg, rgba(99,102,241,0.40), rgba(168,85,247,0.40)) !important; border-color: rgba(168,85,247,0.35) !important;">
-                          <i class="fas fa-brain" style="color: #c4b5fd !important;"></i>
+                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-paper-plane"></i></div><div class="feature-text"><h3>Automated Onboarding</h3><p>Launch parent-ready flows in a few clicks.</p></div></div>
+                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-exchange-alt"></i></div><div class="feature-text"><h3>Seamless Migrations</h3><p>Track every intervention with audit depth.</p></div></div>
+                      <div class="feature-item"><div class="feature-icon"><i class="fas fa-chart-line"></i></div><div class="feature-text"><h3>Real-time Analytics</h3><p>Spot volume, bottlenecks, and risk live.</p></div></div>
+                      <div class="feature-item feature-item-accent">
+                        <div class="feature-icon feature-icon-accent">
+                          <i class="fas fa-brain"></i>
                         </div>
                         <div class="feature-text">
-                          <h3 style="display:flex; align-items:center; gap:0.4rem;">AI Powered Tools <span style="font-size:0.6rem; background:linear-gradient(135deg,#6366f1,#a855f7); color:#fff; padding:1px 7px; border-radius:99px; font-weight:700; letter-spacing:0.05em; vertical-align:middle;">NEW</span></h3>
-                          <p>Smart insights &amp; automation</p>
+                          <h3>AI Powered Tools <span class="feature-badge">NEW</span></h3>
+                          <p>Sharper decisions, faster operator response.</p>
                         </div>
                       </div>
                   </div>
               </div>
               <div class="login-stat-row">
-                <div class="login-stat"><span class="login-stat-num">12k+</span><span class="login-stat-label">Learners migrated</span></div>
+                <div class="login-stat"><span class="login-stat-num">12k+</span><span class="login-stat-label">Migrated</span></div>
                 <div class="login-stat"><span class="login-stat-num">98%</span><span class="login-stat-label">Success rate</span></div>
-                <div class="login-stat"><span class="login-stat-num">3 min</span><span class="login-stat-label">Avg. onboard time</span></div>
+                <div class="login-stat"><span class="login-stat-num">24/7</span><span class="login-stat-label">Ops visibility</span></div>
               </div>
           </div>
           <div class="login-right">
               <div class="login-right-content">
-                  <div class="login-status-bar">System online · Sign in to continue</div>
+                  <div class="login-status-bar">Workspace ready · Sign in to continue</div>
                   <h2 class="login-form-title">Welcome back</h2>
-                  <p class="login-form-subtitle">Enter your credentials to access the system</p>
+                  <p class="login-form-subtitle">Enter your credentials to access the command center.</p>
                   <form id="loginForm" class="login-form">
                       <div class="form-group">
                           <label for="username" class="form-label">
                               <i class="fas fa-user"></i> Username
                           </label>
-                          <input type="text" id="username" class="form-control" placeholder="Enter your username" required autocomplete="username">
+                          <input type="text" id="username" class="form-control" placeholder="j.doe@jetlearn.ai" required autocomplete="username">
                       </div>
                       <div class="form-group">
                           <label for="password" class="form-label">
@@ -103,18 +99,19 @@
                               <input type="checkbox" id="rememberMe">
                               <label for="rememberMe">
                                   <span class="custom-checkbox"></span>
-                                  <span class="checkbox-text">Remember me</span>
+                                  <span class="checkbox-text">Remember this device for 30 days</span>
                               </label>
                           </div>
                           <a class="forgot-password-link">Forgot password?</a>
                       </div>
                       <button type="submit" class="btn btn-primary login-btn">
-                          <span class="btn-text"><i class="fas fa-sign-in-alt"></i> Sign In</span>
+                          <span class="btn-text"><i class="fas fa-sign-in-alt"></i> Sign In to Intelligence</span>
                           <span class="btn-shine"></span>
                       </button>
                   </form>
+                  <div class="login-assist-note">Need access help? Contact your JetLearn administrator.</div>
               </div>
-              <div class="login-version">JetLearn Migration System · <?= getAppVersion() ?></div>
+              <div class="login-version">JetLearn Command Center · <?= getAppVersion() ?></div>
           </div>
       </div>
 
@@ -123,8 +120,9 @@
           <div class="login-left">
               <div class="login-left-inner">
                   <div class="login-logo"><i class="fas fa-key"></i><h1>JetLearn</h1></div>
+                  <div class="login-kicker">Account recovery</div>
                   <h2 class="login-title">Password<span>Reset</span></h2>
-                  <p class="login-subtitle">Enter your registered email to receive a password reset link.</p>
+                  <p class="login-subtitle">Enter your registered email to receive a secure recovery link.</p>
               </div>
           </div>
           <div class="login-right">
@@ -145,7 +143,7 @@
                       <a class="back-to-login-link"><i class="fas fa-arrow-left"></i> Back to Sign In</a>
                   </form>
               </div>
-              <div class="login-version">JetLearn Migration System · <?= getAppVersion() ?></div>
+              <div class="login-version">JetLearn Command Center · <?= getAppVersion() ?></div>
           </div>
       </div>
 
@@ -154,8 +152,9 @@
           <div class="login-left">
               <div class="login-left-inner">
                   <div class="login-logo"><i class="fas fa-lock"></i><h1>JetLearn</h1></div>
+                  <div class="login-kicker">Secure re-entry</div>
                   <h2 class="login-title">Create New<span>Password</span></h2>
-                  <p class="login-subtitle">Choose a new, strong password for your account.</p>
+                  <p class="login-subtitle">Choose a strong new password before returning to the workspace.</p>
               </div>
           </div>
           <div class="login-right">
@@ -192,7 +191,59 @@
                       </button>
                   </form>
               </div>
-              <div class="login-version">JetLearn Migration System · <?= getAppVersion() ?></div>
+              <div class="login-version">JetLearn Command Center · <?= getAppVersion() ?></div>
+          </div>
+      </div>
+      <div id="loggedOutView" class="login-view hidden">
+          <div class="login-left logout-left">
+              <div class="login-left-inner">
+                  <div class="login-logo"><i class="fas fa-comment-dots"></i><h1>JetLearn</h1></div>
+                  <div class="login-kicker">Session paused</div>
+                  <h2 class="login-title">You stepped<span>away.</span></h2>
+                  <p class="login-subtitle">For security, your workspace was signed out after inactivity. Sign in again to jump right back into operations.</p>
+                  <div class="logout-timeline">
+                      <div class="logout-note">
+                          <span class="logout-note-label">System note</span>
+                          <p>Session paused automatically to protect learner, parent, and operational data.</p>
+                      </div>
+                      <div class="logout-note logout-note-right">
+                          <span class="logout-note-label">JetLearn Support</span>
+                          <p>Your previous workspace is ready to resume as soon as you authenticate again.</p>
+                      </div>
+                  </div>
+              </div>
+              <div class="login-stat-row">
+                <div class="login-stat"><span class="login-stat-num" id="loggedOutTimeLabel">Just now</span><span class="login-stat-label">Ended</span></div>
+                <div class="login-stat"><span class="login-stat-num">Protected</span><span class="login-stat-label">Session state</span></div>
+                <div class="login-stat"><span class="login-stat-num">Instant</span><span class="login-stat-label">Re-entry</span></div>
+              </div>
+          </div>
+          <div class="login-right logout-right">
+              <div class="login-right-content">
+                  <div class="login-status-bar logout-status-bar">Signed out safely · Re-authentication required</div>
+                  <h2 class="login-form-title">Session expired due to inactivity</h2>
+                  <p class="login-form-subtitle" id="loggedOutReasonText">Please sign in again to continue where you left off.</p>
+                  <div class="logout-card">
+                      <div class="logout-card-row">
+                          <span class="logout-card-label">Reason</span>
+                          <strong>Inactive session timeout</strong>
+                      </div>
+                      <div class="logout-card-row">
+                          <span class="logout-card-label">Action</span>
+                          <strong>Credentials required again</strong>
+                      </div>
+                      <div class="logout-card-row">
+                          <span class="logout-card-label">Next step</span>
+                          <strong>Resume the command center</strong>
+                      </div>
+                  </div>
+                  <button type="button" id="returnToLoginBtn" class="btn btn-primary login-btn">
+                      <span class="btn-text"><i class="fas fa-arrow-right"></i> Sign In Again</span>
+                      <span class="btn-shine"></span>
+                  </button>
+                  <button type="button" class="auth-secondary-link" onclick="switchLoginView('forgotPasswordView')">Need password help?</button>
+              </div>
+              <div class="login-version">JetLearn Command Center · <?= getAppVersion() ?></div>
           </div>
       </div>
   </div>
@@ -2202,14 +2253,14 @@
         </div>
 
         <!-- KPI Row -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:1rem;margin-bottom:1.5rem;">
           <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
             <div style="width:42px;height:42px;background:#f0fdf4;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
               <i class="fas fa-bolt" style="color:#10b981;font-size:1.1rem;"></i>
             </div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthApiResponse">—</div>
-              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">API Response</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">HubSpot Calls Today</div>
             </div>
             <span id="healthApiStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
           </div>
@@ -2233,6 +2284,26 @@
             </div>
             <span id="healthSheetsStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
           </div>
+          <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="width:42px;height:42px;background:#f5f3ff;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fab fa-whatsapp" style="color:#25d366;font-size:1.1rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthWatiCalls">—</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">WATI Calls Today</div>
+            </div>
+            <span id="healthWatiStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
+          </div>
+          <div style="background:#fff;border-radius:16px;padding:1.25rem 1.5rem;display:flex;align-items:center;gap:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <div style="width:42px;height:42px;background:#f0f9ff;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fab fa-slack" style="color:#4a154b;font-size:1.1rem;"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:1.5rem;font-weight:700;color:#1e293b;" id="healthSlackCalls">—</div>
+              <div style="font-size:0.68rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Slack Calls Today</div>
+            </div>
+            <span id="healthSlackStatus" style="font-size:0.68rem;font-weight:700;color:#10b981;background:#f0fdf4;padding:3px 9px;border-radius:20px;white-space:nowrap;">HEALTHY</span>
+          </div>
         </div>
 
         <!-- Two-column body -->
@@ -2249,8 +2320,8 @@
                   <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">HubSpot API</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:0.75rem;">
-                  <span style="font-size:0.78rem;color:#94a3b8;">Live</span>
-                  <span style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
+                  <span id="hubspotMeta" style="font-size:0.78rem;color:#94a3b8;">Live</span>
+                  <span id="hubspotStatusBadge" style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
                 </div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
@@ -2271,6 +2342,26 @@
                 <div style="display:flex;align-items:center;gap:0.75rem;">
                   <span id="emailQuota" style="font-size:0.78rem;color:#94a3b8;">—</span>
                   <span id="emailStatusBadge" style="font-size:0.68rem;font-weight:700;color:#10b981;">CONNECTED</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="watiDot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">WATI (WhatsApp)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="watiMeta" style="font-size:0.78rem;color:#94a3b8;">—</span>
+                  <span id="watiStatusBadge" style="font-size:0.68rem;font-weight:700;color:#94a3b8;">IDLE</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;border-bottom:1px solid #f1f5f9;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="slackDot" style="width:8px;height:8px;border-radius:50%;background:#94a3b8;display:inline-block;flex-shrink:0;"></span>
+                  <span style="font-size:0.875rem;font-weight:500;color:#1e293b;">Slack</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                  <span id="slackMeta" style="font-size:0.78rem;color:#94a3b8;">—</span>
+                  <span id="slackStatusBadge" style="font-size:0.68rem;font-weight:700;color:#94a3b8;">IDLE</span>
                 </div>
               </div>
               <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 0;">
@@ -2316,7 +2407,45 @@
                   <div id="sheetsBar" style="height:100%;background:#10b981;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
                 </div>
               </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+                  <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">WATI WhatsApp</span>
+                  <span id="watiStatus" style="font-size:0.8rem;font-weight:600;color:#1e293b;">—</span>
+                </div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div id="watiBar" style="height:100%;background:#25d366;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:0.5rem;">
+                  <span style="font-size:0.7rem;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;">Slack</span>
+                  <span id="slackStatus" style="font-size:0.8rem;font-weight:600;color:#1e293b;">—</span>
+                </div>
+                <div style="height:5px;background:#f1f5f9;border-radius:3px;overflow:hidden;">
+                  <div id="slackBar" style="height:100%;background:#4a154b;border-radius:3px;width:0%;transition:width 0.6s ease;"></div>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:1.5rem;margin-top:1.5rem;">
+          <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <h3 style="font-size:1rem;font-weight:700;margin:0 0 0.5rem;display:flex;align-items:center;gap:0.5rem;color:#1e293b;">
+              <i class="fas fa-chart-line" style="color:#6366f1;font-size:0.9rem;"></i> Today's API Usage
+            </h3>
+            <p style="margin:0 0 1rem;font-size:0.8rem;color:#64748b;">Calls are grouped by backend function so you can see which flow is using HubSpot and where failures started.</p>
+            <div id="apiUsageSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;"></div>
+            <div id="apiFunctionUsageTable" style="overflow:auto;"></div>
+          </div>
+
+          <div style="background:#fff;border-radius:16px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+            <h3 style="font-size:1rem;font-weight:700;margin:0 0 0.5rem;display:flex;align-items:center;gap:0.5rem;color:#1e293b;">
+              <i class="fas fa-bug" style="color:#ef4444;font-size:0.9rem;"></i> Breakpoints
+            </h3>
+            <p style="margin:0 0 1rem;font-size:0.8rem;color:#64748b;">Recent API failures with function name, response code, and the last error payload we captured.</p>
+            <div id="apiFailureSummary" style="margin-bottom:1rem;"></div>
+            <div id="apiFailureLog" style="display:flex;flex-direction:column;gap:0.75rem;"></div>
           </div>
         </div>
       </div>
@@ -2873,8 +3002,18 @@
       </div>
     </div>
 
-    <!-- KPI Strip -->
-    <div class="kpi-grid-v2" style="margin-bottom:1.5rem;">
+    <!-- View Tabs -->
+    <div style="display:flex;gap:0;margin-bottom:1.25rem;background:#f1f5f9;border-radius:10px;padding:4px;width:fit-content;">
+      <button id="ktTabJL" onclick="ktSwitchTab('jl')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;">
+        <i class="fas fa-truck" style="margin-right:5px;color:#f59e0b;"></i>JetLearn Sends
+      </button>
+      <button id="ktTabPWB" onclick="ktSwitchTab('pwb')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-shopping-cart" style="margin-right:5px;color:#8b5cf6;"></i>Parent Will Buy
+      </button>
+    </div>
+
+    <!-- KPI Strip — JetLearn Sends -->
+    <div id="ktKpiJL" class="kpi-grid-v2" style="margin-bottom:1.5rem;">
       <div class="kpi-card-v2">
         <div class="kpi-label">Total Kits</div>
         <div class="kpi-value" id="ktKpiTotal">—</div>
@@ -2904,6 +3043,40 @@
         <div class="kpi-label">🚨 Escalated</div>
         <div class="kpi-value" id="ktKpiEscalated" style="color:#dc2626;">—</div>
         <div class="kpi-sub">2nd reminder sent, no reply</div>
+      </div>
+    </div>
+
+    <!-- KPI Strip — Parent Will Buy -->
+    <div id="ktKpiPWB" class="kpi-grid-v2" style="margin-bottom:1.5rem;display:none;">
+      <div class="kpi-card-v2">
+        <div class="kpi-label">Total Entries</div>
+        <div class="kpi-value" id="pwbKpiTotal">—</div>
+        <div class="kpi-sub">parent will buy</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #10b981;">
+        <div class="kpi-label">Kit Confirmed</div>
+        <div class="kpi-value" id="pwbKpiConfirmed" style="color:#10b981;">—</div>
+        <div class="kpi-sub">order placed or kit received</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #f59e0b;">
+        <div class="kpi-label">In Progress</div>
+        <div class="kpi-value" id="pwbKpiInProgress" style="color:#d97706;">—</div>
+        <div class="kpi-sub">FUPs ongoing</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #6366f1;">
+        <div class="kpi-label">No Response</div>
+        <div class="kpi-value" id="pwbKpiNoResponse" style="color:#6366f1;">—</div>
+        <div class="kpi-sub">final FUP sent, no reply yet</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #dc2626;">
+        <div class="kpi-label">Escalated</div>
+        <div class="kpi-value" id="pwbKpiEscalated" style="color:#dc2626;">—</div>
+        <div class="kpi-sub">parent didn't buy</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #ef4444;">
+        <div class="kpi-label">Roadmap Changed</div>
+        <div class="kpi-value" id="pwbKpiRoadmapChanged" style="color:#ef4444;">—</div>
+        <div class="kpi-sub">course change emails sent</div>
       </div>
     </div>
 
@@ -2950,28 +3123,57 @@
       <span id="ktResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;"></span>
     </div>
 
-    <!-- Table -->
-    <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-        <thead>
-          <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">#</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Learner</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Kit</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Month</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">ETA</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Delivery Date</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Time Taken</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Follow-up</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="ktTableBody">
-          <tr><td colspan="11" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>
-        </tbody>
-      </table>
+    <!-- JetLearn Sends Table -->
+    <div id="ktViewJL">
+      <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">#</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Learner</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Kit</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Month</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">ETA</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Delivery Date</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Time Taken</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Follow-up</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ktTableBody">
+            <tr><td colspan="11" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Parent Will Buy Table -->
+    <div id="ktViewPWB" style="display:none;">
+      <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">#</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Learner</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Date</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Kit</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Course</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Course Start</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Next FUP</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">FUPs Sent</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Entry By</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Escalated</th>
+            </tr>
+          </thead>
+          <tbody id="ktPWBTableBody">
+            <tr><td colspan="9" style="padding:3rem;text-align:center;color:#94a3b8;">Click <strong>Parent Will Buy</strong> tab to load data.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </div>
@@ -2984,6 +3186,19 @@
         <button class="modal-close" onclick="closeAddKitModal()">×</button>
       </div>
       <div class="modal-body" style="padding:1.25rem;">
+
+        <!-- Mode Toggle -->
+        <div style="display:flex;gap:0;margin-bottom:1.25rem;background:#f1f5f9;border-radius:10px;padding:4px;">
+          <button id="ktModeJL" onclick="ktToggleMode('jl')" style="flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.1);border:none;cursor:pointer;">
+            <i class="fas fa-truck" style="margin-right:5px;color:#f59e0b;"></i>JetLearn Sends Kit
+          </button>
+          <button id="ktModePWB" onclick="ktToggleMode('pwb')" style="flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;cursor:pointer;">
+            <i class="fas fa-shopping-cart" style="margin-right:5px;color:#8b5cf6;"></i>Parent Will Buy
+          </button>
+        </div>
+
+        <!-- ── JetLearn Sends Form ── -->
+        <div id="ktFormJL">
 
         <!-- JLID Lookup -->
         <div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;margin-bottom:1rem;">
@@ -3128,11 +3343,82 @@
           </div>
 
         </div>
+        </div><!-- end #ktFormJL -->
+
+        <!-- ── Parent Will Buy Form ── -->
+        <div id="ktFormPWB" style="display:none;">
+          <!-- JLID Lookup -->
+          <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:12px 14px;margin-bottom:1rem;">
+            <label class="form-label" style="color:#6d28d9;margin-bottom:6px;display:block;font-size:0.8rem;font-weight:600;"><i class="fas fa-search" style="margin-right:5px;"></i>Lookup by JLID <span style="color:#94a3b8;font-weight:400;">(auto-fills names)</span></label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="pwbJlid" class="form-control" placeholder="e.g. JL52767973402C" style="font-family:monospace;font-size:0.82rem;">
+              <button onclick="pwbFetchByJlid()" class="btn btn-sm" style="background:#7c3aed;color:#fff;white-space:nowrap;border:none;"><i class="fas fa-search"></i> Fetch</button>
+            </div>
+            <div id="pwbFetchResult" style="display:none;margin-top:8px;font-size:0.78rem;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <!-- Learner Name (auto) -->
+            <div>
+              <label class="form-label">Learner Name <span style="color:#94a3b8;font-size:0.72rem;">(auto)</span></label>
+              <input type="text" id="pwbLearner" class="form-control" placeholder="Auto from JLID" readonly style="background:#f8fafc;color:#64748b;">
+            </div>
+            <!-- Parent Name (auto) -->
+            <div>
+              <label class="form-label">Parent Name <span style="color:#94a3b8;font-size:0.72rem;">(auto)</span></label>
+              <input type="text" id="pwbParent" class="form-control" placeholder="Auto from JLID" readonly style="background:#f8fafc;color:#64748b;">
+            </div>
+            <!-- Course Name -->
+            <div style="grid-column:1/-1;">
+              <label class="form-label">Course Name *</label>
+              <select id="pwbCourse" class="form-control form-select" onchange="pwbAutoFillKit()">
+                <option value="">Select course requiring kit…</option>
+                <optgroup label="VR Headset">
+                  <option>Immersive AR and VR Modeling (CoSpaces)</option>
+                  <option>Immersive VR Experiences with Javascript</option>
+                </optgroup>
+                <optgroup label="Microbit">
+                  <option>Robotics with Microbit (Jr)</option>
+                  <option>Programming with Robotics (Microbit)</option>
+                  <option>Advanced Programming with Robotics (Microbit)</option>
+                </optgroup>
+                <optgroup label="Makey Makey">
+                  <option>Advanced Robotics using Makey Makey</option>
+                </optgroup>
+              </select>
+            </div>
+            <!-- Kit (auto from course) -->
+            <div>
+              <label class="form-label">Kit <span style="color:#94a3b8;font-size:0.72rem;">(auto from course)</span></label>
+              <input type="text" id="pwbKit" class="form-control" placeholder="Auto from course" readonly style="background:#f8fafc;color:#64748b;">
+            </div>
+            <!-- Course Start Date -->
+            <div>
+              <label class="form-label">Course Start Date *</label>
+              <input type="date" id="pwbStartDate" class="form-control">
+            </div>
+            <!-- Amazon Link -->
+            <div style="grid-column:1/-1;">
+              <label class="form-label">Amazon Link * <span style="color:#94a3b8;font-size:0.72rem;">(shortened, country-specific)</span></label>
+              <input type="text" id="pwbAmazonLink" class="form-control" placeholder="e.g. https://amzn.eu/d/abc123">
+            </div>
+            <!-- Entry By -->
+            <div style="grid-column:1/-1;">
+              <label class="form-label">Entry By <span style="color:#ef4444;">*</span></label>
+              <select id="pwbEntryBy" class="form-select" required>
+                <option value="">— Select your name —</option>
+                <option value="Sourav">Sourav</option>
+                <option value="Shubham">Shubham</option>
+                <option value="Ankita">Ankita</option>
+              </select>
+            </div>
+          </div>
+        </div><!-- end #ktFormPWB -->
+
         <div id="ktfError" style="display:none;margin-top:1rem;padding:10px 14px;background:#fef2f2;border-radius:8px;color:#ef4444;font-size:0.82rem;"></div>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:1rem 1.25rem;">
         <button class="btn btn-secondary" onclick="closeAddKitModal()">Cancel</button>
-        <button class="btn btn-primary" id="ktfSubmitBtn" onclick="submitAddKitEntry()"><i class="fas fa-plus"></i> Add Entry</button>
+        <button class="btn btn-primary" id="ktfSubmitBtn" onclick="ktSubmitEntry()"><i class="fas fa-plus"></i> Add Entry</button>
       </div>
     </div>
   </div>

@@ -113,7 +113,7 @@ function getCourseTeacherDetails(courseName) {
       };
       if (after) body.after = after;
 
-      var resp = UrlFetchApp.fetch(searchUrl, {
+      var resp = monitoredFetch(searchUrl, {
         method:             'post',
         headers:            { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload:            JSON.stringify(body),
@@ -2010,7 +2010,7 @@ function diagnoseSMT() {
             + encodeURIComponent(sampleCalId)
             + '/events?singleEvents=true&timeMin=' + encodeURIComponent(tMin)
             + '&timeMax=' + encodeURIComponent(tMax);
-          var resp = UrlFetchApp.fetch(calUrl, { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+          var resp = monitoredFetch(calUrl, { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
           if (resp.getResponseCode() !== 200) {
             log('   ❌ Calendar API error ' + resp.getResponseCode() + ': ' + resp.getContentText().substring(0,200));
           } else {

@@ -104,7 +104,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
     const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     // Write header row if sheet is empty (so column lookups work correctly)
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['Timestamp','Action','JLID','Learner','Old Teacher','New Teacher','Course','Status','Notes','Session ID','Reason for Migration','Intervened By']);
+      sheet.appendRow(['Timestamp','Action','JLID','Learner','Old Teacher','New Teacher','Course','Status','Notes','Session ID','Reason for Migration','','Actioned By']);
     }
     const timestamp = new Date();
     const sessionId = Utilities.getUuid();
@@ -119,8 +119,9 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       status || 'Unknown',
       notes || '',
       sessionId,
-      reason || '', 
-      intervenedBy || ''  
+      reason || '',
+      '',              // col L — reserved for migration / Intervened By
+      intervenedBy || '' // col M — Actioned By
     ]);
     SpreadsheetApp.flush();
     if(typeof _sheetDataCache !== 'undefined') {
@@ -154,7 +155,12 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       if (!scoredAction && action && action.indexOf('Audit') !== -1) scoredAction = 'Audit Completed';
       if (scoredAction) {
         var activityDetail = action + (jlid ? ' | JLID: ' + jlid : '') + (learner ? ' | ' + learner : '');
-        String(intervenedBy).split(',').map(function(u){ return u.trim(); }).filter(Boolean)
+        String(intervenedBy).split(',').map(function(u){ return u.trim(); })
+          .filter(function(u) {
+            // Skip team-label values like "Ops Intervention", "Cls Intervention", "Tp Intervention"
+            // These are HubSpot role labels, not actual usernames
+            return u && !u.toLowerCase().endsWith('intervention');
+          })
           .forEach(function(u) {
             try { logUserActivity(u, scoredAction, activityDetail); } catch(e) {
               Logger.log('logUserActivity error for ' + u + ': ' + e.message);

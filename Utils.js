@@ -115,7 +115,7 @@ function callGenerativeAIWithRetry(endpoint, payload) {
         payload: JSON.stringify(payload),
         muteHttpExceptions: true
       };
-      var response = UrlFetchApp.fetch(endpoint, options);
+      var response = monitoredFetch(endpoint, options);
       var responseCode = response.getResponseCode();
 
       if (responseCode === 200) {

@@ -142,7 +142,7 @@ function getDashboardStatistics() {
         properties: ['hs_object_id'],
         limit: 1
       };
-      const response = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+      const response = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
         method: 'post',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         payload: JSON.stringify(body),
@@ -274,7 +274,7 @@ function getEnhancedMigrationReport(params) {
                     limit: 100,
                     after: after
                 };
-                const response = UrlFetchApp.fetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
+                const response = monitoredFetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
                 const data = JSON.parse(response.getContentText());
                 if (data && data.results) allTickets = allTickets.concat(data.results);
                 after = data.paging && data.paging.next ? data.paging.next.after : undefined;
@@ -960,7 +960,7 @@ function getMultiMigrationReportFromTickets(params) {
         after: after
       };
 
-      const response = UrlFetchApp.fetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
+      const response = monitoredFetch(searchUrl, { method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, payload: JSON.stringify(requestBody), muteHttpExceptions: true });
       const data = JSON.parse(response.getContentText());
       if (data && data.results) allTickets = allTickets.concat(data.results);
       after = data.paging && data.paging.next ? data.paging.next.after : undefined;

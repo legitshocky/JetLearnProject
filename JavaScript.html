@@ -85,6 +85,7 @@ const appContainer = document.getElementById('appContainer');
 const loginView = document.getElementById('loginView');
 const forgotPasswordView = document.getElementById('forgotPasswordView');
 const resetPasswordView = document.getElementById('resetPasswordView');
+const loggedOutView = document.getElementById('loggedOutView');
 // Forms
 const loginForm = document.getElementById('loginForm');
 const forgotPasswordForm = document.getElementById('forgotPasswordForm');
@@ -92,6 +93,7 @@ const resetPasswordForm = document.getElementById('resetPasswordForm');
 // Buttons & Links
 const forgotPasswordLink = document.querySelector('.forgot-password-link');
 const backToLoginLink = document.querySelector('.back-to-login-link');
+const returnToLoginBtn = document.getElementById('returnToLoginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 // START: Theme Toggle Element
 const themeToggle = document.getElementById('themeToggle');
@@ -2898,6 +2900,14 @@ function renderCourseDetailPanel(data) {
       google.script.run.withSuccessHandler(health => {
         hideLoading();
 
+        const apiMonitoring = health.apiMonitoring || {};
+        const hubspot = health.hubspot || {};
+        const hubspotStatus = hubspot.currentStatus || 'idle';
+        const hubspotHealthy = hubspotStatus === 'healthy';
+        const hubspotIdle = hubspotStatus === 'idle';
+        const hubspotColor = hubspotHealthy ? '#10b981' : (hubspotIdle ? '#94a3b8' : '#ef4444');
+        const hubspotBg = hubspotHealthy ? '#f0fdf4' : (hubspotIdle ? '#f8fafc' : '#fef2f2');
+
         // Spreadsheet
         const sheetOk = !!health.spreadsheetAccess;
         document.getElementById('spreadsheetStatus').textContent        = sheetOk ? 'Connected' : 'Error';
@@ -2906,10 +2916,10 @@ function renderCourseDetailPanel(data) {
         document.getElementById('spreadsheetDot').style.background      = sheetOk ? '#10b981' : '#ef4444';
         document.getElementById('spreadsheetBar').style.width           = sheetOk ? '100%' : '8%';
         document.getElementById('spreadsheetBar').style.background      = sheetOk ? '#10b981' : '#ef4444';
-        document.getElementById('healthApiResponse').textContent        = sheetOk ? '< 2s' : 'Error';
-        document.getElementById('healthApiStatus').textContent          = sheetOk ? 'HEALTHY' : 'ERROR';
-        document.getElementById('healthApiStatus').style.color          = sheetOk ? '#10b981' : '#ef4444';
-        document.getElementById('healthApiStatus').style.background     = sheetOk ? '#f0fdf4' : '#fef2f2';
+        document.getElementById('healthApiResponse').textContent        = String(hubspot.callsToday || 0);
+        document.getElementById('healthApiStatus').textContent          = hubspotHealthy ? 'HEALTHY' : (hubspotIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('healthApiStatus').style.color          = hubspotColor;
+        document.getElementById('healthApiStatus').style.background     = hubspotBg;
 
         // Email
         const emailOk = !!health.emailService;
@@ -2937,9 +2947,186 @@ function renderCourseDetailPanel(data) {
         document.getElementById('sheetsBar').style.width                = totalSheets > 0 ? `${Math.round((presentSheets / totalSheets) * 100)}%` : '0%';
         document.getElementById('sheetsBar').style.background           = sheetsOk ? '#10b981' : '#f59e0b';
 
+        // HubSpot
+        document.getElementById('hubspotDot').style.background          = hubspotColor;
+        document.getElementById('hubspotMeta').textContent              = hubspot.lastCallAt
+          ? `${new Date(hubspot.lastCallAt).toLocaleTimeString()}${hubspot.hadFailuresToday ? ` • ${hubspot.failToday || 0} fail${(hubspot.failToday || 0) === 1 ? '' : 's'} today` : ''}`
+          : 'No calls yet';
+        document.getElementById('hubspotStatusBadge').textContent       = hubspotHealthy ? 'CONNECTED' : (hubspotIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('hubspotStatusBadge').style.color       = hubspotColor;
+
+        // WATI
+        const wati = (health.apiMonitoring.serviceHealth || {}).WATI || {};
+        const watiStatus  = wati.currentStatus || 'idle';
+        const watiHealthy = watiStatus === 'healthy';
+        const watiIdle    = watiStatus === 'idle';
+        const watiColor   = watiHealthy ? '#25d366' : (watiIdle ? '#94a3b8' : '#ef4444');
+        const watiBg      = watiHealthy ? '#f0fdf4' : (watiIdle ? '#f8fafc' : '#fef2f2');
+        document.getElementById('healthWatiCalls').textContent      = String(wati.callsToday || 0);
+        document.getElementById('healthWatiStatus').textContent     = watiHealthy ? 'HEALTHY' : (watiIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('healthWatiStatus').style.color     = watiColor;
+        document.getElementById('healthWatiStatus').style.background= watiBg;
+        document.getElementById('watiDot').style.background         = watiColor;
+        document.getElementById('watiMeta').textContent             = wati.lastCallAt
+          ? new Date(wati.lastCallAt).toLocaleTimeString() + (wati.hadFailuresToday ? ` \u00b7 ${wati.failToday||0} fail` : '')
+          : 'No calls yet';
+        document.getElementById('watiStatusBadge').textContent      = watiHealthy ? 'CONNECTED' : (watiIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('watiStatusBadge').style.color      = watiColor;
+        document.getElementById('watiStatus').textContent           = watiHealthy ? 'Active' : (watiIdle ? 'Idle' : 'Error');
+        document.getElementById('watiBar').style.width              = watiHealthy ? '100%' : (watiIdle ? '0%' : '15%');
+        document.getElementById('watiBar').style.background         = watiColor;
+
+        // Slack
+        const slack = (health.apiMonitoring.serviceHealth || {}).Slack || {};
+        const slackStatus  = slack.currentStatus || 'idle';
+        const slackHealthy = slackStatus === 'healthy';
+        const slackIdle    = slackStatus === 'idle';
+        const slackColor   = slackHealthy ? '#4a154b' : (slackIdle ? '#94a3b8' : '#ef4444');
+        const slackBg      = slackHealthy ? '#fdf4ff' : (slackIdle ? '#f8fafc' : '#fef2f2');
+        document.getElementById('healthSlackCalls').textContent      = String(slack.callsToday || 0);
+        document.getElementById('healthSlackStatus').textContent     = slackHealthy ? 'HEALTHY' : (slackIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('healthSlackStatus').style.color     = slackColor;
+        document.getElementById('healthSlackStatus').style.background= slackBg;
+        document.getElementById('slackDot').style.background         = slackColor;
+        document.getElementById('slackMeta').textContent             = slack.lastCallAt
+          ? new Date(slack.lastCallAt).toLocaleTimeString() + (slack.hadFailuresToday ? ` \u00b7 ${slack.failToday||0} fail` : '')
+          : 'No calls yet';
+        document.getElementById('slackStatusBadge').textContent      = slackHealthy ? 'CONNECTED' : (slackIdle ? 'IDLE' : 'ERROR');
+        document.getElementById('slackStatusBadge').style.color      = slackColor;
+        document.getElementById('slackStatus').textContent           = slackHealthy ? 'Active' : (slackIdle ? 'Idle' : 'Error');
+        document.getElementById('slackBar').style.width              = slackHealthy ? '100%' : (slackIdle ? '0%' : '15%');
+        document.getElementById('slackBar').style.background         = slackColor;
+
         // Last checked
         document.getElementById('lastChecked').textContent = health.lastCheck ? new Date(health.lastCheck).toLocaleString() : '\u2014';
+
+        renderApiUsageSummary(apiMonitoring);
+        renderApiFailureLog(apiMonitoring);
       }).withFailureHandler(showError).getSystemHealth();
+    }
+
+    function renderApiUsageSummary(apiMonitoring) {
+      const summaryEl = document.getElementById('apiUsageSummary');
+      const tableEl = document.getElementById('apiFunctionUsageTable');
+      if (!summaryEl || !tableEl) return;
+
+      const services = apiMonitoring.services || {};
+      const serviceHealth = apiMonitoring.serviceHealth || {};
+      const hubspot = services.HubSpot || { total: 0, success: 0, fail: 0, functions: {} };
+      const allFunctions = [];
+
+      Object.keys(services).forEach(serviceName => {
+        const service = services[serviceName] || {};
+        const functions = service.functions || {};
+        Object.keys(functions).forEach(functionName => {
+          const stats = functions[functionName] || {};
+          allFunctions.push({
+            serviceName: serviceName,
+            functionName: functionName,
+            total: stats.total || 0,
+            success: stats.success || 0,
+            fail: stats.fail || 0,
+            lastCallAt: stats.lastCallAt || '',
+            lastResponseCode: stats.lastResponseCode || 0
+          });
+        });
+      });
+
+      allFunctions.sort((a, b) => {
+        if (b.total !== a.total) return b.total - a.total;
+        return b.fail - a.fail;
+      });
+
+      const cards = [
+        { label: 'All API Calls Today', value: apiMonitoring.totalCallsToday || 0, tone: '#1d4ed8', bg: '#eff6ff' },
+        { label: 'HubSpot Calls Today', value: hubspot.total || 0, tone: '#0f766e', bg: '#ecfeff' },
+        { label: 'Failures Today', value: apiMonitoring.failToday || 0, tone: '#b91c1c', bg: '#fef2f2' }
+      ];
+
+      summaryEl.innerHTML = cards.map(card => `
+        <div style="border:1px solid #e2e8f0;border-radius:14px;padding:0.9rem 1rem;background:${card.bg};">
+          <div style="font-size:1.35rem;font-weight:700;color:${card.tone};">${card.value}</div>
+          <div style="font-size:0.72rem;color:#475569;text-transform:uppercase;letter-spacing:.05em;">${card.label}</div>
+        </div>
+      `).join('');
+
+      if (!allFunctions.length) {
+        tableEl.innerHTML = '<div style="padding:1rem;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;font-size:0.82rem;">No monitored API calls have been captured today yet.</div>';
+        return;
+      }
+
+      tableEl.innerHTML = `
+        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.9rem;">
+          ${Object.keys(serviceHealth).map(name => {
+            const svc = serviceHealth[name] || {};
+            const tone = svc.currentStatus === 'healthy' ? '#065f46' : (svc.currentStatus === 'idle' ? '#475569' : '#991b1b');
+            const bg = svc.currentStatus === 'healthy' ? '#ecfdf5' : (svc.currentStatus === 'idle' ? '#f8fafc' : '#fef2f2');
+            const border = svc.currentStatus === 'healthy' ? '#a7f3d0' : (svc.currentStatus === 'idle' ? '#cbd5e1' : '#fecaca');
+            const label = svc.currentStatus === 'healthy' ? 'Healthy now' : (svc.currentStatus === 'idle' ? 'Idle' : 'Failing now');
+            const suffix = svc.hadFailuresToday && svc.currentStatus !== 'error' ? ` • ${svc.failToday || 0} fail today` : '';
+            return `<div style="padding:0.45rem 0.7rem;border-radius:999px;border:1px solid ${border};background:${bg};color:${tone};font-size:0.76rem;font-weight:600;">${escapeHtml(name)}: ${label}${escapeHtml(suffix)}</div>`;
+          }).join('')}
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr style="text-align:left;color:#64748b;border-bottom:1px solid #e2e8f0;">
+              <th style="padding:0.7rem 0.55rem;">Function</th>
+              <th style="padding:0.7rem 0.55rem;">Service</th>
+              <th style="padding:0.7rem 0.55rem;">Calls</th>
+              <th style="padding:0.7rem 0.55rem;">Success</th>
+              <th style="padding:0.7rem 0.55rem;">Fail</th>
+              <th style="padding:0.7rem 0.55rem;">Last Code</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allFunctions.slice(0, 25).map(row => `
+              <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:0.7rem 0.55rem;font-weight:600;color:#1e293b;">${escapeHtml(row.functionName)}</td>
+                <td style="padding:0.7rem 0.55rem;color:#475569;">${escapeHtml(row.serviceName)}</td>
+                <td style="padding:0.7rem 0.55rem;color:#1e293b;">${row.total}</td>
+                <td style="padding:0.7rem 0.55rem;color:#059669;">${row.success}</td>
+                <td style="padding:0.7rem 0.55rem;color:${row.fail ? '#dc2626' : '#94a3b8'};">${row.fail}</td>
+                <td style="padding:0.7rem 0.55rem;color:#475569;">${row.lastResponseCode || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderApiFailureLog(apiMonitoring) {
+      const summaryEl = document.getElementById('apiFailureSummary');
+      const logEl = document.getElementById('apiFailureLog');
+      if (!summaryEl || !logEl) return;
+
+      const failures = (apiMonitoring.failures || []).slice(0, 12);
+      const latest = failures.length ? failures[0] : null;
+
+      summaryEl.innerHTML = `
+        <div style="padding:0.85rem 1rem;border-radius:12px;background:${latest ? '#fef2f2' : '#f8fafc'};border:1px solid ${latest ? '#fecaca' : '#e2e8f0'};">
+          <div style="font-size:0.76rem;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Latest Break</div>
+          <div style="margin-top:0.35rem;font-size:0.92rem;font-weight:700;color:#1e293b;">${latest ? escapeHtml(`${latest.service} / ${latest.func}`) : 'No failures logged today'}</div>
+          <div style="margin-top:0.2rem;font-size:0.8rem;color:#64748b;">${latest ? `Code ${latest.code || '—'} • ${new Date(latest.timestamp).toLocaleString()}` : 'The monitor will list errors here as soon as a failing API call happens.'}</div>
+        </div>
+      `;
+
+      if (!failures.length) {
+        logEl.innerHTML = '<div style="padding:1rem;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;font-size:0.82rem;">No API failures captured today.</div>';
+        return;
+      }
+
+      logEl.innerHTML = failures.map(item => `
+        <div style="border:1px solid #fee2e2;background:#fff;border-radius:14px;padding:0.9rem 1rem;">
+          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;">
+            <div>
+              <div style="font-size:0.88rem;font-weight:700;color:#991b1b;">${escapeHtml(item.service)} / ${escapeHtml(item.func)}</div>
+              <div style="margin-top:0.15rem;font-size:0.77rem;color:#64748b;">${new Date(item.timestamp).toLocaleString()} • HTTP ${item.code || '—'}</div>
+            </div>
+            <div style="font-size:0.74rem;color:#64748b;text-align:right;">${item.url ? escapeHtml(item.url) : ''}</div>
+          </div>
+          <div style="margin-top:0.55rem;font-size:0.8rem;color:#334155;line-height:1.45;">${escapeHtml(item.details || 'No error payload captured.')}</div>
+        </div>
+      `).join('');
     }
 
     // \u2013\u2013 Teacher Intelligence Center \u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013\u2013
@@ -5226,7 +5413,7 @@ google.script.run
 }
 
 
-    const CURRENT_APP_VERSION = 'V52';
+    const CURRENT_APP_VERSION = 'V55';
     const CHANGELOG_HTML = `
         <ul class="mismatch-list" style="border:none;">
             <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
@@ -5268,6 +5455,7 @@ google.script.run
     currentUser = currentUser = user;
     if (user.sessionToken) sessionStorage.setItem('sessionToken', user.sessionToken);
     sessionStorage.setItem('currentUser', JSON.stringify(user));
+    switchLoginView('loginView');
     userAvatar.textContent = user.username.substring(0, 2).toUpperCase();
     userName.textContent = user.username;
     userRole.textContent = user.role;
@@ -5416,6 +5604,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function switchLoginView(viewId) {
         document.querySelectorAll('.login-view').forEach(v => v.classList.add('hidden'));
         document.getElementById(viewId).classList.remove('hidden');
+        if (loginPage) loginPage.setAttribute('data-auth-view', viewId);
+        if (viewId !== 'loggedOutView') {
+          const inactivityMsg = document.getElementById('inactivityMessage');
+          if (inactivityMsg) inactivityMsg.style.display = 'none';
+        }
     }
 
     // --- USER MANAGEMENT (ADMIN) ---
@@ -5651,13 +5844,53 @@ function loadUsers() {
     // =============================================
     // SESSION TIMEOUT
     // =============================================
-    const SESSION_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
+    const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
     const WARNING_BEFORE_MS  =  5 * 60 * 1000; // warn 5 mins before
     let sessionTimer = null;
     let sessionWarningTimer = null;
     let sessionCountdownInterval = null;
+    let sessionMonitorInterval = null;
+    let sessionExpiresAt = 0;
+    let sessionActivityHandler = null;
 
-    function _showSessionWarningModal(secondsLeft) {
+    function _showLoggedOutView(reasonText) {
+        const reasonEl = document.getElementById('loggedOutReasonText');
+        const timeEl = document.getElementById('loggedOutTimeLabel');
+        if (reasonEl) {
+          reasonEl.textContent = reasonText || 'Please sign in again to continue where you left off.';
+        }
+        if (timeEl) {
+          timeEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+        switchLoginView('loggedOutView');
+    }
+
+    function _performSessionLogout() {
+        clearInterval(sessionCountdownInterval);
+        const warnModal = document.getElementById('sessionWarningModal');
+        if (warnModal) warnModal.remove();
+        currentUser = null;
+        sessionStorage.removeItem('currentUser');
+        stopPolling();
+        stopSessionTimer();
+        appContainer.style.display = 'none';
+        loginPage.style.display = 'flex';
+        _showLoggedOutView('For security, we signed you out after inactivity. Sign in again to resume your JetLearn workspace.');
+        loginForm.reset();
+        showToast('warning', 'Session Expired', 'You have been logged out due to inactivity.');
+    }
+
+    function _updateSessionCountdownDisplay() {
+      const display = document.getElementById('sessionCountdownDisplay');
+      if (!display || !sessionExpiresAt) return;
+      const remainingMs = Math.max(0, sessionExpiresAt - Date.now());
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
+      const m = Math.floor(remainingSeconds / 60);
+      const s = remainingSeconds % 60;
+      display.textContent = m + ':' + String(s).padStart(2, '0');
+    }
+
+    function _showSessionWarningModal() {
       let modal = document.getElementById('sessionWarningModal');
       if (!modal) {
         modal = document.createElement('div');
@@ -5679,17 +5912,32 @@ function loadUsers() {
         document.body.appendChild(modal);
       }
 
-      // Countdown timer in modal
       clearInterval(sessionCountdownInterval);
-      let remaining = secondsLeft;
-      const display = document.getElementById('sessionCountdownDisplay');
+      _updateSessionCountdownDisplay();
       sessionCountdownInterval = setInterval(() => {
-        remaining--;
-        if (remaining <= 0) { clearInterval(sessionCountdownInterval); return; }
-        const m = Math.floor(remaining / 60);
-        const s = remaining % 60;
-        if (display) display.textContent = m + ':' + String(s).padStart(2, '0');
+        if (!currentUser || !sessionExpiresAt) {
+          clearInterval(sessionCountdownInterval);
+          return;
+        }
+        const remainingMs = sessionExpiresAt - Date.now();
+        if (remainingMs <= 0) {
+          clearInterval(sessionCountdownInterval);
+          return;
+        }
+        _updateSessionCountdownDisplay();
       }, 1000);
+    }
+
+    function _evaluateSessionState() {
+        if (!currentUser || !sessionExpiresAt) return;
+        const remainingMs = sessionExpiresAt - Date.now();
+        if (remainingMs <= 0) {
+            _performSessionLogout();
+            return;
+        }
+        if (remainingMs <= WARNING_BEFORE_MS) {
+            _showSessionWarningModal();
+        }
     }
 
     function resetSessionTimer() {
@@ -5697,6 +5945,7 @@ function loadUsers() {
         clearTimeout(sessionTimer);
         clearTimeout(sessionWarningTimer);
         clearInterval(sessionCountdownInterval);
+        sessionExpiresAt = Date.now() + SESSION_TIMEOUT_MS;
 
         // Remove warning modal if visible
         const existing = document.getElementById('sessionWarningModal');
@@ -5704,32 +5953,27 @@ function loadUsers() {
 
         sessionWarningTimer = setTimeout(() => {
             if (!currentUser) return;
-            _showSessionWarningModal(WARNING_BEFORE_MS / 1000);
+            _evaluateSessionState();
         }, SESSION_TIMEOUT_MS - WARNING_BEFORE_MS);
 
         sessionTimer = setTimeout(() => {
             if (!currentUser) return;
-            clearInterval(sessionCountdownInterval);
-            const warnModal = document.getElementById('sessionWarningModal');
-            if (warnModal) warnModal.remove();
-            currentUser = null;
-            sessionStorage.removeItem('currentUser');
-            stopPolling();
-            stopSessionTimer();
-            appContainer.style.display = 'none';
-            loginPage.style.display = 'flex';
-            switchLoginView('loginView');
-            loginForm.reset();
-            const inactivityMsg = document.getElementById('inactivityMessage');
-            if (inactivityMsg) inactivityMsg.style.display = 'flex';
-            showToast('warning', 'Session Expired', 'You have been logged out due to inactivity.');
+            _evaluateSessionState();
         }, SESSION_TIMEOUT_MS);
     }
 
     function startSessionTimer() {
+        stopSessionTimer();
+        sessionActivityHandler = function(evt) {
+            if (evt && evt.isTrusted === false) return;
+            resetSessionTimer();
+        };
         ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
-            document.addEventListener(event, resetSessionTimer, { passive: true });
+            document.addEventListener(event, sessionActivityHandler, { passive: true });
         });
+        document.addEventListener('visibilitychange', _evaluateSessionState);
+        window.addEventListener('focus', _evaluateSessionState);
+        sessionMonitorInterval = setInterval(_evaluateSessionState, 15000);
         resetSessionTimer();
     }
 
@@ -5737,9 +5981,14 @@ function loadUsers() {
         clearTimeout(sessionTimer);
         clearTimeout(sessionWarningTimer);
         clearInterval(sessionCountdownInterval);
+        clearInterval(sessionMonitorInterval);
         ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(event => {
-            document.removeEventListener(event, resetSessionTimer);
+            if (sessionActivityHandler) document.removeEventListener(event, sessionActivityHandler);
         });
+        document.removeEventListener('visibilitychange', _evaluateSessionState);
+        window.removeEventListener('focus', _evaluateSessionState);
+        sessionActivityHandler = null;
+        sessionExpiresAt = 0;
     }
 
     
@@ -6396,6 +6645,7 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     // ==========================================
     if (forgotPasswordLink) forgotPasswordLink.addEventListener('click', () => switchLoginView('forgotPasswordView'));
     if (backToLoginLink) backToLoginLink.addEventListener('click', () => switchLoginView('loginView'));
+    if (returnToLoginBtn) returnToLoginBtn.addEventListener('click', () => switchLoginView('loginView'));
     
     if (forgotPasswordForm) {
         forgotPasswordForm.addEventListener('submit', (e) => {
@@ -7757,6 +8007,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V55': [
+      "**Parent Will Buy — HubSpot Kit Status Sync**: All follow-up stages now update the kit-specific HubSpot deal property in real time. Reminder 1 sent → Reminder 2 sent → Final reminder sent → Parent bought it → Escalated to CLS. Each kit maps to its own property (VR Headset, Microbit, Makey-Makey, Arduino).",
+      "**Parent Will Buy — Free Text Reply Capture**: Parents replying with free text (e.g. 'can we skip the course?') are now caught — reply logged to sheet, HubSpot note added, and CLS emailed with the exact message.",
+      "**Parent Will Buy — Fuzzy Button Matching**: Free-text messages containing order intent (e.g. 'Order Placed, delivery on 2nd May', 'I purchased it') are automatically matched to 'Order Placed'. Messages indicating non-purchase are matched to 'Yet to place an order'.",
+      "**Parent Will Buy — Bug Fixes**: Reply handler now matches from first message onward (not just after final FUP). Sibling phone conflict resolved by picking most-recently-active row. Locked interval stored in sheet at initial send — immune to date drift."
+    ],
+    'V54': [
+      "**Parent Will Buy — Entry By Field**: Add Entry modal now requires team member name (Sourav / Shubham / Ankita). Stored in sheet col U and shown in dashboard table.",
+      "**Parent Will Buy — Date & Month Columns**: Entry date and month auto-filled when row is created (cols B & C). Makes monthly reporting easy.",
+      "**Parent Will Buy — Next FUP Countdown**: Dashboard table shows live countdown for each active row — 🟢 FUP 1 in 3d / 🟡 FUP 2 tomorrow / 🔴 Final FUP overdue. Recalculates on every table load.",
+      "**Parent Will Buy — Immediate Message on Entry**: Initial WhatsApp message now fires the moment a new entry is added via UI — no waiting for 9am trigger."
+    ],
+    'V53': [
+      "**Parent Will Buy Kit — New Automation**: Full WhatsApp follow-up system for kits parents procure themselves. Initial message fires on entry, FUPs every 1–7 days based on time until course start (adaptive interval). CLS notified 2 days before course if no confirmation.",
+      "**Parent Will Buy — Smart Timeline**: Never skips steps. Timeline shrinks interval (7d → 5d → 3d → 2d → 1d). Rows with ≤7 days marked URGENT 🔴 — same full sequence, compressed cadence.",
+      "**Parent Will Buy — CLS Escalation**: If no reply by course start → full escalation email + HubSpot task + deal status update. CLS email resolved per-learner from HubSpot deal (cls_manager property).",
+      "**Parent Will Buy — Dashboard Tab**: Kit Tracking page now has JetLearn Sends / Parent Will Buy tab toggle with separate KPI strips, tables, and Add Entry modal for each flow."
+    ],
     'V52': [
       "**Kit Tracking — WATI Webhook Fix**: Webhook now returns HTTP 200 to WATI instantly — reply processing queued via CacheService and fired 5s later via background trigger, eliminating timeout failures that were causing constant retries.",
       "**Kit Tracking — Auto-Reply Messages**: Parents now receive instant automated replies after tapping a button — Kit Received: confirmation message; Not Received yet: logistics check message; Need To Check: 12-24hr follow-up promise. Uses WATI session messages (no template required).",
@@ -11592,6 +11860,248 @@ function submitAddKitEntry() {
       errEl.style.display = 'block';
     })
     .addKitEntry(data);
+}
+
+// ── Kit Tracking — tab switching ──────────────────────────────────────────
+var _ktCurrentTab = 'jl';
+function ktSwitchTab(tab) {
+  _ktCurrentTab = tab;
+  const jlBtn   = document.getElementById('ktTabJL');
+  const pwbBtn  = document.getElementById('ktTabPWB');
+  const jlView  = document.getElementById('ktViewJL');
+  const pwbView = document.getElementById('ktViewPWB');
+  const jlKpi   = document.getElementById('ktKpiJL');
+  const pwbKpi  = document.getElementById('ktKpiPWB');
+  if (tab === 'jl') {
+    jlBtn.style.cssText  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
+    pwbBtn.style.cssText = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
+    jlView.style.display  = '';
+    pwbView.style.display = 'none';
+    jlKpi.style.display   = '';
+    pwbKpi.style.display  = 'none';
+  } else {
+    pwbBtn.style.cssText = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
+    jlBtn.style.cssText  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
+    jlView.style.display  = 'none';
+    pwbView.style.display = '';
+    jlKpi.style.display   = 'none';
+    pwbKpi.style.display  = '';
+    loadPWBTable();
+  }
+}
+
+function _updatePWBKpis(rows) {
+  if (!rows || !rows.length) {
+    ['pwbKpiTotal','pwbKpiConfirmed','pwbKpiInProgress','pwbKpiNoResponse','pwbKpiEscalated','pwbKpiRoadmapChanged']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '0'; });
+    return;
+  }
+  let total = rows.length, confirmed = 0, inProgress = 0, noResponse = 0, escalated = 0, roadmapChanged = 0;
+  rows.forEach(r => {
+    const s = r.status || '';
+    if (s === 'Order Placed' || s === 'Kit Received') confirmed++;
+    else if (s === 'In Progress') {
+      // No response yet if final FUP sent but no reply
+      if (r.finalFupSentAt && !r.parentResponse) noResponse++;
+      else inProgress++;
+    } else if (s === "Parent Didn't Buy - Roadmap Changed") { escalated++; roadmapChanged++; }
+  });
+  document.getElementById('pwbKpiTotal').textContent         = total;
+  document.getElementById('pwbKpiConfirmed').textContent     = confirmed;
+  document.getElementById('pwbKpiInProgress').textContent    = inProgress;
+  document.getElementById('pwbKpiNoResponse').textContent    = noResponse;
+  document.getElementById('pwbKpiEscalated').textContent     = escalated;
+  document.getElementById('pwbKpiRoadmapChanged').textContent= roadmapChanged;
+}
+
+// ── Modal mode toggle ─────────────────────────────────────────────────────
+var _ktModalMode = 'jl';
+function ktToggleMode(mode) {
+  _ktModalMode = mode;
+  const jlBtn  = document.getElementById('ktModeJL');
+  const pwbBtn = document.getElementById('ktModePWB');
+  const jlForm = document.getElementById('ktFormJL');
+  const pwbForm= document.getElementById('ktFormPWB');
+  const errEl  = document.getElementById('ktfError');
+  if (errEl) errEl.style.display = 'none';
+  if (mode === 'jl') {
+    jlBtn.style.cssText  = 'flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.1);border:none;cursor:pointer;';
+    pwbBtn.style.cssText = 'flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;cursor:pointer;';
+    jlForm.style.display  = '';
+    pwbForm.style.display = 'none';
+    document.getElementById('ktfSubmitBtn').innerHTML = '<i class="fas fa-plus"></i> Add Entry';
+  } else {
+    pwbBtn.style.cssText = 'flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:#fff;color:#7c3aed;box-shadow:0 1px 4px rgba(0,0,0,0.1);border:none;cursor:pointer;';
+    jlBtn.style.cssText  = 'flex:1;border-radius:7px;padding:8px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;cursor:pointer;';
+    jlForm.style.display  = 'none';
+    pwbForm.style.display = '';
+    document.getElementById('ktfSubmitBtn').innerHTML = '<i class="fas fa-shopping-cart"></i> Add Entry';
+  }
+}
+
+// ── PWB: JLID fetch ───────────────────────────────────────────────────────
+function pwbFetchByJlid() {
+  const jlid = (document.getElementById('pwbJlid') || {}).value || '';
+  const resEl = document.getElementById('pwbFetchResult');
+  if (!jlid.trim()) return;
+  resEl.style.display = 'block';
+  resEl.style.color = '#64748b';
+  resEl.textContent = 'Fetching…';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.success && r.data) {
+        document.getElementById('pwbLearner').value = r.data.learnerName || '';
+        document.getElementById('pwbParent').value  = r.data.parentName  || '';
+        resEl.style.color = '#10b981';
+        resEl.textContent = '✓ Found: ' + (r.data.learnerName || jlid);
+      } else {
+        resEl.style.color = '#ef4444';
+        resEl.textContent = '✗ ' + ((r && r.message) || 'Not found');
+      }
+    })
+    .withFailureHandler(function(e) {
+      resEl.style.color = '#ef4444';
+      resEl.textContent = '✗ ' + (e.message || String(e));
+    })
+    .fetchHubspotByJlid(jlid.trim());
+}
+
+// ── PWB: auto-fill kit from course ───────────────────────────────────────
+const PWB_COURSE_KIT = {
+  'Immersive AR and VR Modeling (CoSpaces)':       'VR Headset',
+  'Immersive VR Experiences with Javascript':       'VR Headset',
+  'Robotics with Microbit (Jr)':                   'Microbit',
+  'Programming with Robotics (Microbit)':          'Microbit',
+  'Advanced Programming with Robotics (Microbit)': 'Microbit',
+  'Advanced Robotics using Makey Makey':           'Makey Makey'
+};
+function pwbAutoFillKit() {
+  const course = (document.getElementById('pwbCourse') || {}).value || '';
+  const kitEl  = document.getElementById('pwbKit');
+  if (kitEl) kitEl.value = PWB_COURSE_KIT[course] || '';
+}
+
+// ── Submit router ─────────────────────────────────────────────────────────
+function ktSubmitEntry() {
+  if (_ktModalMode === 'pwb') { submitAddPWBEntry(); }
+  else                        { submitAddKitEntry(); }
+}
+
+// ── Submit PWB entry ──────────────────────────────────────────────────────
+function submitAddPWBEntry() {
+  const get   = id => (document.getElementById(id) || {}).value || '';
+  const errEl = document.getElementById('ktfError');
+  const btn   = document.getElementById('ktfSubmitBtn');
+
+  const jlid      = get('pwbJlid').trim();
+  const course    = get('pwbCourse').trim();
+  const startDate = get('pwbStartDate').trim();
+  const link      = get('pwbAmazonLink').trim();
+  const entryBy   = get('pwbEntryBy').trim();
+
+  const missing = [];
+  if (!jlid)      missing.push('JLID');
+  if (!course)    missing.push('Course Name');
+  if (!startDate) missing.push('Course Start Date');
+  if (!link)      missing.push('Amazon Link');
+  if (!entryBy)   missing.push('Entry By');
+
+  if (missing.length) {
+    errEl.textContent = '⚠ Required: ' + missing.join(' · ');
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+  btn.disabled  = true;
+
+  const data = { jlid, courseName: course, courseStartDate: startDate, amazonLink: link, entryBy };
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.innerHTML = '<i class="fas fa-shopping-cart"></i> Add Entry';
+      btn.disabled  = false;
+      if (result && result.success) {
+        closeAddKitModal();
+        ['pwbJlid','pwbCourse','pwbKit','pwbStartDate','pwbAmazonLink','pwbLearner','pwbParent','pwbEntryBy']
+          .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+        document.getElementById('pwbFetchResult').style.display = 'none';
+        showToast('success', 'Entry Added', 'Parent Will Buy entry created for ' + jlid);
+        ktSwitchTab('pwb');
+      } else {
+        errEl.textContent = (result && result.message) || 'Failed to add entry.';
+        errEl.style.display = 'block';
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = '<i class="fas fa-shopping-cart"></i> Add Entry';
+      btn.disabled  = false;
+      errEl.textContent = err.message || String(err);
+      errEl.style.display = 'block';
+    })
+    .addPWBEntry(data);
+}
+
+// ── Load PWB table ────────────────────────────────────────────────────────
+function loadPWBTable() {
+  const tbody = document.getElementById('ktPWBTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      renderPWBTable(data);
+      _updatePWBKpis(data);
+    })
+    .withFailureHandler(function(err) {
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">Error: ' + escapeHtml(err.message || String(err)) + '</td></tr>';
+    })
+    .getPWBEntries();
+}
+
+function renderPWBTable(rows) {
+  const tbody = document.getElementById('ktPWBTableBody');
+  if (!tbody) return;
+  if (!rows || !rows.length) {
+    tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;">No entries yet.</td></tr>';
+    return;
+  }
+  const statusColor = {
+    'Pending':                            '#94a3b8',
+    'In Progress':                        '#f59e0b',
+    'In Progress - URGENT 🔴':            '#ef4444',
+    'Order Placed':                       '#3b82f6',
+    'Kit Received':                       '#10b981',
+    '⚠️ CLS Notified - Awaiting Response':'#f97316',
+    "Parent Didn't Buy - Roadmap Changed":'#ef4444'
+  };
+  tbody.innerHTML = rows.map(function(r, i) {
+    const color  = statusColor[r.status] || '#94a3b8';
+    const fups   = [r.initialSentAt ? 'Initial ✓' : '', r.fup1SentAt ? 'FUP1 ✓' : '',
+                    r.fup2SentAt ? 'FUP2 ✓' : '', r.finalFupSentAt ? 'Final ✓' : '']
+                    .filter(Boolean).join(' → ') || '—';
+    const esc    = r.escalated === 'TRUE'
+      ? '<span style="color:#ef4444;font-weight:600;font-size:0.75rem;">⚠ Yes</span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">No</span>';
+    const nextFupColor = (r.nextFup || '').indexOf('🔴') > -1 ? '#ef4444'
+                       : (r.nextFup || '').indexOf('🟡') > -1 ? '#f59e0b' : '#10b981';
+    return `<tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:10px 14px;color:#94a3b8;">${i+1}</td>
+      <td style="padding:10px 14px;font-size:0.75rem;color:#64748b;">${escapeHtml(r.entryDate || '—')}</td>
+      <td style="padding:10px 14px;">
+        <div style="font-weight:600;color:#1e293b;">${escapeHtml(r.learnerName || '—')}</div>
+        <div style="font-size:0.72rem;color:#94a3b8;font-family:monospace;">${escapeHtml(r.jlid || '')}</div>
+      </td>
+      <td style="padding:10px 14px;"><span style="background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:0.75rem;">${escapeHtml(r.kit || '—')}</span></td>
+      <td style="padding:10px 14px;font-size:0.78rem;color:#475569;">${escapeHtml(r.courseName || '—')}</td>
+      <td style="padding:10px 14px;font-size:0.78rem;color:#475569;">${escapeHtml(r.courseStartDate || '—')}</td>
+      <td style="padding:10px 14px;font-size:0.78rem;font-weight:600;color:${nextFupColor};">${escapeHtml(r.nextFup || '—')}</td>
+      <td style="padding:10px 14px;font-size:0.75rem;color:#7c3aed;">${fups}</td>
+      <td style="padding:10px 14px;font-size:0.78rem;color:#475569;">${escapeHtml(r.parentResponse || '—')}</td>
+      <td style="padding:10px 14px;"><span style="color:${color};font-weight:600;font-size:0.78rem;">${escapeHtml(r.status || 'Pending')}</span></td>
+      <td style="padding:10px 14px;font-size:0.75rem;color:#64748b;">${escapeHtml(r.entryBy || '—')}</td>
+      <td style="padding:10px 14px;">${esc}</td>
+    </tr>`;
+  }).join('');
 }
 
 function loadBulkCertificatesPage() {

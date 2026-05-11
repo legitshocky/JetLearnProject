@@ -17,7 +17,7 @@ function _callGemini(contents, model, maxTokens) {
   const selectedModel = model || PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
   const url = GEMINI_BASE_URL + selectedModel + ':generateContent?key=' + apiKey;
 
-  const response = UrlFetchApp.fetch(url, {
+  const response = monitoredFetch(url, {
     method: 'post',
     headers: { 'Content-Type': 'application/json' },
     payload: JSON.stringify({
@@ -651,7 +651,7 @@ function sendAIChat(history, model, settings, parts) {
       ', temp=' + genConfig.temperature +
       ', maxTok=' + genConfig.maxOutputTokens);
 
-    const response = UrlFetchApp.fetch(url, {
+    const response = monitoredFetch(url, {
       method:             'post',
       headers:            { 'Content-Type': 'application/json' },
       payload:            JSON.stringify(payload),
@@ -871,7 +871,7 @@ function getAITeacherInsights(prompt) {
     const model = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
     const url   = GEMINI_BASE_URL + model + ':generateContent?key=' + apiKey;
 
-    const response = UrlFetchApp.fetch(url, {
+    const response = monitoredFetch(url, {
       method:  'post',
       headers: { 'Content-Type': 'application/json' },
       payload: JSON.stringify({
@@ -959,7 +959,7 @@ function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetCont
       }
     };
 
-    var response = UrlFetchApp.fetch(url, {
+    var response = monitoredFetch(url, {
       method:             'post',
       headers:            { 'Content-Type': 'application/json' },
       payload:            JSON.stringify(payload),

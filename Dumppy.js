@@ -125,7 +125,7 @@ function testFallbackEmailContent() {
 
     var directUrl = base + '/api/v1/getMessageTemplates?pageSize=1&templateName=' + encodeURIComponent(TEMPLATE);
     Logger.log('   Direct URL: ' + directUrl);
-    var directRes = UrlFetchApp.fetch(directUrl, {
+    var directRes = monitoredFetch(directUrl, {
       method: 'get',
       headers: { Authorization: token },
       muteHttpExceptions: true

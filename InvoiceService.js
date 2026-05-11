@@ -23,7 +23,7 @@ function getLiveCurrencyRates() {
     }
 
     const apiUrl = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/EUR`;
-    const response = UrlFetchApp.fetch(apiUrl, { muteHttpExceptions: true });
+    const response = monitoredFetch(apiUrl, { muteHttpExceptions: true });
     
     if (response.getResponseCode() === 200) {
       const data = JSON.parse(response.getContentText());
@@ -73,7 +73,7 @@ function getLiveExchangeRates() {
       return {};
     }
     const apiUrl = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/EUR`;
-    const response = UrlFetchApp.fetch(apiUrl, {
+    const response = monitoredFetch(apiUrl, {
       muteHttpExceptions: true
     });
 

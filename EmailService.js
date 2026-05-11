@@ -634,7 +634,7 @@ function _fetchWatiTemplateBody(templateName) {
 
     // Direct lookup by name — single API call (verify name matches, WATI filter is not strict)
     var url = base + '/api/v1/getMessageTemplates?pageSize=1&templateName=' + encodeURIComponent(templateName);
-    var res = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+    var res = monitoredFetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
 
     if (res.getResponseCode() === 200) {
       var data = JSON.parse(res.getContentText());
@@ -653,7 +653,7 @@ function _fetchWatiTemplateBody(templateName) {
     var pageNumber = 1;
     while (pageNumber <= 10) {
       url = base + '/api/v1/getMessageTemplates?pageSize=200&pageNumber=' + pageNumber;
-      res = UrlFetchApp.fetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
+      res = monitoredFetch(url, { method: 'get', headers: headers, muteHttpExceptions: true });
       if (res.getResponseCode() !== 200) break;
 
       data = JSON.parse(res.getContentText());

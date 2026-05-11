@@ -108,7 +108,7 @@ function syncMigrationPipelineToSheet() {
     };
     if (after) body.after = after;
 
-    var resp = UrlFetchApp.fetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
       method:             'post',
       headers:            headers,
       payload:            JSON.stringify(body),
