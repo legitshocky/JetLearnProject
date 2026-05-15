@@ -1817,97 +1817,13 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
     var resolvedNew   = resolveTeacherName(newTeacherName);
     var normalizedNew = normalizeTeacherName(resolvedNew);
 
-    // ── FAST path: lightweight cached fetch — no audit log, no duplicate ticket call ──
-    // getComprehensiveLearnerHistory reads 500 audit rows + makes duplicate ticket search.
-    // Here we fetch deal (hits _hubspotJlidCache) + tickets once + cache in CacheService 3 min.
-    var PORTAL   = '7729491';
-    var PIPELINE = '66161281';
-    var COMPLETED_STAGE = '128913753';
-    var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    var headers  = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
-    var EXCLUDED_STAGES  = ['133821818', '153457301'];
-    var INBOUND_REASONS  = ['Slot change - Learner request', 'Slot change -Learner request',
-                            'Teacher Affinity', 'Pause Request', 'Special Learning Needs', 'Course Change'];
-    var IGNORE_KEYWORDS  = ['PRM', 'Renewal', 'Feedback', 'Review', 'Kit', 'Laptop', 'Device', 'Tab'];
-    var STAGE_LABELS = {
-      '128913747': 'Migration Triggered', '128913748': 'WIP',
-      '128913750': 'WIP - TP Approval Pending', '128913752': 'WIP - CLS Approval Pending',
-      '1030980247': 'WIP - Rejected by CLS', '133755411': 'WIP - Approved by CLS',
-      '1065336836': 'Execution Pending',    '128913749': 'WIP - PR Approval Pending',
-      '128913753':  'Migration Completed'
-    };
-
-    // 1a. Learner deal — uses execution-level cache (_hubspotJlidCache) if already fetched
-    var learnerProfile = { learnerName: jlid, currentTeacher: '' };
-    try {
-      var dr = fetchHubspotByJlid(jlid);
-      if (dr && dr.success && dr.data) {
-        learnerProfile.learnerName    = dr.data.learnerName    || jlid;
-        learnerProfile.currentTeacher = dr.data.currentTeacher || '';
-      }
-    } catch(de) {}
-
-    // 1b. Migration tickets — CacheService 3 min to avoid repeat hits on teacher-change
-    var migrations = [];
-    var cacheKey   = 'INTEL_TL_' + jlid;
-    var cachedRaw  = null;
-    try { cachedRaw = CacheService.getScriptCache().get(cacheKey); } catch(ce) {}
-
-    if (cachedRaw) {
-      try { migrations = JSON.parse(cachedRaw); } catch(pe) {}
-      Logger.log('[checkNewTeacher] cache hit for ' + jlid);
-    } else {
-      var tBody = {
-        filterGroups: [{ filters: [
-          { propertyName: 'learner_uid',  operator: 'EQ', value: jlid },
-          { propertyName: 'hs_pipeline',  operator: 'EQ', value: PIPELINE }
-        ]}],
-        properties: [
-          'subject', 'createdate', 'reason_of_migration__t_',
-          'new_teacher', 'current_teacher__t_', 'hs_pipeline_stage',
-          'migration_completed_date', 'hs_ticket_id',
-          'future_course_1', 'future_course_2', 'future_course_3'  // avoid separate fetchLatestMigrationTicket
-        ],
-        sorts:  [{ propertyName: 'createdate', direction: 'ASCENDING' }],
-        limit:  100
-      };
-      var tRes  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
-        method: 'post', headers: headers, payload: JSON.stringify(tBody), muteHttpExceptions: true
-      });
-      var tData = JSON.parse(tRes.getContentText());
-      var raw   = (tData && tData.results) ? tData.results : [];
-
-      raw.forEach(function(t) {
-        var props   = t.properties || {};
-        var subject = String(props.subject || '').trim();
-        var reason  = String(props.reason_of_migration__t_ || '').trim();
-        var stage   = String(props.hs_pipeline_stage || '').trim();
-        if (EXCLUDED_STAGES.indexOf(stage) !== -1) return;
-        if (IGNORE_KEYWORDS.some(function(kw){ return subject.indexOf(kw) !== -1; })) return;
-        if (!reason && subject.indexOf('Migration') === -1) return;
-        var stageLabel  = STAGE_LABELS[stage] || (stage ? 'Stage ' + stage : 'Unknown');
-        var isCompleted = stage === COMPLETED_STAGE;
-        var triggeredDate = t.createdAt ? new Date(t.createdAt) : null;
-        migrations.push({
-          id:          t.id,
-          ticketId:    props.hs_ticket_id || t.id,
-          date:        triggeredDate ? triggeredDate.toISOString() : null,
-          reason:      reason || 'Unspecified',
-          fromTeacher: getTeacherLabel(props.current_teacher__t_) || 'Unknown',
-          toTeacher:   getTeacherLabel(props.new_teacher)         || 'Not assigned',
-          stage:       stageLabel,
-          isCompleted: isCompleted,
-          type:        INBOUND_REASONS.indexOf(reason) !== -1 ? 'inbound' : 'outbound',
-          rawProps: {
-            future_course_1: props.future_course_1 || '',
-            future_course_2: props.future_course_2 || '',
-            future_course_3: props.future_course_3 || ''
-          }
-        });
-      });
-      try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(migrations), 180); } catch(ce) {}
+    // Reuse getComprehensiveLearnerHistory — fetches HubSpot tickets with full teacher names
+    var timeline = getComprehensiveLearnerHistory(jlid);
+    if (!timeline || !timeline.success) {
+      return { success: false, message: timeline ? timeline.message : 'Timeline fetch failed' };
     }
 
+    var migrations = timeline.migrationTimeline || [];
     var now = new Date();
 
     // ── 1. Migration frequency counts ────────────────────────────────────────
@@ -1968,14 +1884,10 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
     });
 
     // ── 5. Last migration for this learner ────────────────────────────────────
-    // Sort descending. sorted[0] = most recent ticket.
-    // If it's still WIP (current open migration), skip it — show the one BEFORE it.
     var sorted = migrations.slice().sort(function(a, b) {
       return new Date(b.date || 0) - new Date(a.date || 0);
     });
-    // "Previous migration" = most recent COMPLETED ticket (excludes current open WIP)
-    var completedSorted = sorted.filter(function(m) { return m.isCompleted; });
-    var lastMigration   = completedSorted[0] || null;
+    var lastMigration = sorted[0] || null;
 
     // ── 6. Build alerts ───────────────────────────────────────────────────────
     var alerts = [];
@@ -2015,16 +1927,15 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
     }
 
     // ── 7. Future courses + upskill check ─────────────────────────────────────
-    // No separate fetchLatestMigrationTicket call — extract from inline migrations (future_course props included above)
     var futureCourses = [];
     var mipTicketId   = null;
-    var teacherUpskilledNames = [];
+    var teacherUpskilledNames = []; // flat lowercase list — sent to client for override re-check
     try {
-      // Most recent ticket (could be WIP = current migration being processed)
-      var currentTicketEntry = sorted[0] || null;
-      if (currentTicketEntry) {
-        mipTicketId = currentTicketEntry.id;
-        var rawProps = currentTicketEntry.rawProps || {};
+      var tcResult = fetchLatestMigrationTicket(jlid);
+      if (tcResult.found) {
+        mipTicketId = tcResult.ticketId;
+        var rawProps = tcResult.rawProperties || {};
+        // Use getTeacherSpecificLoad — correctly reads wide-format Teacher Courses sheet
         var teacherLoadResult = {};
         try { teacherLoadResult = getTeacherSpecificLoad(resolvedNew); } catch(te) {
           Logger.log('[checkNewTeacherForLearner] getTeacherSpecificLoad error: ' + te.message);
@@ -2035,7 +1946,8 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
           if (!raw) return;
           var label = '';
           try { label = getCourseLabel(raw) || raw; } catch(ce) { label = raw; }
-          var upskilled = teacherUpskilledNames.indexOf(label.toLowerCase().trim()) > -1;
+          var labelLow = label.toLowerCase().trim();
+          var upskilled = teacherUpskilledNames.indexOf(labelLow) > -1;
           futureCourses.push({ index: idx + 1, courseLabel: label, rawValue: raw, isUpskilled: upskilled });
         });
       }
@@ -2058,7 +1970,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
       success:           true,
       jlid:              jlid,
       ticketId:          mipTicketId,
-      learnerName:       learnerProfile.learnerName || '',
+      learnerName:       timeline.learnerProfile ? (timeline.learnerProfile.learnerName || '') : '',
       newTeacherName:    resolvedNew,
       migrationCount30d: count30,
       migrationCount60d: count60,
@@ -2069,14 +1981,11 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
       isAffinityCase:    isAffinityCase,
       escalationCount:   escalationEvents.length,
       escalationEvents:  escalationEvents,
-      lastMigrationDate:      lastMigration ? lastMigration.date      : null,
-      lastMigrationReason:    lastMigration ? lastMigration.reason    : null,
-      lastMigrationToTeacher: lastMigration ? lastMigration.toTeacher : null,
-      lastMigrationFromTeacher: lastMigration ? lastMigration.fromTeacher : null,
-      daysSinceLastMigration: lastMigration && lastMigration.date
-        ? Math.floor((now - new Date(lastMigration.date)) / 86400000) : null,
-      riskLevel:   'Unknown',
-      riskMessage: '',
+      lastMigrationDate:     lastMigration ? lastMigration.date    : null,
+      lastMigrationReason:   lastMigration ? lastMigration.reason  : null,
+      lastMigrationToTeacher:lastMigration ? lastMigration.toTeacher : null,
+      riskLevel:   timeline.journeyAnalysis ? timeline.journeyAnalysis.riskLevel   : 'Unknown',
+      riskMessage: timeline.journeyAnalysis ? timeline.journeyAnalysis.riskMessage : '',
       alerts:      alerts,
       futureCourses:           futureCourses,
       teacherUpskilledCourses: teacherUpskilledNames,
@@ -3591,134 +3500,6 @@ function getMigrationRegistry() {
       stats:   { total: 0, pending: 0, completed: 0, successRate: 0 },
       tickets: []
     };
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Migration Communications Status
-// For all "Migration Completed" tickets this month, checks whether comms
-// (parent WhatsApp, new teacher email, old teacher email) were sent via tool.
-// Source of truth: Audit Log sheet (col B = 'Migration Process', col I = notes).
-// ─────────────────────────────────────────────────────────────────────────────
-function getMigrationCommsStatus() {
-  try {
-    var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    var PORTAL   = '7729491';
-    var PIPELINE = '66161281';
-    var COMPLETED_STAGE = '128913753';
-    var headers  = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
-
-    // Current month start (UTC midnight)
-    var now        = new Date();
-    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-
-    // ── 1. Fetch Migration Completed tickets ──────────────────────────────────
-    var body = {
-      filterGroups: [{ filters: [
-        { propertyName: 'hs_pipeline',       operator: 'EQ', value: PIPELINE },
-        { propertyName: 'hs_pipeline_stage', operator: 'EQ', value: COMPLETED_STAGE }
-      ]}],
-      properties: [
-        'subject', 'createdate', 'hs_pipeline_stage',
-        'current_teacher__t_', 'new_teacher',
-        'reason_of_migration__t_', 'learner_uid', 'current_course__t_'
-      ],
-      sorts:  [{ propertyName: 'createdate', direction: 'DESCENDING' }],
-      limit:  100
-    };
-    var res   = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
-      method: 'post', headers: headers, payload: JSON.stringify(body), muteHttpExceptions: true
-    });
-    var data  = JSON.parse(res.getContentText());
-    var allT  = (data && data.results) ? data.results : [];
-
-    // Filter to current month only
-    var tickets = allT.filter(function(t) {
-      return t.createdAt && new Date(t.createdAt).getTime() >= monthStart;
-    });
-
-    // ── 2. Build comms map from Audit Log sheet ───────────────────────────────
-    // Columns: A=Timestamp B=Action C=JLID D=Learner E=OldTeacher F=NewTeacher
-    //          G=Course H=Status I=Notes ...
-    var commsMap = {}; // jlid → { parentWA, newTeacherEmail, oldTeacherEmail, timestamp }
-    try {
-      var ss        = SpreadsheetApp.openById(
-                        PropertiesService.getScriptProperties().getProperty('APP_DATA_SPREADSHEET_ID'));
-      var auditSheet = ss.getSheetByName('Audit Log');
-      if (auditSheet && auditSheet.getLastRow() > 1) {
-        var rows = auditSheet.getDataRange().getValues();
-        rows.forEach(function(row) {
-          var action = String(row[1] || '');
-          var jlid   = String(row[2] || '').trim();
-          var notes  = String(row[8] || '');
-          var ts     = row[0] ? new Date(row[0]).getTime() : 0;
-          if (!jlid || action.indexOf('Migration') === -1) return;
-          // Only consider entries from this month
-          if (ts < monthStart) return;
-
-          if (!commsMap[jlid] || ts > commsMap[jlid].timestamp) {
-            commsMap[jlid] = {
-              timestamp:      ts,
-              parentWA:       notes.indexOf('WATI Sent')           > -1,
-              newTeacherEmail:notes.indexOf('Teacher Email Sent')  > -1,
-              oldTeacherEmail:notes.indexOf('Old Teacher Email Sent') > -1,
-              teacherSkipped: notes.indexOf('Teacher Email Skipped') > -1,
-              waSkipped:      notes.indexOf('WhatsApp Skipped')    > -1,
-              rawNotes:       notes
-            };
-          }
-        });
-      }
-    } catch(ae) {
-      Logger.log('[getMigrationCommsStatus] Audit log error: ' + ae.message);
-    }
-
-    // ── 3. Build per-ticket result ────────────────────────────────────────────
-    var result = tickets.map(function(t) {
-      var props = t.properties || {};
-      var jlid  = props.learner_uid || '';
-      var comms = commsMap[jlid] || { parentWA: false, newTeacherEmail: false, oldTeacherEmail: false };
-
-      // Status logic
-      var toolUsed = !!commsMap[jlid];
-      var allGood  = comms.parentWA && comms.newTeacherEmail;
-      var status   = !toolUsed ? 'not_sent' :
-                     allGood   ? 'complete' : 'partial';
-
-      return {
-        ticketId:       t.id,
-        jlid:           jlid,
-        learnerName:    props.subject || jlid || 'Unknown',
-        fromTeacher:    getTeacherLabel(props.current_teacher__t_) || 'Unknown',
-        toTeacher:      getTeacherLabel(props.new_teacher)         || 'Not assigned',
-        course:         getCourseLabel(props.current_course__t_)   || '',
-        reason:         props.reason_of_migration__t_              || 'Unspecified',
-        completedDate:  t.createdAt ? new Date(t.createdAt).toISOString().split('T')[0] : '',
-        comms:          comms,
-        status:         status,
-        hubspotLink:    'https://app.hubspot.com/contacts/' + PORTAL + '/ticket/' + t.id
-      };
-    });
-
-    // Sort: not_sent first, partial second, complete last
-    var ORDER = { not_sent: 0, partial: 1, complete: 2 };
-    result.sort(function(a, b) { return (ORDER[a.status] || 0) - (ORDER[b.status] || 0); });
-
-    var notSentCount  = result.filter(function(r) { return r.status === 'not_sent'; }).length;
-    var partialCount  = result.filter(function(r) { return r.status === 'partial';  }).length;
-    var completeCount = result.filter(function(r) { return r.status === 'complete'; }).length;
-
-    return {
-      success:      true,
-      tickets:      result,
-      notSentCount: notSentCount,
-      partialCount: partialCount,
-      completeCount:completeCount,
-      total:        result.length
-    };
-  } catch(e) {
-    Logger.log('[getMigrationCommsStatus] Error: ' + e.message);
-    return { success: false, message: e.message, tickets: [], notSentCount: 0, partialCount: 0, completeCount: 0, total: 0 };
   }
 }
 

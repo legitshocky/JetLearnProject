@@ -6,25 +6,24 @@ function safeToFixed(value, decimals) {
   return Number(value).toFixed(decimals);
 }
 
-function getLiveCurrencyRates() {
-  // This is our reliable fallback in case the API fails
-  const fallbackRates = {
-    'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348,
-    'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50,
-    'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951,
-    'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
-  };
+var _CURRENCY_FALLBACK_RATES = {
+  'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348,
+  'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50,
+  'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951,
+  'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
+};
 
+function getLiveCurrencyRates() {
   try {
     const API_KEY = PropertiesService.getScriptProperties().getProperty('EXCHANGERATE_API_KEY');
     if (!API_KEY) {
-      Logger.log('ExchangeRate API Key not found in Script Properties. Using fallback rates.');
-      return fallbackRates;
+      Logger.log('ExchangeRate API Key not found. Using fallback rates.');
+      return _CURRENCY_FALLBACK_RATES;
     }
 
-    const apiUrl = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/EUR`;
+    const apiUrl = 'https://v6.exchangerate-api.com/v6/' + API_KEY + '/latest/EUR';
     const response = monitoredFetch(apiUrl, { muteHttpExceptions: true });
-    
+
     if (response.getResponseCode() === 200) {
       const data = JSON.parse(response.getContentText());
       if (data.result === 'success' && data.conversion_rates) {
@@ -32,14 +31,43 @@ function getLiveCurrencyRates() {
         return data.conversion_rates;
       }
     }
-    
-    Logger.log('API call for currency rates failed. Response code: ' + response.getResponseCode() + '. Using fallback rates.');
-    return fallbackRates;
+
+    Logger.log('Currency API failed (code ' + response.getResponseCode() + '). Using fallback.');
+    return _CURRENCY_FALLBACK_RATES;
 
   } catch (error) {
-    Logger.log('Error fetching live currency rates: ' + error.message + '. Using fallback rates.');
-    return fallbackRates;
+    Logger.log('Error fetching currency rates: ' + error.message + '. Using fallback.');
+    return _CURRENCY_FALLBACK_RATES;
   }
+}
+
+// Public callable — served async after page load.
+// Uses CacheService (6-hour TTL) so only 1 external API call per 6h across all users.
+function getCachedCurrencyRates() {
+  var CACHE_KEY = 'currency_rates_eur_base';
+  var TTL = 6 * 60 * 60; // 6 hours
+
+  try {
+    var scriptCache = CacheService.getScriptCache();
+    var cached = scriptCache.get(CACHE_KEY);
+    if (cached) {
+      Logger.log('[Currency] Cache HIT — returning cached rates.');
+      return JSON.parse(cached);
+    }
+  } catch(e) {
+    Logger.log('[Currency] Cache read error: ' + e.message);
+  }
+
+  var rates = getLiveCurrencyRates();
+
+  try {
+    CacheService.getScriptCache().put(CACHE_KEY, JSON.stringify(rates), TTL);
+    Logger.log('[Currency] Rates cached for 6 hours.');
+  } catch(e) {
+    Logger.log('[Currency] Cache write error: ' + e.message);
+  }
+
+  return rates;
 }
 function getInvoiceProductsData() {
   Logger.log('getInvoiceProductsData called');
@@ -283,20 +311,47 @@ function calculateInvoicePricing(formData, previewOnly = false) {
             case '12 Months': monthIncrement = 12; break;
         }
 
-        if (customPaidAmount > 0) {
+        // CASE C: Custom (unequal) installment amounts
+        const customAmounts = (formData.customInstallmentAmounts && Array.isArray(formData.customInstallmentAmounts) && formData.customInstallmentAmounts.length > 0)
+            ? formData.customInstallmentAmounts.map(Number)
+            : null;
+
+        if (customAmounts) {
+            // When token/partial payment is already set, ALL custom installments are PENDING.
+            // Token is shown separately on the invoice — not as installment 1.
+            // If no partial payment, first custom installment is treated as the first payment (paid).
+            const allPending = customPaidAmount > 0;
+            let lastDueDate = new Date(billingAnchorDate);
+            customAmounts.forEach(function(amt, i) {
+                let dueDate = i === 0 ? new Date(billingAnchorDate) : (function() {
+                    let d = new Date(lastDueDate);
+                    d.setMonth(d.getMonth() + monthIncrement);
+                    d.setDate(dueDay);
+                    return d;
+                })();
+                installments.push({
+                    number: i + 1,
+                    amount: amt,
+                    isPaid: allPending ? false : i === 0,
+                    dueDate: dueDate,
+                    dueDateFormatted: formatDateDDMMYYYY(dueDate)
+                });
+                lastDueDate = dueDate;
+            });
+        } else if (customPaidAmount > 0) {
             // CASE A: Custom Partial Payment Logic
             // 1. First payment is what they entered (Is Paid: YES)
-            installments.push({ 
-                number: 1, 
-                amount: customPaidAmount, 
-                isPaid: true, 
-                dueDate: billingAnchorDate, 
-                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate) 
+            installments.push({
+                number: 1,
+                amount: customPaidAmount,
+                isPaid: true,
+                dueDate: billingAnchorDate,
+                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate)
             });
 
-            // 2. Remaining installments split the Balance Due
-            const remainingCount = numInstallments - 1; 
-            
+            // 2. Remaining installments split the Balance Due equally
+            const remainingCount = numInstallments - 1;
+
             if (remainingCount > 0 && balanceDue > 0) {
                 const nextAmount = balanceDue / remainingCount;
                 let lastDueDate = new Date(billingAnchorDate);
@@ -305,13 +360,13 @@ function calculateInvoicePricing(formData, previewOnly = false) {
                     let nextDueDate = new Date(lastDueDate);
                     nextDueDate.setMonth(nextDueDate.getMonth() + monthIncrement);
                     nextDueDate.setDate(dueDay);
-                    
-                    installments.push({ 
-                        number: i + 2, 
-                        amount: nextAmount, 
-                        isPaid: false, 
-                        dueDate: nextDueDate, 
-                        dueDateFormatted: formatDateDDMMYYYY(nextDueDate) 
+
+                    installments.push({
+                        number: i + 2,
+                        amount: nextAmount,
+                        isPaid: false,
+                        dueDate: nextDueDate,
+                        dueDateFormatted: formatDateDDMMYYYY(nextDueDate)
                     });
                     lastDueDate = nextDueDate;
                 }
@@ -319,13 +374,13 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         } else {
             // CASE B: Standard Logic (Even Split)
             const installmentAmount = finalTotal / numInstallments;
-            
-            installments.push({ 
-                number: 1, 
-                amount: installmentAmount, 
-                isPaid: true, 
-                dueDate: billingAnchorDate, 
-                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate) 
+
+            installments.push({
+                number: 1,
+                amount: installmentAmount,
+                isPaid: true,
+                dueDate: billingAnchorDate,
+                dueDateFormatted: formatDateDDMMYYYY(billingAnchorDate)
             });
 
             let lastDueDate = new Date(billingAnchorDate);
@@ -333,13 +388,13 @@ function calculateInvoicePricing(formData, previewOnly = false) {
                 let nextDueDate = new Date(lastDueDate);
                 nextDueDate.setMonth(nextDueDate.getMonth() + monthIncrement);
                 nextDueDate.setDate(dueDay);
-                
-                installments.push({ 
-                    number: i + 1, 
-                    amount: installmentAmount, 
-                    isPaid: false, 
-                    dueDate: nextDueDate, 
-                    dueDateFormatted: formatDateDDMMYYYY(nextDueDate) 
+
+                installments.push({
+                    number: i + 1,
+                    amount: installmentAmount,
+                    isPaid: false,
+                    dueDate: nextDueDate,
+                    dueDateFormatted: formatDateDDMMYYYY(nextDueDate)
                 });
                 lastDueDate = nextDueDate;
             }

@@ -18,6 +18,7 @@ function getTeacherData() {
       }
 
       return {
+        teacherId: String(row[0] || '').trim(),   // Col A — TJL code e.g. TJL001
         name: String(row[1] || '').trim(),
         email: String(row[8] || '').trim(),
         clsEmail: String(row[9] || '').trim(),
@@ -1030,15 +1031,18 @@ function searchMatchingTeachers(requestData) {
     });
     Logger.log('[SMT] calendarIdMap: ' + Object.keys(calendarIdMap).length + ' teachers with calendar IDs');
 
-    // ── 3c. Build name → jetlearn email map + hidden set from Teacher Data ──
+    // ── 3c. Build name → jetlearn email map + hidden set + teacherId from Teacher Data ──
     var teacherEmailMap = {}; // normalizedName → jetlearn email (row[8])
+    var teacherIdMap    = {}; // normalizedName → teacher ID (row[0], e.g. TJL001)
     var hiddenTeacherSet = {};
     try {
       var tdRows = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
       tdRows.slice(1).forEach(function(row) {
         var n  = String(row[1] || '').trim();
         var em = String(row[8] || '').trim().toLowerCase();
-        if (n && em) teacherEmailMap[normalizeTeacherName(n)] = em;
+        var tid = String(row[0] || '').trim();
+        if (n && em)  teacherEmailMap[normalizeTeacherName(n)] = em;
+        if (n && tid) teacherIdMap[normalizeTeacherName(n)]    = tid;
         // Build hidden set from col L (index 11 = "Hide in Search")
         var hideFlag = String(row[11] || '').trim().toLowerCase();
         if (n && hideFlag === 'yes') hiddenTeacherSet[normalizeTeacherName(n)] = true;
@@ -1670,6 +1674,8 @@ function searchMatchingTeachers(requestData) {
         redFlagCount          : redFlagCount,
         auditCount45          : auditData ? (auditData.auditCount || 0) : 0,
         upskillCount          : upskillCountMap[tNorm] || upskillCountMap[tCanon] || 0,
+        teacherEmail          : teacherEmailMap[tNorm] || teacherEmailMap[tCanon] || '',
+        teacherId             : teacherIdMap[tNorm]    || teacherIdMap[tCanon]    || '',
         _rankScore            : totalScore,
         _traitMatchesCount    : targetTraits.length > 0 ? (targetTraits.length - traitsMissing.length) : 0
       });
@@ -1824,6 +1830,8 @@ function searchMatchingTeachers(requestData) {
           avgClassScore: auditData2 && auditData2.avgScore != null ? auditData2.avgScore + '/80' : 'No data',
           auditGrade: auditGrade2, redFlagCount: redFlagCount2, auditCount45: auditData2 ? (auditData2.auditCount || 0) : 0,
           upskillCount: upskillCountMap[tNorm2] || upskillCountMap[tCanon2] || 0,
+          teacherEmail: teacherEmailMap[tNorm2] || teacherEmailMap[tCanon2] || '',
+          teacherId:    teacherIdMap[tNorm2]    || teacherIdMap[tCanon2]    || '',
           _rankScore: traitScore2 + ageScore2 + courseScore2 + futureScore2 + auditScore2,
           _traitMatchesCount: targetTraits.length > 0 ? (targetTraits.length - traitsMissing2.length) : 0,
           _relaxedFilter: true
@@ -2717,10 +2725,25 @@ function getTeacherProfileData(teacherName) {
       Logger.log('[getTeacherProfileData] Persona enrichment error: ' + pe.message);
     }
 
+    // Look up HubSpot internal ID from TEACHER_HS_DATA (col 1 = internal ID, col 2 = name)
+    var hubspotInternalId = '';
+    try {
+      var hsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+      var nameLow2 = teacherName.toLowerCase().trim();
+      for (var hsi = 1; hsi < hsData.length; hsi++) {
+        if (String(hsData[hsi][2] || '').toLowerCase().trim() === nameLow2) {
+          hubspotInternalId = String(hsData[hsi][1] || '').trim();
+          break;
+        }
+      }
+    } catch(hse) { Logger.log('[getTeacherProfileData] HS ID lookup: ' + hse.message); }
+
     return {
       success: true,
       profile: {
         name:              teacherName,
+        teacherId:         teacherInfo ? (teacherInfo.teacherId || 'N/A') : 'N/A',
+        hubspotId:         hubspotInternalId || 'N/A',
         email:             teacherInfo ? (teacherInfo.email   || 'N/A') : 'N/A',
         status:            teacherInfo ? (teacherInfo.status  || 'N/A') : (loadData && loadData.status ? loadData.status : 'N/A'),
         manager:           teacherInfo ? (teacherInfo.manager || 'N/A') : 'N/A',

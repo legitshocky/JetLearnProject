@@ -655,6 +655,15 @@
               var isInstallment = (data.paymentType === 'Installment' && pricing && pricing.numberOfInstallments > 0);
             ?>
 
+            <? if (isInstallment && pricing && pricing.amountPaid > 0 && !isFullyPaid) { ?>
+            <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
+              <span style="font-size:1.4rem;">✅</span>
+              <div>
+                <div style="font-size:0.75rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.05em;">Token Amount Received</div>
+                <div style="font-size:1.1rem;font-weight:700;color:#166534;"><?!= pricing.currencySymbol ?><?= safeToFixed(pricing.amountPaid) ?> paid</div>
+              </div>
+            </div>
+            <? } ?>
             <div class="payment-status <?!= isFullyPaid ? '' : (isInstallment ? 'installment' : 'pending') ?>">
               <? if (isFullyPaid) { ?>
                 <h3>Payment Status</h3>
@@ -742,13 +751,13 @@
           ?>
 
           <? if (isUniform) { ?>
-             <!-- Standard Scenario (All amounts equal) -->
-             Total of <?= data.numberOfInstallments ?> installments of <?= pricing.currencySymbol ?><?= safeToFixed(pricing.installments[0].amount) ?>. 
-             <?= pendingCount ?> installments pending.
+             Total of <?= data.numberOfInstallments ?> installments of <?= pricing.currencySymbol ?><?= safeToFixed(pricing.installments[0].amount) ?>. <?= pendingCount ?> installments pending.
           <? } else { ?>
-             <!-- Partial Payment Scenario (Mixed amounts) -->
-             Total of <?= data.numberOfInstallments ?> installments. 
-             Remaining balance is split into <?= pendingCount ?> installments of <?= pricing.currencySymbol ?><?= safeToFixed(nextAmount) ?>.
+             Total of <?= pricing.installments.length ?> installments:
+             <? for (var ki = 0; ki < pricing.installments.length; ki++) { var ki_inst = pricing.installments[ki]; ?>
+               Installment <?= ki+1 ?>: <?= pricing.currencySymbol ?><?= safeToFixed(ki_inst.amount) ?> due <?= ki_inst.dueDateFormatted ?><?= ki_inst.isPaid ? ' (Paid)' : ' (Pending)' ?><?= ki < pricing.installments.length - 1 ? ' |' : '.' ?>
+             <? } ?>
+             <?= pendingCount ?> pending.
           <? } ?>
         </li>
               <? } ?>

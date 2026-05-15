@@ -823,3 +823,19 @@ function sendWatiTemplate(parentContact, templateId, params, manualOverridePhone
 }
 
 
+function testWatiConnection() {
+  var p = PropertiesService.getScriptProperties();
+  var endpoint = (p.getProperty('WATI_API_ENDPOINT') || '').trim();
+  var token = (p.getProperty('WATI_ACCESS_TOKEN') || '').trim();
+  if (!token.startsWith('Bearer ')) token = 'Bearer ' + token;
+
+  // Hit a lightweight read endpoint — no message sent
+  var res = UrlFetchApp.fetch(endpoint + '/api/v1/getContacts?pageSize=1', {
+    method: 'get',
+    headers: { Authorization: token },
+    muteHttpExceptions: true
+  });
+
+  Logger.log('HTTP Code: ' + res.getResponseCode());
+  Logger.log('Body: ' + res.getContentText().substring(0, 300));
+}

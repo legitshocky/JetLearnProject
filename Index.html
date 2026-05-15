@@ -15,6 +15,7 @@
 
   <!-- AOS Animation -->
   <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+  <!-- Google Identity Services removed — using GAS Workspace native auth -->
      <?!= include('Styles'); ?>
 
 
@@ -75,41 +76,50 @@
               <div class="login-right-content">
                   <div class="login-status-bar">Workspace ready · Sign in to continue</div>
                   <h2 class="login-form-title">Welcome back</h2>
-                  <p class="login-form-subtitle">Enter your credentials to access the command center.</p>
-                  <form id="loginForm" class="login-form">
-                      <div class="form-group">
-                          <label for="username" class="form-label">
-                              <i class="fas fa-user"></i> Username
-                          </label>
-                          <input type="text" id="username" class="form-control" placeholder="j.doe@jetlearn.ai" required autocomplete="username">
+                  <p class="login-form-subtitle">Access the JetLearn Command Center with your work account.</p>
+
+                  <!-- GAS Workspace native email injected server-side -->
+                  <div id="gasActiveEmail" data-email="<?= activeUserEmail ?>" style="display:none;"></div>
+
+                  <!-- Premium sign-in card -->
+                  <div class="google-signin-card">
+                    <button type="button" id="customGoogleSignInBtn" class="google-signin-btn" onclick="triggerGoogleSignIn()">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                      <span>Continue with Google</span>
+                    </button>
+
+                    <div class="signin-divider">
+                      <span></span>
+                      <p>Secure workspace access</p>
+                      <span></span>
+                    </div>
+
+                    <div class="signin-trust-row">
+                      <div class="trust-item">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>@jet-learn.com only</span>
                       </div>
-                      <div class="form-group">
-                          <label for="password" class="form-label">
-                              <i class="fas fa-lock"></i> Password
-                          </label>
-                          <div class="password-input-wrapper">
-                              <input type="password" id="password" class="form-control" placeholder="Enter your password" required autocomplete="current-password">
-                              <button type="button" class="password-toggle" onclick="togglePassword('password', this)">
-                                  <i class="fas fa-eye"></i>
-                              </button>
-                          </div>
+                      <div class="trust-item">
+                        <i class="fas fa-lock"></i>
+                        <span>OAuth 2.0 secured</span>
                       </div>
-                      <div class="remember-forgot">
-                          <div class="remember-me">
-                              <input type="checkbox" id="rememberMe">
-                              <label for="rememberMe">
-                                  <span class="custom-checkbox"></span>
-                                  <span class="checkbox-text">Remember this device for 30 days</span>
-                              </label>
-                          </div>
-                          <a class="forgot-password-link">Forgot password?</a>
+                      <div class="trust-item">
+                        <i class="fas fa-user-check"></i>
+                        <span>Role-based access</span>
                       </div>
-                      <button type="submit" class="btn btn-primary login-btn">
-                          <span class="btn-text"><i class="fas fa-sign-in-alt"></i> Sign In to Intelligence</span>
-                          <span class="btn-shine"></span>
-                      </button>
-                  </form>
-                  <div class="login-assist-note">Need access help? Contact your JetLearn administrator.</div>
+                    </div>
+
+                    <div id="googleAuthError" class="google-auth-error" style="display:none;"></div>
+                  </div>
+
+                  <div class="login-assist-note" style="margin-top:1.5rem;font-size:0.75rem;color:rgba(255,255,255,0.28);text-align:center;">
+                    Need access? <a href="mailto:sourav.pal@jet-learn.com" style="color:rgba(255,255,255,0.5);text-decoration:none;">sourav.pal@jet-learn.com</a>
+                  </div>
               </div>
               <div class="login-version">JetLearn Command Center · <?= getAppVersion() ?></div>
           </div>
@@ -272,6 +282,8 @@
         <div class="menu-item" data-page="courses"><i class="fas fa-book"></i><span>Courses</span></div>
         <div class="menu-item" data-page="tasks"><i class="fas fa-check-square"></i><span>Tasks</span></div>
         <div class="menu-item" data-page="kitTracking"><i class="fas fa-box-open"></i><span>Kit Tracking</span><span id="kitPendingBadge" class="badge" style="display:none;background:#f59e0b;color:#fff;">0</span></div>
+
+        <div class="menu-item" data-page="operations"><i class="fas fa-bolt"></i><span>Operations</span><span id="opsPendingBadge" class="badge" style="display:none;background:#6366f1;color:#fff;">!</span></div>
 
         <span class="sidebar-section-label">Tools</span>
         <div class="menu-item" data-page="load"><i class="fas fa-balance-scale"></i><span>Teacher Intelligence</span></div>
@@ -486,6 +498,7 @@
           <button class="tab-button" data-tab="onboardingParent">Onboarding Email & Invoice Generator</button>
           <button class="tab-button" data-tab="minecraft">Minecraft Email</button>
           <button class="tab-button" data-tab="roblox">Roblox Email</button>
+          <button class="tab-button" data-tab="scheduled" onclick="switchCommunicationTab('scheduled')"><i class="fas fa-calendar-alt" style="margin-right:5px;"></i>Scheduled</button>
         </div>
 
         <!-- Onboarding Tab -->
@@ -916,6 +929,17 @@
                           <input type="number" id="onboardingParentDueDayToPay" class="form-control" value="1" min="1" max="31">
                       </div>
                   </div>
+                  <!-- Custom installment amounts toggle -->
+                  <div style="margin-top:1rem;">
+                      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);">
+                          <input type="checkbox" id="onboardingCustomInstallmentAmounts" style="width:16px;height:16px;cursor:pointer;">
+                          Custom Installment Amounts (unequal splits)
+                      </label>
+                  </div>
+                  <div id="onboardingCustomInstallmentAmountsGroup" style="display:none;margin-top:0.75rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                      <p style="font-size:0.78rem;color:#64748b;margin:0 0 0.75rem;">Token/deposit is tracked in "Partial Payment Received" above. Enter the upcoming installment amounts here — all shown as Pending on the invoice.</p>
+                      <div id="onboardingCustomInstallmentInputs" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
+                  </div>
               </div>
 
                   <div class="form-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--gray); padding-top: 1.5rem; grid-template-columns: repeat(3, 1fr);">
@@ -952,10 +976,10 @@
                 </small>
             </div>
 
-             <div class="form-actions">
+                <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="onboardingParentEmailForm" data-container-id="onboardingParentClassSessionsContainer" data-prefix="onboardingParent"><i class="fas fa-undo"></i> Reset</button>
-                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="onboardingParent"><i class="fas fa-eye"></i> Review</button>
-                    <button type="submit" class="btn btn-primary send-email-btn" data-email-type="onboardingParent"><i class="fas fa-paper-plane"></i> Send Email</button>
+                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="onboardingParent" onclick="getAndRenderEmailPreview('onboardingParent')"><i class="fas fa-eye"></i> Review</button>
+                    <button type="button" class="btn btn-primary send-email-btn" data-email-type="onboardingParent" onclick="handleEmailAction('onboardingParent')"><i class="fas fa-paper-plane"></i> Send Email</button>
                 </div>
             </form>
             </div>
@@ -1012,8 +1036,8 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="minecraftEmailForm" data-prefix="minecraft"><i class="fas fa-undo"></i> Reset Form</button>
-                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="minecraft"><i class="fas fa-eye"></i> Review Email</button>
-                    <button type="submit" class="btn btn-primary send-email-btn" data-email-type="minecraft"><i class="fas fa-paper-plane"></i> Send Email</button>
+                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="minecraft" onclick="getAndRenderEmailPreview('minecraft')"><i class="fas fa-eye"></i> Review Email</button>
+                    <button type="button" class="btn btn-primary send-email-btn" data-email-type="minecraft" onclick="handleEmailAction('minecraft')"><i class="fas fa-paper-plane"></i> Send Email</button>
                 </div>
             </form>
           </div>
@@ -1069,10 +1093,36 @@
                 </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="robloxEmailForm" data-prefix="roblox"><i class="fas fa-undo"></i> Reset Form</button>
-                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="roblox"><i class="fas fa-eye"></i> Review Email</button>
-                    <button type="submit" class="btn btn-primary send-email-btn" data-email-type="roblox"><i class="fas fa-paper-plane"></i> Send Email</button>
+                    <button type="button" class="btn btn-outline preview-email-btn" data-email-type="roblox" onclick="getAndRenderEmailPreview('roblox')"><i class="fas fa-eye"></i> Review Email</button>
+                    <button type="button" class="btn btn-primary send-email-btn" data-email-type="roblox" onclick="handleEmailAction('roblox')"><i class="fas fa-paper-plane"></i> Send Email</button>
                 </div>
             </form>
+          </div>
+        </div>
+
+        <!-- Scheduled Emails Tab -->
+        <div id="scheduledTab" class="tab-content">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:1rem;font-weight:700;color:#1e293b;"><i class="fas fa-calendar-alt" style="color:#6366f1;margin-right:8px;"></i>Scheduled Emails</h3>
+            <button onclick="loadEmailQueueTab()" style="background:none;border:1px solid #e2e8f0;border-radius:7px;padding:5px 12px;font-size:0.8rem;color:#64748b;cursor:pointer;"><i class="fas fa-sync-alt"></i> Refresh</button>
+          </div>
+          <div id="emailQueueTableWrap">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0;">
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Scheduled</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Type</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Learner</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Recipient</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Status</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Created By</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:0.75rem;font-weight:600;color:#64748b;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="emailQueueTbody">
+                <tr><td colspan="7" style="padding:2rem;text-align:center;color:#94a3b8;">Click Refresh to load scheduled emails.</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1429,6 +1479,17 @@
                           <label for="invoiceDueDayToPay" class="form-label">Due Day to Pay</label>
                           <input type="number" id="invoiceDueDayToPay" class="form-control" value="1" min="1" max="31">
                       </div>
+                  </div>
+                  <!-- Custom installment amounts toggle -->
+                  <div style="margin-top:1rem;">
+                      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text-secondary);">
+                          <input type="checkbox" id="invoiceCustomInstallmentAmounts" style="width:16px;height:16px;cursor:pointer;">
+                          Custom Installment Amounts (unequal splits)
+                      </label>
+                  </div>
+                  <div id="customInstallmentAmountsGroup" style="display:none;margin-top:0.75rem;padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                      <p style="font-size:0.78rem;color:#64748b;margin:0 0 0.75rem;">Token/deposit is tracked in "Partial Payment Received" above. Enter the upcoming installment amounts here — all shown as Pending on the invoice.</p>
+                      <div id="customInstallmentInputs" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
                   </div>
               </div>
               
@@ -2721,6 +2782,61 @@
 
       </div><!-- end RIGHT -->
     </div><!-- end 65/35 grid -->
+
+    <!-- ── Communication Tracker (this month) ── -->
+    <div style="margin-top:1.5rem;">
+      <div class="audit-log-container">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h3 class="dashboard-section-title" style="margin:0;">
+              <i class="fas fa-satellite-dish" style="color:#f59e0b;margin-right:8px;"></i>
+              Communication Tracker — This Month
+            </h3>
+            <span id="mcCommsAlertBadge" style="display:none;background:#ef4444;color:#fff;font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:99px;"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <!-- KPI pills -->
+            <span style="font-size:0.75rem;padding:3px 10px;border-radius:99px;background:#fee2e2;color:#991b1b;font-weight:600;">
+              <i class="fas fa-times-circle" style="margin-right:4px;"></i>Not sent: <span id="mcCommsNotSent">—</span>
+            </span>
+            <span style="font-size:0.75rem;padding:3px 10px;border-radius:99px;background:#fef3c7;color:#92400e;font-weight:600;">
+              <i class="fas fa-exclamation-circle" style="margin-right:4px;"></i>Partial: <span id="mcCommsPartial">—</span>
+            </span>
+            <span style="font-size:0.75rem;padding:3px 10px;border-radius:99px;background:#d1fae5;color:#065f46;font-weight:600;">
+              <i class="fas fa-check-circle" style="margin-right:4px;"></i>Complete: <span id="mcCommsComplete">—</span>
+            </span>
+            <button class="btn btn-outline" style="font-size:0.8rem;padding:5px 12px;" onclick="loadMigrationCommsStatus()">
+              <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table" style="font-size:0.82rem;">
+            <thead>
+              <tr>
+                <th>Learner</th>
+                <th>Transition</th>
+                <th style="text-align:center;">Completed</th>
+                <th style="text-align:center;">Parent WhatsApp</th>
+                <th style="text-align:center;">New Teacher Email</th>
+                <th style="text-align:center;">Old Teacher Email</th>
+                <th style="text-align:center;">Status</th>
+                <th style="text-align:right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="mcCommsBody">
+              <tr>
+                <td colspan="8" style="text-align:center;padding:2rem;color:var(--text-muted);">
+                  <i class="fas fa-satellite-dish" style="font-size:1.5rem;opacity:.3;display:block;margin-bottom:0.5rem;"></i>
+                  Click Refresh to load communication status
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- end learnerMigrationPage -->
 
   <!-- New Migration Wizard Modal -->
@@ -3178,6 +3294,281 @@
 
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- OPERATIONS PAGE                                           -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="operationsPage" class="page-content" style="display:none;">
+
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1 class="page-title"><i class="fas fa-bolt" style="color:#6366f1;margin-right:8px;"></i>Operations</h1>
+        <p class="page-subtitle">Kit orders · Scratch credentials · HubSpot task queue</p>
+      </div>
+    </div>
+
+    <!-- Tab bar — pill style matching Kit Tracking -->
+    <div style="display:flex;gap:0;margin-bottom:1.5rem;background:#f1f5f9;border-radius:10px;padding:4px;width:fit-content;">
+      <button id="opsTabKitOrder" onclick="switchOpsTab('opsKitOrder')" class="btn btn-sm"
+        style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;">
+        <i class="fas fa-box-open" style="margin-right:5px;color:#0ea5e9;"></i>Kit Order
+      </button>
+      <button id="opsTabCredentials" onclick="switchOpsTab('opsCredentials')" class="btn btn-sm"
+        style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-key" style="margin-right:5px;color:#f97316;"></i>Credentials
+      </button>
+      <button id="opsTabTaskQueue" onclick="switchOpsTab('opsTaskQueue')" class="btn btn-sm"
+        style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-tasks" style="margin-right:5px;color:#6366f1;"></i>Task Queue
+        <span id="opsTaskBadge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:0.1rem 0.4rem;font-size:0.7rem;margin-left:4px;">0</span>
+      </button>
+    </div>
+
+    <!-- ── TAB: KIT ORDER ── -->
+    <div id="opsKitOrder" class="ops-tab-content">
+      <div style="display:flex;align-items:center;justify-content:center;min-height:260px;">
+        <div style="text-align:center;max-width:420px;">
+          <div style="width:56px;height:56px;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <i class="fas fa-box-open" style="color:#fff;font-size:1.4rem;"></i>
+          </div>
+          <div style="font-size:1.05rem;font-weight:700;color:#1e293b;margin-bottom:8px;">Kit Orders moved to Kit Tracking</div>
+          <div style="font-size:0.82rem;color:#64748b;line-height:1.6;margin-bottom:20px;">
+            Use the <strong>Kit Tracking</strong> page to log kit orders — it has the full form with store selection, subscription syncing, WATI &amp; HubSpot update all in one place.
+          </div>
+          <button onclick="switchPage('kitTrackingPage');setTimeout(function(){openAddKitModal();},400);" class="btn btn-primary" style="padding:10px 24px;font-size:0.88rem;">
+            <i class="fas fa-box-open" style="margin-right:6px;"></i>Open Kit Tracking → Add Entry
+          </button>
+        </div>
+      </div>
+    </div><!-- end opsKitOrder tab -->
+
+    <!-- ── TAB: CREDENTIALS ── -->
+    <div id="opsCredentials" class="ops-tab-content" style="display:none;">
+
+      <!-- Platform pill tabs -->
+      <div style="display:flex;gap:0;margin-bottom:1.25rem;background:#f1f5f9;border-radius:10px;padding:4px;width:fit-content;">
+        <button class="cred-platform-tab" data-platform="scratch" onclick="switchCredPlatform('scratch')"
+          style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;cursor:pointer;">
+          <i class="fas fa-cat" style="margin-right:5px;color:#f97316;"></i>Scratch
+        </button>
+        <button class="cred-platform-tab" data-platform="codeorg" onclick="switchCredPlatform('codeorg')"
+          style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:transparent;color:#64748b;border:none;cursor:pointer;">
+          <i class="fas fa-code" style="margin-right:5px;"></i>Code.org
+          <span style="font-size:0.68rem;color:#94a3b8;margin-left:3px;">soon</span>
+        </button>
+      </div>
+
+      <!-- Scratch panel -->
+      <div id="credPlatformScratch">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+
+          <!-- Left: Form -->
+          <div class="card" style="padding:1.5rem;">
+            <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1.25rem;">
+              <div style="width:36px;height:36px;background:linear-gradient(135deg,#f97316,#ec4899);border-radius:8px;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-key" style="color:#fff;font-size:0.9rem;"></i>
+              </div>
+              <div>
+                <div style="font-size:0.95rem;font-weight:700;color:#1e293b;">Scratch Credentials</div>
+                <div style="font-size:0.73rem;color:#64748b;">Auto-assign username · log sheet · update calendar</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Learner JLID</label>
+              <div style="display:flex;gap:0.5rem;">
+                <input type="text" id="credJlid" class="form-control" placeholder="JL..." style="flex:1;text-transform:uppercase;">
+                <button class="btn btn-outline btn-sm" onclick="credLookup()"><i class="fas fa-search"></i> Lookup</button>
+              </div>
+            </div>
+            <div id="credLearnerInfo" style="display:none;margin-top:-0.5rem;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#fff7ed;border-radius:8px;font-size:0.8rem;color:#92400e;border-left:3px solid #f97316;"></div>
+
+            <!-- Next username preview -->
+            <div style="margin-bottom:1.25rem;padding:1rem;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:10px;border:1.5px solid #fbbf24;">
+              <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#92400e;margin-bottom:0.25rem;">Next Username</div>
+              <div style="font-size:1.6rem;font-weight:800;color:#1e293b;letter-spacing:0.08em;font-family:monospace;" id="credNextUsername">—</div>
+              <div style="font-size:0.78rem;color:#78350f;margin-top:0.2rem;">Password: <strong>jetlearn</strong></div>
+            </div>
+
+            <button class="btn btn-primary" style="width:100%;margin-bottom:0.9rem;" onclick="generateScratchCreds()">
+              <i class="fas fa-magic"></i> Generate &amp; Add to Calendar
+            </button>
+
+            <div id="credRegisterPrompt" style="display:none;margin-bottom:0.75rem;">
+              <a href="https://scratch.mit.edu/join" target="_blank"
+                 style="display:flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.7rem;background:#6366f1;border-radius:8px;font-size:0.84rem;font-weight:600;color:#fff;text-decoration:none;">
+                <i class="fas fa-external-link-alt"></i>
+                Register <strong id="credUsernameDisplay" style="font-family:monospace;margin-left:4px;"></strong> on Scratch
+              </a>
+            </div>
+
+            <div id="credResult" style="display:none;padding:0.65rem 0.9rem;border-radius:8px;font-size:0.82rem;"></div>
+          </div>
+
+          <!-- Right: Steps -->
+          <div style="display:flex;flex-direction:column;gap:1rem;">
+            <div class="card" style="padding:1.25rem;">
+              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.9rem;">Steps</div>
+              <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                <div style="display:flex;align-items:center;gap:0.65rem;">
+                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">1</div>
+                  <span style="font-size:0.82rem;color:#374151;">Enter JLID → <strong>Lookup</strong> learner name</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.65rem;">
+                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">2</div>
+                  <span style="font-size:0.82rem;color:#374151;">Click <strong>Generate</strong> — username assigned + calendar updated</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.65rem;">
+                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">3</div>
+                  <span style="font-size:0.82rem;color:#374151;">Click <strong>Register on Scratch</strong> to create the account</span>
+                </div>
+              </div>
+            </div>
+            <div class="card" style="padding:1.25rem;background:#f8fafc;">
+              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.6rem;">What Gets Updated</div>
+              <div style="font-size:0.8rem;color:#475569;line-height:2;">
+                <div><i class="fas fa-table" style="color:#f97316;width:16px;margin-right:6px;"></i>Scratch Credentials sheet — new row</div>
+                <div><i class="fas fa-calendar-alt" style="color:#6366f1;width:16px;margin-right:6px;"></i>Google Calendar — event description updated</div>
+                <div><i class="fas fa-lock" style="color:#10b981;width:16px;margin-right:6px;"></i>Password always: <strong>jetlearn</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- end scratch panel -->
+
+      <!-- Code.org panel -->
+      <div id="credPlatformCodeorg" style="display:none;">
+        <div class="card" style="max-width:440px;padding:2rem;text-align:center;">
+          <i class="fas fa-code" style="font-size:2.5rem;color:#e2e8f0;margin-bottom:1rem;display:block;"></i>
+          <div style="font-size:0.95rem;font-weight:600;color:#64748b;">Code.org coming soon</div>
+          <div style="font-size:0.8rem;color:#94a3b8;margin-top:0.3rem;">PDF attach flow — in development</div>
+        </div>
+      </div>
+
+    </div><!-- end opsCredentials tab -->
+
+    <!-- ── TAB: TASK QUEUE ── -->
+    <div id="opsTaskQueue" class="ops-tab-content" style="display:none;">
+
+      <!-- Stats strip + refresh -->
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;margin-bottom:1.25rem;">
+        <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;padding:0.6rem 1.1rem;min-width:100px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;">Total</div>
+          <div style="font-size:1.5rem;font-weight:800;color:#1e293b;" id="opsStatTotal">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #fecaca;border-radius:10px;padding:0.6rem 1.1rem;min-width:100px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#ef4444;">Overdue</div>
+          <div style="font-size:1.5rem;font-weight:800;color:#ef4444;" id="opsStatOverdue">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #fde68a;border-radius:10px;padding:0.6rem 1.1rem;min-width:100px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#d97706;">Due Today</div>
+          <div style="font-size:1.5rem;font-weight:800;color:#d97706;" id="opsStatToday">—</div>
+        </div>
+        <div style="background:#fff;border:1.5px solid #bbf7d0;border-radius:10px;padding:0.6rem 1.1rem;min-width:100px;">
+          <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#10b981;">Upcoming</div>
+          <div style="font-size:1.5rem;font-weight:800;color:#10b981;" id="opsStatUpcoming">—</div>
+        </div>
+        <div style="margin-left:auto;">
+          <button class="btn btn-outline btn-sm" onclick="loadTaskQueue(true)"><i class="fas fa-sync-alt" style="margin-right:5px;"></i>Refresh</button>
+        </div>
+      </div>
+
+      <div id="opsTaskQueueLoading" style="text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;margin-bottom:0.75rem;display:block;"></i>
+        Loading tasks from HubSpot…
+      </div>
+      <div id="opsTaskQueueGrid" style="display:none;"></div>
+
+    </div><!-- end opsTaskQueue tab -->
+
+  </div><!-- end operationsPage -->
+
+  <!-- ══════════════════════════════════════════════════════════
+       TASK DETAIL SIDE PANEL
+       ══════════════════════════════════════════════════════════ -->
+  <!-- Backdrop -->
+  <div id="taskPanelBackdrop" onclick="closeTaskPanel()"
+    style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.35);z-index:1100;"></div>
+
+  <!-- Panel -->
+  <div id="taskDetailPanel"
+    style="display:none;position:fixed;top:0;right:0;bottom:0;width:480px;background:#fff;z-index:1101;
+           box-shadow:-8px 0 40px rgba(0,0,0,0.15);flex-direction:column;overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:1rem 1.25rem 0.75rem;border-bottom:1px solid #e2e8f0;flex-shrink:0;">
+      <div style="display:flex;align-items:flex-start;gap:0.75rem;">
+        <div style="flex:1;min-width:0;">
+          <div id="tpTaskType" style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#6366f1;margin-bottom:0.25rem;"></div>
+          <div id="tpSubject" style="font-size:1rem;font-weight:700;color:#0f172a;line-height:1.4;"></div>
+        </div>
+        <button onclick="closeTaskPanel()" style="background:none;border:none;color:#94a3b8;font-size:1.1rem;cursor:pointer;padding:4px;flex-shrink:0;">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <!-- Meta row -->
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap;align-items:center;">
+        <span id="tpStatusBadge" style="font-size:0.72rem;font-weight:600;border-radius:20px;padding:3px 10px;"></span>
+        <span id="tpPriorityBadge" style="font-size:0.72rem;font-weight:600;border-radius:20px;padding:3px 10px;background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;"></span>
+        <span id="tpJlidChip" style="display:none;font-size:0.72rem;font-weight:700;background:#ede9fe;color:#6d28d9;border-radius:4px;padding:3px 8px;"></span>
+      </div>
+    </div>
+
+    <!-- Body — scrollable -->
+    <div style="flex:1;overflow-y:auto;padding:1.25rem;">
+
+      <!-- Due date (editable) -->
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;padding:0.65rem 0.9rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+        <i class="fas fa-calendar-alt" style="color:#6366f1;width:16px;"></i>
+        <span style="font-size:0.78rem;color:#64748b;min-width:60px;">Due date</span>
+        <input type="datetime-local" id="tpDueDate" onchange="saveTaskDueDate()"
+          style="border:none;background:none;font-size:0.82rem;font-weight:600;color:#1e293b;flex:1;cursor:pointer;outline:none;">
+      </div>
+
+      <!-- Task notes / description -->
+      <div style="margin-bottom:1.25rem;">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:0.5rem;">Task Notes</div>
+        <textarea id="tpBody" rows="3" placeholder="Add a description…" onblur="saveTaskBody()"
+          style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:0.65rem 0.75rem;font-size:0.82rem;color:#374151;resize:vertical;outline:none;font-family:inherit;box-sizing:border-box;"></textarea>
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;">
+        <button id="tpActionBtn" class="btn btn-primary btn-sm" style="font-size:0.8rem;"
+          onclick="taskPanelAction()"></button>
+        <button class="btn btn-success btn-sm" style="font-size:0.8rem;" id="tpDoneBtn"
+          onclick="taskPanelMarkDone()"><i class="fas fa-check" style="margin-right:4px;"></i>Mark Done</button>
+      </div>
+
+      <!-- Comments -->
+      <div style="border-top:1px solid #f1f5f9;padding-top:1rem;">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;margin-bottom:0.75rem;">
+          Comments <span id="tpCommentCount" style="font-weight:400;color:#cbd5e1;"></span>
+        </div>
+        <div id="tpCommentsList" style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1rem;"></div>
+        <div id="tpCommentsLoading" style="text-align:center;padding:1rem;color:#94a3b8;font-size:0.8rem;">
+          <i class="fas fa-spinner fa-spin"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comment input — pinned to bottom -->
+    <div style="padding:0.9rem 1.25rem;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0;">
+      <div style="display:flex;gap:0.5rem;align-items:flex-end;">
+        <div style="width:28px;height:28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:0.65rem;font-weight:700;color:#fff;">SP</span>
+        </div>
+        <textarea id="tpCommentInput" rows="2" placeholder="Leave a comment…"
+          style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:0.5rem 0.75rem;font-size:0.82rem;color:#374151;resize:none;outline:none;font-family:inherit;box-sizing:border-box;"
+          onkeydown="if(event.ctrlKey&&event.key==='Enter')submitTaskComment()"></textarea>
+        <button onclick="submitTaskComment()" class="btn btn-primary btn-sm" style="padding:8px 14px;white-space:nowrap;">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+      <div style="font-size:0.68rem;color:#94a3b8;margin-top:0.3rem;margin-left:36px;">Ctrl+Enter to send</div>
+    </div>
+  </div>
+
   <!-- Add Kit Entry Modal -->
   <div class="modal-overlay" id="addKitModal" style="display:none;" onclick="if(event.target===this)closeAddKitModal()">
     <div class="modal" style="max-width:600px;width:95%;max-height:90vh;overflow-y:auto;">
@@ -3242,39 +3633,6 @@
             <input type="number" id="ktfPrice" class="form-control" placeholder="e.g. 35">
           </div>
 
-          <!-- Site -->
-          <div>
-            <label class="form-label">Site</label>
-            <select id="ktfSite" class="form-control form-select">
-              <option value="">Select site…</option>
-                <option>amazon.com</option>        <!-- United States -->
-                <option>amazon.ca</option>         <!-- Canada -->
-                <option>amazon.com.mx</option>     <!-- Mexico -->
-                <option>amazon.com.br</option>     <!-- Brazil -->
-                <option>amazon.co.uk</option>      <!-- United Kingdom -->
-                <option>amazon.de</option>         <!-- Germany -->
-                <option>amazon.fr</option>         <!-- France -->
-                <option>amazon.it</option>         <!-- Italy -->
-                <option>amazon.es</option>         <!-- Spain -->
-                <option>amazon.nl</option>         <!-- Netherlands -->
-                <option>amazon.se</option>         <!-- Sweden -->
-                <option>amazon.pl</option>         <!-- Poland -->
-                <option>amazon.com.be</option>     <!-- Belgium -->
-                <option>amazon.ie</option>         <!-- Ireland -->
-                <option>amazon.at</option>         <!-- Austria -->
-                <option>amazon.ch</option>         <!-- Switzerland -->
-                <option>amazon.ae</option>         <!-- United Arab Emirates -->
-                <option>amazon.sa</option>         <!-- Saudi Arabia -->
-                <option>amazon.eg</option>         <!-- Egypt -->
-                <option>amazon.com.tr</option>     <!-- Turkey -->
-                <option>amazon.in</option>         <!-- India -->
-                <option>amazon.sg</option>         <!-- Singapore -->
-                <option>amazon.co.jp</option>      <!-- Japan -->
-                <option>amazon.com.au</option>     <!-- Australia -->
-                <option>amazon.cn</option>         <!-- China (limited operations) -->            
-        </select>
-                  </div>
-
           <!-- Date of Order -->
           <div>
             <label class="form-label">Date of Order *</label>
@@ -3297,6 +3655,80 @@
           <div>
             <label class="form-label">Delivery Date <span style="color:#94a3b8;font-size:0.72rem;">(if already received)</span></label>
             <input type="date" id="ktfDeliveryDate" class="form-control">
+          </div>
+
+          <!-- ── Store / Order section ── -->
+          <div style="grid-column:1/-1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;">
+            <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:10px;">Store &amp; Order Details</div>
+
+            <!-- Store selector -->
+            <div style="font-size:0.78rem;font-weight:600;color:#374151;margin-bottom:7px;">Ordered from *</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+              <button type="button" id="ktStoreAmazon" onclick="ktSetStore('amazon')"
+                style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:2px solid #e2e8f0;background:#fff;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer;">
+                <i class="fab fa-amazon" style="color:#f59e0b;font-size:1rem;"></i> Amazon
+              </button>
+              <button type="button" id="ktStoreDigikey" onclick="ktSetStore('digikey')"
+                style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:2px solid #e2e8f0;background:#fff;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer;">
+                <i class="fas fa-microchip" style="color:#2563eb;font-size:0.9rem;"></i> DigiKey
+              </button>
+              <button type="button" id="ktStoreOther" onclick="ktSetStore('other')"
+                style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;border:2px solid #e2e8f0;background:#fff;font-size:0.8rem;font-weight:600;color:#374151;cursor:pointer;">
+                <i class="fas fa-globe" style="color:#6366f1;font-size:0.9rem;"></i> Other
+              </button>
+            </div>
+            <input type="hidden" id="ktfStore" value="">
+
+            <!-- Amazon: domain picker + quick open -->
+            <div id="ktStoreAmazonRow" style="display:none;margin-bottom:10px;">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <select id="ktfAmazonDomain" class="form-control form-select" style="flex:1;min-width:140px;font-size:0.82rem;">
+                  <option value="amazon.co.uk">amazon.co.uk (UK)</option>
+                  <option value="amazon.com">amazon.com (US)</option>
+                  <option value="amazon.de">amazon.de (DE)</option>
+                  <option value="amazon.fr">amazon.fr (FR)</option>
+                  <option value="amazon.it">amazon.it (IT)</option>
+                  <option value="amazon.es">amazon.es (ES)</option>
+                  <option value="amazon.nl">amazon.nl (NL)</option>
+                  <option value="amazon.ae">amazon.ae (UAE)</option>
+                  <option value="amazon.sa">amazon.sa (SA)</option>
+                  <option value="amazon.in">amazon.in (IN)</option>
+                  <option value="amazon.com.au">amazon.com.au (AU)</option>
+                  <option value="amazon.ca">amazon.ca (CA)</option>
+                  <option value="amazon.sg">amazon.sg (SG)</option>
+                </select>
+                <button type="button" onclick="ktOpenStore()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;font-size:0.78rem;color:#374151;cursor:pointer;white-space:nowrap;">
+                  <i class="fas fa-external-link-alt"></i> Open Orders
+                </button>
+              </div>
+            </div>
+
+            <!-- DigiKey: quick open -->
+            <div id="ktStoreDigikeyRow" style="display:none;margin-bottom:10px;">
+              <button type="button" onclick="window.open('https://www.digikey.co.uk/en/customer-service/order-history','_blank')" style="padding:7px 12px;border:1px solid #bfdbfe;border-radius:7px;background:#eff6ff;font-size:0.78rem;color:#1d4ed8;cursor:pointer;">
+                <i class="fas fa-external-link-alt"></i> Open DigiKey Orders
+              </button>
+            </div>
+
+            <!-- Other: store name -->
+            <div id="ktStoreOtherRow" style="display:none;margin-bottom:10px;">
+              <input type="text" id="ktfOtherStore" class="form-control" placeholder="e.g. RS Components, Mouser, SparkFun…" style="font-size:0.82rem;">
+            </div>
+
+            <!-- Order No + Order Link (always visible once store picked) -->
+            <div id="ktOrderDetailsRow" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>
+                <label style="font-size:0.75rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Order Number</label>
+                <input id="ktfOrderNo" type="text" class="form-control" placeholder="e.g. 206-4136182" style="font-size:0.82rem;">
+              </div>
+              <div>
+                <label style="font-size:0.75rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Order Link <span style="color:#94a3b8;font-weight:400;">(optional)</span></label>
+                <input id="ktfOrderLink" type="url" class="form-control" placeholder="https://…" style="font-size:0.82rem;">
+              </div>
+            </div>
+            <!-- hidden compat alias for old ktfAmazonLink references -->
+            <input type="hidden" id="ktfAmazonLink">
+            <input type="hidden" id="ktfSite">
           </div>
 
           <!-- Reason -->
@@ -3906,6 +4338,21 @@
     </div>
   </div>
 
+<!-- ── Utility modals: outside appContainer AND before JS include so getElementById works ── -->
+<div class="modal-overlay" id="loadingModal"><div class="modal" style="max-width: 300px;"><div class="modal-body" style="text-align: center;"><div class="spinner"></div><p style="margin-top: 1rem;" id="loadingMessage">Processing your request...</p></div></div></div>
+<div class="modal-overlay" id="confirmModal">
+  <div class="confirm-card">
+    <div class="confirm-card-icon" id="confirmIconWrap"><i class="fas fa-sign-out-alt" id="confirmIcon"></i></div>
+    <h3 class="confirm-card-title" id="confirmTitle">Confirm Action</h3>
+    <p class="confirm-card-msg" id="confirmMessage">Are you sure?</p>
+    <div class="confirm-card-actions">
+      <button class="confirm-stay-btn" id="confirmCancel">Stay</button>
+      <button class="confirm-go-btn" id="confirmOk"><i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Sign Out</button>
+    </div>
+    <button class="confirm-card-close" id="confirmClose"><i class="fas fa-times"></i></button>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════════════════════
      SUPPORT CENTER OVERLAY
      ══════════════════════════════════════════════════════════════ -->
@@ -4194,7 +4641,6 @@
     </div>
 
   </div>
-</div>
 
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -4215,19 +4661,20 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Modals -->
-  <div class="modal-overlay" id="loadingModal"><div class="modal" style="max-width: 300px;"><div class="modal-body" style="text-align: center;"><div class="spinner"></div><p style="margin-top: 1rem;" id="loadingMessage">Processing your request...</p></div></div></div>
-  <div class="modal-overlay" id="confirmModal">
-    <div class="confirm-card">
-      <div class="confirm-card-icon" id="confirmIconWrap"><i class="fas fa-sign-out-alt" id="confirmIcon"></i></div>
-      <h3 class="confirm-card-title" id="confirmTitle">Confirm Action</h3>
-      <p class="confirm-card-msg" id="confirmMessage">Are you sure?</p>
-      <div class="confirm-card-actions">
-        <button class="confirm-stay-btn" id="confirmCancel">Stay</button>
-        <button class="confirm-go-btn" id="confirmOk"><i class="fas fa-sign-out-alt" style="margin-right:6px;"></i>Sign Out</button>
+  <!-- Teacher Profile Quick-View Modal (used from persona cards) -->
+  <div class="modal-overlay" id="teacherProfileModal" onclick="if(event.target===this)closeTeacherProfileModal()" style="display:none;z-index:9999;">
+    <div class="modal" style="max-width:820px;width:95%;max-height:88vh;overflow-y:auto;border-radius:18px;padding:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.5rem;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;background:#fff;z-index:1;border-radius:18px 18px 0 0;">
+        <h3 style="margin:0;font-size:1rem;font-weight:700;color:#1e293b;" id="teacherProfileModalTitle">Teacher Profile</h3>
+        <button onclick="closeTeacherProfileModal()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">×</button>
       </div>
-      <button class="confirm-card-close" id="confirmClose"><i class="fas fa-times"></i></button>
+      <div id="teacherProfileModalBody" style="padding:1.5rem;">
+        <div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+      </div>
     </div>
   </div>
+
+  <!-- loadingModal and confirmModal are placed right after this div closes (outside appContainer, before JS include) -->
   <div class="modal-overlay" id="addTeacherModal"><div class="modal"><div class="modal-header"><h3 class="modal-title">Add New Teacher</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addTeacherForm"><div class="modal-body"><div class="form-group"><label for="newTeacherName" class="form-label">Teacher Name</label><input type="text" id="newTeacherName" class="form-control" required></div><div class="form-group"><label for="newTeacherEmail" class="form-label">Email Address</label><input type="email" id="newTeacherEmail" class="form-control" required></div><div class="form-group"><label for="newTeacherClsEmail" class="form-label">CLS Email (Optional)</label><input type="email" id="newTeacherClsEmail" class="form-control"></div><div class="form-group"><label for="newTeacherStatus" class="form-label">Status</label><select id="newTeacherStatus" class="form-control form-select"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="On Leave">On Leave</option></select></div><div class="form-group"><label for="newTeacherJoinDate" class="form-label">Join Date</label><input type="date" id="newTeacherJoinDate" class="form-control" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Add Teacher</button></div></form></div></div>
   <div class="modal-overlay" id="editTeacherModal"><div class="modal"><div class="modal-header"><h3 class="modal-title">Edit Teacher Details</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="editTeacherForm"><div class="modal-body"><div class="form-group"><label for="editTeacherName" class="form-label">Teacher Name</label><input type="text" id="editTeacherName" class="form-control" readonly></div><div class="form-group"><label for="editTeacherEmail" class="form-label">Email Address</label><input type="email" id="editTeacherEmail" class="form-control" required></div><div class="form-group"><label for="editTeacherClsEmail" class="form-label">CLS Email (Optional)</label><input type="email" id="editTeacherClsEmail" class="form-control"></div><div class="form-group"><label for="editTeacherStatus" class="form-label">Status</label><select id="editTeacherStatus" class="form-control form-select"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="On Leave">On Leave</option></select></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Changes</button></div></form></div></div>
   <div class="modal-overlay" id="addCourseModal"><div class="modal" style="max-width: 400px;"><div class="modal-header"><h3 class="modal-title">Add New Course</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addCourseForm"><div class="modal-body"><div class="form-group"><label for="newCourseName" class="form-label">Course Name</label><input type="text" id="newCourseName" class="form-control" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Add Course</button></div></form></div></div>
@@ -4336,7 +4783,33 @@
     </div>
     <div class="modal-body">
       <div id="changelogContent" style="font-size: 0.95rem; line-height: 1.6;">
-        <!-- Content Injected via JS -->
+        <ul class="mismatch-list" style="border:none;">
+          <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+            <strong>&#9889; Migration Intelligence &#8212; Fast Load</strong><br>
+            Popup now loads ~3x faster. Eliminated duplicate HubSpot ticket search call, skipped 500-row audit log read, and added 3-minute CacheService TTL so repeated triggers are near-instant.
+          </li>
+          <li style="border-left: 3px solid #ef4444; background: #fef2f222; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128336; Migration Intelligence &#8212; Last Migration Fixed</strong><br>
+            "Last migration" now shows the previous <em>completed</em> ticket (not the current open WIP ticket). Includes days-since count &#8212; e.g. "14 May 2026 (12 days ago)".
+          </li>
+          <li style="border-left: 3px solid #f59e0b; background: #fffbeb; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128225; Migration Center &#8212; Communication Tracker</strong><br>
+            New panel at bottom of Migration Center shows all completed migrations this month with per-ticket comms status: Parent WhatsApp, New Teacher Email, Old Teacher Email. Red rows = no comms sent via tool.
+          </li>
+          <li style="border-left: 3px solid #10b981; background: #f0fdf4; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128197; Email Scheduling &#8212; Send Now / Schedule Modal</strong><br>
+            Send Email now opens a modal: Send Now (fires immediately) or Schedule for Later (date picker &#8212; queued to Email Queue sheet, sent at 8am on chosen date).
+          </li>
+          <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128203; Operations &#8212; Task Queue Table View</strong><br>
+            Task Queue tab replaced card layout with flat HubSpot-style table. Columns: status &#183; Title &#183; Deal &#183; Ticket &#183; Type &#183; Due Date &#183; Assigned To &#183; Actions.
+          </li>
+          <li style="border-left: 3px solid #3b82f6; background: #eff6ff; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128230; Kit Entry &#8212; Store Selector &amp; Subscription Sync</strong><br>
+            Add Kit Entry modal now has Amazon / DigiKey / Other store buttons. Amazon domain picker per region. Subscription field now correctly PATCHes HubSpot deal.
+          </li>
+        </ul>
+        <p style="margin-top:15px; font-size:0.85em; color:#666;">Contact Ops Team if data still looks incorrect.</p>
       </div>
     </div>
     <div class="modal-footer">
@@ -6077,5 +6550,8 @@
 </div>
 <!-- END STUCK MIGRATIONS MODAL -->
 
+
 </body>
 </html>
+
+

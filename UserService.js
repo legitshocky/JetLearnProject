@@ -201,16 +201,26 @@ function verifyUserSession(token) {
       };
     }
 
-    const user = userProfiles.find(u => u.username === session.username);
-    if (!user || !user.isActive) {
-      _destroySession(token);
-      return { success: false, message: 'Account inactive or not found.' };
+    // Match by email (Google auth) or legacy username
+    var sessionKey = session.username; // for Google auth this is the email
+    var isSuperAdmin = (sessionKey === GOOGLE_SUPER_ADMIN);
+
+    if (!isSuperAdmin) {
+      var user = userProfiles.find(function(u) {
+        return (u.email && u.email.toLowerCase().trim() === sessionKey.toLowerCase()) ||
+               u.username === sessionKey;
+      });
+      if (!user || (user.isActive === false || String(user.isActive).toLowerCase() === 'false')) {
+        _destroySession(token);
+        return { success: false, message: 'Account inactive or not found.' };
+      }
     }
 
     return {
-      success: true,
-      username: session.username,
-      role: session.role,
+      success:     true,
+      username:    session.username,
+      email:       session.username, // email is stored as username key in Google auth
+      role:        session.role,
       permissions: session.permissions
     };
 
@@ -223,6 +233,171 @@ function verifyUserSession(token) {
 function logoutUser(token) {
   _destroySession(token);
   return { success: true };
+}
+
+// =============================================
+// GOOGLE OAUTH AUTHENTICATION
+// =============================================
+
+var GOOGLE_AUTH_DOMAIN = 'jet-learn.com';
+var GOOGLE_SUPER_ADMIN  = 'sourav.pal@jet-learn.com';
+
+// GAS-native auth — email already verified by Workspace session in doGet
+function authenticateByEmail(email) {
+  try {
+    if (!email) return { success: false, message: 'No email provided.' };
+    email = email.toLowerCase().trim();
+
+    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN)) {
+      return { success: false, message: 'Access restricted to @jet-learn.com accounts.' };
+    }
+
+    var role = ROLES.USER;
+    var isActive = true;
+    var displayName = email.split('@')[0].replace(/\./g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+    if (email === GOOGLE_SUPER_ADMIN) {
+      role = ROLES.SUPER_ADMIN;
+    } else {
+      var profiles = getUserProfiles();
+      var existing = profiles.find(function(u) {
+        return u.email && u.email.toLowerCase().trim() === email;
+      });
+      if (existing) {
+        role = existing.role || ROLES.USER;
+        isActive = (existing.isActive !== false && String(existing.isActive).toLowerCase() !== 'false');
+        displayName = existing.username || displayName;
+      } else {
+        _createGoogleUser(email, displayName);
+      }
+    }
+
+    if (!isActive) {
+      return { success: false, message: 'Account deactivated. Contact ' + GOOGLE_SUPER_ADMIN + '.' };
+    }
+
+    var sessionToken = _createSession(email, role);
+    try { _updateGoogleUserLastLogin(email); } catch(e) {}
+    try { logUserActivity(displayName, 'Successful Login', 'Workspace SSO — ' + email); } catch(e) {}
+
+    return {
+      success:            true,
+      role:               role,
+      username:           displayName,
+      email:              email,
+      sessionToken:       sessionToken,
+      permissions:        PERMISSIONS[role] || [],
+      displayName:        displayName,
+      picture:            '',
+      mustChangePassword: false
+    };
+  } catch(e) {
+    Logger.log('[GoogleAuth] authenticateByEmail error: ' + e.message);
+    return { success: false, message: 'Authentication error.' };
+  }
+}
+
+function authenticateWithGoogle(idToken) {
+  try {
+    // Verify token with Google
+    var res = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() !== 200) {
+      return { success: false, message: 'Google verification failed. Try again.' };
+    }
+    var payload = JSON.parse(res.getContentText());
+
+    if (!payload.email || payload.email_verified === 'false' || payload.email_verified === false) {
+      return { success: false, message: 'Google account email not verified.' };
+    }
+
+    var email = payload.email.toLowerCase().trim();
+    var displayName = payload.name || email.split('@')[0];
+
+    // Domain restriction — @jet-learn.com only
+    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN)) {
+      return { success: false, message: 'Access restricted to JetLearn team members. Use your @jet-learn.com account.' };
+    }
+
+    var role = ROLES.USER;
+    var isActive = true;
+
+    if (email === GOOGLE_SUPER_ADMIN) {
+      role = ROLES.SUPER_ADMIN;
+    } else {
+      var profiles = getUserProfiles();
+      var existing = profiles.find(function(u) {
+        return u.email && u.email.toLowerCase().trim() === email;
+      });
+      if (existing) {
+        role = existing.role || ROLES.USER;
+        isActive = (existing.isActive !== false && String(existing.isActive).toLowerCase() !== 'false');
+      } else {
+        _createGoogleUser(email, displayName);
+      }
+    }
+
+    if (!isActive) {
+      return { success: false, message: 'Account deactivated. Contact ' + GOOGLE_SUPER_ADMIN + '.' };
+    }
+
+    var sessionToken = _createSession(email, role);
+    try { _updateGoogleUserLastLogin(email); } catch(e) {}
+    try { logUserActivity(displayName, 'Successful Login', 'Google OAuth — ' + email); } catch(e) {}
+
+    return {
+      success:           true,
+      role:              role,
+      username:          displayName,
+      email:             email,
+      sessionToken:      sessionToken,
+      permissions:       PERMISSIONS[role] || [],
+      displayName:       displayName,
+      picture:           payload.picture || '',
+      mustChangePassword: false
+    };
+
+  } catch(e) {
+    Logger.log('[GoogleAuth] Error: ' + e.message);
+    return { success: false, message: 'Authentication error. Please try again.' };
+  }
+}
+
+function _createGoogleUser(email, displayName) {
+  try {
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+    if (!sheet) return;
+    sheet.appendRow([
+      displayName, '', ROLES.USER, email,
+      true, new Date(), new Date(), '', '', ''
+    ]);
+    delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
+    Logger.log('[GoogleAuth] Auto-created user: ' + email);
+  } catch(e) {
+    Logger.log('[GoogleAuth] _createGoogleUser error: ' + e.message);
+  }
+}
+
+function _updateGoogleUserLastLogin(email) {
+  try {
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0].map(function(h) { return String(h).trim().toLowerCase().replace(/\s/g, ''); });
+    var emailIdx = headers.indexOf('email');
+    var llIdx    = headers.indexOf('lastlogin');
+    if (emailIdx === -1 || llIdx === -1) return;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][emailIdx]).toLowerCase().trim() === email) {
+        sheet.getRange(i + 1, llIdx + 1).setValue(new Date());
+        delete _sheetDataCache[CONFIG.MIGRATION_SHEET_ID + '_' + CONFIG.SHEETS.USER_PROFILES];
+        break;
+      }
+    }
+  } catch(e) {
+    Logger.log('[GoogleAuth] _updateGoogleUserLastLogin error: ' + e.message);
+  }
 }
 
 

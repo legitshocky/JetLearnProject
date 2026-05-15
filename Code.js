@@ -155,13 +155,16 @@ function doGet(e) {
         }
     
     const template = HtmlService.createTemplateFromFile('Index');
-    template.resetToken = e?.parameter?.resetToken || ''; 
-    
-    // getLiveCurrencyRates is now in InvoiceService.js
-    const rates = getLiveCurrencyRates();
-    template.currencyRates = rates; 
-    template.currencyRatesJson = JSON.stringify(rates);
-    
+    template.resetToken = e?.parameter?.resetToken || '';
+
+    // GAS Workspace native auth — get signed-in user's email directly
+    var activeEmail = '';
+    try { activeEmail = Session.getActiveUser().getEmail() || ''; } catch(ee) {}
+    template.activeUserEmail = activeEmail;
+
+    // Currency rates loaded async on client after page serves — do NOT block doGet
+    template.currencyRatesJson = JSON.stringify(_CURRENCY_FALLBACK_RATES);
+
     return template.evaluate()
       .setTitle('JetLearn Operation System')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1');
@@ -246,6 +249,9 @@ function initializeSystem() {
 
     // ── Parent Will Buy daily trigger ─────────────────────────────────────
     setupParentWillBuyTrigger();
+
+    // ── Email Queue daily trigger ─────────────────────────────────────────
+    setupEmailQueueTrigger();
 
     Logger.log('System initialization completed successfully');
     return { success: true, message: 'System initialized successfully' };
@@ -448,7 +454,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "529";
+const APP_VERSION = "6.21";
 
 function getAppVersion() {
   return APP_VERSION;

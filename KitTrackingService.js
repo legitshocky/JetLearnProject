@@ -40,8 +40,8 @@ var KIT_COL = {
   FOLLOWUP_SENT_AT:   18,
   PARENT_RESPONSE:    19,
   PHONE_SENT_TO:      20,
-  FOLLOWUP2_SENT:     21,   // T � "TRUE" when 2nd reminder sent
-  FOLLOWUP2_SENT_AT:  22    // U � timestamp of 2nd reminder
+  FOLLOWUP2_SENT:     21,
+  FOLLOWUP2_SENT_AT:  22
 };
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
@@ -53,6 +53,40 @@ function _kitPropertyForType(kitName) {
   if (k.indexOf('makey')    > -1)                                                            return 'makey_makey_kit_status';         // confirmed via API (no __t_)
   if (k.indexOf('arduino')  > -1)                                                            return 'arduino_kit_status';             // confirmed via API
   return null;
+}
+
+// ── Fetch delivery address from HubSpot contact associated with a deal ───────
+function _fetchContactAddress(dealId) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token || !dealId) return {};
+    var assocRes = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '/associations/contacts',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (assocRes.getResponseCode() !== 200) return {};
+    var assocData = JSON.parse(assocRes.getContentText());
+    if (!assocData.results || !assocData.results.length) return {};
+    var contactId = assocData.results[0].id || assocData.results[0].toObjectId;
+    if (!contactId) return {};
+    var cRes = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/contacts/' + contactId + '?properties=address,city,state,zip,country',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (cRes.getResponseCode() !== 200) return {};
+    var p = (JSON.parse(cRes.getContentText()).properties) || {};
+    return { address: p.address || '', city: p.city || '', state: p.state || '', zip: p.zip || '', country: p.country || '' };
+  } catch(e) {
+    Logger.log('[KitTracking] _fetchContactAddress error: ' + e.message);
+    return {};
+  }
+}
+
+// ── Build "Delivery to …" address string for WATI ────────────────────────────
+function _buildKitAddress(learnerName, addrObj, fallbackCountry) {
+  var parts = [addrObj.address, addrObj.city, addrObj.state, addrObj.country || fallbackCountry]
+    .filter(function(p) { return p && String(p).trim(); });
+  return 'Delivery to ' + (learnerName || '') + (parts.length ? ', ' + parts.join(', ') : '');
 }
 
 // ── Get Kit Tracking sheet ────────────────────────────────────────────────────
@@ -862,7 +896,7 @@ function addKitEntry(data) {
           var kitProp  = _kitPropertyForType(data.kit || '');
           var hsProps  = {};
 
-          // Kit status ? �Sent by Us�
+          // Kit status → "Sent by Us"
           if (kitProp) hsProps[kitProp] = 'Sent';
 
           // Accumulate learning_kit_cost
@@ -870,6 +904,9 @@ function addKitEntry(data) {
             var existing = parseFloat(hs.data.learningKitCost) || 0;
             hsProps['learning_kit_cost'] = String(existing + price);
           }
+
+          // Update subscription plan if provided
+          if (data.subscription) hsProps['subscription'] = data.subscription;
 
           if (Object.keys(hsProps).length > 0) {
             var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
@@ -886,7 +923,56 @@ function addKitEntry(data) {
       }
     }
 
-    return { success: true, srNo: srNo };
+    // ── Send WATI kit-sent confirmation to parent ──────────────────────────
+    var watiSent = false;
+    var noteSaved = false;
+    if (jlid) {
+      try {
+        var hsKitOrder = fetchHubspotByJlid(jlid);
+        if (hsKitOrder && hsKitOrder.success && hsKitOrder.data) {
+          var kd = hsKitOrder.data;
+          var kitPhone = _normalisePhone(kd.parentContact || '');
+          var kitParentName = kd.parentName || data.learnerName || '';
+          var contactAddr = kd.dealId ? _fetchContactAddress(kd.dealId) : {};
+          var deliveryAddrStr = _buildKitAddress(data.learnerName || '', contactAddr, kd.country || data.country || '');
+
+          // Format delivery date for WATI (ETA)
+          var watiDeliveryDate = data.eta || '';
+
+          if (kitPhone) {
+            try {
+              sendWatiMessage(kitPhone, 'migration_kit_sent_by_us_parent_information', [
+                { name: 'Parent',        value: kitParentName     },
+                { name: 'Kit_name',      value: data.kit || ''    },
+                { name: 'Delivery_date', value: watiDeliveryDate  },
+                { name: 'Address',       value: deliveryAddrStr   }
+              ]);
+              watiSent = true;
+            } catch(we) { Logger.log('[addKitEntry] WATI error: ' + we.message); }
+          }
+
+          // Add HubSpot note
+          if (kd.dealId) {
+            try {
+              var noteLines = [
+                'Kit Order Entry',
+                'Ordered: ' + (data.orderDate || ''),
+                'Kit: ' + (data.kit || '') + (data.price ? ' — €' + data.price : ''),
+                'ETA: ' + (data.eta || ''),
+                'Reason: ' + (data.reason || ''),
+                'Sent by: ' + (data.sentBy || '')
+              ];
+              if (data.orderNo) noteLines.push('Order No: ' + data.orderNo);
+              if (data.orderLink || data.amazonLink) noteLines.push(data.orderLink || data.amazonLink);
+              _addNoteToDeal(kd.dealId, noteLines.join('\n'));
+              noteSaved = true;
+            } catch(ne) { Logger.log('[addKitEntry] Note error: ' + ne.message); }
+          }
+        }
+      } catch(kitE) { Logger.log('[addKitEntry] WATI/note block error: ' + kitE.message); }
+    }
+
+    return { success: true, srNo: srNo, watiSent: watiSent, noteSaved: noteSaved };
 
   } catch (e) {
     Logger.log('[KitTracking] addKitEntry ERROR: ' + e.message);
@@ -1172,7 +1258,7 @@ function addPWBEntry(data) {
       data.courseName || '',     // H: Course Name
       kit,                       // I: Kit
       data.courseStartDate || '',// J: Course Start Date
-      data.amazonLink || '',     // K: Amazon Link
+      data.orderLink || data.amazonLink || '', // K: Order Link
       'Pending',                 // L: Status
       '', '', '', '', '', '', '', '', // M-T: timestamps / response / escalation / interval
       data.entryBy || ''         // U: Entry By
@@ -1278,3 +1364,71 @@ function getPWBEntries() {
     return [];
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KIT ORDER LOGGING  (called from KitOrderService after Amazon order placed)
+// Appends a new row to the Kit Tracking sheet using the correct KIT_COL map.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @param {object} data  { jlid, kitName, orderDate, deliveryDate, price, orderNo, amazonLink }
+ * @param {string} learnerName
+ * @param {string} country  (from HubSpot contact)
+ */
+function logKitOrderToSheet(data, learnerName, country) {
+  try {
+    var sheet        = _getKitSheet();
+    var sheetLastRow = sheet.getLastRow();
+
+    // Find actual last data row — scan col A from bottom, skip empty/formatted rows
+    var lastDataRow = 1;
+    if (sheetLastRow >= 2) {
+      var colA = sheet.getRange(2, 1, sheetLastRow - 1, 1).getValues();
+      for (var i = colA.length - 1; i >= 0; i--) {
+        if (String(colA[i][0]).trim() !== '') { lastDataRow = i + 2; break; }
+      }
+    }
+
+    // Auto Sr No = highest existing Sr No + 1
+    var lastSrNo = 0;
+    if (sheetLastRow >= 2) {
+      var srValues = sheet.getRange(2, KIT_COL.SR_NO, sheetLastRow - 1, 1).getValues();
+      srValues.forEach(function(r) {
+        var v = parseInt(r[0], 10);
+        if (!isNaN(v) && v > lastSrNo) lastSrNo = v;
+      });
+    }
+    var srNo = lastSrNo + 1;
+
+    // Write per-column to skip col H (formula in sheet — never overwrite)
+    var writeRow = lastDataRow + 1;
+    var writeMap = [
+      [1,  srNo],                           // A: Sr No
+      [2,  learnerName || ''],              // B: Learner's name
+      [3,  data.kitName    || ''],          // C: Kit
+      [4,  country         || ''],          // D: Country
+      [5,  data.price      || ''],          // E: Price (EUR)
+      [6,  ''],                             // F: Site
+      [7,  data.orderDate  || ''],          // G: Date of Order
+      // col 8 (H) = SKIP — formula in sheet
+      [9,  data.deliveryDate || ''],        // I: ETA
+      [10, ''],                             // J: Delivery Date
+      [12, ''],                             // L: Reason
+      [13, ''],                             // M: Current Subscription
+      [14, ''],                             // N: Roadmap
+      [15, ''],                             // O: Name (Sent By)
+      [16, data.jlid       || '']          // P: JLID
+    ];
+    writeMap.forEach(function(pair) {
+      sheet.getRange(writeRow, pair[0]).setValue(pair[1]);
+    });
+
+    Logger.log('[logKitOrderToSheet] Logged kit order for ' + (data.jlid || learnerName) +
+               ' row=' + writeRow);
+    return true;
+  } catch(e) {
+    Logger.log('[logKitOrderToSheet] ERROR: ' + e.message);
+    return false;
+  }
+}
+

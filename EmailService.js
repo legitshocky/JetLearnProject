@@ -463,6 +463,21 @@ function sendMigrationEmail(data, attachments = []) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
+    // ── Attrition: write "2 Classes added" note on the learner's HubSpot deal ─
+    try {
+      var reason = String(data.reasonOfMigration || '').toLowerCase();
+      if (reason.indexOf('attrition') !== -1 && data.oldTeacher) {
+        var hsRes = fetchHubspotByJlid(data.jlid);
+        if (hsRes.success && hsRes.data.dealId) {
+          var attrNote = '2 Classes added for \'' + data.oldTeacher + '\' Reason Attrition';
+          addNoteToHubSpotDeal(hsRes.data.dealId, attrNote);
+          Logger.log('[sendMigrationEmail] Attrition deal note written for ' + data.jlid + ' deal ' + hsRes.data.dealId);
+        }
+      }
+    } catch(attrErr) {
+      Logger.log('[sendMigrationEmail] Attrition note failed: ' + attrErr.message);
+    }
+
     // ── Send course completion certificate to parent ───────────────────────────
     if (data.sendCertificate && data.course) {
       try {
