@@ -1345,21 +1345,21 @@ function submitMigrationForm(e) {
             return;
           }
           res.contacts.forEach(function(c, idx) {
-            var id = 'watiContact_' + idx;
+            const id = `watiContact_${idx}`;
             const typeIcon = c.type && c.type.toLowerCase().indexOf('whatsapp') !== -1
               ? '<i class="fab fa-whatsapp" style="color:#25d366;margin-right:5px;"></i>'
               : '<i class="fas fa-mobile-alt" style="color:#888;margin-right:5px;"></i>';
             const isBest = c.number === res.best;
-            var row = document.createElement('label');
-            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;'
-              + 'background:' + (isBest ? 'rgba(37,211,102,0.07)' : 'rgba(255,255,255,0.04)') + ';'
-              + 'border:1px solid ' + (isBest ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.1)') + ';cursor:pointer;';
-            row.innerHTML = '<input type="checkbox" name="watiContactTarget" value="' + c.number + '" ' + (isBest ? 'checked' : '')
-              + ' style="accent-color:#6366f1;width:15px;height:15px;">'
-              + typeIcon
-              + '<span style="font-size:0.88rem;color:var(--text-primary);font-weight:' + (isBest ? '600' : '400') + ';">'
-              + c.number + '</span>'
-              + '<span style="font-size:0.75rem;color:var(--text-light);margin-left:auto;">' + c.label + (isBest ? ' · <span style="color:#25d366">Best</span>' : '') + '</span>';
+            const row = document.createElement('label');
+            row.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;
+              background:${isBest ? 'rgba(37,211,102,0.07)' : 'rgba(255,255,255,0.04)'};
+              border:1px solid ${isBest ? 'rgba(37,211,102,0.25)' : 'rgba(255,255,255,0.1)'};cursor:pointer;`;
+            row.innerHTML = `<input type="checkbox" name="watiContactTarget" value="${c.number}" ${isBest ? 'checked' : ''}
+              style="accent-color:#6366f1;width:15px;height:15px;">
+              ${typeIcon}
+              <span style="font-size:0.88rem;color:var(--text-primary);font-weight:${isBest ? '600' : '400'};">
+                ${c.number}</span>
+              <span style="font-size:0.75rem;color:var(--text-light);margin-left:auto;">${c.label}${isBest ? ' · <span style="color:#25d366">Best</span>' : ''}</span>`;
             listEl.appendChild(row);
           });
           pickerGroup.style.display = 'block';
@@ -1381,53 +1381,54 @@ function submitMigrationForm(e) {
       const existing = document.getElementById('watiFallbackModal');
       if (existing) existing.remove();
 
-      var parentEmailDisplay = result.parentEmail
-        ? '<div style="margin:8px 0;font-size:0.83rem;color:var(--text-light);">Will send to: <strong style="color:var(--text-primary);">' + result.parentEmail + '</strong></div>'
-        : '<div style="margin:8px 0;font-size:0.83rem;color:#f87171;">No parent email found in HubSpot - cannot send fallback.</div>';
+      const parentEmailDisplay = result.parentEmail
+        ? `<div style="margin:8px 0;font-size:0.83rem;color:var(--text-light);">Will send to: <strong style="color:var(--text-primary);">${result.parentEmail}</strong></div>`
+        : `<div style="margin:8px 0;font-size:0.83rem;color:#f87171;">⚠ No parent email found in HubSpot — cannot send fallback.</div>`;
 
-      var canEmail = !!result.parentEmail;
+      const canEmail = !!result.parentEmail;
 
-      var modal = document.createElement('div');
+      const modal = document.createElement('div');
       modal.id = 'watiFallbackModal';
-      modal.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.65);'
-        + 'display:flex;align-items:center;justify-content:center;padding:20px;';
+      modal.style.cssText = `position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,0.65);
+        display:flex;align-items:center;justify-content:center;padding:20px;`;
 
-      var sendBtnHtml = canEmail
-        ? '<button id="watiFallbackSendBtn" style="flex:1;padding:10px;border-radius:8px;'
-          + 'background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;'
-          + 'font-weight:600;cursor:pointer;font-size:0.9rem;">'
-          + '<i class="fas fa-envelope" style="margin-right:6px;"></i>Send Email to Parent</button>'
-        : '';
+      modal.innerHTML = `
+        <div style="background:var(--bg-card,#1a1a2e);border:1.5px solid rgba(248,113,113,0.4);border-radius:16px;
+          max-width:480px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+            <div style="width:40px;height:40px;border-radius:50%;background:rgba(248,113,113,0.15);
+              display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="fab fa-whatsapp" style="color:#f87171;font-size:1.2rem;"></i>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:1rem;color:#f87171;">WhatsApp Not Sent</div>
+              <div style="font-size:0.8rem;color:var(--text-light);margin-top:2px;">Migration emails went through ✓</div>
+            </div>
+          </div>
 
-      modal.innerHTML = ''
-        + '<div style="background:var(--bg-card,#1a1a2e);border:1.5px solid rgba(248,113,113,0.4);border-radius:16px;'
-        + 'max-width:480px;width:100%;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
-          + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">'
-            + '<div style="width:40px;height:40px;border-radius:50%;background:rgba(248,113,113,0.15);'
-            + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
-              + '<i class="fab fa-whatsapp" style="color:#f87171;font-size:1.2rem;"></i>'
-            + '</div>'
-            + '<div>'
-              + '<div style="font-weight:700;font-size:1rem;color:#f87171;">WhatsApp Not Sent</div>'
-              + '<div style="font-size:0.8rem;color:var(--text-light);margin-top:2px;">Migration emails went through</div>'
-            + '</div>'
-          + '</div>'
-          + '<div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);'
-          + 'border-radius:10px;padding:12px;margin-bottom:16px;font-size:0.83rem;color:#fca5a5;line-height:1.5;">'
-            + '<strong>Error:</strong> ' + escapeHtml(result.watiErrorMessage || 'Unknown WATI error')
-          + '</div>'
-          + '<div style="font-size:0.9rem;color:var(--text-primary);margin-bottom:4px;">'
-            + 'Do you want to notify <strong>' + escapeHtml(result.learner || 'the parent') + '</strong> via email instead?'
-          + '</div>'
-          + parentEmailDisplay
-          + '<div style="display:flex;gap:10px;margin-top:20px;">'
-            + sendBtnHtml
-            + '<button onclick="document.getElementById(\'watiFallbackModal\').remove()"'
-            + ' style="flex:1;padding:10px;border-radius:8px;background:rgba(255,255,255,0.06);'
-            + 'color:var(--text-light);border:1px solid rgba(255,255,255,0.12);cursor:pointer;font-size:0.9rem;">'
-            + 'Dismiss</button>'
-          + '</div>'
-        + '</div>';
+          <div style="background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2);
+            border-radius:10px;padding:12px;margin-bottom:16px;font-size:0.83rem;color:#fca5a5;line-height:1.5;">
+            <strong>Error:</strong> ${escapeHtml(result.watiErrorMessage || 'Unknown WATI error')}
+          </div>
+
+          <div style="font-size:0.9rem;color:var(--text-primary);margin-bottom:4px;">
+            Do you want to notify <strong>${escapeHtml(result.learner || 'the parent')}</strong> via email instead?
+          </div>
+          ${parentEmailDisplay}
+
+          <div style="display:flex;gap:10px;margin-top:20px;">
+            ${canEmail ? `<button id="watiFallbackSendBtn" style="flex:1;padding:10px;border-radius:8px;
+              background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;
+              font-weight:600;cursor:pointer;font-size:0.9rem;">
+              <i class="fas fa-envelope" style="margin-right:6px;"></i>Send Email to Parent
+            </button>` : ''}
+            <button onclick="document.getElementById('watiFallbackModal').remove()"
+              style="flex:1;padding:10px;border-radius:8px;background:rgba(255,255,255,0.06);
+              color:var(--text-light);border:1px solid rgba(255,255,255,0.12);cursor:pointer;font-size:0.9rem;">
+              Dismiss
+            </button>
+          </div>
+        </div>`;
 
       document.body.appendChild(modal);
 
@@ -1489,7 +1490,7 @@ function submitMigrationForm(e) {
         const jlid = onboardingParentJlid.value.trim();
         if (jlid) {
             const cleanedJlid = cleanJlidForZoom(jlid);
-            onboardingParentZoomLink.value = 'https://live.jetlearn.com/join/' + cleanedJlid;
+            onboardingParentZoomLink.value = `https://live.jetlearn.com/join/${cleanedJlid}`;
         } else {
             onboardingParentZoomLink.value = '';
         }
@@ -1525,7 +1526,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     if (parentContactInputEl) parentContactInputEl.value = data.parentContact || '';
                     
                     if (zoomLinkInputEl) {
-                        zoomLinkInputEl.value = data.zoomLink || ('https://live.jetlearn.com/join/' + cleanJlidForZoom(data.jlid || ''));
+                        zoomLinkInputEl.value = data.zoomLink || `https://live.jetlearn.com/join/${cleanJlidForZoom(data.jlid || '')}`;
                     }
                     if (practiceDocLinkInputEl) practiceDocLinkInputEl.value = data.practiceDocumentLink || '';
 
@@ -5587,13 +5588,33 @@ google.script.run
     }
 
 
-    var CURRENT_APP_VERSION = 'V6.14';
+    const CURRENT_APP_VERSION = 'V55';
+    const CHANGELOG_HTML = `
+        <ul class="mismatch-list" style="border:none;">
+            <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+                <strong>🗺️ Course Planner — Smart Migration System</strong><br>
+                New page: tracks every learner's course completion timeline from Athena data. Flags critical migrations (≤4 wks), checks teacher upskill for next 3 courses, pre-matches teachers, and auto-creates HubSpot CCTC tickets with one click.
+            </li>
+            <li style="border-left: 3px solid #4caf50; background: #f1f8e9; padding: 10px; margin-bottom: 10px;">
+                <strong>📊 Latest Ticket Logic Fixed</strong><br>
+                Fixed an issue where older tickets (2024) were being fetched. The system now strictly enforces fetching the most recently created ticket (2025).
+            </li>
+            <li style="border-left: 3px solid #2196f3; background: #e3f2fd; padding: 10px; margin-bottom: 10px;">
+                <strong>🧩 Enhanced Data Mapping</strong><br>
+                Added support for "Reason of Migration", "Current Course (T)", and "Regular Class Day/Time" directly from the ticket.
+            </li>
+        </ul>
+        <p style="margin-top:15px; font-size:0.85em; color:#666;">Contact Ops Team if data still looks incorrect.</p>
+    `;
 
     function checkChangelog() {
-        var storedVersion = localStorage.getItem('appVersion');
+        const storedVersion = localStorage.getItem('appVersion');
         if (storedVersion !== CURRENT_APP_VERSION) {
-            var changelogModal = document.getElementById('changelogModal');
-            if (changelogModal) {
+            const changelogContent = document.getElementById('changelogContent');
+            const changelogModal = document.getElementById('changelogModal');
+            
+            if(changelogContent && changelogModal) {
+                changelogContent.innerHTML = CHANGELOG_HTML;
                 changelogModal.classList.add('active');
             }
         }
@@ -7434,21 +7455,23 @@ if (watiCheckbox) {
             return;
         }
 
-        data.forEach(function(log) {
-            var statusBadge;
+        data.forEach(log => {
+            let statusBadge;
             switch(log.Status) {
-                case 'Opened': statusBadge = '<span class="status-badge status-success">Opened on ' + new Date(log.OpenedAt).toLocaleDateString() + '</span>'; break;
-                case 'Replied': statusBadge = '<span class="status-badge status-info">Replied on ' + new Date(log.RepliedAt).toLocaleDateString() + '</span>'; break;
-                case 'Failed': statusBadge = '<span class="status-badge status-failed">Failed</span>'; break;
-                default: statusBadge = '<span class="status-badge status-skipped">Sent</span>';
+                case 'Opened': statusBadge = `<span class="status-badge status-success">Opened on ${new Date(log.OpenedAt).toLocaleDateString()}</span>`; break;
+                case 'Replied': statusBadge = `<span class="status-badge status-info">Replied on ${new Date(log.RepliedAt).toLocaleDateString()}</span>`; break;
+                case 'Failed': statusBadge = `<span class="status-badge status-failed">Failed</span>`; break;
+                default: statusBadge = `<span class="status-badge status-skipped">Sent</span>`;
             }
-            var tr = '<tr>' +
-                '<td>' + new Date(log.SentAt).toLocaleString() + '</td>' +
-                '<td>' + (log.Recipient || '') + '</td>' +
-                '<td>' + (log.Subject || '') + '</td>' +
-                '<td>' + statusBadge + '</td>' +
-                '<td><button class="btn btn-outline btn-sm" onclick="viewEmailActivityDetails(\'' + (log.TrackingID || '') + '\')">View Details</button></td>' +
-                '</tr>';
+            const tr = `
+                <tr>
+                    <td>${new Date(log.SentAt).toLocaleString()}</td>
+                    <td>${log.Recipient}</td>
+                    <td>${log.Subject}</td>
+                    <td>${statusBadge}</td>
+                    <td><button class="btn btn-outline btn-sm" onclick="viewEmailActivityDetails('${log.TrackingID}')">View Details</button></td>
+                </tr>
+            `;
             tableBody.innerHTML += tr;
         });
 
@@ -7463,27 +7486,33 @@ if (watiCheckbox) {
     }
 
 function viewEmailActivityDetails(trackingId) {
-    if (!trackingId || trackingId === 'undefined') {
+    // DEBUG ALERT: Remove this after fixing
+    alert("Debug: Attempting to view details for ID: " + trackingId);
+    console.log("Debug ID:", trackingId);
+
+    if (!trackingId || trackingId === "undefined") {
         showToast('error', 'System Error', 'The Tracking ID is missing. Please refresh the table.');
         return;
     }
 
     showLoading('Fetching email details...');
     google.script.run
-        .withSuccessHandler(function(response) {
+        .withSuccessHandler(response => {
             hideLoading();
+            console.log("Server Response:", response); // See exactly what comes back
+            
             if (!response || !response.success) {
-                showError(response || { message: 'Server returned no data.' });
+                showError(response || { message: "Server returned no data (null/undefined)." });
                 return;
             }
-            var log = response.data;
-            document.getElementById('emailActivityModalTitle').textContent = 'Details for: ' + (log.Subject || '');
+            const log = response.data;
+            document.getElementById('emailActivityModalTitle').textContent = `Details for: ${log.Subject}`;
 
             // Populate Content Tab
             document.getElementById('emailActivityContentFrame').srcdoc = log.EmailHTMLBody || '<p>No HTML content available for this email.</p>';
-
+            
             // Show/Hide and Populate Reply Tab
-            var replyTabBtn = document.getElementById('emailActivityReplyTabBtn');
+            const replyTabBtn = document.getElementById('emailActivityReplyTabBtn');
             if (log.Status === 'Replied' && log.ReplyContent) {
                 replyTabBtn.style.display = 'block';
                 document.getElementById('emailActivityReplyContent').textContent = log.ReplyContent;
@@ -7492,20 +7521,23 @@ function viewEmailActivityDetails(trackingId) {
             }
 
             // Populate Timeline Tab
-            var timelineHtml = '<div class="timeline-event"><div class="timeline-date">' + new Date(log.SentAt).toLocaleString() + '</div><div class="timeline-description"><strong>Email Sent</strong> to ' + (log.Recipient || '') + '</div></div>';
+            let timelineHtml = `<div class="timeline-event"><div class="timeline-date">${new Date(log.SentAt).toLocaleString()}</div><div class="timeline-description"><strong>Email Sent</strong> to ${log.Recipient}</div></div>`;
             if (log.OpenedAt) {
-                timelineHtml += '<div class="timeline-event onboarding"><div class="timeline-date">' + new Date(log.OpenedAt).toLocaleString() + '</div><div class="timeline-description"><strong>Email Opened</strong></div></div>';
+                timelineHtml += `<div class="timeline-event onboarding"><div class="timeline-date">${new Date(log.OpenedAt).toLocaleString()}</div><div class="timeline-description"><strong>Email Opened</strong></div></div>`;
             }
             if (log.RepliedAt) {
-                timelineHtml += '<div class="timeline-event migration"><div class="timeline-date">' + new Date(log.RepliedAt).toLocaleString() + '</div><div class="timeline-description"><strong>Recipient Replied</strong></div></div>';
+                timelineHtml += `<div class="timeline-event migration"><div class="timeline-date">${new Date(log.RepliedAt).toLocaleString()}</div><div class="timeline-description"><strong>Recipient Replied</strong></div></div>`;
             }
             document.getElementById('timelineTab').innerHTML = timelineHtml;
 
+            // Reset to the first tab every time the modal opens
             document.querySelector('#emailActivityModal .tab-button[data-tab="timeline"]').click();
+
             document.getElementById('emailActivityModal').classList.add('active');
         })
-        .withFailureHandler(function(error) {
+        .withFailureHandler(error => {
             hideLoading();
+            console.error("Server Failure:", error);
             showError(error);
         })
         .getEmailLogDetails(trackingId);
@@ -8215,14 +8247,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
-    'V6.14': [
-      "**Migration Intelligence — Fast Load**: Popup now loads ~3× faster. Eliminated duplicate HubSpot ticket search, skipped 500-row audit log read, added 3-min CacheService TTL — repeated triggers (teacher change after JLID entered) are near-instant.",
-      "**Migration Intelligence — Last Migration Fixed**: 'Last migration' now shows the previous completed ticket, not the current open WIP. Shows days-since count e.g. '14 May 2026 (12 days ago)'.",
-      "**Migration Center — Communication Tracker**: New panel shows all completed migrations this month with per-ticket comms status: Parent WhatsApp ✓/✗, New Teacher Email ✓/✗, Old Teacher Email ✓/✗. Red = no comms sent via tool. Auto-loads on page open.",
-      "**Email Scheduling — Send Now / Schedule Modal**: Clicking Send Email opens a modal: Send Now (fires immediately) or Schedule for Later (queued to Email Queue sheet at 8am on chosen date). Inline schedule checkboxes removed.",
-      "**Operations — Task Queue Table View**: Replaced card layout with flat HubSpot-style table. Columns: circle status · Title + chip · Associated Deal · Associated Ticket · Task Type · Due Date · Assigned To · Actions. Overdue rows red, today amber.",
-      "**Kit Entry — Store Selector & Subscription Sync**: Add Kit Entry modal has Amazon / DigiKey / Other store buttons. Amazon domain picker per region. Subscription now PATCHes HubSpot deal. Kit Order tab redirects to Kit Tracking page."
-    ],
     'V55': [
       "**Parent Will Buy — HubSpot Kit Status Sync**: All follow-up stages now update the kit-specific HubSpot deal property in real time. Reminder 1 sent → Reminder 2 sent → Final reminder sent → Parent bought it → Escalated to CLS. Each kit maps to its own property (VR Headset, Microbit, Makey-Makey, Arduino).",
       "**Parent Will Buy — Free Text Reply Capture**: Parents replying with free text (e.g. 'can we skip the course?') are now caught — reply logged to sheet, HubSpot note added, and CLS emailed with the exact message.",
@@ -9923,10 +9947,6 @@ setInterval(() => {
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
 function showHelpPage(page) {
-  // Close What's New modal if it's open — prevents overlap when user clicks Documentation
-  var cm = document.getElementById('changelogModal');
-  if (cm) cm.classList.remove('active');
-
   document.getElementById('supportOverlay').style.display       = 'none';
   document.getElementById('documentationOverlay').style.display = 'none';
   document.getElementById('docArticleOverlay').style.display    = 'none';
