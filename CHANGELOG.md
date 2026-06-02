@@ -2,6 +2,72 @@
 
 ---
 
+## [2026-06-03] — Teacher Persona Enhancement, Practice Doc Deduplication & Bug Fixes
+
+### Teacher Persona — Inline Stats on Cards (`TeacherService.js` + `HubSpotService.js` + `JavaScript.html` + `Index.html`)
+- **Active learner count per course**: how many learners each teacher currently has on a given course, pulled from HubSpot in a single paginated call (`_buildAllTeacherStatsMap`) cached per execution
+- **Age range**: min–max age of active learners (e.g. `8–12 yrs`) shown on every teacher card
+- **Teaching since**: month/year of the oldest active deal for that teacher × course
+- **`⭐ IDEAL MATCH` indicator**: awarded when proficiency ≥ 90% + ≥ 2 active learners on course + learner age fits range (±2 yr buffer)
+- **Age fit badge**: `🎂 Ages 8–12 — good fit` (green) or `— age gap` (amber) on alternative teacher cards; learner age read from migration form and passed to `findUpskillAlternatives` as 4th param
+- **Upskilling history**: reads optional `Teacher Upskill History` sheet (cols: Teacher Name · Course · Status Before · Status After · Changed Date · Notes); shown as `Course: 90% → Not onboarded (Jan 2025)` badge on cards
+- **"Previously Taught (Removed)" section** in teacher profile modal for courses that appear in history but are no longer in Teacher Courses sheet
+
+**Card updates:**
+- *Alternative teacher cards* (migration): ideal ribbon (top-right), proficiency badges, stats row (learner count / age range / since), history + upskill history badges; sorted ideal → 100% → most learners
+- *Teacher profile modal*: 5 columns (Course · Proficiency · Learners · Ages · Since); ideal badge inline; history tooltip (📋); removed-courses section at bottom
+- *Course panel teacher cards*: age range badge + ideal badge in header; individual learner age tag (`8y`) in expanded learner list
+
+**New helpers (`TeacherService.js`):** `_ageRangeStr`, `_getTeacherUpskillHistory`, `_buildAllTeacherStatsMap`, `_mergeStatsIntoCourses`
+
+---
+
+### Practice Document — Deduplication & Teacher Update (`PracticeDocService.js` + `OnboardingChecklistService.js`)
+- **Root cause**: both the onboarding email flow (`createPracticeDocAndPostNote`) and checklist run flow (`runOnboardingChecklist`) independently called `makeCopy` — two separate docs were created and shared with the parent causing confusion
+- **Fix**: before creating a new doc, both flows now check HubSpot `learner_practice_document_link` for an existing URL
+  - If found → update teacher permissions on the existing doc (no new doc created)
+  - If not found → create new doc as normal
+- **`_updateExistingPracticeDocTeacher(docUrl, newTeacherName)`** — scans current editors, cross-references Teacher Data sheet to identify teacher emails, removes any previous teacher, adds new teacher; `support@jet-learn.com` and parent commenter always preserved
+- **`_pdFetchExistingDocUrl(dealId)`** — lightweight HubSpot GET to check for existing link before any Drive operation
+- `createPracticeDocAndPostNote` now strips `TJL1280 - ` prefix before passing teacher name to `_pdTeacherEmail`
+- `runOnboardingChecklist` `else if (existingDocLink)` branch now calls `_updateExistingPracticeDocTeacher` instead of silently re-patching
+
+---
+
+### WATI Chat Link — Fix (`OnboardingChecklistService.js`)
+- **Root cause**: `_obcGetWatiChatLink` used `/api/v1/contact/{phone}` and saved `contact.id` — but WATI teamInbox URLs require `conversationId` not contact ID
+- **Fix**: replaced with `fetchWatiDirectLink(phone)` (already in `WatiService.js`) which calls `/api/v1/getMessages` to get the actual `conversationId`, falls back to `contactId` if no message history
+
+---
+
+### Practice Document — HubSpot Property Save (`PracticeDocService.js`)
+- `createPracticeDocAndPostNote` now calls `_obcPatchDeal(dealId, { learner_practice_document_link: url })` immediately after doc creation — property was never saved to HubSpot via the onboarding email path before this fix
+
+---
+
+### Practice Document — Naming Format (`PracticeDocService.js`)
+- Subject labels corrected: `AI-Coding` → `Ai- Coding`, `FinLit` adds ` : ` separator before learner name
+- Formats: `JetLearn Ai- Coding Practice Doc {Name} ({JLID})` · `JetLearn Maths Practice Doc {Name} ({JLID})` · `JetLearn FinLit Practice Doc : {Name} ({JLID})`
+
+---
+
+### PWB Table — Raw HTML Tags Rendering Fix (`JavaScript.html`)
+- `<\\/td>` double-backslash sequences in the `renderPWBTable` row builder were being output as literal `<\/td>` text in the DOM
+- Root cause: `\\` in JS source → `\` in string → browser HTML parser treats `<\` as invalid tag open → emits literally
+- Fix: global replace `<\\/` → `<\/` throughout `JavaScript.html` (single `\/` = `/` in JS, valid HTML closing tag)
+- Same fix applied to migration report and audit sections that had the same pattern
+
+---
+
+### Kit Tracking — Address Flow & Poll (`KitTrackingService.js`)
+- `learning_kit_cost` PATCH now sends as number (not string) — HubSpot was silently ignoring string values
+- ScriptProperties queue (`KIT_ADDR_QUEUE`) persists pending address requests even when no sheet row exists yet
+- Poll trigger reduced from 30 min to 1 min via `setupKitAddressPollTrigger()`
+- `kit_address_received_confirmation` WATI template uses positional params `{{1}}` / `{{2}}` (name: `'1'`, `'2'`) not named params
+- HubSpot form webhook handler `_handleKitAddressFormWebhook` added for instant detection (pending HubSpot forms access)
+
+---
+
 ## [2026-05-14b] — Migration Center: Communication Tracker
 
 ### Migration Comms Tracker (`HubSpotService.js` + `Index.html` + `JavaScript.html`)

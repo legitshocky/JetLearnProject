@@ -202,7 +202,58 @@ function _sendPWBMessage(sheet, sheetRow, templateName, sentAtCol, phone, rowDat
   sheet.getRange(sheetRow, sentAtCol).setValue(new Date());
 }
 
-// ── HubSpot task + escalation email + sheet update ────────────────────────
+// ── Shared escalation email sender (used by manual trigger only) ─────────
+// Auto-escalation no longer sends email — manual button in UI does.
+// CC always includes sourav.pal@jet-learn.com + TP manager if available.
+function _sendPWBEscalationEmail(rowData, reason, isUrgent) {
+  var ccList = ['sourav.pal@jet-learn.com'];
+  if (rowData.tpManagerEmail && rowData.tpManagerEmail !== 'sourav.pal@jet-learn.com') {
+    ccList.push(rowData.tpManagerEmail);
+  }
+  var ccStr = ccList.join(',');
+
+  try {
+    var htmlBody = isUrgent
+      ? '<p style="color:#c0392b;font-size:16px;font-weight:bold;">⚠️ URGENT — Kit Not Yet Confirmed</p>' +
+        '<p>Course starts in <strong>' + (rowData.daysLeft || '?') + ' day(s)</strong>. ' +
+        'All automated follow-ups sent. Parent has not confirmed purchase.</p>'
+      : '<p>Hi,</p><p>The <strong>Parent Will Buy Kit</strong> follow-up sequence has completed. ' +
+        'Parent has not purchased the required kit:</p>';
+
+    htmlBody +=
+      '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>JLID</strong></td><td>' + (rowData.jlid || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Learner</strong></td><td>' + (rowData.learnerName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Parent</strong></td><td>' + (rowData.parentName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Course</strong></td><td>' + (rowData.courseName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Kit Required</strong></td><td>' + (rowData.kitName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Course Start</strong></td><td>' + (rowData.courseStartDate ? _formatDMY(rowData.courseStartDate) : '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Reason</strong></td><td>' + (reason || 'Manual escalation') + '</td></tr>' +
+      '</table>' +
+      '<p><strong>Action:</strong> Contact parent immediately. If unresolved, update roadmap.</p>' +
+      '<p>— JetLearn Platform (triggered manually by Sourav)</p>';
+
+    var subject = isUrgent
+      ? '⚠️ URGENT [' + (rowData.daysLeft || '?') + 'd to course] Kit Not Confirmed — ' + rowData.learnerName + ' (' + rowData.jlid + ')'
+      : '[Action Required] Kit Not Purchased — ' + rowData.learnerName + ' (' + rowData.jlid + ')';
+
+    MailApp.sendEmail({
+      to:       rowData.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER,
+      cc:       ccStr,
+      subject:  subject,
+      htmlBody: htmlBody,
+      name:     CONFIG.EMAIL.FROM_NAME,
+      from:     CONFIG.EMAIL.FROM
+    });
+    Logger.log('[PWB] Escalation email → ' + (rowData.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER) + ' CC: ' + ccStr);
+    return true;
+  } catch(e) {
+    Logger.log('[PWB] _sendPWBEscalationEmail ERROR: ' + e.message);
+    return false;
+  }
+}
+
+// ── HubSpot task + sheet update (NO auto email — manual button sends it) ──
 function _escalateToCLS(sheet, sheetRow, rowData, reason) {
   Logger.log('[PWB] Escalating row ' + sheetRow + ' — ' + reason);
 
@@ -242,33 +293,7 @@ function _escalateToCLS(sheet, sheetRow, rowData, reason) {
     Logger.log('[PWB] HubSpot task creation failed: ' + taskErr.message);
   }
 
-  // 2. Email CLS
-  try {
-    var htmlBody = '<p>Hi,</p>' +
-      '<p>The <strong>Parent Will Buy Kit</strong> automation has flagged the following learner ' +
-      'because the required kit has not been purchased in time:</p>' +
-      '<table style="border-collapse:collapse;font-family:sans-serif;">' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>JLID</strong></td><td>' + rowData.jlid + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Learner</strong></td><td>' + rowData.learnerName + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Parent</strong></td><td>' + rowData.parentName + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Course</strong></td><td>' + rowData.courseName + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Kit Required</strong></td><td>' + rowData.kitName + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Course Start</strong></td><td>' + _formatDMY(rowData.courseStartDate) + '</td></tr>' +
-      '<tr><td style="padding:4px 12px 4px 0;"><strong>Reason Flagged</strong></td><td>' + reason + '</td></tr>' +
-      '</table>' +
-      '<p>Please contact the parent immediately and update the learner\'s roadmap as needed.</p>' +
-      '<p>— JetLearn Automation</p>';
-    MailApp.sendEmail({
-      to:       rowData.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER,
-      subject:  '[Action Required] Kit Not Purchased — ' + rowData.learnerName + ' (' + rowData.jlid + ')',
-      htmlBody: htmlBody,
-      name:     CONFIG.EMAIL.FROM_NAME,
-      from:     CONFIG.EMAIL.FROM
-    });
-    Logger.log('[PWB] Escalation email sent to ' + CONFIG.EMAIL.MAIN_MANAGER);
-  } catch(emailErr) {
-    Logger.log('[PWB] Escalation email failed: ' + emailErr.message);
-  }
+  // NOTE: Email is NOT sent automatically — use sendPWBManualEscalation from UI
 
   // 3. Update sheet
   sheet.getRange(sheetRow, PWB_COL.STATUS).setValue("Parent Didn't Buy - Roadmap Changed");
@@ -344,31 +369,9 @@ function _notifyCLSUrgent(sheet, sheetRow, rowData, daysLeft) {
     _updateHubspotPWBStatus(rowData.dealId, PWB_HS_STATUSES.ESCALATED, rowData.kitName);
   }
 
-  // Email CLS
-  try {
-    var htmlBody =
-      '<p style="color:#c0392b;font-size:16px;font-weight:bold;">⚠️ URGENT — Kit Not Yet Confirmed</p>' +
-      '<p>Course starts in <strong>' + daysLeft + ' day(s)</strong>. ' +
-      'All automated follow-ups have been sent. Parent has not confirmed purchase.</p>' +
-      '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>JLID</strong></td><td>' + rowData.jlid + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Learner</strong></td><td>' + rowData.learnerName + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Parent</strong></td><td>' + rowData.parentName + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Course</strong></td><td>' + rowData.courseName + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Kit</strong></td><td>' + rowData.kitName + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Course Start</strong></td><td>' + _formatDMY(rowData.courseStartDate) + '</td></tr>' +
-      '</table>' +
-      '<p><strong>Action:</strong> Call parent directly. If not resolved today, roadmap may need updating.</p>' +
-      '<p>— JetLearn Automation</p>';
-    MailApp.sendEmail({
-      to:       rowData.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER,
-      subject:  '⚠️ URGENT [' + daysLeft + 'd to course] Kit Not Confirmed — ' + rowData.learnerName + ' (' + rowData.jlid + ')',
-      htmlBody: htmlBody,
-      name:     CONFIG.EMAIL.FROM_NAME,
-      from:     CONFIG.EMAIL.FROM
-    });
-    Logger.log('[PWB] CLS urgent email sent to ' + (rowData.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER));
-  } catch(e) { Logger.log('[PWB] CLS urgent email error: ' + e.message); }
+  // NOTE: Email NOT sent automatically — dashboard shows "Escalate to CLS" button.
+  // Row status set to ⚠️ CLS Notified so it's visible in the UI.
+  Logger.log('[PWB] CLS urgent flagged (no auto email) for ' + rowData.jlid + ', ' + daysLeft + 'd left');
 }
 
 // ── Per-row scheduling logic ───────────────────────────────────────────────
@@ -535,6 +538,235 @@ function _processPWBRow(sheet, sheetRow, row, today) {
 }
 
 // ── Daily trigger entry point ──────────────────────────────────────────────
+// ── Manual escalation: triggered from UI button after user review ─────────
+// Sends email to CLS + CC TP manager + sourav.pal@jet-learn.com
+function sendPWBManualEscalation(jlid) {
+  if (!jlid) return { success: false, message: 'No JLID' };
+  try {
+    var sheet   = _getPWBSheet();
+    var lastRow = sheet.getLastRow();
+    var data    = sheet.getRange(2, 1, lastRow - 1, PWB_COL.ENTRY_BY).getValues();
+    var rowIdx  = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][PWB_COL.JLID - 1] || '').trim() === jlid.trim()) { rowIdx = i; break; }
+    }
+    if (rowIdx === -1) return { success: false, message: 'JLID not found: ' + jlid };
+
+    var row      = data[rowIdx];
+    var sheetRow = rowIdx + 2;
+
+    // Resolve deal info + manager emails from HubSpot
+    var dealId = '', clsEmail = CONFIG.EMAIL.MAIN_MANAGER, tpManagerEmail = '';
+    try {
+      var hs = fetchHubspotByJlid(jlid);
+      if (hs && hs.success && hs.data) {
+        dealId       = hs.data.dealId || '';
+        if (hs.data.clsManagerName) clsEmail = findClsEmailByManagerName(hs.data.clsManagerName) || clsEmail;
+        // Try to get TP manager email from teacher data
+        var teacherName = (hs.data.currentTeacher || '').replace(/^TJL\d+\s*-\s*/i, '').trim();
+        if (teacherName) {
+          try {
+            var td = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+            for (var ti = 1; ti < td.length; ti++) {
+              if (String(td[ti][1] || '').toLowerCase().trim() === teacherName.toLowerCase()) {
+                tpManagerEmail = String(td[ti][10] || '').trim(); // col K = TP manager email
+                break;
+              }
+            }
+          } catch(te) { Logger.log('[PWB] TP manager lookup: ' + te.message); }
+        }
+      }
+    } catch(he) { Logger.log('[PWB] escalation HS lookup: ' + he.message); }
+
+    var courseStartRaw = row[PWB_COL.COURSE_START_DATE - 1];
+    var courseStart    = (courseStartRaw instanceof Date) ? courseStartRaw : _parseDMY(String(courseStartRaw || ''));
+    var daysLeft       = courseStart ? _pwbDaysUntil(courseStart, new Date()) : null;
+
+    var rowData = {
+      jlid:           jlid,
+      learnerName:    String(row[PWB_COL.LEARNER_NAME - 1] || '').trim() || 'Learner',
+      parentName:     String(row[PWB_COL.PARENT_NAME  - 1] || '').trim() || 'Parent',
+      courseName:     String(row[PWB_COL.COURSE_NAME  - 1] || '').trim(),
+      kitName:        String(row[PWB_COL.KIT          - 1] || '').trim(),
+      courseStartDate:courseStart,
+      daysLeft:       daysLeft,
+      dealId:         dealId,
+      clsManagerEmail:clsEmail,
+      tpManagerEmail: tpManagerEmail
+    };
+
+    var isUrgent = daysLeft !== null && daysLeft <= 7;
+    var reason   = 'Manual escalation by ops team — all FUPs sent, no kit confirmation';
+
+    // Send email
+    var sent = _sendPWBEscalationEmail(rowData, reason, isUrgent);
+
+    // Update sheet: mark escalated
+    sheet.getRange(sheetRow, PWB_COL.STATUS).setValue("⚠️ CLS Notified - Awaiting Response");
+    sheet.getRange(sheetRow, PWB_COL.ESCALATED).setValue('TRUE');
+    sheet.getRange(sheetRow, PWB_COL.ESCALATED_AT).setValue(new Date());
+
+    // HubSpot note + status
+    if (dealId) {
+      try { _addNoteToDeal(dealId, '[Kit Escalation] CLS notified manually. Reason: ' + reason); } catch(ne) {}
+      _updateHubspotPWBStatus(dealId, PWB_HS_STATUSES.ESCALATED, rowData.kitName);
+    }
+
+    Logger.log('[PWB] Manual escalation done for ' + jlid + ' emailSent=' + sent);
+    return { success: true, emailSent: sent, clsEmail: clsEmail };
+
+  } catch(e) {
+    Logger.log('[PWB] sendPWBManualEscalation ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Override: reset wrong Order Placed / Kit Received back to In Progress ─
+// Use when parent response was incorrectly matched or status wrongly set.
+function sendPWBStatusOverride(jlid) {
+  if (!jlid) return { success: false, message: 'No JLID' };
+  try {
+    var sheet   = _getPWBSheet();
+    var lastRow = sheet.getLastRow();
+    var data    = sheet.getRange(2, 1, lastRow - 1, PWB_COL.ENTRY_BY).getValues();
+    var rowIdx  = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][PWB_COL.JLID - 1] || '').trim() === jlid.trim()) { rowIdx = i; break; }
+    }
+    if (rowIdx === -1) return { success: false, message: 'JLID not found: ' + jlid };
+
+    var row      = data[rowIdx];
+    var sheetRow = rowIdx + 2;
+    var oldStatus = String(row[PWB_COL.STATUS - 1] || '').trim();
+
+    // Reset status + clear response
+    sheet.getRange(sheetRow, PWB_COL.STATUS).setValue('In Progress');
+    sheet.getRange(sheetRow, PWB_COL.PARENT_RESPONSE).setValue('');
+    // Clear escalation flags if they were set due to wrong status
+    if (oldStatus === "Parent Didn't Buy - Roadmap Changed") {
+      sheet.getRange(sheetRow, PWB_COL.ESCALATED).setValue('');
+      sheet.getRange(sheetRow, PWB_COL.ESCALATED_AT).setValue('');
+    }
+
+    // Update HubSpot status back to Reminder 2 sent (most recent real FUP stage)
+    var kitName = String(row[PWB_COL.KIT - 1] || '').trim();
+    try {
+      var hs = fetchHubspotByJlid(jlid);
+      if (hs && hs.success && hs.data && hs.data.dealId) {
+        _updateHubspotPWBStatus(hs.data.dealId, PWB_HS_STATUSES.REMINDER_2, kitName);
+      }
+    } catch(he) { Logger.log('[PWB] override HS update: ' + he.message); }
+
+    Logger.log('[PWB] Status override: ' + jlid + ' was "' + oldStatus + '" → In Progress');
+    return { success: true, oldStatus: oldStatus };
+
+  } catch(e) {
+    Logger.log('[PWB] sendPWBStatusOverride ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Manual FUP: send next pending FUP for a specific JLID ────────────────
+// Called from the PWB dashboard "Send FUP" button.
+// Figures out which step is next, sends the right template, stamps sheet + HS.
+function sendPWBManualFup(jlid) {
+  if (!jlid) return { success: false, message: 'No JLID provided' };
+  try {
+    var sheet   = _getPWBSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, message: 'PWB sheet empty' };
+
+    var data = sheet.getRange(2, 1, lastRow - 1, PWB_COL.ENTRY_BY).getValues();
+    var rowIdx = -1;
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][PWB_COL.JLID - 1] || '').trim() === jlid.trim()) {
+        rowIdx = i; break;
+      }
+    }
+    if (rowIdx === -1) return { success: false, message: 'JLID not found in PWB sheet: ' + jlid };
+
+    var row      = data[rowIdx];
+    var sheetRow = rowIdx + 2;
+
+    // Skip terminal rows
+    var status   = String(row[PWB_COL.STATUS - 1] || '').trim();
+    if (PWB_TERMINAL_STATUSES.indexOf(status) > -1) {
+      return { success: false, message: 'Row is in terminal status: ' + status };
+    }
+
+    // Determine which FUP to send next
+    var initialSent = !!row[PWB_COL.INITIAL_SENT_AT   - 1];
+    var fup1Sent    = !!row[PWB_COL.FUP1_SENT_AT      - 1];
+    var fup2Sent    = !!row[PWB_COL.FUP2_SENT_AT      - 1];
+    var finalSent   = !!row[PWB_COL.FINAL_FUP_SENT_AT - 1];
+
+    var templateName, sentAtCol, hsStatus, fupLabel;
+    if (!initialSent) {
+      templateName = 'migration_parent_will_buy_kit';
+      sentAtCol    = PWB_COL.INITIAL_SENT_AT;
+      hsStatus     = PWB_HS_STATUSES.REMINDER_1;
+      fupLabel     = 'Initial';
+    } else if (!fup1Sent) {
+      templateName = 'kits_parent_will_buy_fup_1';
+      sentAtCol    = PWB_COL.FUP1_SENT_AT;
+      hsStatus     = PWB_HS_STATUSES.REMINDER_2;
+      fupLabel     = 'FUP 1';
+    } else if (!fup2Sent) {
+      templateName = 'kits_parent_will_buy_fup_1';
+      sentAtCol    = PWB_COL.FUP2_SENT_AT;
+      hsStatus     = PWB_HS_STATUSES.REMINDER_2;
+      fupLabel     = 'FUP 2';
+    } else if (!finalSent) {
+      templateName = 'migration_parent_will_buy_final_fup';
+      sentAtCol    = PWB_COL.FINAL_FUP_SENT_AT;
+      hsStatus     = PWB_HS_STATUSES.FINAL;
+      fupLabel     = 'Final FUP';
+    } else {
+      return { success: false, message: 'All FUPs already sent for ' + jlid };
+    }
+
+    // Resolve phone
+    var phone = String(row[PWB_COL.PARENT_PHONE - 1] || '').replace(/\D/g, '');
+    if (!phone) {
+      try {
+        var hs = fetchHubspotByJlid(jlid);
+        if (hs && hs.success && hs.data) phone = String(hs.data.parentContact || '').replace(/\D/g, '');
+      } catch(pe) { Logger.log('[PWB] phone lookup error: ' + pe.message); }
+    }
+    if (!phone) return { success: false, message: 'No phone number found for ' + jlid };
+
+    // Build rowData for template params
+    var rowData = {
+      parentName:  String(row[PWB_COL.PARENT_NAME  - 1] || '').trim() || 'Parent',
+      learnerName: String(row[PWB_COL.LEARNER_NAME - 1] || '').trim() || 'Learner',
+      courseName:  String(row[PWB_COL.COURSE_NAME  - 1] || '').trim() || 'Course',
+      kitName:     String(row[PWB_COL.KIT          - 1] || '').trim() || 'Kit',
+      amazonLink:  String(row[PWB_COL.AMAZON_LINK  - 1] || '').trim() || ''
+    };
+
+    // Send WATI message
+    _sendPWBMessage(sheet, sheetRow, templateName, sentAtCol, phone, rowData);
+
+    // Update sheet status
+    sheet.getRange(sheetRow, PWB_COL.STATUS).setValue('In Progress');
+
+    // Update HubSpot status
+    var dealId = '';
+    try {
+      var hsData = fetchHubspotByJlid(jlid);
+      if (hsData && hsData.success && hsData.data) dealId = hsData.data.dealId || '';
+    } catch(he) { Logger.log('[PWB] manual FUP HS lookup error: ' + he.message); }
+    if (dealId) _updateHubspotPWBStatus(dealId, hsStatus, rowData.kitName);
+
+    Logger.log('[PWB] Manual FUP sent: ' + fupLabel + ' → ' + jlid + ' (' + phone + ')');
+    return { success: true, fupLabel: fupLabel, templateName: templateName, phone: phone };
+
+  } catch(e) {
+    Logger.log('[PWB] sendPWBManualFup ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function sendParentWillBuyFollowUps() {
   Logger.log('[PWB] sendParentWillBuyFollowUps started');
   try {

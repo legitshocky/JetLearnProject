@@ -41,7 +41,10 @@ var KIT_COL = {
   PARENT_RESPONSE:    19,
   PHONE_SENT_TO:      20,
   FOLLOWUP2_SENT:     21,
-  FOLLOWUP2_SENT_AT:  22
+  FOLLOWUP2_SENT_AT:  22,
+  // Address collection columns (appended — W, X)
+  DELIVERY_ADDRESS:   23,
+  ADDR_STATUS:        24   // HubSpot / Requested / Received / Verified
 };
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
@@ -87,6 +90,518 @@ function _buildKitAddress(learnerName, addrObj, fallbackCountry) {
   var parts = [addrObj.address, addrObj.city, addrObj.state, addrObj.country || fallbackCountry]
     .filter(function(p) { return p && String(p).trim(); });
   return 'Delivery to ' + (learnerName || '') + (parts.length ? ', ' + parts.join(', ') : '');
+}
+
+// ── Update HubSpot contact address from free-text (best-effort, non-fatal) ───
+function _updateHubSpotContactAddress(dealId, addressText) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token || !dealId) return;
+    var assocRes = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '/associations/contacts',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (assocRes.getResponseCode() !== 200) return;
+    var assocData = JSON.parse(assocRes.getContentText());
+    if (!assocData.results || !assocData.results.length) return;
+    var contactId = assocData.results[0].id || assocData.results[0].toObjectId;
+    if (!contactId) return;
+    // Store raw text in HubSpot contact `address` field (single line)
+    monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ properties: { address: String(addressText).substring(0, 255) } }),
+      muteHttpExceptions: true
+    });
+    Logger.log('[KitTracking] HubSpot contact address updated for contactId=' + contactId);
+  } catch(e) {
+    Logger.log('[KitTracking] _updateHubSpotContactAddress error: ' + e.message);
+  }
+}
+
+// ── Request delivery address from parent via WATI ────────────────────────────
+// Call before placing a kit order when HubSpot address is blank.
+// Returns { success, addressSource, address, phone, needsWati, watiSent }
+function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
+  try {
+    if (!jlid || !kitName) return { success: false, message: 'JLID and kit name required' };
+
+    var hs = fetchHubspotByJlid(jlid);
+    if (!hs || !hs.success) return { success: false, message: 'HubSpot lookup failed for ' + jlid };
+
+    var d           = hs.data;
+    var phone       = _normalisePhone(d.parentContact || '');
+    var parentName  = d.parentName  || '';
+    var learnerName = d.learnerName || '';
+
+    if (!phone) return { success: false, message: 'No phone number for ' + jlid };
+
+    // Always reconfirm address — parents move. Never assume existing address is current.
+    // Always send WATI regardless of what HubSpot contact address says.
+    var wRes = sendWatiMessage(phone, 'migration_address_template', [
+      { name: 'Parent',   value: parentName },
+      { name: 'Kit_type', value: kitName    }
+    ]);
+
+    if (!wRes || !wRes.success) {
+      return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
+    }
+
+    // Cache pending request (TTL 8 hours) — for WATI free-text reply path
+    var cachePayload = JSON.stringify({
+      jlid:        jlid,
+      kitName:     kitName,
+      learnerName: learnerName,
+      parentName:  parentName,
+      rowIndex:    rowIndex || 0,
+      requestedAt: new Date().toISOString()
+    });
+    CacheService.getScriptCache().put('KIT_ADDR_REQ_' + phone, cachePayload, 28800);
+
+    // Add to ScriptProperties queue — poll trigger can enumerate even without sheet row
+    _kitAddrQueueAdd({
+      jlid:        jlid,
+      kitName:     kitName,
+      phone:       phone,
+      parentName:  parentName,
+      learnerName: learnerName,
+      dealId:      d.dealId || '',
+      rowIndex:    rowIndex || 0,
+      requestedAt: new Date().toISOString()
+    });
+
+    // Update sheet if row provided
+    if (rowIndex > 0) {
+      try {
+        var sheet2 = _getKitSheet();
+        sheet2.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
+        sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+      } catch(se2) {}
+    }
+
+    // Update HubSpot kit status → "Asked for address" (best-effort)
+    try {
+      var kitPropForAddr = _kitPropertyForType(kitName);
+      if (kitPropForAddr && d.dealId) {
+        var hsToken = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+        var addrHsProps = {};
+        addrHsProps[kitPropForAddr] = 'Asked for address';
+        monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + d.dealId, {
+          method: 'PATCH',
+          headers: { 'Authorization': 'Bearer ' + hsToken, 'Content-Type': 'application/json' },
+          payload: JSON.stringify({ properties: addrHsProps }),
+          muteHttpExceptions: true
+        });
+        Logger.log('[KitTracking] HubSpot kit status → "Asked for address" for ' + jlid);
+      }
+    } catch(hsAddrErr) {
+      Logger.log('[KitTracking] HS "Asked for address" update failed (non-fatal): ' + hsAddrErr.message);
+    }
+
+    Logger.log('[KitTracking] Address request sent via WATI for ' + jlid + ' phone=' + phone);
+    return { success: true, addressSource: 'wati_requested',
+             phone: phone, needsWati: true, watiSent: true };
+
+  } catch(e) {
+    Logger.log('[KitTracking] requestKitDeliveryAddress ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Called from doPost when parent replies with address text ─────────────────
+// Returns true if the reply was handled as an address, false if not a pending request
+function handleKitAddressReply(phone, addressText) {
+  try {
+    Logger.log('[KitTracking] handleKitAddressReply phone=' + phone + ' text="' + String(addressText).substring(0,100) + '"');
+
+    var sc       = CacheService.getScriptCache();
+    var cacheKey = 'KIT_ADDR_REQ_' + phone;
+    var cached   = sc.get(cacheKey);
+    if (!cached) {
+      Logger.log('[KitTracking] No pending address request for phone ' + phone);
+      return false;
+    }
+
+    var meta     = JSON.parse(cached);
+    var rowIndex = meta.rowIndex || 0;
+    var addrText = String(addressText).trim();
+
+    // Update sheet row
+    var sheet = _getKitSheet();
+    if (rowIndex > 0) {
+      sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrText);
+      sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    } else {
+      // Find row by JLID
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.JLID).getValues();
+        for (var i = 0; i < rows.length; i++) {
+          if (String(rows[i][KIT_COL.JLID - 1] || '').trim() === meta.jlid) {
+            sheet.getRange(i + 2, KIT_COL.DELIVERY_ADDRESS).setValue(addrText);
+            sheet.getRange(i + 2, KIT_COL.ADDR_STATUS).setValue('Received');
+            break;
+          }
+        }
+      }
+    }
+
+    // Push address back to HubSpot contact (best-effort)
+    try {
+      var hs = fetchHubspotByJlid(meta.jlid);
+      if (hs && hs.success && hs.data && hs.data.dealId) {
+        _updateHubSpotContactAddress(hs.data.dealId, addrText);
+      }
+    } catch(hse) {
+      Logger.log('[KitTracking] handleKitAddressReply: HS update failed (non-fatal): ' + hse.message);
+    }
+
+    // Send thank-you reply to parent — {{1}}=Parent {{2}}=Kit
+    try {
+      sendWatiMessage(phone, 'kit_address_received_confirmation', [
+        { name: '1', value: meta.parentName || '' },
+        { name: '2', value: meta.kitName    || '' }
+      ]);
+    } catch(we) {}
+
+    sc.remove(cacheKey);
+    _kitAddrQueueRemove(meta.jlid); // clean ScriptProperties queue too
+    Logger.log('[KitTracking] Address captured for ' + meta.jlid + ': "' + addrText + '"');
+    return true;
+
+  } catch(e) {
+    Logger.log('[KitTracking] handleKitAddressReply ERROR: ' + e.message);
+    return false;
+  }
+}
+
+// ── Poll HubSpot for address after parent fills the form ─────────────────────
+// Called from auto-trigger (pollPendingKitAddresses) and "Check for Reply" button.
+// When address found: updates sheet, sends WATI confirmation, clears cache.
+// Returns { received, address, confirmationSent }
+function checkKitAddressReply(jlid, rowIndex, kitName) {
+  try {
+    if (!jlid) return { received: false };
+    var hs = fetchHubspotByJlid(jlid);
+    if (!hs || !hs.success) return { received: false, message: 'HubSpot lookup failed' };
+
+    var d     = hs.data;
+    var phone = _normalisePhone(d.parentContact || '');
+
+    // If kitName not passed, try to read from cache or sheet
+    var resolvedKit = kitName || '';
+    if (!resolvedKit && phone) {
+      try {
+        var cachedReq = CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone);
+        if (cachedReq) resolvedKit = JSON.parse(cachedReq).kitName || '';
+      } catch(ce) {}
+    }
+    if (!resolvedKit && rowIndex && rowIndex > 0) {
+      try {
+        var sheetForKit = _getKitSheet();
+        resolvedKit = String(sheetForKit.getRange(rowIndex, KIT_COL.KIT).getValue() || '').trim();
+      } catch(se) {}
+    }
+
+    // Poll HubSpot contact for address
+    var addr = d.dealId ? _fetchContactAddress(d.dealId) : {};
+    var addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
+      .filter(function(p) { return p && String(p).trim(); }).join(', ');
+
+    if (!addrStr) {
+      // Address not yet in HubSpot — still waiting for parent to submit form
+      return { received: false, waiting: true };
+    }
+
+    // Address found ─ update sheet row
+    if (rowIndex && rowIndex > 0) {
+      try {
+        var sheet = _getKitSheet();
+        sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
+        sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+      } catch(se) {
+        Logger.log('[KitTracking] checkKitAddressReply: sheet update failed: ' + se.message);
+      }
+    }
+
+    // Send WATI confirmation to parent (best-effort)
+    // Template kit_address_received_confirmation uses positional {{1}}=Parent {{2}}=Kit
+    var confirmationSent = false;
+    if (phone) {
+      try {
+        var wRes = sendWatiMessage(phone, 'kit_address_received_confirmation', [
+          { name: '1', value: d.parentName || '' },
+          { name: '2', value: resolvedKit  || '' }
+        ]);
+        confirmationSent = !!(wRes && wRes.success);
+        Logger.log('[KitTracking] Confirmation WATI sent=' + confirmationSent + ' for ' + jlid);
+      } catch(we) {
+        Logger.log('[KitTracking] checkKitAddressReply: WATI confirm error: ' + we.message);
+      }
+    }
+
+    // Clear pending cache
+    if (phone) {
+      try { CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + phone); } catch(ce) {}
+    }
+
+    Logger.log('[KitTracking] Address found for ' + jlid + ': "' + addrStr + '"');
+    return { received: true, address: addrStr, confirmationSent: confirmationSent };
+
+  } catch(e) {
+    Logger.log('[KitTracking] checkKitAddressReply ERROR: ' + e.message);
+    return { received: false, message: e.message };
+  }
+}
+
+// ── ScriptProperties queue helpers ───────────────────────────────────────────
+// Stores pending address requests so poll can find them even without a sheet row.
+var _KIT_ADDR_QUEUE_KEY = 'KIT_ADDR_QUEUE';
+
+function _kitAddrQueueGet() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(_KIT_ADDR_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function _kitAddrQueueAdd(entry) {
+  try {
+    var queue = _kitAddrQueueGet();
+    // Remove stale entry for same JLID first (re-request scenario)
+    queue = queue.filter(function(q) { return q.jlid !== entry.jlid; });
+    queue.push(entry);
+    PropertiesService.getScriptProperties().setProperty(_KIT_ADDR_QUEUE_KEY, JSON.stringify(queue));
+    Logger.log('[KitAddrQueue] Added JLID=' + entry.jlid + ' queue size=' + queue.length);
+  } catch(e) {
+    Logger.log('[KitAddrQueue] _kitAddrQueueAdd ERROR: ' + e.message);
+  }
+}
+
+function _kitAddrQueueRemove(jlid) {
+  try {
+    var queue = _kitAddrQueueGet().filter(function(q) { return q.jlid !== jlid; });
+    PropertiesService.getScriptProperties().setProperty(_KIT_ADDR_QUEUE_KEY, JSON.stringify(queue));
+    Logger.log('[KitAddrQueue] Removed JLID=' + jlid + ' queue size=' + queue.length);
+  } catch(e) {
+    Logger.log('[KitAddrQueue] _kitAddrQueueRemove ERROR: ' + e.message);
+  }
+}
+
+// ── Auto-poll: scan sheet rows + ScriptProperties queue, check HubSpot ───────
+// Runs every 30 min via time-based trigger. No manual action needed.
+function pollPendingKitAddresses() {
+  Logger.log('[KitAddrPoll] Starting poll...');
+  var checked = 0, found = 0;
+
+  try {
+    // ── Part 1: sheet rows with ADDR_STATUS='Requested' ──────────────────────
+    var sheet   = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.ADDR_STATUS).getValues();
+      rows.forEach(function(row, idx) {
+        var sheetRow   = idx + 2;
+        var addrStatus = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
+        var jlid       = String(row[KIT_COL.JLID - 1]        || '').trim();
+        var kitName    = String(row[KIT_COL.KIT - 1]          || '').trim();
+        if (addrStatus !== 'Requested' || !jlid) return;
+        checked++;
+        Logger.log('[KitAddrPoll] Sheet row=' + sheetRow + ' JLID=' + jlid);
+        try {
+          var result = checkKitAddressReply(jlid, sheetRow, kitName);
+          if (result.received) {
+            found++;
+            _kitAddrQueueRemove(jlid); // clean up queue too if entry exists
+            Logger.log('[KitAddrPoll] Sheet: address found JLID=' + jlid + ' confirm=' + result.confirmationSent);
+          }
+        } catch(re) { Logger.log('[KitAddrPoll] Sheet row error JLID=' + jlid + ': ' + re.message); }
+        Utilities.sleep(400);
+      });
+    }
+
+    // ── Part 2: ScriptProperties queue (requests made before sheet row exists) ─
+    var queue = _kitAddrQueueGet();
+    Logger.log('[KitAddrPoll] Queue size=' + queue.length);
+    queue.forEach(function(entry) {
+      checked++;
+      Logger.log('[KitAddrPoll] Queue JLID=' + entry.jlid + ' kit=' + entry.kitName);
+      try {
+        // Poll HubSpot contact directly for address
+        var addr = entry.dealId ? _fetchContactAddress(entry.dealId) : {};
+        var addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
+          .filter(function(p) { return p && String(p).trim(); }).join(', ');
+
+        if (!addrStr) {
+          Logger.log('[KitAddrPoll] Queue: still waiting for JLID=' + entry.jlid);
+          return;
+        }
+
+        found++;
+        Logger.log('[KitAddrPoll] Queue: address found for JLID=' + entry.jlid + ': "' + addrStr + '"');
+
+        // Send confirmation WATI — {{1}}=Parent {{2}}=Kit
+        var confirmSent = false;
+        if (entry.phone) {
+          try {
+            var wRes = sendWatiMessage(entry.phone, 'kit_address_received_confirmation', [
+              { name: '1', value: entry.parentName  || '' },
+              { name: '2', value: entry.kitName     || '' }
+            ]);
+            confirmSent = !!(wRes && wRes.success);
+            Logger.log('[KitAddrPoll] Confirmation WATI sent=' + confirmSent + ' JLID=' + entry.jlid);
+          } catch(we) {
+            Logger.log('[KitAddrPoll] WATI confirm error: ' + we.message);
+          }
+        }
+
+        // Update sheet row if it exists now (e.g. addKitEntry ran after request)
+        if (entry.rowIndex > 0) {
+          try {
+            var sh = _getKitSheet();
+            sh.getRange(entry.rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
+            sh.getRange(entry.rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+          } catch(se) {}
+        }
+
+        // Clear ScriptCache entry
+        if (entry.phone) {
+          try { CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + entry.phone); } catch(ce) {}
+        }
+
+        // Remove from queue
+        _kitAddrQueueRemove(entry.jlid);
+
+      } catch(qe) {
+        Logger.log('[KitAddrPoll] Queue entry error JLID=' + entry.jlid + ': ' + qe.message);
+      }
+      Utilities.sleep(400);
+    });
+
+    Logger.log('[KitAddrPoll] Done. Checked=' + checked + ' Found=' + found);
+  } catch(e) {
+    Logger.log('[KitAddrPoll] ERROR: ' + e.message);
+  }
+}
+
+// ── HubSpot form webhook handler — fires instantly on form submit ─────────────
+// Called from doPost when HubSpot Kit Address Form is submitted.
+// Matches submission to pending queue entry by phone or email, sends WATI immediately.
+function _handleKitAddressFormWebhook(payload) {
+  Logger.log('[KitAddrWebhook] Processing form submission...');
+
+  // Extract fields from submission data array
+  var fields = {};
+  (payload.data || []).forEach(function(f) {
+    fields[String(f.name || '').toLowerCase()] = String(f.value || '').trim();
+  });
+  Logger.log('[KitAddrWebhook] Fields: ' + JSON.stringify(fields));
+
+  // Build address string from submitted fields
+  var addrParts = [
+    fields['address'] || fields['street'] || fields['street_address'] || '',
+    fields['city']    || '',
+    fields['state']   || fields['county'] || '',
+    fields['zip']     || fields['postcode'] || fields['postal_code'] || '',
+    fields['country'] || ''
+  ].filter(function(p) { return p && p.trim(); });
+
+  // Also try a single combined address field
+  if (!addrParts.length) {
+    var combined = fields['full_address'] || fields['delivery_address'] || fields['address_line_1'] || '';
+    if (combined) addrParts = [combined];
+  }
+
+  var addrStr = addrParts.join(', ');
+  Logger.log('[KitAddrWebhook] Parsed address: "' + addrStr + '"');
+
+  if (!addrStr) {
+    Logger.log('[KitAddrWebhook] No address found in form fields — skipping');
+    return;
+  }
+
+  // Match to pending queue entry by phone or email
+  var submittedPhone = _normalisePhone(fields['phone'] || fields['mobilephone'] || fields['phone_number'] || '');
+  var submittedEmail = fields['email'] || '';
+  var queue = _kitAddrQueueGet();
+
+  Logger.log('[KitAddrWebhook] Queue size=' + queue.length + ' phone="' + submittedPhone + '" email="' + submittedEmail + '"');
+
+  var matched = null;
+
+  // Match by phone first
+  if (submittedPhone) {
+    queue.forEach(function(q) {
+      if (!matched && _normalisePhone(q.phone) === submittedPhone) matched = q;
+    });
+  }
+
+  // Fallback: match by email via HubSpot lookup
+  if (!matched && submittedEmail) {
+    queue.forEach(function(q) {
+      if (matched) return;
+      try {
+        var hs = fetchHubspotByJlid(q.jlid);
+        if (hs && hs.success && (hs.data.parentEmail || '').toLowerCase() === submittedEmail.toLowerCase()) {
+          matched = q;
+        }
+      } catch(le) {}
+    });
+  }
+
+  // Last resort: if only one entry in queue, assume it's the one
+  if (!matched && queue.length === 1) {
+    matched = queue[0];
+    Logger.log('[KitAddrWebhook] Single queue entry — assuming match: JLID=' + matched.jlid);
+  }
+
+  if (!matched) {
+    Logger.log('[KitAddrWebhook] No matching queue entry found — poll will catch it shortly');
+    return;
+  }
+
+  Logger.log('[KitAddrWebhook] Matched JLID=' + matched.jlid + ' kit=' + matched.kitName);
+
+  // Send confirmation WATI immediately — {{1}}=Parent {{2}}=Kit
+  var confirmSent = false;
+  if (matched.phone) {
+    try {
+      var wRes = sendWatiMessage(matched.phone, 'kit_address_received_confirmation', [
+        { name: '1', value: matched.parentName || '' },
+        { name: '2', value: matched.kitName    || '' }
+      ]);
+      confirmSent = !!(wRes && wRes.success);
+      Logger.log('[KitAddrWebhook] WATI confirmation sent=' + confirmSent);
+    } catch(we) {
+      Logger.log('[KitAddrWebhook] WATI error: ' + we.message);
+    }
+  }
+
+  // Update sheet row if exists
+  if (matched.rowIndex > 0) {
+    try {
+      var sh = _getKitSheet();
+      sh.getRange(matched.rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
+      sh.getRange(matched.rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    } catch(se) {}
+  }
+
+  // Clear cache + queue
+  if (matched.phone) {
+    try { CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + matched.phone); } catch(ce) {}
+  }
+  _kitAddrQueueRemove(matched.jlid);
+
+  Logger.log('[KitAddrWebhook] Done. JLID=' + matched.jlid + ' address="' + addrStr + '" confirm=' + confirmSent);
+}
+
+// ── Register 1-min address poll trigger (fallback) ────────────────────────────
+function setupKitAddressPollTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'pollPendingKitAddresses') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('pollPendingKitAddresses').timeBased().everyMinutes(1).create();
+  Logger.log('[KitTracking] 1-min kit address poll trigger created.');
 }
 
 // ── Get Kit Tracking sheet ────────────────────────────────────────────────────
@@ -509,6 +1024,48 @@ function handleKitReply(waId, buttonText) {
   }
 }
 
+// ── ONE-TIME DIAGNOSTIC — find correct HubSpot internal names + enum values ───
+// Run from GAS editor → check Execution Log
+function diagKitHubSpotProperties() {
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  if (!token) { Logger.log('[KitDiag] No HUBSPOT_API_KEY set'); return; }
+
+  // 1. Check deal property names for learning kit cost
+  var costProps = ['learning_kit_cost', 'learning_kits_total_cost', 'total_learning_kit_cost', 'kit_cost'];
+  Logger.log('[KitDiag] === Checking Learning Kit Cost property names ===');
+  costProps.forEach(function(prop) {
+    Utilities.sleep(800);
+    var r = monitoredFetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() === 200) {
+      var d = JSON.parse(r.getContentText());
+      Logger.log('[KitDiag] FOUND: "' + prop + '" | label: "' + d.label + '" | type: ' + d.fieldType);
+    } else {
+      Logger.log('[KitDiag] NOT FOUND: "' + prop + '" (HTTP ' + r.getResponseCode() + ')');
+    }
+  });
+
+  // 2. Check kit status enum values
+  Logger.log('[KitDiag] === Checking kit status enum values ===');
+  var kitProps = ['microbit_kit_status', 'makey_makey_kit_status', 'vr_headset__oculus_status', 'arduino_kit_status'];
+  kitProps.forEach(function(prop) {
+    Utilities.sleep(800);
+    var r = monitoredFetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    if (r.getResponseCode() !== 200) {
+      Logger.log('[KitDiag] "' + prop + '" HTTP ' + r.getResponseCode() + ' (not found)');
+      return;
+    }
+    var d = JSON.parse(r.getContentText());
+    var options = (d.options || []).map(function(o) { return '"' + o.value + '" -> ' + o.label; });
+    Logger.log('[KitDiag] "' + prop + '":\n  ' + (options.length ? options.join('\n  ') : '(no options)'));
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ONE-TIME DIAGNOSTIC � run manually to see valid enum values for kit properties
 function diagKitEnumValues() {
@@ -793,13 +1350,29 @@ function fetchKitLearnerDetails(jlid) {
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success) return { success: false, message: (hs && hs.message) || 'Learner not found for JLID: ' + jlid };
     var d = hs.data;
+
+    // Fetch delivery address from HubSpot contact
+    var addrObj  = d.dealId ? _fetchContactAddress(d.dealId) : {};
+    var addrStr  = [addrObj.address, addrObj.city, addrObj.state, addrObj.zip, addrObj.country]
+      .filter(function(p) { return p && String(p).trim(); }).join(', ');
+    var hasAddr  = !!(addrStr);
+
+    // Check if address request already pending in cache
+    var phone        = _normalisePhone(d.parentContact || '');
+    var addrPending  = phone ? !!(CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone)) : false;
+
     return {
-      success:      true,
-      learnerName:  d.learnerName   || '',
-      subscription: d.planName      || '',   // subscription property
-      country:      d.country       || '',
-      kitCostSoFar: d.learningKitCost || 0,  // existing learning_kit_cost
-      dealId:       d.dealId        || ''
+      success:          true,
+      learnerName:      d.learnerName      || '',
+      subscription:     d.planName         || '',
+      country:          d.country          || '',
+      kitCostSoFar:     d.learningKitCost  || 0,
+      dealId:           d.dealId           || '',
+      phone:            phone,
+      deliveryAddress:  addrStr,       // existing address shown as reference only — always reconfirm
+      hasAddress:       hasAddr,        // true = address exists but still needs reconfirmation
+      addressPending:   addrPending,    // WATI already sent this session, awaiting new reply
+      addressStale:     hasAddr         // always treat existing address as potentially stale
     };
   } catch (e) {
     Logger.log('[KitTracking] fetchKitLearnerDetails ERROR: ' + e.message);
@@ -877,7 +1450,9 @@ function addKitEntry(data) {
       [13, data.subscription || ''],     // M: Current Subscription
       [14, data.roadmap      || ''],     // N: Roadmap
       [15, data.sentBy       || ''],     // O: Name
-      [16, jlid]                         // P: JLID
+      [16, jlid],                        // P: JLID
+      [KIT_COL.DELIVERY_ADDRESS, data.deliveryAddress || ''],  // W: Delivery Address
+      [KIT_COL.ADDR_STATUS,      data.deliveryAddress ? 'Verified' : '']  // X: Addr Status
     ];
     writeMap.forEach(function(pair) {
       sheet.getRange(writeRow, pair[0]).setValue(pair[1]);
@@ -896,13 +1471,13 @@ function addKitEntry(data) {
           var kitProp  = _kitPropertyForType(data.kit || '');
           var hsProps  = {};
 
-          // Kit status → "Sent by Us"
+          // Kit status → "Sent by Us" (internal enum = "Sent")
           if (kitProp) hsProps[kitProp] = 'Sent';
 
-          // Accumulate learning_kit_cost
+          // Accumulate learning_kit_cost — send as number, not string
           if (price > 0) {
             var existing = parseFloat(hs.data.learningKitCost) || 0;
-            hsProps['learning_kit_cost'] = String(existing + price);
+            hsProps['learning_kit_cost'] = existing + price;  // numeric, not String()
           }
 
           // Update subscription plan if provided
@@ -915,11 +1490,15 @@ function addKitEntry(data) {
               payload: JSON.stringify({ properties: hsProps }),
               muteHttpExceptions: true
             });
-            Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchResp.getResponseCode() + ' props=' + JSON.stringify(hsProps));
+            var patchCode = patchResp.getResponseCode();
+            Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchCode + ' props=' + JSON.stringify(hsProps));
+            if (patchCode !== 200) {
+              Logger.log('[KitTracking] addKitEntry PATCH ERROR body: ' + patchResp.getContentText().substring(0, 400));
+            }
           }
         }
       } catch (hsErr) {
-        Logger.log('[KitTracking] learning_kit_cost update ERROR (non-fatal): ' + hsErr.message);
+        Logger.log('[KitTracking] HubSpot kit update ERROR (non-fatal): ' + hsErr.message);
       }
     }
 
@@ -933,8 +1512,14 @@ function addKitEntry(data) {
           var kd = hsKitOrder.data;
           var kitPhone = _normalisePhone(kd.parentContact || '');
           var kitParentName = kd.parentName || data.learnerName || '';
-          var contactAddr = kd.dealId ? _fetchContactAddress(kd.dealId) : {};
-          var deliveryAddrStr = _buildKitAddress(data.learnerName || '', contactAddr, kd.country || data.country || '');
+          // Use address passed from UI (collected from parent or HubSpot) — only fall back to HS fetch if not provided
+          var deliveryAddrStr = '';
+          if (data.deliveryAddress && String(data.deliveryAddress).trim()) {
+            deliveryAddrStr = 'Delivery to ' + (data.learnerName || '') + ', ' + String(data.deliveryAddress).trim();
+          } else {
+            var contactAddr = kd.dealId ? _fetchContactAddress(kd.dealId) : {};
+            deliveryAddrStr = _buildKitAddress(data.learnerName || '', contactAddr, kd.country || data.country || '');
+          }
 
           // Format delivery date for WATI (ETA)
           var watiDeliveryDate = data.eta || '';

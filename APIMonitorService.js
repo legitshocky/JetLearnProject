@@ -312,7 +312,9 @@ function logApiCall(serviceName, functionName, success, responseCode, errorDetai
     functionStats.lastError = success ? '' : String(errorDetails || '');
 
     writeMonitorCache_(usageKey, usage);
-    upsertApiDailySummaryRow_(dateKey, serviceName, functionName, functionStats);
+    // Sheet writes disabled — sheets were growing too large and slowing every API call.
+    // In-memory cache stats above still power the System Health panel.
+    // upsertApiDailySummaryRow_(dateKey, serviceName, functionName, functionStats);
 
     if (!success) {
       const failures = readMonitorCache_(failureKey, []);
@@ -326,7 +328,7 @@ function logApiCall(serviceName, functionName, success, responseCode, errorDetai
       };
       failures.unshift(failureEntry);
       writeMonitorCache_(failureKey, failures.slice(0, API_FAILURE_LOG_LIMIT));
-      appendPersistentApiFailureLog_(failureEntry);
+      // appendPersistentApiFailureLog_(failureEntry);
     }
   });
 }

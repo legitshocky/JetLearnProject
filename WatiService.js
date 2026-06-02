@@ -823,6 +823,102 @@ function sendWatiTemplate(parentContact, templateId, params, manualOverridePhone
 }
 
 
+// ═══════════════════════════════════════════════════════════
+// IN-APP WATI CHAT — get messages + send from dashboard
+// ═══════════════════════════════════════════════════════════
+
+// ── Fetch last N messages for a contact (by JLID or phone) ──
+function getWatiChatData(identifier, context) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var base  = (props.getProperty('WATI_API_ENDPOINT') || '').trim().replace(/\/$/, '');
+    var token = (props.getProperty('WATI_ACCESS_TOKEN')  || '').trim();
+    if (!token.startsWith('Bearer ')) token = 'Bearer ' + token;
+    if (!base || !token) return { success: false, error: 'WATI config missing' };
+
+    // Resolve phone + parent name
+    var phone = '', parentName = '';
+    if (/^JL\d+/i.test(String(identifier || ''))) {
+      var hs = fetchHubspotByJlid(identifier);
+      if (hs && hs.success && hs.data) {
+        phone      = String(hs.data.parentContact || '').replace(/\D/g, '');
+        parentName = hs.data.parentName || '';
+      }
+    } else {
+      phone = String(identifier || '').replace(/\D/g, '');
+    }
+    if (!phone) return { success: false, error: 'Phone not found for: ' + identifier };
+
+    // Fetch messages
+    var resp = monitoredFetch(base + '/api/v1/getMessages/' + phone + '?pageSize=20', {
+      method: 'get', headers: { 'Authorization': token }, muteHttpExceptions: true
+    });
+
+    var messages = [], withinWindow = false;
+    if (resp.getResponseCode() === 200) {
+      var data  = JSON.parse(resp.getContentText());
+      var items = (data.messages && data.messages.items) ? data.messages.items : [];
+
+      // WATI returns newest-first — reverse so oldest shows at top
+      messages = items.slice().reverse().map(function(m) {
+        return {
+          text:      m.text || m.body || '',
+          direction: (String(m.type || '') === '0') ? 'in' : 'out',
+          timestamp: m.created || m.timestamp || '',
+          owner:     m.owner || ''
+        };
+      });
+
+      // 24hr window: last incoming message within 24 hours?
+      var incoming = items.filter(function(m) { return String(m.type) === '0'; });
+      if (incoming.length) {
+        var lastMs = new Date(incoming[0].created || incoming[0].timestamp || 0).getTime();
+        withinWindow = (Date.now() - lastMs) < 86400000;
+      }
+    }
+
+    return { success: true, phone: phone, parentName: parentName,
+             messages: messages, withinWindow: withinWindow, context: context || 'general' };
+
+  } catch(e) {
+    Logger.log('[getWatiChatData] ERROR: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ── Send WATI message: session (free-text) or template ───────
+function sendWatiChat(phone, messageType, payload) {
+  var cleanPhone = String(phone || '').replace(/\D/g, '');
+  if (!cleanPhone) return { success: false, error: 'No phone number' };
+  try {
+    if (messageType === 'session') {
+      var props = PropertiesService.getScriptProperties();
+      var base  = (props.getProperty('WATI_API_ENDPOINT') || '').trim().replace(/\/$/, '');
+      var token = (props.getProperty('WATI_ACCESS_TOKEN')  || '').trim();
+      if (!token.startsWith('Bearer ')) token = 'Bearer ' + token;
+      var resp = monitoredFetch(base + '/api/v1/sendSessionMessage/' + cleanPhone, {
+        method:  'post',
+        headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ message: String(payload.message || '') }),
+        muteHttpExceptions: true
+      });
+      var code = resp.getResponseCode();
+      Logger.log('[sendWatiChat] session phone=' + cleanPhone + ' HTTP=' + code);
+      if (code !== 200 && code !== 201) {
+        Logger.log('[sendWatiChat] body: ' + resp.getContentText().substring(0, 300));
+      }
+      return { success: code === 200 || code === 201, httpCode: code };
+
+    } else if (messageType === 'template') {
+      return sendWatiMessage(cleanPhone, payload.templateName || '', payload.params || []);
+    }
+    return { success: false, error: 'Unknown messageType' };
+  } catch(e) {
+    Logger.log('[sendWatiChat] ERROR: ' + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
 function testWatiConnection() {
   var p = PropertiesService.getScriptProperties();
   var endpoint = (p.getProperty('WATI_API_ENDPOINT') || '').trim();

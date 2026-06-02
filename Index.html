@@ -3322,6 +3322,11 @@
         <i class="fas fa-tasks" style="margin-right:5px;color:#6366f1;"></i>Task Queue
         <span id="opsTaskBadge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:0.1rem 0.4rem;font-size:0.7rem;margin-left:4px;">0</span>
       </button>
+      <button id="opsTabOnboarding" onclick="switchOpsTab('opsOnboarding')" class="btn btn-sm"
+        style="border-radius:7px;padding:6px 18px;font-size:0.82rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-user-check" style="margin-right:5px;color:#10b981;"></i>Onboarding
+        <span id="opsOnboardingBadge" style="display:none;background:#10b981;color:#fff;border-radius:10px;padding:0.1rem 0.4rem;font-size:0.7rem;margin-left:4px;">0</span>
+      </button>
     </div>
 
     <!-- ── TAB: KIT ORDER ── -->
@@ -3481,6 +3486,38 @@
 
     </div><!-- end opsTaskQueue tab -->
 
+    <!-- ── TAB: ONBOARDING CHECKLIST ── -->
+    <div id="opsOnboarding" class="ops-tab-content" style="display:none;">
+
+      <!-- Header row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:#1e293b;">Payment Received — Onboarding Checklist</div>
+          <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">Send welcome WATI · post HubSpot note · update practice doc link</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="loadOnboardingChecklist()">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div id="opsObLoadingState" style="text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:1rem;"></i>
+        Loading Payment Received deals...
+      </div>
+
+      <!-- Empty state -->
+      <div id="opsObEmptyState" style="display:none;text-align:center;padding:3rem;color:#94a3b8;">
+        <i class="fas fa-check-circle" style="font-size:2.5rem;display:block;margin-bottom:0.75rem;color:#10b981;"></i>
+        <div style="font-weight:600;font-size:1rem;color:#1e293b;margin-bottom:4px;">All caught up!</div>
+        <div style="font-size:0.82rem;">No deals in Payment Received stage.</div>
+      </div>
+
+      <!-- Deals grid -->
+      <div id="opsObGrid" style="display:none;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:1.25rem;"></div>
+
+    </div><!-- end opsOnboarding tab -->
+
   </div><!-- end operationsPage -->
 
   <!-- ══════════════════════════════════════════════════════════
@@ -3601,6 +3638,7 @@
           <div id="ktfFetchResult" style="display:none;margin-top:8px;font-size:0.78rem;"></div>
         </div>
 
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
 
           <!-- Learner Name -->
@@ -3612,7 +3650,7 @@
           <!-- Kit -->
           <div>
             <label class="form-label">Kit *</label>
-            <select id="ktfKit" class="form-control form-select">
+            <select id="ktfKit" class="form-control form-select" onchange="ktOnKitChange()">
               <option value="">Select kit…</option>
               <option>Microbit</option>
               <option>Makey Makey</option>
@@ -3625,6 +3663,24 @@
           <div>
             <label class="form-label">Country *</label>
             <input type="text" id="ktfCountry" class="form-control" placeholder="e.g. UK">
+          </div>
+
+          <!-- ── Delivery Address (full width, after kit+country) ── -->
+          <div id="ktfAddressSection" style="display:none;grid-column:1/-1;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:0.85rem;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label class="form-label" style="margin:0;font-size:0.78rem;font-weight:600;">📦 Delivery Address</label>
+              <span id="ktfAddressStatus" style="font-size:0.74rem;color:#64748b;"></span>
+            </div>
+            <textarea id="ktfDeliveryAddress" class="form-control" rows="2" style="font-size:0.82rem;resize:vertical;" placeholder="Street, City, Postcode, Country"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button type="button" id="ktfRequestAddrBtn" onclick="ktRequestAddress()" class="btn btn-sm" style="display:none;background:#25D366;color:#fff;border:none;font-size:0.76rem;">
+                <i class="fab fa-whatsapp"></i> Request via WhatsApp
+              </button>
+              <button type="button" id="ktfCheckAddrBtn" onclick="ktCheckAddressReply()" class="btn btn-outline-secondary btn-sm" style="display:none;font-size:0.76rem;">
+                <i class="fas fa-sync-alt"></i> Check for Reply
+              </button>
+            </div>
+            <div style="font-size:0.7rem;color:#94a3b8;margin-top:4px;">Select kit first, then request address confirmation from parent via WhatsApp.</div>
           </div>
 
           <!-- Price -->
@@ -4758,8 +4814,11 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th>Course Name</th>
-                <th>Status / Proficiency</th>
+                <th>Course</th>
+                <th>Proficiency</th>
+                <th style="text-align:center;">Learners</th>
+                <th style="text-align:center;">Ages</th>
+                <th>Since</th>
               </tr>
             </thead>
             <tbody id="teacherLoadModalBody">
@@ -4783,7 +4842,33 @@
     </div>
     <div class="modal-body">
       <div id="changelogContent" style="font-size: 0.95rem; line-height: 1.6;">
-        <!-- Content Injected via JS -->
+        <ul class="mismatch-list" style="border:none;">
+          <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+            <strong>&#9889; Migration Intelligence &#8212; Fast Load</strong><br>
+            Popup now loads ~3x faster. Eliminated duplicate HubSpot ticket search call, skipped 500-row audit log read, and added 3-minute CacheService TTL so repeated triggers are near-instant.
+          </li>
+          <li style="border-left: 3px solid #ef4444; background: #fef2f222; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128336; Migration Intelligence &#8212; Last Migration Fixed</strong><br>
+            "Last migration" now shows the previous <em>completed</em> ticket (not the current open WIP ticket). Includes days-since count &#8212; e.g. "14 May 2026 (12 days ago)".
+          </li>
+          <li style="border-left: 3px solid #f59e0b; background: #fffbeb; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128225; Migration Center &#8212; Communication Tracker</strong><br>
+            New panel at bottom of Migration Center shows all completed migrations this month with per-ticket comms status: Parent WhatsApp, New Teacher Email, Old Teacher Email. Red rows = no comms sent via tool.
+          </li>
+          <li style="border-left: 3px solid #10b981; background: #f0fdf4; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128197; Email Scheduling &#8212; Send Now / Schedule Modal</strong><br>
+            Send Email now opens a modal: Send Now (fires immediately) or Schedule for Later (date picker &#8212; queued to Email Queue sheet, sent at 8am on chosen date).
+          </li>
+          <li style="border-left: 3px solid #6366f1; background: #ede9fe22; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128203; Operations &#8212; Task Queue Table View</strong><br>
+            Task Queue tab replaced card layout with flat HubSpot-style table. Columns: status &#183; Title &#183; Deal &#183; Ticket &#183; Type &#183; Due Date &#183; Assigned To &#183; Actions.
+          </li>
+          <li style="border-left: 3px solid #3b82f6; background: #eff6ff; padding: 10px; margin-bottom: 10px;">
+            <strong>&#128230; Kit Entry &#8212; Store Selector &amp; Subscription Sync</strong><br>
+            Add Kit Entry modal now has Amazon / DigiKey / Other store buttons. Amazon domain picker per region. Subscription field now correctly PATCHes HubSpot deal.
+          </li>
+        </ul>
+        <p style="margin-top:15px; font-size:0.85em; color:#666;">Contact Ops Team if data still looks incorrect.</p>
       </div>
     </div>
     <div class="modal-footer">
@@ -6523,6 +6608,56 @@
   </div>
 </div>
 <!-- END STUCK MIGRATIONS MODAL -->
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- WATI IN-APP CHAT MODAL                                 -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="watiChatModal" style="z-index:9999;">
+  <div class="modal" style="max-width:500px;height:88vh;display:flex;flex-direction:column;padding:0;border-radius:16px;overflow:hidden;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:#075e54;flex-shrink:0;">
+      <div style="width:38px;height:38px;border-radius:50%;background:#25d366;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">💬</div>
+      <div style="flex:1;min-width:0;">
+        <div id="watiChatTitle" style="font-weight:700;color:#fff;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">WhatsApp Chat</div>
+        <div id="watiChatSubtitle" style="font-size:0.72rem;color:#b2dfdb;margin-top:1px;"></div>
+      </div>
+      <button onclick="closeWatiChat()" style="background:none;border:none;color:#b2dfdb;font-size:1.3rem;cursor:pointer;padding:4px;line-height:1;">×</button>
+    </div>
+
+    <!-- Message area -->
+    <div id="watiChatMessages" style="flex:1;overflow-y:auto;padding:14px;background:#e5ddd5;display:flex;flex-direction:column;gap:8px;">
+      <div style="text-align:center;color:#6b7280;font-size:0.8rem;padding:2rem;">
+        <i class="fas fa-spinner fa-spin" style="display:block;font-size:1.4rem;margin-bottom:8px;"></i>Loading messages…
+      </div>
+    </div>
+
+    <!-- Quick templates -->
+    <div id="watiChatTemplates" style="padding:8px 12px;border-top:1px solid #e2e8f0;background:#fff;display:none;flex-wrap:wrap;gap:6px;align-items:center;flex-shrink:0;"></div>
+
+    <!-- Input -->
+    <div style="padding:10px 12px;border-top:1px solid #e2e8f0;background:#fff;flex-shrink:0;">
+      <div id="watiWindowWarning" style="display:none;font-size:0.72rem;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:6px 10px;margin-bottom:8px;">
+        ⚠ Outside 24 hr window — parent hasn't messaged recently. Use template buttons or WATI direct.
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <textarea id="watiChatInput" rows="2"
+          placeholder="Type a message…"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendWatiChatMessage();}"
+          style="flex:1;border:1.5px solid #e2e8f0;border-radius:10px;padding:8px 12px;font-size:0.85rem;resize:none;font-family:inherit;outline:none;transition:border .15s;"
+          onfocus="this.style.borderColor='#25d366'" onblur="this.style.borderColor='#e2e8f0'"></textarea>
+        <button id="watiChatSendBtn" onclick="sendWatiChatMessage()"
+          style="background:#25d366;color:#fff;border:none;border-radius:10px;padding:10px 14px;cursor:pointer;font-size:1rem;flex-shrink:0;transition:background .15s;"
+          onmouseover="this.style.background='#128c7e'" onmouseout="this.style.background='#25d366'">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+      <div id="watiChatStatus" style="font-size:0.72rem;margin-top:5px;min-height:16px;"></div>
+    </div>
+
+  </div>
+</div>
+<!-- END WATI CHAT MODAL -->
 
 
 </body>

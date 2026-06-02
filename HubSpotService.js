@@ -2263,7 +2263,7 @@ function checkTeacherSlotForMigration(teacherName, slotParams) {
  * @param {string}   jlid — learner JLID to check teacher history against
  * @returns {{success, alternatives: [{teacherName, courses, wasEverAssigned, escalationCount, isAffinityCase}]}}
  */
-function findUpskillAlternatives(courseLabels, excludeTeacher, jlid) {
+function findUpskillAlternatives(courseLabels, excludeTeacher, jlid, learnerAge) {
   try {
     var sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
     if (!sheetData || sheetData.length < 2) return { success: false, alternatives: [] };
@@ -2349,6 +2349,94 @@ function findUpskillAlternatives(courseLabels, excludeTeacher, jlid) {
         alt.lastAssignedDate = lastAssigned;
       });
     }
+
+    // ── Enrich with learner stats (one shared HubSpot call via cache) ──
+    var statsMap    = _buildAllTeacherStatsMap();
+    var learnerAgeN = parseInt(learnerAge || '', 10) || 0;
+
+    // Fuzzy teacher lookup: exact → first-name fallback
+    function _findTeacherStats(teacherName) {
+      var tKey = (teacherName || '').trim().toLowerCase();
+      if (statsMap[tKey]) return statsMap[tKey];
+      // First-name fallback
+      var firstName = tKey.split(/\s+/)[0];
+      if (firstName && firstName.length > 3) {
+        var fk = Object.keys(statsMap).find(function(k) {
+          return k.split(/\s+/)[0] === firstName;
+        });
+        if (fk) return statsMap[fk];
+      }
+      return {};
+    }
+
+    // Fuzzy course key lookup: exact → prefix/word-overlap
+    function _findCourseKey(tStats, courseName) {
+      var keys = Object.keys(tStats);
+      var cl = (courseName || '').toLowerCase().trim();
+      // Pass 1: exact
+      for (var i = 0; i < keys.length; i++) { if (keys[i].toLowerCase() === cl) return keys[i]; }
+      // Pass 2: prefix or word overlap
+      var prefix   = cl.substring(0, 15);
+      var appWords = cl.split(/\s+/).filter(function(w){ return w.length > 3; });
+      for (var j = 0; j < keys.length; j++) {
+        var kl = keys[j].toLowerCase();
+        if (prefix.length >= 10 && (kl.indexOf(prefix) !== -1 || cl.indexOf(kl.substring(0,15)) !== -1)) return keys[j];
+        var sheetWords = kl.split(/\s+/).filter(function(w){ return w.length > 3; });
+        if (appWords.length && sheetWords.length) {
+          var overlap = appWords.filter(function(w){ return sheetWords.indexOf(w) > -1; }).length;
+          if (overlap >= Math.ceil(Math.min(appWords.length, sheetWords.length) * 0.6)) return keys[j];
+        }
+      }
+      return null;
+    }
+
+    alternatives.forEach(function(alt) {
+      var teacherStats = _findTeacherStats(alt.teacherName);
+
+      // Per-course stats for the required courses
+      alt.courses.forEach(function(cd) {
+        var matchKey = _findCourseKey(teacherStats, cd.course);
+        var s = matchKey ? teacherStats[matchKey] : null;
+        if (s) {
+          cd.learnerCount  = s.count;
+          cd.ageRange      = _ageRangeStr(s.ages);
+          cd.avgAge        = s.ages.length ? Math.round(s.ages.reduce(function(a,b){return a+b;},0)/s.ages.length) : null;
+          var sorted       = s.startDates.slice().sort(function(a,b){return a-b;});
+          cd.teachingSince = sorted.length ? Utilities.formatDate(sorted[0], Session.getScriptTimeZone(), 'MMM yyyy') : null;
+        } else {
+          cd.learnerCount = 0; cd.ageRange = null; cd.avgAge = null; cd.teachingSince = null;
+        }
+      });
+
+      // Age fit: use primary course stats vs requested learner age
+      var primary  = alt.courses[0] || {};
+      var ageMatch = true;
+      if (learnerAgeN > 0 && primary.ageRange) {
+        var parts = primary.ageRange.replace(' yrs','').split('–');
+        var minA  = parseInt(parts[0], 10);
+        var maxA  = parseInt(parts[parts.length - 1], 10);
+        ageMatch  = learnerAgeN >= minA - 2 && learnerAgeN <= maxA + 2;
+      }
+      alt.ageMatch = ageMatch;
+
+      // Ideal: proficiency 100% on all + experience (≥2 learners on primary course) + age fits
+      var allHundred = alt.courses.every(function(c) { return c.proficiency === '100%'; });
+      alt.isIdeal    = allHundred && (primary.learnerCount || 0) >= 2 && ageMatch;
+
+      // Upskill history
+      alt.upskillHistory = _getTeacherUpskillHistory(alt.teacherName);
+    });
+
+    // Re-sort: ideal first, then 100% proficiency, then learner count desc
+    alternatives.sort(function(a, b) {
+      if (a.isIdeal !== b.isIdeal) return a.isIdeal ? -1 : 1;
+      var aAll = a.courses.every(function(c) { return c.proficiency === '100%'; });
+      var bAll = b.courses.every(function(c) { return c.proficiency === '100%'; });
+      if (aAll !== bAll) return bAll ? 1 : -1;
+      var aCount = (a.courses[0] && a.courses[0].learnerCount) || 0;
+      var bCount = (b.courses[0] && b.courses[0].learnerCount) || 0;
+      return bCount - aCount;
+    });
 
     return { success: true, alternatives: alternatives };
   } catch(e) {
@@ -2669,10 +2757,20 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
 }
 
 function getTeacherAttritionReport(teacherName) {
+  // 10-minute cache per teacher — HubSpot deal search, expensive
+  var _tarCacheKey = 'teacherAttrition_' + String(teacherName || '').toLowerCase().replace(/\s+/g, '_');
+  try {
+    var _tarCached = CacheService.getScriptCache().get(_tarCacheKey);
+    if (_tarCached) {
+      Logger.log('[getTeacherAttritionReport] Cache hit for: ' + teacherName);
+      return JSON.parse(_tarCached);
+    }
+  } catch(ce) {}
+
   var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/deals/search';
   var PORTAL_ID = '7729491';
- 
+
   var resolvedName = resolveTeacherName(teacherName);
   Logger.log('[getTeacherAttritionReport] "' + teacherName + '" → "' + resolvedName + '"');
 
@@ -2822,8 +2920,10 @@ function getTeacherAttritionReport(teacherName) {
     });
  
     students.sort(function(a, b) { return b.recentMoves - a.recentMoves; });
-    return { success: true, students: students, teacher: resolvedName };
- 
+    var _tarResult = { success: true, students: students, teacher: resolvedName };
+    try { CacheService.getScriptCache().put(_tarCacheKey, JSON.stringify(_tarResult), 600); } catch(ce) {}
+    return _tarResult;
+
   } catch (e) {
     Logger.log('Error in getTeacherAttritionReport: ' + e.message);
     return { success: false, message: e.message };
@@ -2881,6 +2981,16 @@ function getMigrationHistoryStatsByTeacher(teacherName) {
 function getActiveLearnersPerTeacher() {
   Logger.log('[HubSpot] getActiveLearnersPerTeacher started');
 
+  // 15-minute cache — this is a paginated scan of ~2500+ deals, very expensive uncached
+  const _alptCache = CacheService.getScriptCache();
+  try {
+    const _alptCached = _alptCache.get('activeLearnersPerTeacher');
+    if (_alptCached) {
+      Logger.log('[HubSpot] getActiveLearnersPerTeacher: cache hit');
+      return JSON.parse(_alptCached);
+    }
+  } catch(ce) {}
+
   const token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   const searchUrl  = 'https://api.hubapi.com/crm/v3/objects/deals/search';
   const counts     = {};
@@ -2936,6 +3046,7 @@ function getActiveLearnersPerTeacher() {
     } while (after && page < MAX_PAGES);
 
     Logger.log('[HubSpot] getActiveLearnersPerTeacher done. Teachers found: ' + Object.keys(counts).length);
+    try { _alptCache.put('activeLearnersPerTeacher', JSON.stringify(counts), 900); } catch(ce) {}
     return counts;
 
   } catch (e) {
@@ -2994,6 +3105,12 @@ function getEscalatedTeachersLast90Days() {
 }
 
 function getTeacherEscalationHistory(teacherName) {
+  var _tescCacheKey = 'tchEscalation_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_');
+  try {
+    var _tescCached = CacheService.getScriptCache().get(_tescCacheKey);
+    if (_tescCached) { return JSON.parse(_tescCached); }
+  } catch(ce) {}
+
   var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
   var MIGRATION_PIPELINE_ID = '66161281';
@@ -3073,8 +3190,10 @@ function getTeacherEscalationHistory(teacherName) {
       var db = b.triggeredDate!=='N/A'?new Date(b.triggeredDate.split('/').reverse().join('-')):new Date(0);
       return db-da;
     });
-    return { success:true, totalCount:escalationTickets.length, byReason:byReason, tickets:tickets,
+    var _tescResult = { success:true, totalCount:escalationTickets.length, byReason:byReason, tickets:tickets,
              lastEscalationDate: lastEscalationDate ? lastEscalationDate.toLocaleDateString('en-GB') : null };
+    try { CacheService.getScriptCache().put(_tescCacheKey, JSON.stringify(_tescResult), 900); } catch(ce) {}
+    return _tescResult;
   } catch(e) {
     Logger.log('[getTeacherEscalationHistory] Error: ' + e.message);
     return { success: false, message: e.message };
@@ -3112,7 +3231,7 @@ function getTotalActiveLearnerCount() {
 
 function getNewDashboardData() {
   try {
-    // --- CACHE CHECK (5 minute cache) ---
+    // --- CACHE CHECK (15 minute cache) ---
     const cache = CacheService.getScriptCache();
     const cached = cache.get('newDashboardData');
     if (cached) {
@@ -3131,16 +3250,22 @@ function getNewDashboardData() {
                                  thisMonthStart.toISOString().split('T')[0],
                                  today.toISOString().split('T')[0]
                                );
+    // skipAI=true — Gemini call is not needed here, saves 2–5s per report call
     const migrationsLast30d  = getEnhancedMigrationReport({
                                  startDate: thirtyDaysAgo.toISOString().split('T')[0],
-                                 endDate:   today.toISOString().split('T')[0]
+                                 endDate:   today.toISOString().split('T')[0],
+                                 skipAI:    true
                                }).data;
     const migrationsPrev30d  = getEnhancedMigrationReport({
                                  startDate: sixtyDaysAgo.toISOString().split('T')[0],
-                                 endDate:   thirtyDaysAgo.toISOString().split('T')[0]
+                                 endDate:   thirtyDaysAgo.toISOString().split('T')[0],
+                                 skipAI:    true
                                }).data;
     const activeLearnerCount = getTotalActiveLearnerCount().total;
-    const { onboardings }    = getDashboardStatistics();
+    // Use calculateDashboardStats (sheet-only) instead of getDashboardStatistics (which fires
+    // an extra HubSpot API call we don't need — activeLearnerCount already fetched above).
+    const dashStats          = calculateDashboardStats();
+    const onboardings        = dashStats.onboardings;
 
     // --- 2. Process Metrics ---
 
@@ -3236,13 +3361,16 @@ if (migrationsLast30d && migrationsLast30d.topUnstableLearners && migrationsLast
             change: Math.round(successRateChange)
           }
         },
-        actionCards: actionCards.slice(0, 3)
+        actionCards:      actionCards.slice(0, 3),
+        // Bundled so frontend needs only ONE GAS call for entire dashboard
+        recentActivities: dashStats.recentActivities || [],
+        migrationReasons: (migrationsLast30d && migrationsLast30d.reasonBreakdown) ? migrationsLast30d.reasonBreakdown : []
       }
     };
 
-    // --- 5. Cache for 5 minutes ---
+    // --- 5. Cache for 15 minutes ---
     try {
-      cache.put('newDashboardData', JSON.stringify(result), 300);
+      cache.put('newDashboardData', JSON.stringify(result), 900);
     } catch (cacheErr) {
       Logger.log('[getNewDashboardData] Cache write failed: ' + cacheErr.message);
     }
@@ -3310,6 +3438,12 @@ function fetchPersonaSmartData(jlid) {
 function getTeacherReplacementHistory(teacherName) {
   try {
     if (!teacherName) return { success: false, message: 'Teacher name required.' };
+
+    var _trhCacheKey = 'tchRepHistory_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_');
+    try {
+      var _trhCached = CacheService.getScriptCache().get(_trhCacheKey);
+      if (_trhCached) { return JSON.parse(_trhCached); }
+    } catch(ce) {}
 
     var token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     var PORTAL_ID  = '7729491';
@@ -3416,7 +3550,7 @@ function getTeacherReplacementHistory(teacherName) {
     var leftCount   = results.filter(function(r) { return r.direction === 'left';   }).length;
     var joinedCount = results.filter(function(r) { return r.direction === 'joined'; }).length;
 
-    return {
+    var _trhResult = {
       success:     true,
       teacherName: teacherName,
       total:       results.length,
@@ -3424,6 +3558,8 @@ function getTeacherReplacementHistory(teacherName) {
       joinedCount: joinedCount,
       history:     results
     };
+    try { CacheService.getScriptCache().put(_trhCacheKey, JSON.stringify(_trhResult), 900); } catch(ce) {}
+    return _trhResult;
   } catch(e) {
     Logger.log('[getTeacherReplacementHistory] Error: ' + e.message);
     return { success: false, message: e.message };

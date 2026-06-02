@@ -247,13 +247,24 @@ function getMigrationTrends(days = 30) {
 //Monthly & AI Reports:
 function getEnhancedMigrationReport(params) {
     try {
+        const skipAI = params.skipAI || false;
         const toDate = new Date(params.toDate || params.endDate);
         toDate.setHours(23, 59, 59, 999);
         const fromDate = new Date(params.fromDate || params.startDate);
         fromDate.setHours(0, 0, 0, 0);
 
+        // 10-minute cache keyed by date range + skipAI flag
+        const cacheKey = 'migReport_' + fromDate.toISOString().split('T')[0] + '_' + toDate.toISOString().split('T')[0] + (skipAI ? '_noai' : '');
+        try {
+            const cached = CacheService.getScriptCache().get(cacheKey);
+            if (cached) {
+                Logger.log('[getEnhancedMigrationReport] Cache hit: ' + cacheKey);
+                return JSON.parse(cached);
+            }
+        } catch(ce) {}
+
         const MIGRATION_PIPELINE_ID = '66161281';
-        const EXCLUDED_STAGE_IDS = ['133821818', '153457301']; 
+        const EXCLUDED_STAGE_IDS = ['133821818', '153457301'];
 
         const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
         const searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
@@ -344,9 +355,11 @@ function getEnhancedMigrationReport(params) {
             courseImpact
         };
         
-        const aiInsights = getEnhancedAIInsights(reportData, fromDate.toLocaleString('default', { month: 'long' }));
+        const aiInsights = skipAI ? null : getEnhancedAIInsights(reportData, fromDate.toLocaleString('default', { month: 'long' }));
 
-        return { success: true, data: reportData, aiInsights: aiInsights };
+        const result = { success: true, data: reportData, aiInsights: aiInsights };
+        try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 600); } catch(ce) {}
+        return result;
 
     } catch (error) {
         Logger.log('Error in getEnhancedMigrationReport (Ticket Version): ' + error.stack);

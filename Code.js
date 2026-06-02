@@ -247,11 +247,17 @@ function initializeSystem() {
     // ── Kit Tracking daily trigger ────────────────────────────────────────
     setupKitTrackingTrigger();
 
+    // ── Kit address auto-poll (every 30 min) ──────────────────────────────
+    setupKitAddressPollTrigger();
+
     // ── Parent Will Buy daily trigger ─────────────────────────────────────
     setupParentWillBuyTrigger();
 
     // ── Email Queue daily trigger ─────────────────────────────────────────
     setupEmailQueueTrigger();
+
+    // ── Dashboard cache warmer — every 10 minutes ─────────────────────────
+    setupCacheWarmerTrigger();
 
     Logger.log('System initialization completed successfully');
     return { success: true, message: 'System initialized successfully' };
@@ -454,7 +460,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "6.14";
+const APP_VERSION = "6.38";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -500,6 +506,29 @@ function getCoursesForCertificate() {
     Logger.log('[Cert] getCoursesForCertificate error: ' + e.message);
     return { success: false, courses: [], message: e.message };
   }
+}
+
+// ── Dashboard Cache Warmer ────────────────────────────────────────────────────
+// Runs every 10 minutes via time-based trigger (set up in initializeSystem).
+// Pre-computes getNewDashboardData + getActiveLearnersPerTeacher so every user
+// always loads from cache (< 200ms) instead of waiting for live HubSpot calls.
+function warmDashboardCache() {
+  try {
+    Logger.log('[CacheWarmer] Warming dashboard cache...');
+    getNewDashboardData();
+    Logger.log('[CacheWarmer] Dashboard cache refreshed.');
+  } catch(e) {
+    Logger.log('[CacheWarmer] Failed: ' + e.message);
+  }
+}
+
+function setupCacheWarmerTrigger() {
+  // Remove stale copies first
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'warmDashboardCache') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('warmDashboardCache').timeBased().everyMinutes(10).create();
+  Logger.log('[CacheWarmer] Trigger created — runs every 10 minutes.');
 }
 
 function setupCheckRepliesTrigger() {
@@ -589,6 +618,28 @@ function setupAppDataSpreadsheet() {
 // ─────────────────────────────────────────────────────────────────────
 function doPost(e) {
   try {
+    // ── HubSpot form webhook (kit address form submission) ───────────────────
+    // Fires instantly when parent submits the Kit Address Form in HubSpot.
+    // Payload has: { portalId, formId, submittedAt, data: [{name,value},...] }
+    try {
+      var hsRawBody = (e.postData && e.postData.contents) ? e.postData.contents : '';
+      if (hsRawBody && hsRawBody.indexOf('{') === 0) {
+        var hsFP = JSON.parse(hsRawBody);
+        // HubSpot form webhook has portalId + data array (no eventType/waId)
+        if (hsFP.portalId && Array.isArray(hsFP.data) && !hsFP.eventType && !hsFP.waId) {
+          Logger.log('[doPost] HubSpot form webhook received. formId=' + (hsFP.formId || '') + ' fields=' + hsFP.data.length);
+          try {
+            _handleKitAddressFormWebhook(hsFP);
+          } catch(hfErr) {
+            Logger.log('[doPost] _handleKitAddressFormWebhook error: ' + hfErr.message);
+          }
+          return ContentService.createTextOutput('ok');
+        }
+      }
+    } catch(hfParseErr) {
+      // Not a HubSpot form payload — fall through
+    }
+
     // ── WATI webhook (kit delivery button replies) ───────────────────────────
     // WATI does NOT send Slack's X-Slack-Signature header — handle BEFORE
     // the Slack signature check so it doesn't get rejected.
@@ -665,6 +716,19 @@ function doPost(e) {
                 btnText = 'Yet to place an order';
                 Logger.log('[doPost] WATI PWB fuzzy → "Yet to place an order" from: "' + rawText + '"');
               } else {
+                // ── Check for pending kit address request FIRST ─────────────
+                var _kitAddrPhone = _normalisePhone(watiPayload.waId || '');
+                var _kitAddrCache = _kitAddrPhone ? CacheService.getScriptCache().get('KIT_ADDR_REQ_' + _kitAddrPhone) : null;
+                if (_kitAddrCache && rawText && rawText.length > 5) {
+                  Logger.log('[doPost] WATI kit address reply from ' + _kitAddrPhone + ': "' + rawText + '"');
+                  try {
+                    handleKitAddressReply(_kitAddrPhone, rawText);
+                  } catch(addrErr) {
+                    Logger.log('[doPost] handleKitAddressReply error: ' + addrErr.message);
+                  }
+                  return ContentService.createTextOutput('ok');
+                }
+
                 // Genuinely unrecognised — free text, alert CLS
                 Logger.log('[doPost] WATI free text from ' + watiPayload.waId + ': "' + rawText + '"');
                 sc.put('WATI_PWB_LAST', JSON.stringify({ waId: watiPayload.waId, btnText: rawText, freeText: true }), 300);

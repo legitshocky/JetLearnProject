@@ -1,3 +1,115 @@
+// ═══════════════════════════════════════════════════════════
+// TEACHER PERSONA STATS HELPERS
+// ═══════════════════════════════════════════════════════════
+
+// Execution-level cache — reused within one GAS request
+var _allTeacherStatsMapCache = null;
+
+// ── Age range string from array of ages ──────────────────
+function _ageRangeStr(ages) {
+  var valid = (ages || []).filter(function(a) { return a && !isNaN(a) && a > 0; });
+  if (!valid.length) return null;
+  var mn = Math.min.apply(null, valid);
+  var mx = Math.max.apply(null, valid);
+  return mn === mx ? String(mn) + ' yrs' : mn + '–' + mx + ' yrs';
+}
+
+// ── Read Teacher Upskill History sheet (optional) ────────
+// Cols: Teacher Name(0) | Course(1) | Status Before(2) | Status After(3) | Changed Date(4) | Notes(5)
+function _getTeacherUpskillHistory(teacherName) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName('Teacher Upskill History');
+    if (!sh) return [];
+    var data = sh.getDataRange().getValues();
+    if (data.length < 2) return [];
+    var nameLow = String(teacherName || '').toLowerCase().trim();
+    return data.slice(1)
+      .filter(function(row) { return String(row[0] || '').toLowerCase().trim() === nameLow && String(row[1] || '').trim(); })
+      .map(function(row) {
+        var d = row[4];
+        var dateStr = d ? (d instanceof Date ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'MMM yyyy') : String(d)) : '';
+        return { course: String(row[1]||'').trim(), fromStatus: String(row[2]||'').trim(),
+                 toStatus: String(row[3]||'').trim(), date: dateStr, notes: String(row[5]||'').trim() };
+      });
+  } catch(e) {
+    Logger.log('[_getTeacherUpskillHistory] ' + e.message);
+    return [];
+  }
+}
+
+// ── One paginated HubSpot query → map: teacherName.lower → { courseName: { count, ages, startDates } }
+// Cached per GAS execution (shared by getTeacherSpecificLoad + findUpskillAlternatives in same request)
+function _buildAllTeacherStatsMap() {
+  if (_allTeacherStatsMapCache) return _allTeacherStatsMapCache;
+  var map = {};
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var after = undefined, page = 0;
+    var activeStatuses = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
+    do {
+      var body = {
+        filterGroups: [{ filters: [{ propertyName: 'learner_status', operator: 'IN', values: activeStatuses }] }],
+        properties: ['current_teacher', 'current_course', 'age', 'module_start_date'],
+        limit: 100
+      };
+      if (after) body.after = after;
+      var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+      var data = JSON.parse(resp.getContentText());
+      if (!data.results) break;
+      data.results.forEach(function(deal) {
+        var p = deal.properties;
+        var tName = getTeacherLabel(p.current_teacher || '');
+        if (!tName) return;
+        var cName = getCourseLabel(p.current_course || '') || (p.current_course || '');
+        if (!cName) return;
+        var key = tName.trim().toLowerCase();
+        if (!map[key]) map[key] = {};
+        if (!map[key][cName]) map[key][cName] = { count: 0, ages: [], startDates: [] };
+        map[key][cName].count++;
+        var age = parseInt(p.age || '', 10);
+        if (!isNaN(age) && age > 0) map[key][cName].ages.push(age);
+        if (p.module_start_date) map[key][cName].startDates.push(new Date(p.module_start_date));
+      });
+      after = data.paging && data.paging.next ? data.paging.next.after : undefined;
+      page++;
+    } while (after && page < 30);
+  } catch(e) {
+    Logger.log('[_buildAllTeacherStatsMap] ' + e.message);
+  }
+  _allTeacherStatsMapCache = map;
+  return map;
+}
+
+// ── Merge stats from the big map into a courseDetails array ──
+// Mutates each entry in place; adds learnerCount, ageRange, avgAge, teachingSince, isIdeal
+function _mergeStatsIntoCourses(courseDetails, teacherKey, statsMap) {
+  var teacherStats = statsMap[teacherKey] || {};
+  courseDetails.forEach(function(cd) {
+    // Case-insensitive course match
+    var matchKey = Object.keys(teacherStats).find(function(k) {
+      return k.toLowerCase() === (cd.course || '').toLowerCase();
+    });
+    var s = matchKey ? teacherStats[matchKey] : null;
+    if (s) {
+      cd.learnerCount  = s.count;
+      cd.avgAge        = s.ages.length ? Math.round(s.ages.reduce(function(a, b){ return a+b; }, 0) / s.ages.length) : null;
+      cd.ageRange      = _ageRangeStr(s.ages);
+      var sorted       = s.startDates.slice().sort(function(a,b){ return a-b; });
+      cd.teachingSince = sorted.length ? Utilities.formatDate(sorted[0], Session.getScriptTimeZone(), 'MMM yyyy') : null;
+    } else {
+      cd.learnerCount = 0; cd.ageRange = null; cd.avgAge = null; cd.teachingSince = null;
+    }
+    var prof = parseFloat(cd.proficiency) || 0;
+    cd.isIdeal = prof >= 90 && cd.learnerCount >= 2;
+  });
+}
+
 function getTeacherData() {
   try {
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
@@ -109,7 +221,7 @@ function getCourseTeacherDetails(courseName) {
             values:       activeStatuses
           }]
         }],
-        properties: ['current_teacher', 'current_course', 'dealname', 'createdate', 'learner_status'],
+        properties: ['current_teacher', 'current_course', 'dealname', 'createdate', 'learner_status', 'age', 'module_start_date'],
         limit: 100
       };
       if (after) body.after = after;
@@ -146,10 +258,12 @@ function getCourseTeacherDetails(courseName) {
           var createdMs   = deal.properties.createdate ? new Date(deal.properties.createdate).getTime() : null;
           var daysOnCourse = createdMs ? Math.floor((nowMs - createdMs) / 86400000) : null;
 
+          var learnerAge = parseInt(deal.properties.age || '', 10) || null;
           teacherLearners[teacherKey].push({
             name:         (deal.properties.dealname || 'Learner').trim(),
             daysOnCourse: daysOnCourse,
-            status:       (deal.properties.learner_status || '').trim()
+            status:       (deal.properties.learner_status || '').trim(),
+            age:          learnerAge
           });
         }
       });
@@ -167,12 +281,17 @@ function getCourseTeacherDetails(courseName) {
       // Sort learners: longest tenure first
       learners.sort(function(a, b) { return (b.daysOnCourse || 0) - (a.daysOnCourse || 0); });
 
+      var ages         = learners.map(function(l) { return l.age; }).filter(function(a) { return a; });
+      var prof         = parseFloat(proficiencyMap[teacherName]) || 0;
       return {
         name:             teacherName,
         proficiency:      proficiencyMap[teacherName],
         totalLearners:    total,
         learnersOnCourse: onCourse,
-        learners:         learners
+        learners:         learners,
+        ageRange:         _ageRangeStr(ages),
+        avgAge:           ages.length ? Math.round(ages.reduce(function(s,a){return s+a;},0)/ages.length) : null,
+        isIdeal:          prof >= 90 && onCourse >= 2
       };
     });
  
@@ -872,11 +991,42 @@ function getTeacherSpecificLoad(teacherName) {
       }
     }
 
-    return { 
-      success: true, 
-      teacherName: teacherRow[0], 
+    // ── Enrich courses with learner stats + upskill history ──
+    var statsMap  = _buildAllTeacherStatsMap();
+    var teacherKey = String(teacherRow[0] || '').trim().toLowerCase();
+    _mergeStatsIntoCourses(courseDetails, teacherKey, statsMap);
+
+    // Upskill history (from optional sheet)
+    var upskillHistory = _getTeacherUpskillHistory(teacherRow[0]);
+    var histByCourse   = {};
+    upskillHistory.forEach(function(h) {
+      var k = h.course.toLowerCase();
+      if (!histByCourse[k]) histByCourse[k] = [];
+      histByCourse[k].push(h);
+    });
+    courseDetails.forEach(function(cd) {
+      cd.upskillHistory = histByCourse[cd.course.toLowerCase()] || [];
+    });
+
+    // Courses previously taught but now removed (appear in history with downgrade to Not onboarded)
+    var currentCourseKeys = courseDetails.map(function(cd) { return cd.course.toLowerCase(); });
+    var removedCourses = [];
+    Object.keys(histByCourse).forEach(function(k) {
+      if (currentCourseKeys.indexOf(k) === -1) {
+        histByCourse[k].forEach(function(h) {
+          if (h.toStatus.toLowerCase().indexOf('not') > -1 || h.toStatus === '') {
+            removedCourses.push({ course: h.course, hadProficiency: h.fromStatus, removedDate: h.date, notes: h.notes });
+          }
+        });
+      }
+    });
+
+    return {
+      success: true,
+      teacherName: teacherRow[0],
       status: teacherRow[3] || 'Active',
       courses: courseDetails,
+      removedCourses: removedCourses,
       totalLoad: courseDetails.length,
       lastActivity: lastActivity,
       manager:               tpManager,
@@ -1844,6 +1994,79 @@ function searchMatchingTeachers(requestData) {
       });
     }
 
+    // ── Enrich results with live HubSpot learner stats (one shared call) ──
+    try {
+      var smt_statsMap    = _buildAllTeacherStatsMap();
+      var smt_learnerAge  = parseInt(String(requestData.learnerAge || ''), 10) || 0;
+
+      // Convert internal HubSpot course value → display label for matching
+      // pInpCourse.value is an internal value; _buildAllTeacherStatsMap stores by display label
+      var smt_courseDisplay = getCourseLabel(currentCourse) || currentCourse;
+      var smt_courseLower   = (smt_courseDisplay || '').toLowerCase().trim();
+
+      // Fuzzy course key finder — mirrors getCourseProgress logic
+      function _smtFindCourseKey(tStats) {
+        var keys = Object.keys(tStats);
+        // Pass 1: exact
+        for (var ki = 0; ki < keys.length; ki++) {
+          if (keys[ki].toLowerCase() === smt_courseLower) return keys[ki];
+        }
+        // Pass 2: prefix or word overlap (same as getCourseProgress)
+        var prefix   = smt_courseLower.substring(0, 15);
+        var appWords = smt_courseLower.split(/\s+/).filter(function(w){ return w.length > 3; });
+        for (var ki2 = 0; ki2 < keys.length; ki2++) {
+          var kl = keys[ki2].toLowerCase();
+          if (prefix.length >= 10 && (kl.indexOf(prefix) !== -1 || smt_courseLower.indexOf(kl.substring(0,15)) !== -1)) return keys[ki2];
+          var sheetWords = kl.split(/\s+/).filter(function(w){ return w.length > 3; });
+          if (appWords.length > 0 && sheetWords.length > 0) {
+            var overlap = appWords.filter(function(w){ return sheetWords.indexOf(w) > -1; }).length;
+            if (overlap >= Math.ceil(Math.min(appWords.length, sheetWords.length) * 0.6)) return keys[ki2];
+          }
+        }
+        return null;
+      }
+
+      output.forEach(function(t) {
+        var tKey   = (t.teacherName || '').trim().toLowerCase();
+        var tStats = smt_statsMap[tKey];
+        // Fallback: try first-name-only match (e.g. "Sanjana" matches "Sanjana Gopalkrishna")
+        if (!tStats) {
+          var firstName = tKey.split(/\s+/)[0];
+          if (firstName && firstName.length > 3) {
+            var fallbackKey = Object.keys(smt_statsMap).find(function(k) {
+              return k.split(/\s+/)[0] === firstName;
+            });
+            if (fallbackKey) tStats = smt_statsMap[fallbackKey];
+          }
+        }
+        tStats = tStats || {};
+        var cKey   = _smtFindCourseKey(tStats);
+        var s      = cKey ? tStats[cKey] : null;
+        if (s) {
+          t.activeLearnerCount = s.count;
+          t.learnerAgeRange    = _ageRangeStr(s.ages);
+          t.avgLearnerAge      = s.ages.length ? Math.round(s.ages.reduce(function(a,b){return a+b;},0)/s.ages.length) : null;
+          var sorted           = s.startDates.slice().sort(function(a,b){return a-b;});
+          t.teachingSince      = sorted.length ? Utilities.formatDate(sorted[0], Session.getScriptTimeZone(), 'MMM yyyy') : null;
+          var ageMatch = true;
+          if (smt_learnerAge > 0 && t.learnerAgeRange) {
+            var parts = t.learnerAgeRange.replace(' yrs','').split('–');
+            var minA  = parseInt(parts[0],10), maxA = parseInt(parts[parts.length-1],10);
+            ageMatch  = smt_learnerAge >= minA - 2 && smt_learnerAge <= maxA + 2;
+          }
+          var curProg = parseFloat(t.currentCourseProgress) || 0;
+          t.isIdeal   = curProg >= 90 && s.count >= 2 && ageMatch;
+          t.ageMatch  = ageMatch;
+        } else {
+          t.activeLearnerCount = 0; t.learnerAgeRange = null;
+          t.teachingSince = null;   t.isIdeal = false; t.ageMatch = true;
+        }
+      });
+      Logger.log('[SMT] stats enriched for ' + output.length + ' teachers, course="' + smt_courseDisplay + '"');
+    } catch(se) {
+      Logger.log('[SMT] stats enrichment error: ' + se.message);
+    }
+
     Logger.log('[SMT] done: ' + output.length + ' results | slotFiltered=' + debugSlotFiltered + ' | relaxed=' + relaxedMode);
     return { success: true, results: output, relaxedFilter: relaxedMode };
 
@@ -2583,6 +2806,12 @@ function getTeacherProfileData(teacherName) {
   try {
     Logger.log('[getTeacherProfileData] Called for: ' + teacherName);
 
+    var _tpdCacheKey = 'tchProfile_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_');
+    try {
+      var _tpdCached = CacheService.getScriptCache().get(_tpdCacheKey);
+      if (_tpdCached) { return JSON.parse(_tpdCached); }
+    } catch(ce) {}
+
     // \u2500\u2500 1. Basic info from Teacher Data sheet \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     var allTeachers = getTeacherData();
     var teacherInfo = null;
@@ -2738,7 +2967,7 @@ function getTeacherProfileData(teacherName) {
       }
     } catch(hse) { Logger.log('[getTeacherProfileData] HS ID lookup: ' + hse.message); }
 
-    return {
+    var _tpdResult = {
       success: true,
       profile: {
         name:              teacherName,
@@ -2763,6 +2992,8 @@ function getTeacherProfileData(teacherName) {
         } : { totalCount: 0, byReason: {}, tickets: [], lastEscalationDate: null }
       }
     };
+    try { CacheService.getScriptCache().put(_tpdCacheKey, JSON.stringify(_tpdResult), 900); } catch(ce) {}
+    return _tpdResult;
 
   } catch (e) {
     Logger.log('[getTeacherProfileData] Error: ' + e.message);
@@ -3636,6 +3867,12 @@ function checkAndSendRedFlagAlerts() {
 function getTeacherCalendarHours(teacherName, weeksBack) {
   try {
     weeksBack = weeksBack || 4;
+    var _calCacheKey = 'tchCalHours_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_') + '_' + weeksBack;
+    try {
+      var _calCached = CacheService.getScriptCache().get(_calCacheKey);
+      if (_calCached) { return JSON.parse(_calCached); }
+    } catch(ce) {}
+
     var cal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
     if (!cal) return { success: false, message: 'Calendar not accessible.' };
 
@@ -3715,7 +3952,7 @@ function getTeacherCalendarHours(teacherName, weeksBack) {
     var peakIdx  = hoursArr.indexOf(Math.max.apply(null, hoursArr));
     var peakDay  = hoursArr[peakIdx] > 0 ? DAYS[peakIdx] : 'N/A';
 
-    return {
+    var _calResult = {
       success:    true,
       days:       DAYS,
       hours:      hoursArr,
@@ -3726,6 +3963,8 @@ function getTeacherCalendarHours(teacherName, weeksBack) {
       weeksBack:  weeksBack,
       matched:    matched
     };
+    try { CacheService.getScriptCache().put(_calCacheKey, JSON.stringify(_calResult), 900); } catch(ce) {}
+    return _calResult;
   } catch(e) {
     Logger.log('[getTeacherCalendarHours] Error: ' + e.message);
     return { success: false, message: e.message };
