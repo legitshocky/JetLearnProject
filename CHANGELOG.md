@@ -2,6 +2,45 @@
 
 ---
 
+## [2026-06-19] — Book Classes with New Teacher Overhaul
+
+### Booking Timezone — IANA Google Calendar Timezones (`Code.js` + `Index.html` + `JavaScript.html` + `ReserveSlot.js`)
+- Replaced HubSpot-style GMT offset labels with proper IANA timezone list (`bookingTimezones`) — 65 entries covering all major regions
+- Added dedicated **Booking Timezone** search field (fixed-position dropdown appended to `document.body`, no clipping) separate from the main migration form timezone
+- Auto-fills booking timezone from learner's stored timezone on JLID load (maps GMT label → IANA via `TIMEZONE_IANA_MAP`)
+- Booking timezone pre-populates `bookingTimezoneSearch` with friendly label; hidden input holds IANA id
+
+### Calendar Events — Correct Timezone Stamping (`ReserveSlot.js`)
+- Switched from `CalendarApp.createEventSeries` (always stamped in calendar's CET timezone) to `Calendar.Events.insert` (Advanced Calendar API) with explicit `start.timeZone` / `end.timeZone` set to the selected IANA timezone
+- Events now show correct local time for any timezone (UK, IST, etc.) — not forced to CET
+- Added `reminders`: popup 10 min before + email 5 hours before on all new bookings
+- Added `responseRequested: true` for RSVP invites
+
+### Guest List Privacy (`ReserveSlot.js`)
+- `guestsCanSeeOtherGuests: false` + `guestsCanInviteOthers: false` set directly on event body at creation
+- `_hideGuestList` patch called after creation for belt-and-suspenders enforcement
+- Added `patchAllEventsHideGuests()` one-time utility to retroactively hide guest lists on all existing calendar events (±1 year window, paginated)
+
+### JetGuide Invites (`ReserveSlot.js`)
+- JetGuide selected in migration form is now invited to all booked class events
+- `_JETGUIDE_EMAILS` map: Abhishek Nayak, Anamika Parmar, Sana Rais, Satyam Mehra
+- Salima Chhatriwala and Aishwarya Jain excluded by design (not in map)
+
+### Event Notes / Description (`ReserveSlot.js` + `Index.html` + `JavaScript.html`)
+- **Fetch from existing event** button: calls `getExistingEventDescription(jlid)` — uses `Calendar.Events.list` with `q: JLID` title search (single API call, `maxResults: 3`, ±30 days window)
+- Strips HTML tags server-side (`<br>` → newline, entity decode) before returning clean plain text
+- Editable textarea pre-filled with fetched notes; carried into all new event descriptions alongside Zoom link
+- Description format: `Join Zoom Meeting: <link>\n\n<notes>`
+
+### Layout Fixes (`Index.html`)
+- Booking section extracted from New Teacher `form-group` cell into its own `full-width` card — fixes grid asymmetry and right-side clipping
+- Booking card row: Timezone search | No. of Sessions | Book Classes button (flex, wraps on narrow screens)
+
+### Permissions
+- `book_classes_calendar` permission restricted to Super Admin only
+
+---
+
 ## [2026-06-03] — Teacher Persona Enhancement, Practice Doc Deduplication & Bug Fixes
 
 ### Teacher Persona — Inline Stats on Cards (`TeacherService.js` + `HubSpotService.js` + `JavaScript.html` + `Index.html`)

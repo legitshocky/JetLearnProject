@@ -90,6 +90,9 @@ let globalReportData = null;
 let personaResults = [];
 let _personaCtxJlid = '';     // set by Smart Context Fetch — used by Migrate button
 let _personaCtxLearner = '';
+let _personaCtxOldTeacher = '';
+let _personaCtxMode = '';
+let _personaCtxRequestedSlots = []; // current teacher at time of search — used for match log
 let pollIntervalId = null; // For live refresh
 let globalTeachers = []; // Store teachers data for reuse
 let globalCourses = []; // Store courses data for reuse
@@ -98,6 +101,7 @@ let globalClsManagers = []; // Store CLS managers data for reuse
 let globalJetGuides = []; // Store JetGuide data for reuse
 let globalInvoiceProducts = []; // NEW: Store invoice products data
 let globalTimezones = []; // Will be populated from the server
+let globalBookingTimezones = []; // IANA timezone list for booking
 let globalTicketData = [];
 let globalTeacherDataList = [];
 let allTeacherDetailsCache = [];
@@ -556,6 +560,77 @@ options.forEach(optionText => {
 // Safe to call multiple times. Works after populateSelect + fetchHubspotData.
 // optionsProvider: optional function() → string[] called on every panel open
 // If provided and native select has ≤1 option, repopulates from provider first
+function _initBookingTzPicker(tzList) {
+  var inp    = document.getElementById('bookingTimezoneSearch');
+  var hidden = document.getElementById('bookingTimezone');
+  if (!inp || !hidden) return;
+
+  // Create dropdown on body so no parent clipping/positioning issues
+  var drop = document.createElement('div');
+  drop.style.cssText = 'display:none;position:fixed;background:#fff;border:1.5px solid #6366f1;'
+    + 'border-radius:8px;box-shadow:0 8px 28px rgba(99,102,241,0.18);z-index:99999;overflow:hidden;';
+  var list = document.createElement('div');
+  list.style.cssText = 'max-height:260px;overflow-y:auto;font-size:0.83rem;';
+  drop.appendChild(list);
+  document.body.appendChild(drop);
+
+  function _render(q) {
+    var q2 = (q || '').toLowerCase();
+    var filtered = q2
+      ? tzList.filter(function(t){ return t.label.toLowerCase().indexOf(q2) > -1 || t.id.toLowerCase().indexOf(q2) > -1; })
+      : tzList;
+    list.innerHTML = '';
+    if (!filtered.length) {
+      list.innerHTML = '<div style="padding:12px;color:#94a3b8;text-align:center;">No results</div>';
+      return;
+    }
+    filtered.forEach(function(tz) {
+      var row = document.createElement('div');
+      var cur = hidden.value === tz.id;
+      row.style.cssText = 'padding:8px 14px;cursor:pointer;' + (cur ? 'background:#ede9fe;color:#5b21b6;font-weight:600;' : 'color:#1e293b;');
+      row.textContent = tz.label;
+      row.addEventListener('mouseenter', function(){ if (!cur) row.style.background = '#f5f3ff'; });
+      row.addEventListener('mouseleave', function(){ if (!cur) row.style.background = cur ? '#ede9fe' : ''; });
+      row.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        hidden.value = tz.id;
+        inp.value = tz.label;
+        _close();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  function _reposition() {
+    var r = inp.getBoundingClientRect();
+    drop.style.left  = r.left + 'px';
+    drop.style.top   = (r.bottom + 4) + 'px';
+    drop.style.width = Math.max(r.width, 340) + 'px';
+  }
+
+  function _open() {
+    _render(inp.value);
+    _reposition();
+    drop.style.display = 'block';
+  }
+  function _close() { drop.style.display = 'none'; }
+
+  inp.addEventListener('focus', _open);
+  inp.addEventListener('input', function(){ hidden.value = ''; _render(inp.value); _reposition(); });
+  document.addEventListener('mousedown', function(e){ if (!drop.contains(e.target) && e.target !== inp) _close(); });
+  window.addEventListener('scroll', function(){ if (drop.style.display !== 'none') _reposition(); }, true);
+  window.addEventListener('resize', function(){ if (drop.style.display !== 'none') _reposition(); });
+}
+
+function _setBookingTzByIana(iana) {
+  var hidden = document.getElementById('bookingTimezone');
+  var inp    = document.getElementById('bookingTimezoneSearch');
+  if (!hidden || !inp) return;
+  hidden.value = iana || '';
+  var match = globalBookingTimezones.find(function(t){ return t.id === iana; });
+  inp.value = match ? match.label : (iana || '');
+}
+
 function makeSearchableSelect(sel, placeholder, optionsProvider) {
   if (!sel || sel.dataset.hasSearch) return;
   sel.dataset.hasSearch = '1';
@@ -785,40 +860,8 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       let timezoneFieldHtml = "";
 
       if (uniquePrefix === 'migration') {
-          // Layout: Day | Hr | Min | AM/PM | Timezone(Select) | Delete
-          gridStyle = "grid-template-columns: 1.3fr 0.7fr 0.7fr 0.8fr 2.5fr auto;";
-          
-          // Get fetched timezone value to pre-select
-          const storedTz = document.getElementById('globalMigrationTimezone');
-          const currentVal = storedTz ? storedTz.value : "";
-
-          // Generate Timezone Options
-          let tzOptions = '<option value="" disabled ' + (!currentVal ? 'selected' : '') + '>Select Timezone<\/option>';
-          
-          // Use global variable if available, otherwise fallback to common ones
-          const tzList = (typeof globalTimezones !== 'undefined' && globalTimezones.length > 0) 
-              ? globalTimezones 
-              : [
-                  "(GMT+00:00) Dublin, Edinburgh, Lisbon, London",
-                  "(GMT-05:00) Eastern Time (US & Canada)",
-                  "(GMT-06:00) Central Time (US & Canada)",
-                  "(GMT-08:00) Pacific Time (US & Canada)",
-                  "(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi",
-                  "(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna"
-              ];
-
-          tzList.forEach(tz => {
-              // Mark as selected if it matches the fetched data
-              const isSelected = (currentVal && tz === currentVal) ? 'selected' : '';
-              // Shorten text for display so it fits
-              const displayText = tz.length > 35 ? tz.substring(0, 32) + "..." : tz;
-              tzOptions += '<option value="' + tz + '" ' + isSelected + ' title="' + tz + '">' + displayText + '<\/option>';
-          });
-          
-          timezoneFieldHtml = '<div class="form-group" style="margin-bottom:0;">'
-              + '<select class="form-control class-timezone-select" style="height:42px; font-size:0.8rem;">'
-              + tzOptions
-              + '<\/select><\/div>';
+          // Timezone is now universal (one field above sessions) — no per-session TZ
+          gridStyle = "grid-template-columns: 1.3fr 0.7fr 0.7fr 0.8fr auto;";
       }
 
       sessionGroup.innerHTML = '<div class="form-grid" style="display: grid; ' + gridStyle + ' gap: 0.5rem; align-items: flex-end;">'
@@ -972,6 +1015,15 @@ function switchPage(pageId, context = null) {
         // AI PM \u2014 admin only
         const aiPmMenuItem = document.getElementById('aiPmMenuItem');
         if (aiPmMenuItem) aiPmMenuItem.style.display = hasPermission('use_ai_pm') ? 'flex' : 'none';
+
+        // Calendar booking features (Reserve Slot + Book Classes with New Teacher) — restricted
+        const calendarBookingAllowed = hasPermission('book_classes_calendar');
+        const bookClassesBtn = document.getElementById('bookClassesWithNewTeacherBtn');
+        if (bookClassesBtn) bookClassesBtn.style.display = calendarBookingAllowed ? '' : 'none';
+        // Hide the whole booking card (timezone + sessions + notes) when not permitted
+        var bookingCard = bookClassesBtn && bookClassesBtn.closest('.form-group.full-width');
+        if (bookingCard) bookingCard.style.display = calendarBookingAllowed ? '' : 'none';
+        window._calendarBookingAllowed = calendarBookingAllowed;
     }
 
     function handleCommunicationTabClick(event) {
@@ -1001,6 +1053,7 @@ function switchPage(pageId, context = null) {
                 globalJetGuides = data.jetGuides;
                 globalInvoiceProducts = data.invoiceProducts;
                 globalTimezones = data.timezones;
+                globalBookingTimezones = data.bookingTimezones || [];
 
                 // Populate Dropdowns
                 populateSelect(oldTeacherSelect, globalTeachers, true, "Select old teacher");
@@ -1022,6 +1075,16 @@ function switchPage(pageId, context = null) {
                 populateSelect(document.getElementById('tpManagerSelect'), globalTpManagers, false, "\u2014 Select TP Manager \u2014");
                 populateSelect(minecraftCourse, globalCourses, false, "Select a course");
                 populateSelect(robloxCourse, globalCourses, false, "Select a course");
+
+                // Populate migration timezone universal field
+                var migTzField = document.getElementById('migrationTimezone');
+                if (migTzField) {
+                  populateSelect(migTzField, globalTimezones, false, 'Select Timezone');
+                  makeSearchableSelect(migTzField, 'Search timezone...');
+                }
+
+                // Init IANA booking timezone search picker
+                _initBookingTzPicker(globalBookingTimezones);
 
                 // Add live search to all course + teacher dropdowns on communication page
                 [
@@ -1455,12 +1518,10 @@ function submitMigrationForm(e) {
       // 3. Capture Intervention Teams
       const migrationIntervenedBy = Array.from(document.querySelectorAll('input[name="migrationIntervenedBy"]:checked')).map(cb => cb.value);
 
-      // 4. Capture Manual Timezone
+      // 4. Capture Manual Timezone (universal field)
       let selectedTimezone = "";
-      const firstTzSelect = document.querySelector('.class-timezone-select');
-      if (firstTzSelect) {
-          selectedTimezone = firstTzSelect.value;
-      }
+      const migTzSel = document.getElementById('migrationTimezone');
+      if (migTzSel) selectedTimezone = migTzSel.value || '';
 
       // 5. Construct Data Object
       const migrationData = {
@@ -1490,7 +1551,11 @@ function submitMigrationForm(e) {
           watiPhoneTargets: Array.from(document.querySelectorAll('input[name="watiContactTarget"]:checked')).map(cb => cb.value).filter(Boolean),
 
           watiTemplateName: selectedWatiTemplate,
-          confirmedFutureCourses: window.mipConfirmedCourses || []
+          confirmedFutureCourses: window.mipConfirmedCourses || [],
+
+          // Also-email-parent (fallback while WhatsApp is down)
+          sendEmailToParentAlso: document.getElementById('sendEmailToParentAlso') ? document.getElementById('sendEmailToParentAlso').checked : false,
+          parentEmailTargets: Array.from(document.querySelectorAll('input[name="emailContactTarget"]:checked')).map(cb => cb.value).filter(Boolean)
       };
 
       const validation = validateMigrationData(migrationData);
@@ -1566,8 +1631,89 @@ function submitMigrationForm(e) {
             listEl.appendChild(row);
           });
           pickerGroup.style.display = 'block';
+
+          // ── Populate parent email contact picker ──
+          const emailListEl = document.getElementById('emailContactList');
+          if (emailListEl) {
+            emailListEl.innerHTML = '';
+            (res.emails || []).forEach(function(email, idx) {
+              var isBest = email === res.parentEmail;
+              var row = document.createElement('label');
+              row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;'
+                + 'background:' + (isBest ? 'rgba(99,102,241,0.07)' : 'rgba(255,255,255,0.04)') + ';'
+                + 'border:1px solid ' + (isBest ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.1)') + ';cursor:pointer;';
+              row.innerHTML = '<input type="checkbox" name="emailContactTarget" value="' + email + '" ' + (isBest ? 'checked' : '')
+                + ' style="accent-color:#6366f1;width:15px;height:15px;">'
+                + '<i class="fas fa-envelope" style="color:#6366f1;margin-right:5px;"><\/i>'
+                + '<span style="font-size:0.88rem;color:var(--text-primary);font-weight:' + (isBest ? '600' : '400') + ';">'
+                + email + '<\/span>'
+                + (isBest ? '<span style="font-size:0.75rem;color:#6366f1;margin-left:auto;">Primary<\/span>' : '');
+              emailListEl.appendChild(row);
+            });
+          }
         })
         .withFailureHandler(function() { pickerGroup.style.display = 'none'; })
+        .getWatiContactsForJlid(jlid);
+    }
+
+    // ── Onboarding parent: populate "send to all contact emails" picker ──────
+    function _loadOnboardingEmailContacts(jlid) {
+      if (!jlid || jlid.length < 8) return;
+      const listEl = document.getElementById('onboardingEmailContactList');
+      if (!listEl) return;
+      listEl.innerHTML = '<div style="color:var(--text-light);font-size:0.82rem;padding:4px 0;"><i class="fas fa-spinner fa-spin" style="margin-right:6px;"><\/i>Loading contacts...<\/div>';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          listEl.innerHTML = '';
+          if (!res || !res.emails || res.emails.length === 0) {
+            listEl.innerHTML = '<div style="color:var(--text-light);font-size:0.8rem;">No additional emails found.<\/div>';
+            return;
+          }
+          res.emails.forEach(function(email) {
+            var isPrimary = email === res.parentEmail;
+            var row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;'
+              + 'background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);cursor:pointer;';
+            row.innerHTML = '<input type="checkbox" name="onboardingEmailContactTarget" value="' + email + '" ' + (isPrimary ? 'checked disabled' : '')
+              + ' style="accent-color:#6366f1;width:15px;height:15px;">'
+              + '<i class="fas fa-envelope" style="color:#6366f1;margin-right:5px;"><\/i>'
+              + '<span style="font-size:0.88rem;">' + email + '<\/span>'
+              + (isPrimary ? '<span style="font-size:0.75rem;color:#6366f1;margin-left:auto;">Primary (already sent)<\/span>' : '');
+            listEl.appendChild(row);
+          });
+        })
+        .withFailureHandler(function() { listEl.innerHTML = ''; })
+        .getWatiContactsForJlid(jlid);
+    }
+
+    function _loadPersonaReserveEmailContacts(jlid) {
+      var groupEl = document.getElementById('pReserveEmailContactsGroup');
+      var listEl  = document.getElementById('pReserveEmailContacts');
+      if (!jlid || jlid.length < 8 || !listEl || !groupEl) return;
+      groupEl.style.display = 'none';
+      listEl.innerHTML = '<div style="color:var(--text-light);font-size:0.82rem;padding:4px 0;"><i class="fas fa-spinner fa-spin" style="margin-right:6px;"><\/i>Loading contacts...<\/div>';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          listEl.innerHTML = '';
+          if (!res || !res.emails || res.emails.length === 0) {
+            return; // keep group hidden if nothing to invite
+          }
+          groupEl.style.display = '';
+          res.emails.forEach(function(email) {
+            var isPrimary = email === res.parentEmail;
+            var row = document.createElement('label');
+            row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;'
+              + 'background:rgba(22,163,74,0.05);border:1px solid rgba(22,163,74,0.15);cursor:pointer;';
+            row.innerHTML = '<input type="checkbox" name="pReserveEmailTarget" value="' + email + '" ' + (isPrimary ? 'checked' : '')
+              + ' style="accent-color:#16a34a;width:15px;height:15px;">'
+              + '<i class="fas fa-envelope" style="color:#16a34a;margin-right:5px;"><\/i>'
+              + '<span style="font-size:0.88rem;">' + email + '<\/span>';
+            listEl.appendChild(row);
+          });
+        })
+        .withFailureHandler(function() { listEl.innerHTML = ''; })
         .getWatiContactsForJlid(jlid);
     }
 
@@ -1576,6 +1722,12 @@ function submitMigrationForm(e) {
       const ll = document.getElementById('watiContactList');
       if (pg) pg.style.display = 'none';
       if (ll) ll.innerHTML = '';
+      const el = document.getElementById('emailContactList');
+      if (el) el.innerHTML = '';
+      const ecpg = document.getElementById('emailContactPickerGroup');
+      if (ecpg) ecpg.style.display = 'none';
+      const cb = document.getElementById('sendEmailToParentAlso');
+      if (cb) cb.checked = false;
     }
 
     // ── WATI Failure Banner ────────────────────────────────────────────────────
@@ -2096,8 +2248,13 @@ function collectEmailFormData(emailType) {
             })(),
 
             // --- THIS WAS MISSING ---
-            sendWhatsapp: document.getElementById('sendOnboardingWhatsapp').checked, 
+            sendWhatsapp: document.getElementById('sendOnboardingWhatsapp').checked,
             // ------------------------
+
+            // Additional contact emails (ticked) — sent along with primary parent email
+            additionalParentEmails: document.getElementById('onboardingSendEmailToAllContacts') && document.getElementById('onboardingSendEmailToAllContacts').checked
+              ? Array.from(document.querySelectorAll('input[name="onboardingEmailContactTarget"]:checked')).map(cb => cb.value).filter(Boolean)
+              : [],
             
             generateAndAttachInvoice: generateAndAttachInvoice.checked,
             performedBy: currentUser ? currentUser.username : ''
@@ -3592,6 +3749,8 @@ function renderCourseDetailPanel(data) {
           futureCourse2:   (document.getElementById('pInpFuture2') && document.getElementById('pInpFuture2').value !== 'None') ? document.getElementById('pInpFuture2').value : '',
           futureCourse3:   (document.getElementById('pInpFuture3') && document.getElementById('pInpFuture3').value !== 'None') ? document.getElementById('pInpFuture3').value : ''
         };
+
+        _personaCtxRequestedSlots = requestedSlots;
 
         if (!data.requestedSlot || !data.currentCourse) {
           showToast('error', 'Validation Error', 'At least one time slot and a course are required.');
@@ -6175,19 +6334,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- USER MANAGEMENT (ADMIN) ---
+var FEATURE_PERMISSIONS_UI = [];
+var PERMISSIONS_BY_ROLE = {};
+
 function loadUsers() {
         showLoading('Loading users...');
+        google.script.run
+            .withSuccessHandler(cfg => {
+                FEATURE_PERMISSIONS_UI = (cfg && cfg.featurePermissions) || [];
+                PERMISSIONS_BY_ROLE = (cfg && cfg.permissionsByRole) || {};
+                _loadUsersTable();
+            })
+            .withFailureHandler(() => { _loadUsersTable(); })
+            .getPermissionsConfig();
+}
+
+function _loadUsersTable() {
         google.script.run
             .withSuccessHandler(users => {
                 hideLoading();
                 if (!users) {
-                    usersTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Failed to load user data.<\/td><\/tr>';
+                    usersTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Failed to load user data.<\/td><\/tr>';
                     showToast('error', 'User Load Error', 'Failed to retrieve user data from server.');
                     return;
                 }
                 usersTableBody.innerHTML = '';
                 if (users.length === 0) {
-                    usersTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No users found.<\/td><\/tr>';
+                    usersTableBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No users found.<\/td><\/tr>';
                     return;
                 }
 
@@ -6215,12 +6388,24 @@ function loadUsers() {
                                   : user.role === 'Admin'       ? 'background:#ede9fe;color:#5b21b6;'
                                   :                               'background:#e0f2fe;color:#0369a1;';
 
+                    var extraPerms = user.extraPermissions || [];
+                    var featureAccessCell = FEATURE_PERMISSIONS_UI.map(function(fp) {
+                        var checked = (extraPerms.indexOf(fp.key) > -1 || (PERMISSIONS_BY_ROLE[user.role] || []).indexOf(fp.key) > -1) ? 'checked' : '';
+                        var lockedByRole = (PERMISSIONS_BY_ROLE[user.role] || []).indexOf(fp.key) > -1;
+                        var disabled = (!isSuperAdmin || lockedByRole) ? 'disabled' : '';
+                        var title = lockedByRole ? escapeHtml(fp.label) + ' (included in ' + escapeHtml(user.role) + ' role)' : escapeHtml(fp.label);
+                        return '<label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:' + (disabled ? 'default' : 'pointer') + ';" title="' + title + '">'
+                            + '<input type="checkbox" class="feature-perm-toggle" data-username="' + escapeHtml(user.email || user.username) + '" data-perm="' + escapeHtml(fp.key) + '" ' + checked + ' ' + disabled + '> ' + escapeHtml(fp.label)
+                            + '<\/label>';
+                    }).join('');
+
                     var trHtml = '<tr>'
                         + '<td>' + escapeHtml(user.username) + '<\/td>'
                         + '<td>' + escapeHtml(user.email) + '<\/td>'
                         + '<td><span style="' + roleColor + 'padding:2px 10px;border-radius:12px;font-size:0.8rem;font-weight:600;">' + escapeHtml(user.role) + '<\/span><\/td>'
                         + '<td>' + (user.lastLogin ? user.lastLogin : 'Never') + '<\/td>'
                         + '<td><span class="status-badge ' + statusClass + '">' + (user.isActive ? 'Active' : 'Inactive') + '<\/span><\/td>'
+                        + '<td>' + featureAccessCell + '<\/td>'
                         + '<td>' + editBtn + resendBtn + toggleBtn + '<\/td>'
                         + '<\/tr>';
                     usersTableBody.innerHTML += trHtml;
@@ -6253,6 +6438,29 @@ function loadUsers() {
                                     .resendLoginEmail(username, currentUser);
                             }
                         );
+                    });
+                });
+
+                // Feature-permission toggle listeners (Super Admin only)
+                document.querySelectorAll('.feature-perm-toggle').forEach(cb => {
+                    cb.addEventListener('change', e => {
+                        const el = e.target;
+                        const username = el.dataset.username;
+                        const permKey = el.dataset.perm;
+                        const enabled = el.checked;
+                        el.disabled = true;
+                        google.script.run
+                            .withSuccessHandler(result => {
+                                el.disabled = false;
+                                if (!result.success) {
+                                    el.checked = !enabled;
+                                    showToast('error', 'Error', result.message);
+                                    return;
+                                }
+                                showToast('success', 'Access Updated', (enabled ? 'Granted' : 'Revoked') + ' for ' + username + '. Takes effect on next login.');
+                            })
+                            .withFailureHandler(err => { el.disabled = false; el.checked = !enabled; showError(err); })
+                            .setUserFeaturePermission(username, permKey, enabled, currentUser);
                     });
                 });
 
@@ -6868,6 +7076,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (addClassSessionBtn) addClassSessionBtn.addEventListener('click', () => classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration')));
     if (addOnboardingParentClassSessionBtn) addOnboardingParentClassSessionBtn.addEventListener('click', () => onboardingParentClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboardingParent')));
 
+    // ── Toggle parent email picker visibility ──────────────────────────
+    const sendEmailToParentAlsoCb = document.getElementById('sendEmailToParentAlso');
+    if (sendEmailToParentAlsoCb) {
+      sendEmailToParentAlsoCb.addEventListener('change', function() {
+        const grp = document.getElementById('emailContactPickerGroup');
+        if (grp) grp.style.display = this.checked ? 'block' : 'none';
+      });
+    }
+    const onbSendEmailAllCb = document.getElementById('onboardingSendEmailToAllContacts');
+    if (onbSendEmailAllCb) {
+      onbSendEmailAllCb.addEventListener('change', function() {
+        const grp = document.getElementById('onboardingEmailContactPickerGroup');
+        if (grp) grp.style.display = this.checked ? 'block' : 'none';
+      });
+    }
+
     // ── CCTC course fields: show/hide on reason change ────────────────
     if (reasonOfMigrationSelect) {
       reasonOfMigrationSelect.addEventListener('change', function() {
@@ -6938,6 +7162,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (onboardingParentJlid) onboardingParentJlid.addEventListener('input', generateZoomLink);
     
     if (fetchOnboardingParentDataBtn) {
+        fetchOnboardingParentDataBtn.addEventListener('click', () => _loadOnboardingEmailContacts(onboardingParentJlid.value.trim()));
         fetchOnboardingParentDataBtn.addEventListener('click', () => fetchHubspotData(
             onboardingParentJlid, onboardingParentLearnerName, onboardingParentCourse, document.getElementById('onboardingParentAge'), 
             onboardingParentRecipientEmail, onboardingParentName, onboardingParentContact, onboardingParentSubscriptionTenure, 
@@ -7405,7 +7630,7 @@ function triggerMigrationIntelligence() {
           try {
             var firstSession = document.querySelector('#classSessionsContainer .class-session-group');
             if (firstSession) {
-              var tzEl  = firstSession.querySelector('.class-timezone-select');
+              var tzEl  = document.getElementById('migrationTimezone');
               var dayEl = firstSession.querySelector('.class-day-select');
               var hrEl  = firstSession.querySelector('.class-hour-select');
               var minEl = firstSession.querySelector('.class-minute-select');
@@ -8179,28 +8404,32 @@ function fetchMigrationSpecificData() {
                     jlidInput.value = data.jlid;
                     learnerInput.value = data.learnerName;
 
-                    // --- NEW: POPULATE TIMEZONE ---
+                    // --- POPULATE UNIVERSAL TIMEZONE ---
                     const parentTz = data.timezone || "";
-                    
-                    // A. Save to hidden field (so new rows get it)
                     const globalTz = document.getElementById('globalMigrationTimezone');
-                    if(globalTz) globalTz.value = parentTz;
-
-                    // B. Update the visible dropdowns immediately
-                    // --- FIX: Defined variable matches the loop variable ---
-                    const visibleSelects = document.querySelectorAll('.class-timezone-select');
-                    
-                    visibleSelects.forEach(select => {
-                        // Try to set the value
-                        select.value = parentTz;
-                        
-                        // If the fetched timezone isn't in the list (dropdown is blank), add it dynamically
-                        if (select.value === "" && parentTz !== "") {
-                            const opt = new Option(parentTz, parentTz, true, true);
-                            select.add(opt);
+                    if (globalTz) globalTz.value = parentTz;
+                    // Set universal timezone select
+                    var migTzEl = document.getElementById('migrationTimezone');
+                    if (migTzEl && parentTz) {
+                        migTzEl.value = parentTz;
+                        if (!migTzEl.value) { migTzEl.appendChild(new Option(parentTz, parentTz, true, true)); }
+                    }
+                    // Auto-fill booking timezone: map learner's GMT label to IANA
+                    if (parentTz) {
+                      var _ianaMatch = null;
+                      // Try direct IANA match first (if stored as IANA already)
+                      if (globalBookingTimezones.find(function(t){ return t.id === parentTz; })) {
+                        _ianaMatch = parentTz;
+                      } else {
+                        // Map from GMT label via TIMEZONE_IANA_MAP keys
+                        var _norm = String(parentTz).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m){ return 'GMT'+s+(h.length<2?'0'+h:h)+':'+m; }).trim();
+                        for (var _k in (typeof TIMEZONE_IANA_MAP !== 'undefined' ? TIMEZONE_IANA_MAP : {})) {
+                          var _kn = String(_k).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m){ return 'GMT'+s+(h.length<2?'0'+h:h)+':'+m; }).trim();
+                          if (_kn === _norm) { _ianaMatch = TIMEZONE_IANA_MAP[_k]; break; }
                         }
-                    });
-                    // -----------------------------
+                      }
+                      if (_ianaMatch) _setBookingTzByIana(_ianaMatch);
+                    }
 
                     // 2. Populate Dropdowns
                     if (migrationCourseSelect && data.course) {
@@ -8231,9 +8460,14 @@ function fetchMigrationSpecificData() {
                         addOptionIfNotExists(oldTeacherSelect, data.currentTeacher);
                         oldTeacherSelect.value = data.currentTeacher;
                     }
-                    if (newTeacherSelect && data.newTeacher) {
-                        addOptionIfNotExists(newTeacherSelect, data.newTeacher);
-                        newTeacherSelect.value = data.newTeacher;
+                    if (newTeacherSelect) {
+                        if (data.newTeacher) {
+                            addOptionIfNotExists(newTeacherSelect, data.newTeacher);
+                            newTeacherSelect.value = data.newTeacher;
+                        } else {
+                            newTeacherSelect.value = '';
+                        }
+                        newTeacherSelect.dispatchEvent(new Event('change'));
                     }
 
                     // 4. Populate Schedule from Ticket (if available)
@@ -8259,15 +8493,7 @@ function fetchMigrationSpecificData() {
                         classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
                     }
 
-                    // Re-apply timezone to the newly created row (just in case)
-                    const refreshedSelects = document.querySelectorAll('.class-timezone-select');
-                    refreshedSelects.forEach(select => {
-                        select.value = parentTz;
-                         if (select.value === "" && parentTz !== "") {
-                            const opt = new Option(parentTz, parentTz, true, true);
-                            select.add(opt);
-                        }
-                    });
+                    // Universal timezone field already set above — nothing more needed here
 
                     showToast('success', 'Data Loaded', "Fetched from " + (data.source));
 
@@ -8327,12 +8553,10 @@ function fetchMigrationSpecificData() {
             return null;
         }).filter(Boolean);
 
-        // 2. Capture Timezone
+        // 2. Capture Timezone from universal field
         let selectedTimezone = "";
-        const firstTzSelect = document.querySelector('.class-timezone-select');
-        if (firstTzSelect) {
-            selectedTimezone = firstTzSelect.value;
-        }
+        var _migTzEl = document.getElementById('migrationTimezone');
+        if (_migTzEl) selectedTimezone = _migTzEl.value || '';
 
         // 3. Return Data Object
         return {
@@ -8371,11 +8595,9 @@ function fetchMigrationSpecificData() {
                 migrationData.watiTemplateName = watiSelect.value;
             }
             
-            // Capture manual timezone if set
-            const tzSelect = document.querySelector('.class-timezone-select');
-            if (tzSelect) {
-                migrationData.manualTimezone = tzSelect.value;
-            }
+            // Capture timezone from universal field
+            var _tzUniversal = document.getElementById('migrationTimezone');
+            if (_tzUniversal && _tzUniversal.value) migrationData.manualTimezone = _tzUniversal.value;
 
             showLoading('Generating WhatsApp Preview...');
 
@@ -9523,14 +9745,29 @@ function handleSmartFetchAction() {
                     modeEl.style.color = res.mode === 'Migration' ? '#e11d48' : '#10b981';
                 }
 
+                // Migration reason (show only for Migration mode)
+                const reasonCol = document.getElementById('pMigrationReasonCol');
+                const reasonEl  = document.getElementById('pDispMigrationReason');
+                if (reasonCol && reasonEl) {
+                    if (res.mode === 'Migration' && d.migrationReason) {
+                        reasonEl.textContent = d.migrationReason;
+                        reasonCol.style.display = '';
+                    } else {
+                        reasonCol.style.display = 'none';
+                    }
+                }
+
                 // Basic fields
                 if (document.getElementById('pDispName')) document.getElementById('pDispName').textContent = d.learnerName || '\u2014';
                 if (document.getElementById('pDispJlid')) document.getElementById('pDispJlid').textContent = d.jlid || jlid;
                 if (document.getElementById('pDispAge'))  document.getElementById('pDispAge').textContent  = d.age  || '\u2014';
 
                 // Store for Migrate button (read by renderPersonaCards)
-                _personaCtxJlid     = d.jlid || jlid || '';
-                _personaCtxLearner  = d.learnerName || '';
+                _personaCtxJlid       = d.jlid || jlid || '';
+                _personaCtxLearner    = d.learnerName || '';
+                _personaCtxOldTeacher = d.currentTeacher || '';
+                _personaCtxMode       = res.mode || '';
+                _loadPersonaReserveEmailContacts(_personaCtxJlid);
 
                 // \u2500\u2500 Current Teacher dropdown \u2500\u2500
                 const tDrop = document.getElementById('pCurrentTeacherDropdown');
@@ -9569,10 +9806,49 @@ function handleSmartFetchAction() {
                     if (bestOpt) { el.value = bestOpt.value; }
                 }
 
-                _setCourseDrop('pInpCourse',  d.currentCourse  || '', false);
-                _setCourseDrop('pInpFuture1', d.futureCourse1  || '', true);
-                _setCourseDrop('pInpFuture2', d.futureCourse2  || '', true);
-                _setCourseDrop('pInpFuture3', d.futureCourse3  || '', true);
+                // For Course Change Teacher Change: learner completed current course,
+                // so Future1 becomes the primary course to match against.
+                const isCourseChange = res.mode === 'Migration' &&
+                    (d.migrationReason || '').toLowerCase().indexOf('course change') !== -1;
+
+                const completedCol  = document.getElementById('pCompletedCourseCol');
+                const completedDisp = document.getElementById('pDispCompletedCourse');
+                const gridEl        = document.getElementById('pCourseMappingGrid');
+                const labelCurrent  = document.getElementById('pLabelCurrentCourse');
+                const labelF1       = document.getElementById('pLabelFuture1');
+                const labelF2       = document.getElementById('pLabelFuture2');
+                const future3Col    = document.getElementById('pFuture3Col');
+
+                if (isCourseChange) {
+                    // Show completed course tile
+                    if (completedDisp) completedDisp.textContent = d.currentCourse || '—';
+                    if (completedCol)  completedCol.style.display = '';
+                    // Relabel active columns
+                    if (labelCurrent) labelCurrent.textContent = 'Next Course';
+                    if (labelF1)      labelF1.textContent      = 'Future 1';
+                    if (labelF2)      labelF2.textContent      = 'Future 2';
+                    // 5 cols: completed + next + f1 + f2 (hide future3 to keep 4-wide grid)
+                    if (future3Col)   future3Col.style.display = 'none';
+                    if (gridEl)       gridEl.style.gridTemplateColumns = 'repeat(4, 1fr)';
+
+                    _setCourseDrop('pInpCourse',  d.futureCourse1 || '', false);
+                    _setCourseDrop('pInpFuture1', d.futureCourse2 || '', true);
+                    _setCourseDrop('pInpFuture2', d.futureCourse3 || '', true);
+                    _setCourseDrop('pInpFuture3', '', true);
+                } else {
+                    // Reset to normal labels
+                    if (completedCol)  completedCol.style.display = 'none';
+                    if (labelCurrent)  labelCurrent.textContent = 'Current Course';
+                    if (labelF1)       labelF1.textContent      = 'Future 1';
+                    if (labelF2)       labelF2.textContent      = 'Future 2';
+                    if (future3Col)    future3Col.style.display = '';
+                    if (gridEl)        gridEl.style.gridTemplateColumns = 'repeat(4, 1fr)';
+
+                    _setCourseDrop('pInpCourse',  d.currentCourse  || '', false);
+                    _setCourseDrop('pInpFuture1', d.futureCourse1  || '', true);
+                    _setCourseDrop('pInpFuture2', d.futureCourse2  || '', true);
+                    _setCourseDrop('pInpFuture3', d.futureCourse3  || '', true);
+                }
 
                 // \u2500\u2500 Slot rows: generate based on sessions/week \u2500\u2500
                 const countMatch = (d.sessionsPerWeek || '1').match(/(\d+)/);
@@ -9661,6 +9937,8 @@ function handlePersonaSearchSubmit(e) {
         futureCourse3: document.getElementById('pInpFuture3').value,
         learnerAge: document.getElementById('pDispAge') ? document.getElementById('pDispAge').textContent : ''
     };
+
+    _personaCtxRequestedSlots = requestedSlots;
 
     showLoading('Ranking teachers for all slots...');
     google.script.run
@@ -10962,7 +11240,9 @@ function renderPersonaCards() {
       + traitLine
       + '<div style="display:flex;gap:6px;margin-top:2px;">'
       + '<button onclick="openTeacherProfileModal(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile \u2192<\/button>'
-      + '<button onclick="_personaMigrateToTeacher(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#4f46e5;border:none;border-radius:8px;font-size:0.75rem;color:#fff;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#3730a3\'" onmouseout="this.style.background=\'#4f46e5\'">Migrate \u2192<\/button>'
+      + '<button onclick="_personaRegisterMatchLog(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#fff;border:1.5px solid #6366f1;border-radius:8px;font-size:0.75rem;color:#4f46e5;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'#fff\'">\ud83d\udcdd Register Log<\/button>'
+      + (window._calendarBookingAllowed ? '<button onclick="_personaReserveSlot(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#fff;border:1.5px solid #16a34a;border-radius:8px;font-size:0.75rem;color:#15803d;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'#fff\'">\ud83d\udcc5 Reserve Slot<\/button>' : '')
+      + '<button onclick="_personaMigrateToTeacher(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#4f46e5;border:none;border-radius:8px;font-size:0.75rem;color:#fff;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#3730a3\'" onmouseout="this.style.background=\'#4f46e5\'">' + (_personaCtxMode === 'Onboarding' ? 'Onboard' : 'Migrate \u2192') + '<\/button>'
       + '<\/div>'
       + '<\/div>';
   }).join('');
@@ -11015,6 +11295,7 @@ function _personaMigrateToTeacher(teacherName) {
   // JLID + learner read at click time from module vars (set by Smart Context Fetch)
   var jlid        = _personaCtxJlid    || '';
   var learnerName = _personaCtxLearner || '';
+  var isOnboarding = _personaCtxMode === 'Onboarding';
 
   if (!teacherName) return;
   if (!jlid || jlid.length < 5) {
@@ -11022,9 +11303,47 @@ function _personaMigrateToTeacher(teacherName) {
     return;
   }
 
+  if (isOnboarding) {
+    showConfirm(
+      'Assign Teacher',
+      'Assign <strong>' + escapeHtml(teacherName) + '<\/strong> as teacher for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br><span style="font-size:0.8rem;color:#94a3b8;">This will update the learner\'s deal and open the Onboarding Email & Invoice Generator.<\/span>',
+      function(confirmed) {
+        if (!confirmed) return;
+        showLoading('Assigning teacher…');
+        google.script.run
+          .withSuccessHandler(function(res) {
+            hideLoading();
+            if (!res || !res.success) {
+              showToast('error', 'Assignment Failed', res ? res.message : 'Unknown error');
+              return;
+            }
+            showToast('success', 'Teacher Assigned', teacherName + ' set as teacher for ' + (learnerName || jlid));
+
+            // Navigate to Communication page → Onboarding Email & Invoice Generator tab → pre-fill
+            switchPage('communicationPage');
+            setTimeout(function() {
+              if (typeof switchCommunicationTab === 'function') switchCommunicationTab('onboardingParent');
+              if (onboardingParentJlid) {
+                onboardingParentJlid.value = jlid;
+              }
+              if (onboardingParentLearnerName && learnerName) onboardingParentLearnerName.value = learnerName;
+              if (onboardingParentTeacher) onboardingParentTeacher.value = teacherName;
+              if (fetchOnboardingParentDataBtn) fetchOnboardingParentDataBtn.click();
+            }, 900);
+          })
+          .withFailureHandler(function(err) {
+            hideLoading();
+            showError(err);
+          })
+          .assignTeacherForOnboarding(jlid, teacherName);
+      }
+    );
+    return;
+  }
+
   showConfirm(
     'Assign Teacher',
-    'Assign <strong>' + escapeHtml(teacherName) + '<\/strong> as new teacher for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br><span style="font-size:0.8rem;color:#64748b;">This will update the HubSpot migration ticket and open the migration form.<\/span>',
+    'Assign <strong>' + escapeHtml(teacherName) + '<\/strong> as new teacher for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br><span style="font-size:0.8rem;color:#94a3b8;">This will update the HubSpot migration ticket and open the migration form.<\/span>',
     function(confirmed) {
       if (!confirmed) return;
       showLoading('Assigning teacher to ticket…');
@@ -11060,6 +11379,278 @@ function _personaMigrateToTeacher(teacherName) {
     }
   );
 }
+
+/**
+ * Called when user clicks "Register Log" on a persona card.
+ * Writes a "Teacher Match Found" audit entry without performing any assignment/navigation.
+ */
+function _personaRegisterMatchLog(teacherName) {
+  var jlid        = _personaCtxJlid    || '';
+  var learnerName = _personaCtxLearner || '';
+
+  if (!teacherName) return;
+  if (!jlid || jlid.length < 5) {
+    showToast('error', 'No Learner Loaded', 'Use Smart Context Fetch to load a learner first.');
+    return;
+  }
+
+  var t = (personaResults || []).find(function(r) { return r.teacherName === teacherName; }) || {};
+  var courseName = (document.getElementById('pInpCourse') && document.getElementById('pInpCourse').value) || '';
+  var searchDate = new Date().toISOString().split('T')[0];
+  var execDateEl = document.getElementById('pPlannedExecDate');
+  var execDate   = (execDateEl && execDateEl.value) ? execDateEl.value : searchDate;
+
+  var noteParts = [
+    'Match found on ' + searchDate,
+    'Planned execution: ' + execDate,
+    'Slot match: ' + (t.slotMatch || 'N/A'),
+    'Audit grade: ' + (t.auditGrade || 'N/A'),
+    'Alt slots: ' + (t.alternateSlots || 'none')
+  ];
+  if (t.traitsMissing && t.traitsMissing.length) noteParts.push('Missing traits: ' + t.traitsMissing.join(', '));
+
+  showLoading('Registering match log…');
+  google.script.run
+    .withSuccessHandler(function() {
+      hideLoading();
+      showToast('success', 'Log Registered', 'Match with ' + teacherName + ' logged for ' + (learnerName || jlid));
+
+      // Also post on the HubSpot ticket so whoever's working it sees if this teacher gets taken
+      var ticketNote = '<strong>Teacher Match Found</strong><br>'
+        + 'Teacher: ' + teacherName + '<br>'
+        + 'Learner: ' + (learnerName || jlid) + ' (' + jlid + ')<br>'
+        + 'Course: ' + (courseName || 'N/A') + '<br>'
+        + noteParts.join('<br>')
+        + (currentUser ? '<br>By: ' + currentUser.username : '');
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            showToast('success', 'Ticket Updated', 'Note added to ticket #' + res.ticketId);
+          } else {
+            showToast('warning', 'Ticket Not Updated', (res && res.message) || 'Could not find an active ticket for this JLID.');
+          }
+        })
+        .withFailureHandler(function(err) { showError(err); })
+        .registerTeacherMatchOnTicket(jlid, ticketNote);
+    })
+    .withFailureHandler(function(err) {
+      hideLoading();
+      showError(err);
+    })
+    .logAction(
+      'Teacher Match Found',
+      jlid,
+      learnerName,
+      _personaCtxOldTeacher || '',
+      teacherName,
+      courseName,
+      'Found',
+      noteParts.join(' | '),
+      '',
+      currentUser ? currentUser.username : ''
+    );
+}
+
+/**
+ * Called when user clicks "📅 Reserve Slot" on a persona card.
+ * Books the first requested slot as a 12-week weekly recurring event on the
+ * class-schedule calendar (hello@jet-learn.com) + teacher's calendar, inviting the teacher.
+ */
+function _personaReserveSlot(teacherName) {
+  var jlid        = _personaCtxJlid    || '';
+  var learnerName = _personaCtxLearner || '';
+
+  if (!teacherName) return;
+  if (!jlid || jlid.length < 5) {
+    showToast('error', 'No Learner Loaded', 'Use Smart Context Fetch to load a learner first.');
+    return;
+  }
+  if (!_personaCtxRequestedSlots || !_personaCtxRequestedSlots.length) {
+    showToast('error', 'No Slot Selected', 'Add a requested time slot in the search form first.');
+    return;
+  }
+
+  var t = (personaResults || []).find(function(r) { return r.teacherName === teacherName; }) || {};
+  var courseName = (document.getElementById('pInpCourse') && document.getElementById('pInpCourse').value) || '';
+  var slot = _personaCtxRequestedSlots[0];
+
+  var tzEl       = document.getElementById('pReserveTimezone');
+  var timeZone   = (tzEl && tzEl.value) ? tzEl.value : 'Europe/Berlin';
+  var tzLabel    = (tzEl && tzEl.options[tzEl.selectedIndex]) ? tzEl.options[tzEl.selectedIndex].text : timeZone;
+  var numEl      = document.getElementById('pReserveNumEvents');
+  var numEvents  = (numEl && parseInt(numEl.value)) > 0 ? parseInt(numEl.value) : 12;
+  var extraEmails = Array.from(document.querySelectorAll('input[name="pReserveEmailTarget"]:checked')).map(function(cb) { return cb.value; }).filter(Boolean);
+
+  showConfirm(
+    'Reserve Slot',
+    'Reserve <strong>' + escapeHtml(slot.date) + ', ' + escapeHtml(slot.slot) + ' (' + escapeHtml(tzLabel) + ')<\/strong> weekly for ' + numEvents + ' sessions with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+    function(confirmed) {
+      if (!confirmed) return;
+      showLoading('Reserving slot (' + numEvents + ' sessions)…');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (!res || !res.success) {
+            showToast('error', 'Reservation Failed', res ? res.message : 'Unknown error');
+            return;
+          }
+          showToast('success', 'Slot Reserved', res.occurrences + ' weekly sessions booked with ' + teacherName);
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          showError(err);
+        })
+        .reserveCalendarSlot(
+          jlid,
+          learnerName,
+          teacherName,
+          t.teacherCalendarId || '',
+          t.teacherEmail || '',
+          _personaCtxRequestedSlots,
+          courseName,
+          currentUser ? currentUser.username : '',
+          t.teacherId || '',
+          timeZone,
+          numEvents,
+          extraEmails
+        );
+    }
+  );
+}
+
+/**
+ * "Book Classes with New Teacher" — Migration tab.
+ * Books each weekly class session (from #classSessionsContainer) as a recurring
+ * event with the new teacher, inviting hello@jet-learn.com + all selected parent emails.
+ */
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('bookClassesWithNewTeacherBtn');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    var statusEl = document.getElementById('bookClassesWithNewTeacherStatus');
+    if (statusEl) statusEl.textContent = '';
+
+    var jlid = (document.getElementById('jlid') || {}).value || '';
+    var learnerName = (document.getElementById('learner') || {}).value || '';
+    var newTeacherSel = document.getElementById('newTeacher');
+    var teacherName = newTeacherSel ? newTeacherSel.value : '';
+    var courseSel = document.getElementById('migrationCourse');
+    var courseName = courseSel ? courseSel.value : '';
+    var startDate = (document.getElementById('startDate') || {}).value || '';
+
+    var gmtTzLabel = (document.getElementById('bookingTimezone') || {}).value || '';
+
+    var numEl = document.getElementById('bookClassesNumEvents');
+    var numEvents = (numEl && parseInt(numEl.value)) > 0 ? parseInt(numEl.value) : 12;
+
+    var classSessions = Array.from(document.querySelectorAll('#classSessionsContainer .class-session-group')).map(function(group) {
+      var day = group.querySelector('.class-day-select').value;
+      var hour = group.querySelector('.class-hour-select').value;
+      var minute = group.querySelector('.class-minute-select').value;
+      var meridiem = group.querySelector('.class-meridiem-select').value;
+      return (day && hour && minute && meridiem) ? { day: day, time: hour + ':' + minute + ' ' + meridiem } : null;
+    }).filter(Boolean);
+
+    var extraEmails = Array.from(document.querySelectorAll('input[name="emailContactTarget"]:checked')).map(function(cb) { return cb.value; }).filter(Boolean);
+
+    if (!jlid || !learnerName) {
+      showToast('error', 'Missing Learner', 'Load a learner (JLID) first.');
+      return;
+    }
+    if (!teacherName) {
+      showToast('error', 'Missing Teacher', 'Select a new teacher first.');
+      return;
+    }
+    if (!classSessions.length) {
+      showToast('error', 'Missing Schedule', 'Add at least one class session in the schedule above.');
+      return;
+    }
+    if (!startDate) {
+      showToast('error', 'Missing Start Date', 'Select a start date first.');
+      return;
+    }
+    if (!gmtTzLabel) {
+      showToast('error', 'Missing Timezone', 'Select a booking timezone first.');
+      document.getElementById('bookingTimezoneSearch') && document.getElementById('bookingTimezoneSearch').focus();
+      return;
+    }
+
+    showConfirm(
+      'Book Classes with New Teacher',
+      'Book ' + classSessions.length + ' weekly session(s) x ' + numEvents + ' weeks with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+      function(confirmed) {
+        if (!confirmed) return;
+        showLoading('Booking classes (' + numEvents + ' weeks)…');
+        google.script.run
+          .withSuccessHandler(function(res) {
+            hideLoading();
+            if (!res || !res.success) {
+              showToast('error', 'Booking Failed', res ? res.message : 'Unknown error');
+              if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Unknown error') + '<\/span>';
+              return;
+            }
+            showToast('success', 'Classes Booked', res.booked.length + ' session(s) x ' + res.occurrences + ' weeks booked with ' + teacherName);
+            if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a;">Booked ' + res.booked.length + ' session(s) x ' + res.occurrences + ' weeks.<\/span>';
+          })
+          .withFailureHandler(function(err) {
+            hideLoading();
+            showError(err);
+          })
+          .bookClassesWithNewTeacher(
+            jlid,
+            learnerName,
+            teacherName,
+            classSessions,
+            courseName,
+            startDate,
+            gmtTzLabel,
+            numEvents,
+            extraEmails,
+            currentUser ? currentUser.username : '',
+            (document.getElementById('migrationClassLink') || {}).value || '',
+            (document.getElementById('jetGuide') || {}).value || '',
+            (document.getElementById('bookingEventDescription') || {}).value || ''
+          );
+      }
+    );
+  });
+});
+
+// ── Fetch existing event description ─────────────────────────────────────────
+(function() {
+  var fetchBtn = document.getElementById('fetchEventDescBtn');
+  if (!fetchBtn) return;
+  fetchBtn.addEventListener('click', function() {
+    var jlid = (document.getElementById('jlid') || {}).value || '';
+    if (!jlid) { showToast('error', 'No JLID', 'Load a learner first.'); return; }
+    var statusEl = document.getElementById('fetchEventDescStatus');
+    if (statusEl) statusEl.textContent = 'Fetching…';
+    fetchBtn.disabled = true;
+    google.script.run
+      .withSuccessHandler(function(res) {
+        fetchBtn.disabled = false;
+        if (!res || !res.success) {
+          if (statusEl) statusEl.textContent = res ? res.message : 'Not found';
+          return;
+        }
+        var ta = document.getElementById('bookingEventDescription');
+        if (ta) {
+          // Strip HTML tags, decode entities, normalize line breaks
+          var tmp = document.createElement('div');
+          tmp.innerHTML = (res.description || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
+          ta.value = (tmp.textContent || tmp.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+        }
+        if (statusEl) statusEl.textContent = 'Fetched ✓';
+      })
+      .withFailureHandler(function(err) {
+        fetchBtn.disabled = false;
+        if (statusEl) statusEl.textContent = 'Error';
+        showError(err);
+      })
+      .getExistingEventDescription(jlid);
+  });
+})();
 
 /** Opens teacher profile as a popup modal — used from persona cards */
 function openTeacherProfileModal(teacherName) {

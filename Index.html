@@ -559,8 +559,44 @@
                   <input type="text" id="manualWhatsappNumber" class="form-control" placeholder="Enter number to override all above">
                   <small class="form-text-muted" style="font-size:0.75em;color:var(--text-light);">Overrides all contact selections above if filled.</small>
                 </div>
+
+                <!-- Also Email Parent (fallback when WhatsApp is down) -->
+                <div class="form-group full-width" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 12px;">
+                  <div class="checkbox-option" style="cursor:pointer;">
+                    <input type="checkbox" id="sendEmailToParentAlso" class="checkbox-input">
+                    <label for="sendEmailToParentAlso" style="cursor:pointer;"><strong>Also Email Parent</strong> (same content as WhatsApp — use while WhatsApp is down)</label>
+                  </div>
+                  <div id="emailContactPickerGroup" style="display:none;margin-top:8px;">
+                    <label class="form-label" style="font-size:0.8em;">Parent Email Contact(s)</label>
+                    <div id="emailContactList" style="display:flex;flex-direction:column;gap:6px;"></div>
+                  </div>
+                </div>
                 <div class="form-group"><label for="oldTeacher" class="form-label">Old Teacher (Optional)</label><select id="oldTeacher" class="form-control form-select"><option value="" disabled selected>Select old teacher</option></select></div>
                 <div class="form-group"><label for="newTeacher" class="form-label">New Teacher</label><select id="newTeacher" class="form-control form-select" required><option value="" disabled selected>Select new teacher</option></select></div>
+                <div class="form-group full-width" style="background:#f8faff;border:1px solid #e0e7ff;border-radius:10px;padding:14px 16px;">
+                  <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:260px;">
+                      <label class="form-label" style="font-size:0.78em;color:var(--text-light);margin-bottom:3px;">Booking Timezone</label>
+                      <input type="text" id="bookingTimezoneSearch" class="form-control" placeholder="Search timezone..." autocomplete="off" style="font-size:0.82rem;">
+                      <input type="hidden" id="bookingTimezone">
+                    </div>
+                    <div style="flex:0 0 auto;display:flex;align-items:center;gap:8px;">
+                      <label style="font-size:0.8em;display:flex;align-items:center;gap:4px;">No. of Sessions: <input type="number" id="bookClassesNumEvents" class="form-control" value="12" min="1" max="52" style="width:70px;"></label>
+                    </div>
+                    <div style="flex:0 0 auto;">
+                      <button type="button" class="btn btn-outline" id="bookClassesWithNewTeacherBtn" style="font-size:0.82rem;"><i class="fas fa-calendar-plus"></i> Book Classes with New Teacher</button>
+                    </div>
+                  </div>
+                  <div style="margin-top:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                      <label class="form-label" style="font-size:0.78em;color:var(--text-light);margin:0;">Event Notes / Description</label>
+                      <button type="button" id="fetchEventDescBtn" class="btn btn-outline" style="font-size:0.75rem;padding:2px 10px;"><i class="fas fa-sync-alt"></i> Fetch from existing event</button>
+                      <span id="fetchEventDescStatus" style="font-size:0.75rem;color:#94a3b8;"></span>
+                    </div>
+                    <textarea id="bookingEventDescription" class="form-control" rows="4" placeholder="Event notes (e.g. student login, scratch URL). Auto-fetched from existing events or type manually." style="font-size:0.81rem;resize:vertical;"></textarea>
+                  </div>
+                  <div id="bookClassesWithNewTeacherStatus" style="font-size:0.82rem;margin-top:8px;"></div>
+                </div>
                 <div class="form-group"><label for="migrationCourse" class="form-label">Course</label><select id="migrationCourse" class="form-control form-select" required><option value="" disabled selected>Select course</option></select></div>
 
                 <!-- ── CCTC: Old / New course fields — shown only for Course Change Teacher Change ── -->
@@ -654,6 +690,10 @@
                 
                 <div class="form-group full-width">
                 <label for="migrationClassLink" class="form-label">Class Link (Zoom / Google Meet)<span style="float:right; font-size:0.8em; font-weight:normal; color:var(--text-light);"><input type="checkbox" id="migrationLinkManual"> Manual/GMeet</span></label><input type="text" id="migrationClassLink" class="form-control" placeholder="Will auto-generate based on JLID if left empty"></div>
+                <div class="form-group">
+                  <label class="form-label">Timezone</label>
+                  <select id="migrationTimezone" class="form-control form-select"><option value="" disabled selected>Select Timezone</option></select>
+                </div>
                 <div class="form-group full-width"><label class="form-label">Class Schedule</label><div id="classSessionsContainer"></div><button type="button" class="btn btn-outline" id="addClassSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button></div>
                 <div class="form-group"><label for="clsManager" class="form-label">CLS Manager</label><select id="clsManager" class="form-control" required><option value="" disabled selected>Select CLS</option></select></div>
                 <div class="form-group"><label for="jetGuide" class="form-label">JetGuide</label><select id="jetGuide" class="form-control form-select" required><option value="" disabled selected>Select JetGuide</option></select></div>
@@ -974,6 +1014,16 @@
                 <small class="form-text-muted" style="margin-left: 1.75rem;">
                     Sends "Jet, Set, Go!" + "Reminder" messages to Parent Contact immediately.
                 </small>
+
+                <!-- Also Email all contact addresses (fallback when WhatsApp is down) -->
+                <div class="checkbox-option">
+                    <input type="checkbox" id="onboardingSendEmailToAllContacts" class="checkbox-input">
+                    <label for="onboardingSendEmailToAllContacts" style="cursor:pointer;"><strong>Also send Welcome Email to all contact addresses</strong></label>
+                </div>
+                <div id="onboardingEmailContactPickerGroup" style="display:none;margin-left:1.75rem;">
+                    <label class="form-label" style="font-size:0.8em;">Parent Email Contact(s)</label>
+                    <div id="onboardingEmailContactList" style="display:flex;flex-direction:column;gap:6px;"></div>
+                </div>
             </div>
 
                 <div class="form-actions">
@@ -2554,7 +2604,7 @@
                 </div>
                 <div class="table-container">
                     <table class="data-table">
-                        <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Last Login</th><th>Status</th><th>Actions</th></tr></thead>
+                        <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Last Login</th><th>Status</th><th>Feature Access</th><th>Actions</th></tr></thead>
                         <tbody id="usersTableBody"></tbody>
                     </table>
                 </div>
@@ -4073,10 +4123,14 @@
     </div>
 
     <!-- Summary Bar -->
-    <div id="personaLearnerSummary" style="display:none; background:#f8fafc; padding:1.25rem; border-radius:10px; grid-template-columns: 0.8fr 1fr 1.3fr 0.5fr; gap:1.5rem; border: 1px dashed #cbd5e1; align-items: center;">
+    <div id="personaLearnerSummary" style="display:none; background:#f8fafc; padding:1.25rem; border-radius:10px; grid-template-columns: 0.8fr 1.2fr 1fr 1.3fr 0.5fr; gap:1.5rem; border: 1px dashed #cbd5e1; align-items: center;">
       <div>
         <label class="form-label" style="font-size:0.65rem; color:#64748b; text-transform:uppercase;">System Mode</label>
         <div id="pDetectedMode" style="font-weight:700;">---</div>
+      </div>
+      <div id="pMigrationReasonCol" style="display:none;">
+        <label class="form-label" style="font-size:0.65rem; color:#64748b; text-transform:uppercase;">Reason</label>
+        <div id="pDispMigrationReason" style="font-weight:600; font-size:0.82rem; color:#6366f1;">---</div>
       </div>
       <div>
         <label class="form-label" style="font-size:0.65rem; color:#64748b; text-transform:uppercase;">Learner</label>
@@ -4098,20 +4152,25 @@
   <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1.5rem;">
     <form id="personaFormEnhanced">
       <h4 class="dashboard-section-title" style="margin-top:0;">1. Course Mapping</h4>
-      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1.25rem; margin-bottom:2rem;">
+      <div id="pCourseMappingGrid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:1.25rem; margin-bottom:2rem;">
+        <!-- Completed Course: only visible on CCTC -->
+        <div class="form-group" id="pCompletedCourseCol" style="display:none;">
+          <label class="form-label" style="color:#94a3b8;">Completed Course</label>
+          <div id="pDispCompletedCourse" style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:0.85rem;color:#94a3b8;font-style:italic;">—</div>
+        </div>
         <div class="form-group">
-          <label class="form-label">Current Course</label>
+          <label class="form-label" id="pLabelCurrentCourse">Current Course</label>
           <select id="pInpCourse" class="form-control form-select" required></select>
         </div>
         <div class="form-group">
-          <label class="form-label">Future 1</label>
+          <label class="form-label" id="pLabelFuture1">Future 1</label>
           <select id="pInpFuture1" class="form-control form-select"></select>
         </div>
         <div class="form-group">
-          <label class="form-label">Future 2</label>
+          <label class="form-label" id="pLabelFuture2">Future 2</label>
           <select id="pInpFuture2" class="form-control form-select"></select>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="pFuture3Col">
           <label class="form-label">Future 3</label>
           <select id="pInpFuture3" class="form-control form-select"></select>
         </div>
@@ -4152,6 +4211,38 @@
       </div>
 
       <h4 class="dashboard-section-title">3. Class Scheduling (Multi-Slot Support)</h4>
+      <div class="form-group" style="max-width:260px;margin-bottom:1rem;">
+        <label class="form-label">Planned Execution Date <span style="font-weight:400;color:#94a3b8;">(if different from today)</span></label>
+        <input type="date" id="pPlannedExecDate" class="form-control">
+        <small class="form-text-muted" style="font-size:0.72rem;">Logged with the match — useful when the teacher is found today but migration runs later.</small>
+      </div>
+
+      <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:520px;margin-bottom:1rem;">
+        <div class="form-group">
+          <label class="form-label">Reserve Slot — Time Zone</label>
+          <select id="pReserveTimezone" class="form-control form-select">
+            <option value="Europe/Berlin" selected>CET / CEST (Europe — Berlin)</option>
+            <option value="Europe/London">UK (London)</option>
+            <option value="Asia/Kolkata">India (IST)</option>
+            <option value="Asia/Dubai">UAE (Dubai)</option>
+            <option value="America/New_York">US Eastern</option>
+            <option value="America/Los_Angeles">US Pacific</option>
+            <option value="Asia/Singapore">Singapore</option>
+            <option value="Australia/Sydney">Australia (Sydney)</option>
+          </select>
+          <small class="form-text-muted" style="font-size:0.72rem;">The slot time above is treated as local time in this zone (e.g. 4 PM UK = 4 PM London, not 4 PM CET).</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">No. of Sessions to Reserve</label>
+          <input type="number" id="pReserveNumEvents" class="form-control" value="12" min="1" max="52">
+        </div>
+      </div>
+
+      <div class="form-group full-width" id="pReserveEmailContactsGroup" style="display:none;max-width:520px;margin-bottom:1rem;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+        <label class="form-label" style="font-size:0.8em;">Also invite Parent Email(s) to Reserved Slot</label>
+        <div id="pReserveEmailContacts" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+
       <div id="personaSlotsContainer">
         <!-- Rows injected here -->
       </div>

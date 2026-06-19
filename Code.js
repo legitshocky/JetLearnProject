@@ -84,12 +84,12 @@ const PERMISSIONS = {
     'create_users',        // NEW
     'send_welcome_email',  // NEW
     'send_reset_email', // NEW
+    'book_classes_calendar', // Calendar booking (Reserve Slot / Book Classes with New Teacher)
   ],
   [ROLES.ADMIN]: [
     'view_dashboard', 'send_emails', 'view_audit',
     'use_persona_tool', 'view_reports', 'send_generic_emails',
     'manage_invoices', 'run_audit_center', 'manage_settings', 'use_ai_pm'
-    // NOTE: No manage_users, no create_users
   ],
   [ROLES.USER]: [
     'view_dashboard', 'send_emails', 'view_audit',
@@ -267,6 +267,115 @@ function initializeSystem() {
   }
 }
 
+// Maps every entry in `timezones` above to an IANA tz so booking offsets can be
+// computed DST-aware via _tzOffsetHours, regardless of which zone is selected.
+var TIMEZONE_IANA_MAP = {
+  '(GMT-12:00) International Date Line West': 'Etc/GMT+12',
+  '(GMT-11:00) Coordinated Universal Time-11': 'Etc/GMT+11',
+  '(GMT-10:00) Hawaii': 'Pacific/Honolulu',
+  '(GMT-09:00) Alaska': 'America/Anchorage',
+  '(GMT-08:00) Baja California': 'America/Tijuana',
+  '(GMT-08:00) Pacific Time (US & Canada)': 'America/Los_Angeles',
+  '(GMT-07:00) Arizona': 'America/Phoenix',
+  '(GMT-07:00) Chihuahua, La Paz, Mazatlan': 'America/Chihuahua',
+  '(GMT-07:00) Mountain Time (US & Canada)': 'America/Denver',
+  '(GMT-06:00) Central America': 'America/Guatemala',
+  '(GMT-06:00) Central Time (US & Canada)': 'America/Chicago',
+  '(GMT-06:00) Guadalajara, Mexico City, Monterrey': 'America/Mexico_City',
+  '(GMT-06:00) Saskatchewan': 'America/Regina',
+  '(GMT-05:00) Bogota, Lima, Quito': 'America/Bogota',
+  '(GMT-05:00) Eastern Time (US & Canada)': 'America/New_York',
+  '(GMT-05:00) Indiana (East)': 'America/Indiana/Indianapolis',
+  '(GMT-04:30) Caracas': 'America/Caracas',
+  '(GMT-04:00) Asuncion': 'America/Asuncion',
+  '(GMT-04:00) Atlantic Time (Canada)': 'America/Halifax',
+  '(GMT-04:00) Cuiaba': 'America/Cuiaba',
+  '(GMT-04:00) Georgetown, La Paz, Manaus, San Juan': 'America/La_Paz',
+  '(GMT-04:00) Santiago': 'America/Santiago',
+  '(GMT-03:30) Newfoundland': 'America/St_Johns',
+  '(GMT-03:00) Brasilia': 'America/Sao_Paulo',
+  '(GMT-03:00) Buenos Aires': 'America/Argentina/Buenos_Aires',
+  '(GMT-03:00) Cayenne, Fortaleza': 'America/Cayenne',
+  '(GMT-03:00) Greenland': 'America/Godthab',
+  '(GMT-03:00) Montevideo': 'America/Montevideo',
+  '(GMT-03:00) Salvador': 'America/Bahia',
+  '(GMT-02:00) Coordinated Universal Time-02': 'Etc/GMT+2',
+  '(GMT-01:00) Azores': 'Atlantic/Azores',
+  '(GMT-01:00) Cape Verde Is.': 'Atlantic/Cape_Verde',
+  '(GMT+00:00) Casablanca': 'Africa/Casablanca',
+  '(GMT+00:00) Coordinated Universal Time': 'Etc/UTC',
+  '(GMT+00:00) Dublin, Edinburgh, Lisbon, London': 'Europe/London',
+  '(GMT+00:00) Monrovia, Reykjavik': 'Atlantic/Reykjavik',
+  '(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna': 'Europe/Berlin',
+  '(GMT+01:00) Belgrade, Bratislava, Budapest, Ljubljana, Prague': 'Europe/Belgrade',
+  '(GMT+01:00) Brussels, Copenhagen, Madrid, Paris': 'Europe/Paris',
+  '(GMT+01:00) Sarajevo, Skopje, Warsaw, Zagreb': 'Europe/Warsaw',
+  '(GMT+01:00) West Central Africa': 'Africa/Lagos',
+  '(GMT+01:00) Windhoek': 'Africa/Windhoek',
+  '(GMT+02:00) Amman': 'Asia/Amman',
+  '(GMT+02:00) Athens, Bucharest': 'Europe/Athens',
+  '(GMT+02:00) Beirut': 'Asia/Beirut',
+  '(GMT+02:00) Cairo': 'Africa/Cairo',
+  '(GMT+02:00) Damascus': 'Asia/Damascus',
+  '(GMT+02:00) E. Europe': 'Europe/Chisinau',
+  '(GMT+02:00) Harare, Pretoria': 'Africa/Johannesburg',
+  '(GMT+02:00) Helsinki, Kyiv, Riga, Sofia, Tallinn, Vilnius': 'Europe/Helsinki',
+  '(GMT+02:00) Istanbul': 'Europe/Istanbul',
+  '(GMT+02:00) Jerusalem': 'Asia/Jerusalem',
+  '(GMT+02:00) Kaliningrad': 'Europe/Kaliningrad',
+  '(GMT+02:00) Tripoli': 'Africa/Tripoli',
+  '(GMT+03:00) Baghdad': 'Asia/Baghdad',
+  '(GMT+03:00) Kuwait, Riyadh': 'Asia/Riyadh',
+  '(GMT+03:00) Minsk': 'Europe/Minsk',
+  '(GMT+03:00) Moscow, St. Petersburg, Volgograd': 'Europe/Moscow',
+  '(GMT+03:00) Nairobi': 'Africa/Nairobi',
+  '(GMT+03:30) Tehran': 'Asia/Tehran',
+  '(GMT+04:00) Abu Dhabi, Muscat': 'Asia/Dubai',
+  '(GMT+04:00) Baku': 'Asia/Baku',
+  '(GMT+04:00) Izhevsk, Samara': 'Europe/Samara',
+  '(GMT+04:00) Port Louis': 'Indian/Mauritius',
+  '(GMT+04:00) Tbilisi': 'Asia/Tbilisi',
+  '(GMT+04:00) Yerevan': 'Asia/Yerevan',
+  '(GMT+04:30) Kabul': 'Asia/Kabul',
+  '(GMT+05:00) Ashgabat, Tashkent': 'Asia/Tashkent',
+  '(GMT+05:00) Ekaterinburg': 'Asia/Yekaterinburg',
+  '(GMT+05:00) Islamabad, Karachi': 'Asia/Karachi',
+  '(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi': 'Asia/Kolkata',
+  '(GMT+05:30) Sri Jayawardenepura': 'Asia/Colombo',
+  '(GMT+05:45) Kathmandu': 'Asia/Kathmandu',
+  '(GMT+06:00) Astana': 'Asia/Almaty',
+  '(GMT+06:00) Dhaka': 'Asia/Dhaka',
+  '(GMT+06:00) Novosibirsk': 'Asia/Novosibirsk',
+  '(GMT+06:30) Yangon (Rangoon)': 'Asia/Yangon',
+  '(GMT+07:00) Bangkok, Hanoi, Jakarta': 'Asia/Bangkok',
+  '(GMT+07:00) Krasnoyarsk': 'Asia/Krasnoyarsk',
+  '(GMT+08:00) Beijing, Chongqing, Hong Kong, Urumqi': 'Asia/Shanghai',
+  '(GMT+08:00) Irkutsk': 'Asia/Irkutsk',
+  '(GMT+08:00) Kuala Lumpur, Singapore': 'Asia/Singapore',
+  '(GMT+08:00) Perth': 'Australia/Perth',
+  '(GMT+08:00) Taipei': 'Asia/Taipei',
+  '(GMT+08:00) Ulaanbaatar': 'Asia/Ulaanbaatar',
+  '(GMT+09:00) Osaka, Sapporo, Tokyo': 'Asia/Tokyo',
+  '(GMT+09:00) Seoul': 'Asia/Seoul',
+  '(GMT+09:00) Yakutsk': 'Asia/Yakutsk',
+  '(GMT+09:30) Adelaide': 'Australia/Adelaide',
+  '(GMT+09:30) Darwin': 'Australia/Darwin',
+  '(GMT+10:00) Brisbane': 'Australia/Brisbane',
+  '(GMT+10:00) Canberra, Melbourne, Sydney': 'Australia/Sydney',
+  '(GMT+10:00) Guam, Port Moresby': 'Pacific/Guam',
+  '(GMT+10:00) Hobart': 'Australia/Hobart',
+  '(GMT+10:00) Vladivostok': 'Asia/Vladivostok',
+  '(GMT+11:00) Chokurdakh': 'Asia/Srednekolymsk',
+  '(GMT+11:00) Magadan': 'Asia/Magadan',
+  '(GMT+11:00) Solomon Is., New Caledonia': 'Pacific/Guadalcanal',
+  '(GMT+12:00) Anadyr, Petropavlovsk-Kamchatsky': 'Asia/Kamchatka',
+  '(GMT+12:00) Auckland, Wellington': 'Pacific/Auckland',
+  '(GMT+12:00) Coordinated Universal Time+12': 'Etc/GMT-12',
+  '(GMT+12:00) Fiji': 'Pacific/Fiji',
+  '(GMT+13:00) Nuku\'alofa': 'Pacific/Tongatapu',
+  '(GMT+13:00) Samoa': 'Pacific/Apia'
+};
+
 function getCommunicationPageData() {
   Logger.log('getCommunicationPageData called');
   try {
@@ -308,40 +417,85 @@ function getCommunicationPageData() {
       '(GMT+12:00) Coordinated Universal Time+12', '(GMT+12:00) Fiji', '(GMT+13:00) Nuku\'alofa', '(GMT+13:00) Samoa'
     ];
 
-const TIMEZONE_IANA_MAP = {
-  // UK & Europe
-  '(GMT+00:00) Dublin, Edinburgh, Lisbon, London': 'Europe/London',
-  '(GMT+00:00) Monrovia, Reykjavik': 'Atlantic/Reykjavik',
-  '(GMT+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna': 'Europe/Berlin',
-  '(GMT+01:00) Brussels, Copenhagen, Madrid, Paris': 'Europe/Paris',
-  
-  // US & Americas
-  '(GMT-05:00) Eastern Time (US & Canada)': 'America/New_York',
-  '(GMT-05:00) Indiana (East)': 'America/Indiana/Indianapolis',
-  '(GMT-06:00) Central Time (US & Canada)': 'America/Chicago',
-  '(GMT-07:00) Mountain Time (US & Canada)': 'America/Denver',
-  '(GMT-07:00) Arizona': 'America/Phoenix',
-  '(GMT-08:00) Pacific Time (US & Canada)': 'America/Los_Angeles',
-  '(GMT-08:00) Baja California': 'America/Tijuana',
-  
-  // Asia / Pacific
-  '(GMT+05:30) Chennai, Kolkata, Mumbai, New Delhi': 'Asia/Kolkata',
-  '(GMT+04:00) Abu Dhabi, Muscat': 'Asia/Dubai',
-  '(GMT+08:00) Kuala Lumpur, Singapore': 'Asia/Singapore',
-  '(GMT+10:00) Canberra, Melbourne, Sydney': 'Australia/Sydney',
-  '(GMT+12:00) Auckland, Wellington': 'Pacific/Auckland'
-};
-
-
     return {
       success: true,
       teachers: teachers,
       courses: courses,
       tpManagers: tpManagers,
       clsManagers: Array.from(clsManagers).sort(),
-      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Satyam Mehra', 'Salima Chhatriwala', ],
+      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Satyam Mehra', 'Salima Chhatriwala', 'Sana Rais', ],
       invoiceProducts: invoiceProducts,
-      timezones: timezones
+      timezones: timezones,
+      bookingTimezones: [
+        { id: 'Pacific/Midway',         label: 'Pacific/Midway — UTC−11:00' },
+        { id: 'Pacific/Honolulu',        label: 'Pacific/Honolulu — UTC−10:00 (Hawaii)' },
+        { id: 'America/Anchorage',       label: 'America/Anchorage — UTC−09:00 (Alaska)' },
+        { id: 'America/Los_Angeles',     label: 'America/Los_Angeles — UTC−08:00 (Pacific Time)' },
+        { id: 'America/Denver',          label: 'America/Denver — UTC−07:00 (Mountain Time)' },
+        { id: 'America/Phoenix',         label: 'America/Phoenix — UTC−07:00 (Arizona, no DST)' },
+        { id: 'America/Chicago',         label: 'America/Chicago — UTC−06:00 (Central Time)' },
+        { id: 'America/New_York',        label: 'America/New_York — UTC−05:00 (Eastern Time)' },
+        { id: 'America/Halifax',         label: 'America/Halifax — UTC−04:00 (Atlantic Time)' },
+        { id: 'America/St_Johns',        label: 'America/St_Johns — UTC−03:30 (Newfoundland)' },
+        { id: 'America/Sao_Paulo',       label: 'America/Sao_Paulo — UTC−03:00 (Brazil)' },
+        { id: 'America/Argentina/Buenos_Aires', label: 'America/Argentina/Buenos_Aires — UTC−03:00' },
+        { id: 'Atlantic/Azores',         label: 'Atlantic/Azores — UTC−01:00' },
+        { id: 'UTC',                     label: 'UTC — UTC+00:00' },
+        { id: 'Europe/London',           label: 'Europe/London — UTC+00:00/+01:00 (UK / Ireland)' },
+        { id: 'Europe/Lisbon',           label: 'Europe/Lisbon — UTC+00:00/+01:00 (Portugal)' },
+        { id: 'Africa/Casablanca',       label: 'Africa/Casablanca — UTC+01:00 (Morocco)' },
+        { id: 'Europe/Paris',            label: 'Europe/Paris — UTC+01:00/+02:00 (France / CET)' },
+        { id: 'Europe/Berlin',           label: 'Europe/Berlin — UTC+01:00/+02:00 (Germany / CET)' },
+        { id: 'Europe/Rome',             label: 'Europe/Rome — UTC+01:00/+02:00 (Italy)' },
+        { id: 'Europe/Madrid',           label: 'Europe/Madrid — UTC+01:00/+02:00 (Spain)' },
+        { id: 'Europe/Amsterdam',        label: 'Europe/Amsterdam — UTC+01:00/+02:00 (Netherlands)' },
+        { id: 'Europe/Brussels',         label: 'Europe/Brussels — UTC+01:00/+02:00 (Belgium)' },
+        { id: 'Europe/Zurich',           label: 'Europe/Zurich — UTC+01:00/+02:00 (Switzerland)' },
+        { id: 'Europe/Warsaw',           label: 'Europe/Warsaw — UTC+01:00/+02:00 (Poland)' },
+        { id: 'Europe/Stockholm',        label: 'Europe/Stockholm — UTC+01:00/+02:00 (Sweden)' },
+        { id: 'Europe/Athens',           label: 'Europe/Athens — UTC+02:00/+03:00 (Greece)' },
+        { id: 'Europe/Helsinki',         label: 'Europe/Helsinki — UTC+02:00/+03:00 (Finland)' },
+        { id: 'Europe/Bucharest',        label: 'Europe/Bucharest — UTC+02:00/+03:00 (Romania)' },
+        { id: 'Africa/Cairo',            label: 'Africa/Cairo — UTC+02:00 (Egypt)' },
+        { id: 'Africa/Johannesburg',     label: 'Africa/Johannesburg — UTC+02:00 (South Africa)' },
+        { id: 'Asia/Jerusalem',          label: 'Asia/Jerusalem — UTC+02:00/+03:00 (Israel)' },
+        { id: 'Asia/Amman',              label: 'Asia/Amman — UTC+02:00/+03:00 (Jordan)' },
+        { id: 'Asia/Beirut',             label: 'Asia/Beirut — UTC+02:00/+03:00 (Lebanon)' },
+        { id: 'Europe/Moscow',           label: 'Europe/Moscow — UTC+03:00 (Russia / MSK)' },
+        { id: 'Asia/Riyadh',             label: 'Asia/Riyadh — UTC+03:00 (Saudi Arabia)' },
+        { id: 'Asia/Kuwait',             label: 'Asia/Kuwait — UTC+03:00 (Kuwait)' },
+        { id: 'Africa/Nairobi',          label: 'Africa/Nairobi — UTC+03:00 (Kenya / EAT)' },
+        { id: 'Asia/Tehran',             label: 'Asia/Tehran — UTC+03:30/+04:30 (Iran)' },
+        { id: 'Asia/Dubai',              label: 'Asia/Dubai — UTC+04:00 (UAE / Gulf)' },
+        { id: 'Asia/Muscat',             label: 'Asia/Muscat — UTC+04:00 (Oman)' },
+        { id: 'Asia/Baku',               label: 'Asia/Baku — UTC+04:00 (Azerbaijan)' },
+        { id: 'Asia/Kabul',              label: 'Asia/Kabul — UTC+04:30 (Afghanistan)' },
+        { id: 'Asia/Karachi',            label: 'Asia/Karachi — UTC+05:00 (Pakistan / PKT)' },
+        { id: 'Asia/Tashkent',           label: 'Asia/Tashkent — UTC+05:00 (Uzbekistan)' },
+        { id: 'Asia/Kolkata',            label: 'Asia/Kolkata — UTC+05:30 (India / IST)' },
+        { id: 'Asia/Colombo',            label: 'Asia/Colombo — UTC+05:30 (Sri Lanka)' },
+        { id: 'Asia/Kathmandu',          label: 'Asia/Kathmandu — UTC+05:45 (Nepal)' },
+        { id: 'Asia/Dhaka',              label: 'Asia/Dhaka — UTC+06:00 (Bangladesh)' },
+        { id: 'Asia/Almaty',             label: 'Asia/Almaty — UTC+06:00 (Kazakhstan)' },
+        { id: 'Asia/Yangon',             label: 'Asia/Yangon — UTC+06:30 (Myanmar)' },
+        { id: 'Asia/Bangkok',            label: 'Asia/Bangkok — UTC+07:00 (Thailand / ICT)' },
+        { id: 'Asia/Jakarta',            label: 'Asia/Jakarta — UTC+07:00 (Indonesia / WIB)' },
+        { id: 'Asia/Singapore',          label: 'Asia/Singapore — UTC+08:00 (Singapore / SGT)' },
+        { id: 'Asia/Kuala_Lumpur',       label: 'Asia/Kuala_Lumpur — UTC+08:00 (Malaysia)' },
+        { id: 'Asia/Hong_Kong',          label: 'Asia/Hong_Kong — UTC+08:00 (Hong Kong)' },
+        { id: 'Asia/Shanghai',           label: 'Asia/Shanghai — UTC+08:00 (China / CST)' },
+        { id: 'Asia/Taipei',             label: 'Asia/Taipei — UTC+08:00 (Taiwan)' },
+        { id: 'Australia/Perth',         label: 'Australia/Perth — UTC+08:00 (Western Australia)' },
+        { id: 'Asia/Tokyo',              label: 'Asia/Tokyo — UTC+09:00 (Japan / JST)' },
+        { id: 'Asia/Seoul',              label: 'Asia/Seoul — UTC+09:00 (South Korea / KST)' },
+        { id: 'Australia/Darwin',        label: 'Australia/Darwin — UTC+09:30 (Northern Territory)' },
+        { id: 'Australia/Adelaide',      label: 'Australia/Adelaide — UTC+09:30/+10:30 (South Australia)' },
+        { id: 'Australia/Sydney',        label: 'Australia/Sydney — UTC+10:00/+11:00 (NSW / AEST)' },
+        { id: 'Australia/Melbourne',     label: 'Australia/Melbourne — UTC+10:00/+11:00 (Victoria)' },
+        { id: 'Australia/Brisbane',      label: 'Australia/Brisbane — UTC+10:00 (Queensland, no DST)' },
+        { id: 'Pacific/Auckland',        label: 'Pacific/Auckland — UTC+12:00/+13:00 (New Zealand)' },
+        { id: 'Pacific/Fiji',            label: 'Pacific/Fiji — UTC+12:00 (Fiji)' }
+      ]
     };
   } catch (error) {
     Logger.log('Error in getCommunicationPageData: ' + error.message);
@@ -460,7 +614,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "6.38";
+const APP_VERSION = "6.77";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -476,7 +630,7 @@ function getCoursesForCertificate() {
       var courses = [];
       for (var i = 1; i < sheetData.length; i++) {
         var v = sheetData[i][0] ? String(sheetData[i][0]).trim() : '';
-        if (v) courses.push(v);
+        if (v) courses.push(v);s
       }
       Logger.log('[Cert] Source 1 found ' + courses.length + ' courses. First 5: ' + JSON.stringify(courses.slice(0,5)));
       if (courses.length > 0) return { success: true, courses: courses.sort(), source: 'Course Name sheet' };
