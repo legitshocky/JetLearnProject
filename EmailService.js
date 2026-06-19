@@ -1,3 +1,177 @@
+// ═══════════════════════════════════════════════════════════
+// TIMEZONE → CET CONVERSION (server-side, all timezones)
+// ═══════════════════════════════════════════════════════════
+
+// Map short TZ codes + full GMT strings → IANA zone
+function _tzToIana(tz) {
+  if (!tz) return null;
+  var t = String(tz).trim();
+
+  // Short codes first
+  var SHORT = {
+    'IST':'Asia/Kolkata',   'PKT':'Asia/Karachi',    'BST':'Asia/Dhaka',
+    'SLST':'Asia/Colombo',  'GST':'Asia/Dubai',      'AST':'Asia/Riyadh',
+    'SGT':'Asia/Singapore', 'HKT':'Asia/Hong_Kong',  'JST':'Asia/Tokyo',
+    'HKT':'Asia/Hong_Kong', 'AEST':'Australia/Sydney','ACST':'Australia/Darwin',
+    'NZST':'Pacific/Auckland','EAT':'Africa/Nairobi', 'SAST':'Africa/Johannesburg',
+    'UKT':'Europe/London',  'CET':'Europe/Paris',    'EET':'Europe/Helsinki',
+    'EST':'America/New_York','CST':'America/Chicago', 'MST':'America/Denver',
+    'PST':'America/Los_Angeles','AKST':'America/Anchorage','HST':'Pacific/Honolulu'
+  };
+  if (SHORT[t]) return SHORT[t];
+
+  // Full GMT strings → check keywords
+  var tl = t.toLowerCase();
+  if (tl.includes('kolkata') || tl.includes('mumbai') || tl.includes('new delhi') || tl.includes('india')) return 'Asia/Kolkata';
+  if (tl.includes('karachi') || tl.includes('islamabad') || tl.includes('lahore')) return 'Asia/Karachi';
+  if (tl.includes('dhaka')) return 'Asia/Dhaka';
+  if (tl.includes('colombo')) return 'Asia/Colombo';
+  if (tl.includes('dubai') || tl.includes('abu dhabi') || tl.includes('muscat')) return 'Asia/Dubai';
+  if (tl.includes('riyadh') || tl.includes('kuwait')) return 'Asia/Riyadh';
+  if (tl.includes('singapore') || tl.includes('kuala lumpur')) return 'Asia/Singapore';
+  if (tl.includes('hong kong')) return 'Asia/Hong_Kong';
+  if (tl.includes('tokyo') || tl.includes('osaka')) return 'Asia/Tokyo';
+  if (tl.includes('sydney') || tl.includes('melbourne') || tl.includes('canberra')) return 'Australia/Sydney';
+  if (tl.includes('brisbane')) return 'Australia/Brisbane';
+  if (tl.includes('darwin') || tl.includes('adelaide')) return 'Australia/Darwin';
+  if (tl.includes('auckland') || tl.includes('wellington')) return 'Pacific/Auckland';
+  if (tl.includes('nairobi')) return 'Africa/Nairobi';
+  if (tl.includes('johannesburg') || tl.includes('pretoria')) return 'Africa/Johannesburg';
+  if (tl.includes('london') || tl.includes('dublin') || tl.includes('edinburgh')) return 'Europe/London';
+  if (tl.includes('paris') || tl.includes('berlin') || tl.includes('amsterdam') || tl.includes('rome') || tl.includes('madrid')) return 'Europe/Paris';
+  if (tl.includes('helsinki') || tl.includes('athens') || tl.includes('bucharest')) return 'Europe/Helsinki';
+  if (tl.includes('eastern') || tl.includes('new york') || tl.includes('toronto')) return 'America/New_York';
+  if (tl.includes('central time') || tl.includes('chicago')) return 'America/Chicago';
+  if (tl.includes('mountain') || tl.includes('denver')) return 'America/Denver';
+  if (tl.includes('pacific') || tl.includes('los angeles')) return 'America/Los_Angeles';
+  if (tl.includes('alaska')) return 'America/Anchorage';
+  if (tl.includes('hawaii')) return 'Pacific/Honolulu';
+  if (tl.includes('beijing') || tl.includes('shanghai')) return 'Asia/Shanghai';
+  if (tl.includes('seoul')) return 'Asia/Seoul';
+  if (tl.includes('bangkok') || tl.includes('jakarta')) return 'Asia/Bangkok';
+  if (tl.includes('tehran')) return 'Asia/Tehran';
+  if (tl.includes('kabul')) return 'Asia/Kabul';
+  if (tl.includes('kathmandu')) return 'Asia/Kathmandu';
+  return null;
+}
+
+// Convert "05:30 PM" in learner timezone → { time:"02:00 PM", dayShift:0/-1/+1 } in CET
+// Uses Utilities.formatDate for accurate DST handling
+function _convertTimeToCET(timeStr, tzStr) {
+  try {
+    var ianaZone = _tzToIana(tzStr);
+    if (!ianaZone || ianaZone === 'Europe/Paris' || ianaZone === 'Europe/Berlin') {
+      return { time: timeStr, dayShift: 0, same: true };
+    }
+
+    var match = String(timeStr || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!match) return { time: timeStr, dayShift: 0 };
+
+    var h = parseInt(match[1], 10);
+    var m = parseInt(match[2], 10);
+    var ampm = match[3] ? match[3].toUpperCase() : null;
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+
+    // Get UTC offsets of both zones (in minutes) using today's date for DST accuracy
+    var now = new Date();
+    function getOffsetMin(zone) {
+      var s = Utilities.formatDate(now, zone, 'Z'); // e.g. "+0530"
+      var p = String(s).match(/([+-])(\d{2})(\d{2})/);
+      if (!p) return 0;
+      return (p[1] === '+' ? 1 : -1) * (parseInt(p[2], 10) * 60 + parseInt(p[3], 10));
+    }
+
+    var learnerOff = getOffsetMin(ianaZone);
+    var cetOff     = getOffsetMin('Europe/Paris');
+    var diffMin    = cetOff - learnerOff;
+
+    var totalMin = h * 60 + m + diffMin;
+    var dayShift = 0;
+    if (totalMin < 0)         { totalMin += 1440; dayShift = -1; }
+    if (totalMin >= 1440)     { totalMin -= 1440; dayShift =  1; }
+
+    var fh = Math.floor(totalMin / 60);
+    var fm = totalMin % 60;
+    var fa = fh >= 12 ? 'PM' : 'AM';
+    var h12 = fh % 12 || 12;
+
+    return {
+      time:     h12 + ':' + String(fm).padStart(2,'0') + ' ' + fa,
+      dayShift: dayShift,
+      same:     false
+    };
+  } catch(e) {
+    Logger.log('[_convertTimeToCET] ' + e.message);
+    return { time: timeStr, dayShift: 0 };
+  }
+}
+
+// Day names for day-shift calculation
+var _DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+function _shiftDay(dayStr, shift) {
+  if (!shift) return dayStr;
+  var idx = _DAYS.findIndex(function(d){ return d.toLowerCase() === (dayStr || '').toLowerCase(); });
+  if (idx === -1) return dayStr;
+  return _DAYS[(idx + shift + 7) % 7];
+}
+
+// Short timezone label from any string: "IST", "CET", "EST" etc.
+function _tzShort(tz) {
+  if (!tz) return '';
+  var t = String(tz).trim();
+  // Already a short code (2-5 uppercase letters, optional digits)
+  if (/^[A-Z]{2,5}T?$/.test(t)) return t;
+  var tl = t.toLowerCase();
+  if (tl.includes('kolkata') || tl.includes('mumbai') || tl.includes('new delhi') || tl.includes('india') || tl.includes('bombay') || tl.includes('calcutta') || tl.includes('madras')) return 'IST';
+  if (tl.includes('karachi') || tl.includes('islamabad') || tl.includes('lahore')) return 'PKT';
+  if (tl.includes('dhaka')) return 'BST';
+  if (tl.includes('colombo')) return 'SLST';
+  if (tl.includes('dubai') || tl.includes('abu dhabi') || tl.includes('muscat')) return 'GST';
+  if (tl.includes('riyadh') || tl.includes('kuwait')) return 'AST';
+  if (tl.includes('singapore') || tl.includes('kuala lumpur')) return 'SGT';
+  if (tl.includes('hong kong')) return 'HKT';
+  if (tl.includes('tokyo') || tl.includes('osaka')) return 'JST';
+  if (tl.includes('sydney') || tl.includes('melbourne') || tl.includes('canberra') || tl.includes('brisbane')) return 'AEST';
+  if (tl.includes('auckland') || tl.includes('wellington')) return 'NZST';
+  if (tl.includes('nairobi')) return 'EAT';
+  if (tl.includes('johannesburg') || tl.includes('pretoria')) return 'SAST';
+  if (tl.includes('london') || tl.includes('dublin') || tl.includes('edinburgh')) return 'GMT';
+  if (tl.includes('paris') || tl.includes('berlin') || tl.includes('amsterdam') || tl.includes('rome') || tl.includes('madrid') || tl.includes('vienna') || tl.includes('stockholm') || tl.includes('brussels')) return 'CET';
+  if (tl.includes('helsinki') || tl.includes('athens') || tl.includes('bucharest')) return 'EET';
+  if (tl.includes('eastern') || tl.includes('new york') || tl.includes('toronto') || tl.includes('indiana')) return 'EST';
+  if (tl.includes('central time') || tl.includes('chicago')) return 'CST';
+  if (tl.includes('mountain') || tl.includes('denver')) return 'MST';
+  if (tl.includes('pacific') || tl.includes('los angeles')) return 'PST';
+  if (tl.includes('alaska')) return 'AKST';
+  if (tl.includes('hawaii')) return 'HST';
+  if (tl.includes('beijing') || tl.includes('shanghai')) return 'CST';
+  if (tl.includes('seoul')) return 'KST';
+  if (tl.includes('bangkok') || tl.includes('jakarta')) return 'ICT';
+  if (tl.includes('tehran')) return 'IRST';
+  if (tl.includes('kabul')) return 'AFT';
+  if (tl.includes('kathmandu')) return 'NPT';
+  // Last resort: extract offset e.g. "(GMT+05:30)" → "+05:30"
+  var m = t.match(/GMT([+-]\d{1,2}(?::\d{2})?)/i);
+  if (m) return 'UTC' + m[1];
+  return t.length <= 8 ? t : 'LTZ';
+}
+
+// Enrich classSessions with CET time — call before passing data to teacher templates
+function _enrichSessionsWithCET(sessions, tzStr) {
+  if (!sessions || !sessions.length) return sessions;
+  return sessions.map(function(s) {
+    var res = _convertTimeToCET(s.time, tzStr);
+    return Object.assign({}, s, {
+      timeCET:  res.time,
+      dayCET:   res.dayShift ? _shiftDay(s.day, res.dayShift) : s.day,
+      dayShift: res.dayShift,
+      sameTZ:   res.same,
+      tzLabel:  _tzShort(tzStr)
+    });
+  });
+}
+
 function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
   Logger.log(`Starting combined parent/teacher/WhatsApp onboarding for learner: ${formData.learnerName}`);
   
@@ -55,9 +229,17 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     const parentSubject = `Welcome to JetLearn - Enrollment Details for ${formData.learnerName}`;
     const parentHtmlBody = getParentOnboardingEmailHTML(formData);
     
+    // Combine primary parent email with any extra contact emails picked in the UI
+    const parentEmailSet = {};
+    if (formData.parentEmail) parentEmailSet[formData.parentEmail.toLowerCase()] = formData.parentEmail.trim();
+    (formData.additionalParentEmails || []).forEach(e => {
+      if (e && isValidEmail(e)) parentEmailSet[e.toLowerCase()] = e.trim();
+    });
+    const parentToAddress = Object.values(parentEmailSet).join(',');
+
     const parentEmailResult = sendTrackedEmail({
-      to: formData.parentEmail, 
-      subject: parentSubject, 
+      to: parentToAddress,
+      subject: parentSubject,
       htmlBody: parentHtmlBody, 
       jlid: formData.jlid, 
       attachments: allAttachments
@@ -190,6 +372,8 @@ function sendOnboardingEmail(data, attachments = []) {
     if(clsManagerEmail) ccList.add(clsManagerEmail);
     if(teacherInfo.tpManagerEmail) ccList.add(teacherInfo.tpManagerEmail);
 
+    // Enrich sessions with CET conversion for teacher email
+    data.classSessions = _enrichSessionsWithCET(data.classSessions, data.manualTimezone || data.timezone || '');
     const subject = `New Learner Onboarded || ${data.learnerName} (${data.jlid || 'N/A'})`;
     const htmlBody = getOnboardingEmailHTML(data);
     
@@ -229,6 +413,21 @@ function sendMigrationEmail(data, attachments = []) {
   let watiSuccess = true; 
 
   try {
+    // ==========================================
+    // 0. TRANSFER PRACTICE DOC ACCESS TO NEW TEACHER
+    // ==========================================
+    try {
+      const pdHsResult = fetchHubspotByJlid(data.jlid);
+      const existingDocLink = pdHsResult.success ? (pdHsResult.data.practiceDocumentLink || '') : '';
+      if (existingDocLink && data.newTeacher) {
+        const pdUpdateRes = _updateExistingPracticeDocTeacher(existingDocLink, data.newTeacher);
+        if (!pdUpdateRes.success) notes.push('Practice doc access transfer failed: ' + pdUpdateRes.error);
+      }
+    } catch(pde) {
+      Logger.log('[sendMigrationEmail] Practice doc transfer error: ' + pde.message);
+      notes.push('Practice doc access transfer error: ' + pde.message);
+    }
+
     // ==========================================
     // 1. SEND EMAILS (TEACHERS)
     // ==========================================
@@ -280,7 +479,9 @@ function sendMigrationEmail(data, attachments = []) {
           totalClassesJourney:     hsLearnerData.totalClassesJourney || '',
           practiceDocumentLink:    hsLearnerData.practiceDocumentLink || '',
           age:                     hsLearnerData.age || data.age || '',
-          futureCourses:           futureCourseLabels
+          futureCourses:           futureCourseLabels,
+          // Enrich sessions with CET conversion
+          classSessions: _enrichSessionsWithCET(data.classSessions || [], data.manualTimezone || data.timezone || '')
         });
 
         const finalClsEmailForCC = findClsEmailByManagerName(data.clsManager);
@@ -345,7 +546,7 @@ function sendMigrationEmail(data, attachments = []) {
               to: oldTeacherInfo.email, 
               cc: finalClsEmailForCC, 
               subject: `${data.learner} - Migration`,
-              htmlBody: getOldTeacherEmailHTML(data, ''), 
+              htmlBody: getOldTeacherEmailHTML(Object.assign({}, data, { classSessions: _enrichSessionsWithCET(data.classSessions || [], data.manualTimezone || data.timezone || '') }), ''),
               jlid: data.jlid
             });
             notes.push("Old Teacher Email Sent.");
@@ -447,6 +648,23 @@ function sendMigrationEmail(data, attachments = []) {
       }
     } else {
         notes.push("WhatsApp Skipped.");
+    }
+
+    // ==========================================
+    // 2b. ADDITIONAL EMAIL TO PARENT (tick) — useful while WhatsApp is down
+    // ==========================================
+    if (data.sendEmailToParentAlso) {
+      try {
+        var emailRes = sendMigrationParentFallbackEmail(data.jlid, data, data.performedBy, data.parentEmailTargets || []);
+        if (emailRes.success) {
+          notes.push('Parent Email Sent (TID: ' + emailRes.trackingId + ')');
+        } else {
+          notes.push('Parent Email Skipped: ' + emailRes.message);
+        }
+      } catch(pe) {
+        Logger.log('[sendMigrationEmail] Parent email failed: ' + pe.message);
+        notes.push('Parent Email Failed: ' + pe.message);
+      }
     }
 
     // --- STATUS CHECK ---
@@ -600,13 +818,14 @@ function getWatiContactsForJlid(jlid) {
     var dealId = hs.dealId || '';
 
     if (!dealId) {
-      // No deal ID — fall back to the single phone on the deal
+      // No deal ID — fall back to the single phone/email on the deal
       var fallback = hs.parentContact || '';
       return {
         success: true,
         contacts: fallback ? [{ number: fallback, label: 'Deal Phone', type: 'phone' }] : [],
         best: fallback,
-        parentEmail: parentEmail
+        parentEmail: parentEmail,
+        emails: parentEmail ? [parentEmail] : []
       };
     }
 
@@ -618,11 +837,19 @@ function getWatiContactsForJlid(jlid) {
       return { number: String(entry).trim(), label: 'Phone', type: 'phone' };
     });
 
+    // All emails found across associated contacts (+ deal-level parent email)
+    var emailData = getEmailsForDeal(dealId);
+    var emailSet = {};
+    (emailData.all || []).forEach(function(e) { if (e) emailSet[e.toLowerCase()] = e.trim(); });
+    if (parentEmail) emailSet[parentEmail.toLowerCase()] = parentEmail.trim();
+    var emails = Object.keys(emailSet).map(function(k) { return emailSet[k]; });
+
     return {
       success: true,
       contacts: contacts,
       best: phoneData.best || '',
-      parentEmail: parentEmail
+      parentEmail: parentEmail,
+      emails: emails
     };
   } catch(e) {
     Logger.log('[getWatiContactsForJlid] Error: ' + e.message);
@@ -723,7 +950,7 @@ function _substituteWatiParams(body, params) {
 // Called when WATI fails — sends parent the exact same content as the WhatsApp.
 // migrationContext = full migrationData object from the form
 // ─────────────────────────────────────────────────────────────────────────────
-function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy) {
+function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy, emailTargets) {
   try {
     // 1. Fetch HubSpot data for parent email + enrich params
     var hsData = {};
@@ -736,9 +963,15 @@ function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy) {
       }
     } catch(he) { Logger.log('[FallbackEmail] HS fetch: ' + he.message); }
 
-    if (!parentEmail || !isValidEmail(parentEmail)) {
+    // Allow caller to override/extend recipients with explicitly picked contact emails
+    var toList = (emailTargets && emailTargets.length > 0)
+      ? emailTargets.filter(isValidEmail)
+      : (parentEmail && isValidEmail(parentEmail) ? [parentEmail] : []);
+
+    if (toList.length === 0) {
       return { success: false, message: 'No valid parent email found for JLID: ' + jlid };
     }
+    var toAddress = toList.join(',');
 
     // 2. Resolve template name
     var templateId = migrationContext.watiTemplateName || '';
@@ -785,11 +1018,11 @@ function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy) {
       });
     }
 
-    var sendResult = sendTrackedEmail({ to: parentEmail, subject: subject, htmlBody: htmlBody, jlid: jlid });
+    var sendResult = sendTrackedEmail({ to: toAddress, subject: subject, htmlBody: htmlBody, jlid: jlid });
 
     logAction('Migration Email Sent', jlid, learnerName, oldTeacher, newTeacher,
       migrationContext.course || '', 'Success',
-      'Parent fallback email (WhatsApp failed). TID: ' + sendResult.trackingId,
+      'Parent email (' + toAddress + '). TID: ' + sendResult.trackingId,
       migrationContext.reasonOfMigration || '', performedBy || '');
 
     return { success: true, message: 'Parent notified via email.', trackingId: sendResult.trackingId };

@@ -262,56 +262,14 @@
               </table>
               <? } ?>
 
-              <!-- Schedule -->
-              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Class schedule (CET)</p>
-              <?
-                function toCET(timeStr, parentZone) {
-                  if(!timeStr || !parentZone) return timeStr;
-                  try {
-                    var match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-                    if (!match) return timeStr;
-                    var inputHours = parseInt(match[1], 10);
-                    var inputMinutes = parseInt(match[2], 10);
-                    var ampm = match[3] ? match[3].toUpperCase() : null;
-                    if (ampm === 'PM' && inputHours < 12) inputHours += 12;
-                    if (ampm === 'AM' && inputHours === 12) inputHours = 0;
-                    var ianaZone = "Europe/Berlin";
-                    var tz = parentZone || "";
-                    if (tz.includes("Eastern") || tz.includes("New York") || tz.includes("Indiana")) ianaZone = "America/New_York";
-                    else if (tz.includes("Pacific") || tz.includes("Los Angeles")) ianaZone = "America/Los_Angeles";
-                    else if (tz.includes("Mountain") || tz.includes("Denver")) ianaZone = "America/Denver";
-                    else if (tz.includes("Central Time") || tz.includes("Chicago")) ianaZone = "America/Chicago";
-                    else if (tz.includes("India") || tz.includes("Kolkata")) ianaZone = "Asia/Kolkata";
-                    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("UK")) ianaZone = "Europe/London";
-                    else if (tz.includes("Dubai")) ianaZone = "Asia/Dubai";
-                    else if (tz.includes("Singapore")) ianaZone = "Asia/Singapore";
-                    else if (tz.includes("Sydney")) ianaZone = "Australia/Sydney";
-                    else if (tz.includes("Brisbane")) ianaZone = "Australia/Brisbane";
-                    else if (tz.includes("Tokyo")) ianaZone = "Asia/Tokyo";
-                    var now = new Date();
-                    var sourceStr = now.toLocaleString("en-US", {timeZone: ianaZone, hour12: false});
-                    var targetStr = now.toLocaleString("en-US", {timeZone: "Europe/Berlin", hour12: false});
-                    var dSource = new Date(sourceStr);
-                    var dTarget = new Date(targetStr);
-                    var diff = dTarget.getTime() - dSource.getTime();
-                    var calculationDate = new Date();
-                    calculationDate.setHours(inputHours);
-                    calculationDate.setMinutes(inputMinutes);
-                    var finalDate = new Date(calculationDate.getTime() + diff);
-                    var finalHours = finalDate.getHours();
-                    var finalMinutes = finalDate.getMinutes();
-                    var finalAmpm = finalHours >= 12 ? 'PM' : 'AM';
-                    finalHours = finalHours % 12;
-                    finalHours = finalHours ? finalHours : 12;
-                    var finalMinStr = finalMinutes < 10 ? '0' + finalMinutes : finalMinutes;
-                    return finalHours + ':' + finalMinStr + ' ' + finalAmpm;
-                  } catch(e) {
-                    return timeStr + " (Calc Error)";
-                  }
-                }
-              ?>
+              <!-- Schedule — learner TZ shown + CET conversion (computed server-side) -->
+              <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Class schedule</p>
               <? for (let i = 0; i < data.classSessions.length; i++) {
-                   let cetTime = toCET(data.classSessions[i].time, data.manualTimezone);
+                   var s = data.classSessions[i];
+                   var tzLbl = s.tzLabel || '';
+                   var cetPart = (!s.sameTZ && s.timeCET)
+                     ? ' &nbsp;·&nbsp; ' + (s.dayCET !== s.day ? s.dayCET + ' ' : '') + s.timeCET + ' CET'
+                     : '';
               ?>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:7px; border-radius:9px; overflow:hidden;" class="schedule-bg">
                 <tr>
@@ -321,7 +279,7 @@
                         <td style="width:10px; vertical-align:middle;">
                           <div style="width:6px; height:6px; border-radius:50%;" class="schedule-dot"></div>
                         </td>
-                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= data.classSessions[i].day ?> at <?= cetTime ?> (CET)</td>
+                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= s.day ?> at <?= s.time ?><?= tzLbl ? ' (' + tzLbl + ')' : '' ?><?!= cetPart ?></td>
                       </tr>
                     </table>
                   </td>

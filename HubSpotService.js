@@ -1435,6 +1435,69 @@ function getPhoneNumbersForDeal(dealId) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// getEmailsForDeal(dealId)
+// Returns all email addresses found on contacts associated with this deal.
+// Used to let CLS pick additional email recipients (WhatsApp outage fallback).
+// ─────────────────────────────────────────────────────────────────────────────
+function getEmailsForDeal(dealId) {
+  const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  if (!dealId || !token) return { best: null, all: [] };
+
+  try {
+    const assocUrl = `https://api.hubapi.com/crm/v4/objects/deals/${dealId}/associations/contacts`;
+    const assocOptions = { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true };
+    const assocRes = monitoredFetch(assocUrl, assocOptions);
+    if (assocRes.getResponseCode() !== 200) return { best: null, all: [] };
+    const assocData = JSON.parse(assocRes.getContentText());
+
+    if (!assocData.results || assocData.results.length === 0) return { best: null, all: [] };
+
+    const contactIds = assocData.results.map(r => ({ id: r.toObjectId }));
+
+    const contactsUrl = `https://api.hubapi.com/crm/v3/objects/contacts/batch/read`;
+    const contactsPayload = {
+      properties: ["email", "hs_additional_emails"],
+      inputs: contactIds
+    };
+
+    const contactsRes = monitoredFetch(contactsUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(contactsPayload),
+      muteHttpExceptions: true
+    });
+
+    if (contactsRes.getResponseCode() !== 200) return { best: null, all: [] };
+    const contactsData = JSON.parse(contactsRes.getContentText());
+
+    let bestEmail = null;
+    let allEmails = new Set();
+
+    if (contactsData.results) {
+      for (const contact of contactsData.results) {
+        const p = contact.properties;
+        if (p.email) {
+          if (!bestEmail) bestEmail = p.email;
+          allEmails.add(p.email.trim());
+        }
+        if (p.hs_additional_emails) {
+          String(p.hs_additional_emails).split(/[;,]/).forEach(e => {
+            const trimmed = e.trim();
+            if (trimmed) allEmails.add(trimmed);
+          });
+        }
+      }
+    }
+
+    return { best: bestEmail, all: Array.from(allEmails) };
+
+  } catch (e) {
+    Logger.log(`[HubSpot Email Fetch Error]: ${e.message}`);
+    return { best: null, all: [] };
+  }
+}
+
 function fetchHubspotHistory(dealId) {
   if (!dealId) return [];
 
@@ -2556,6 +2619,25 @@ function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsI
 /**
  * Adds a note engagement to a HubSpot ticket via the legacy engagements API.
  */
+/**
+ * Looks up the active migration ticket for this JLID and posts a note on it
+ * so the assigned agent sees "Teacher Match Found" history directly on the
+ * ticket they're working — flags if the teacher gets reassigned elsewhere.
+ */
+function registerTeacherMatchOnTicket(jlid, noteBody) {
+  try {
+    var ticketInfo = fetchLatestMigrationTicket(jlid);
+    if (!ticketInfo || !ticketInfo.found || !ticketInfo.ticketId) {
+      return { success: false, message: 'No active migration ticket found for ' + jlid + '.' };
+    }
+    addNoteToHubSpotTicket(ticketInfo.ticketId, noteBody);
+    return { success: true, ticketId: ticketInfo.ticketId };
+  } catch(e) {
+    Logger.log('[registerTeacherMatchOnTicket] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function addNoteToHubSpotTicket(ticketId, noteBody) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
@@ -2649,6 +2731,41 @@ function assignTeacherToTicket(jlid, teacherName) {
 
   if (code === 200 || code === 204) {
     return { success: true, ticketId: ticketId, teacherName: teacherName };
+  }
+  return { success: false, message: 'HubSpot PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
+}
+
+/**
+ * Assigns/updates the teacher on the learner's deal for Onboarding (no migration ticket involved).
+ * Updates the 'teacher_manager' deal property to the teacher's HubSpot owner ID.
+ * Called from Teacher Persona "Onboard" button in Onboarding mode.
+ * Returns { success, dealId, teacherName }
+ */
+function assignTeacherForOnboarding(jlid, teacherName) {
+  if (!jlid || !teacherName) return { success: false, message: 'JLID and teacher name required.' };
+
+  var hsResult = fetchHubspotByJlid(jlid);
+  if (!hsResult.success || !hsResult.data || !hsResult.data.dealId) {
+    return { success: false, message: 'No HubSpot deal found for ' + jlid + '.' };
+  }
+  var dealId = hsResult.data.dealId;
+  var token  = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+
+  var valueToSet = _getTeacherInternalId(teacherName) || teacherName;
+  Logger.log('[assignTeacherForOnboarding] ' + jlid + ' → deal ' + dealId + ' teacher_manager=' + valueToSet);
+
+  var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    payload: JSON.stringify({ properties: { teacher_manager: valueToSet } }),
+    muteHttpExceptions: true
+  });
+
+  var code = resp.getResponseCode();
+  Logger.log('[assignTeacherForOnboarding] PATCH → HTTP ' + code);
+
+  if (code === 200 || code === 204) {
+    return { success: true, dealId: dealId, teacherName: teacherName };
   }
   return { success: false, message: 'HubSpot PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
 }
@@ -3415,8 +3532,9 @@ function fetchPersonaSmartData(jlid) {
     mode = "Migration";
     contextData.currentCourse = ticketResult.ticketCourse || d.course;
     contextData.currentTeacher = ticketResult.oldTeacher || d.currentTeacher;
-    
-    const props = ticketResult.rawProperties || {}; 
+    contextData.migrationReason = ticketResult.reason || "";
+
+    const props = ticketResult.rawProperties || {};
     contextData.futureCourse1 = getCourseLabel(props.future_course_1) || "";
     contextData.futureCourse2 = getCourseLabel(props.future_course_2) || "";
     contextData.futureCourse3 = getCourseLabel(props.future_course_3) || "";

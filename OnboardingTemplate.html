@@ -207,7 +207,11 @@
 
               <!-- Class Schedule -->
               <p style="font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.13em; text-transform:uppercase; margin:0 0 12px;" class="section-lbl">Class schedule</p>
-              <? for (let i = 0; i < data.classSessions.length; i++) { ?>
+              <? for (let i = 0; i < data.classSessions.length; i++) {
+                   var _os = data.classSessions[i];
+                   var _otz = _os.tzLabel || '';
+                   var _ocet = (!_os.sameTZ && _os.timeCET) ? ' &nbsp;·&nbsp; ' + (_os.dayCET !== _os.day ? _os.dayCET + ' ' : '') + _os.timeCET + ' CET' : '';
+              ?>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:7px; border-radius:9px; overflow:hidden;" class="schedule-bg">
                 <tr>
                   <td style="padding:12px 16px; border-radius:9px;">
@@ -216,7 +220,7 @@
                         <td style="width:10px; vertical-align:middle;">
                           <div style="width:6px; height:6px; border-radius:50%;" class="schedule-dot"></div>
                         </td>
-                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= data.classSessions[i].day ?> at <?= data.classSessions[i].time ?> (<?= data.classSessions[i].timeCET ?> CET)</td>
+                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= _os.day ?> at <?= _os.time ?><?= _otz ? ' (' + _otz + ')' : '' ?><?!= _ocet ?></td>
                       </tr>
                     </table>
                   </td>

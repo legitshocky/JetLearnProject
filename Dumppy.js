@@ -178,3 +178,8 @@ function testFallbackEmailContent() {
   Logger.log('\n=== TEST COMPLETE ===');
   Logger.log('If filled text looks correct above, the real email will send identical content.');
 }
+
+function testFetchDesc() {
+  var res = getExistingEventDescription('JL31741746342C'); // replace with real JLID
+  Logger.log(JSON.stringify(res));
+}

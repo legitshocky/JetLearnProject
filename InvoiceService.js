@@ -1,4 +1,4 @@
-function safeToFixed(value, decimals) {
+﻿function safeToFixed(value, decimals) {
   if (value === null || value === undefined || isNaN(value)) {
     return '0.00';
   }
@@ -41,7 +41,7 @@ function getLiveCurrencyRates() {
   }
 }
 
-// Public callable — served async after page load.
+// Public callable â€” served async after page load.
 // Uses CacheService (6-hour TTL) so only 1 external API call per 6h across all users.
 function getCachedCurrencyRates() {
   var CACHE_KEY = 'currency_rates_eur_base';
@@ -51,7 +51,7 @@ function getCachedCurrencyRates() {
     var scriptCache = CacheService.getScriptCache();
     var cached = scriptCache.get(CACHE_KEY);
     if (cached) {
-      Logger.log('[Currency] Cache HIT — returning cached rates.');
+      Logger.log('[Currency] Cache HIT â€” returning cached rates.');
       return JSON.parse(cached);
     }
   } catch(e) {
@@ -132,53 +132,23 @@ function getLiveExchangeRates() {
   }
 }
 function getConversionRate(toCurrency) {
-  toCurrency = toCurrency.toUpperCase();
-  if (toCurrency === 'EUR') {
-    return 1.0;
-  }
-
-  if (!_sheetDataCache['liveRates']) {
-    Logger.log('Fetching live currency rates for this execution...');
-    _sheetDataCache['liveRates'] = getLiveCurrencyRates(); 
-  }
-  const liveRates = _sheetDataCache['liveRates'];
-
-  if (liveRates && liveRates[toCurrency]) {
-    Logger.log(`Using LIVE rate for EUR to ${toCurrency}: ${liveRates[toCurrency]}`);
-    return liveRates[toCurrency];
-  }
-  
-  const fallbackRates = {
-    'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348,
-    'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50,
-    'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951,
-    'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
-  };
-  
-  const fallbackRate = fallbackRates[toCurrency];
-  if (fallbackRate !== undefined) {
-    Logger.log(`Using FALLBACK hardcoded rate for EUR to ${toCurrency}: ${fallbackRate}`);
-    return fallbackRate;
-  }
-
-  Logger.log(`No live or hardcoded rate found for EUR to ${toCurrency}. Returning 1 as a safe default.`);
-  return 1; 
+  // No currency conversion — all amounts shown as-is (1:1 ratio)
+  return 1;
 }
-
 function getCurrencySymbol(currencyCode) {
     switch (currencyCode) {
-        case 'GBP': return '£';
-        case 'EUR': return '€';
+        case 'GBP': return '&pound;';
+        case 'EUR': return '&euro;';
         case 'USD': return '$';
-        case 'INR': return '₹';
-        case 'JPY': return '¥';
+        case 'INR': return '&#8377;';
+        case 'JPY': return '&yen;';
         case 'AUD': return 'A$';
         case 'CAD': return 'C$';
         case 'CHF': return 'CHF';
-        case 'CNY': return '¥';
+        case 'CNY': return '&yen;';
         case 'SEK': return 'kr';
         case 'NZD': return 'NZ$';
-        case 'AED': return 'د.إ';
+        case 'AED': return 'AED';
         case 'HKD': return 'HK$';
         case 'ZAR': return 'R';
         case 'SGD': return 'S$';
@@ -318,7 +288,7 @@ function calculateInvoicePricing(formData, previewOnly = false) {
 
         if (customAmounts) {
             // When token/partial payment is already set, ALL custom installments are PENDING.
-            // Token is shown separately on the invoice — not as installment 1.
+            // Token is shown separately on the invoice â€” not as installment 1.
             // If no partial payment, first custom installment is treated as the first payment (paid).
             const allPending = customPaidAmount > 0;
             let lastDueDate = new Date(billingAnchorDate);
@@ -406,8 +376,9 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         effectiveBasePrice: effectiveBasePrice,
         discount: discount,
         finalTotal: finalTotal, // Total Deal Value
-        amountPaid: amountPaid, // Collected
-        balanceDue: balanceDue, // Remaining
+        amountPaid: amountPaid,       // Collected
+        isTokenPayment: customPaidAmount > 0, // true only when explicit token/deposit entered
+        balanceDue: balanceDue,       // Remaining
         currencySymbol: finalCurrencySymbol,
         subscriptionTenureMonths: userSelectedTenureMonths,
         startDateFormatted: formatDate(new Date(formData.startDate)),
@@ -588,7 +559,7 @@ function generateInvoicePDFAndEmail(formData) {
                           <tr>
                               <td style="background-color: #000; padding: 25px 40px; text-align: center;">
                                   <p style="margin: 0; color: #FFD700; font-size: 12px;">
-                                      © 2025 JetLearn. Empowering kids to lead in the age of AI.
+                                      Â© 2025 JetLearn. Empowering kids to lead in the age of AI.
                                   </p>
                               </td>
                           </tr>

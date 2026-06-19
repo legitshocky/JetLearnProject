@@ -10,7 +10,11 @@
       "Bash(awk 'NR>=2955 && NR<=2999' \"C:/Users/legit/JetLearnProject/JavaScript.html\")",
       "WebFetch(domain:docs.google.com)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(node _check.js)",
+      "Bash(npx clasp *)",
+      "Bash(node -e ' *)",
+      "Bash(git push *)"
     ]
   }
 }

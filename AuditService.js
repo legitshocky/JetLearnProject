@@ -104,7 +104,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
     const sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.AUDIT_LOG);
     // Write header row if sheet is empty (so column lookups work correctly)
     if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['Timestamp','Action','JLID','Learner','Old Teacher','New Teacher','Course','Status','Notes','Session ID','Reason for Migration','','Actioned By']);
+      sheet.appendRow(['Timestamp','Action','JLID','Learner','Old Teacher','New Teacher','Course','Status','Notes','Session ID','Reason for Migration','Intervened By']);
     }
     const timestamp = new Date();
     const sessionId = Utilities.getUuid();
@@ -119,9 +119,8 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       status || 'Unknown',
       notes || '',
       sessionId,
-      reason || '',
-      '',              // col L — reserved for migration / Intervened By
-      intervenedBy || '' // col M — Actioned By
+      reason || '', 
+      intervenedBy || ''  
     ]);
     SpreadsheetApp.flush();
     if(typeof _sheetDataCache !== 'undefined') {
@@ -155,12 +154,7 @@ function logAction(action, jlid, learner, oldTeacher, newTeacher, course, status
       if (!scoredAction && action && action.indexOf('Audit') !== -1) scoredAction = 'Audit Completed';
       if (scoredAction) {
         var activityDetail = action + (jlid ? ' | JLID: ' + jlid : '') + (learner ? ' | ' + learner : '');
-        String(intervenedBy).split(',').map(function(u){ return u.trim(); })
-          .filter(function(u) {
-            // Skip team-label values like "Ops Intervention", "Cls Intervention", "Tp Intervention"
-            // These are HubSpot role labels, not actual usernames
-            return u && !u.toLowerCase().endsWith('intervention');
-          })
+        String(intervenedBy).split(',').map(function(u){ return u.trim(); }).filter(Boolean)
           .forEach(function(u) {
             try { logUserActivity(u, scoredAction, activityDetail); } catch(e) {
               Logger.log('logUserActivity error for ' + u + ': ' + e.message);
@@ -338,8 +332,8 @@ function summarizeLearnerHistory(learnerData, auditLogTimeline) {
     return { success: false, message: 'AI summarization failed: API key not configured.' };
   }
 
-  const model = 'gemini-2.5-flash'; 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${GOOGLE_API_KEY}`;
+  const model = 'gemini-1.5-flash'; 
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
 
   let prompt = `Summarize the following learner's educational journey and key changes.
   Focus on identifying the learner's initial setup, any course changes, teacher changes, and migration reasons.
@@ -358,7 +352,7 @@ function summarizeLearnerHistory(learnerData, auditLogTimeline) {
 
   if (auditLogTimeline && auditLogTimeline.length > 0) {
     auditLogTimeline.forEach(entry => {
-      let cleanedDescription = entry.description
+      let cleanedDescription = String(entry.description || '')
         .replace(/Action: (.*?)\. /, '')
         .replace(/Status: (.*?)\./, '')
         .trim();
@@ -382,7 +376,7 @@ function summarizeLearnerHistory(learnerData, auditLogTimeline) {
   };
 
   try {
-    const response = callGenerativeAIWithRetry(endpoint, requestBody); // Use the new retry wrapper
+    const response = callGenerativeAIWithRetry('summarizeLearnerHistory', 'Gemini', endpoint, requestBody);
     const responseCode = response.getResponseCode();
     const responseBody = response.getContentText();
 

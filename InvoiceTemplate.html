@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <base target="_top">
   <style>
     /* Global Styles */
@@ -655,7 +656,7 @@
               var isInstallment = (data.paymentType === 'Installment' && pricing && pricing.numberOfInstallments > 0);
             ?>
 
-            <? if (isInstallment && pricing && pricing.amountPaid > 0 && !isFullyPaid) { ?>
+            <? if (pricing && pricing.isTokenPayment && pricing.amountPaid > 0 && !isFullyPaid) { ?>
             <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:12px;">
               <span style="font-size:1.4rem;">✅</span>
               <div>

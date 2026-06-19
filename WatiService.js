@@ -651,26 +651,9 @@ function fetchWatiDirectLink(phoneNumber) {
         contactId = cData.contact?.id || cData.id;
     }
 
-    // 2. Fetch Messages to get the actual Conversation ID (Chat Thread)
-    const messagesUrl = `${API_ENDPOINT_BASE}/api/v1/getMessages/${cleanPhone}?pageSize=1`;
-    const msgRes = monitoredFetch(messagesUrl, { ...options, "method": "get" });
-    
-    let finalId = null;
-
-    if (msgRes.getResponseCode() === 200) {
-      const msgData = JSON.parse(msgRes.getContentText());
-      if (msgData.messages && msgData.messages.items && msgData.messages.items.length > 0) {
-        const latestMsg = msgData.messages.items[0];
-        
-        // *** THE FIX: Use conversationId based on your logs ***
-        finalId = latestMsg.conversationId || latestMsg.ticketId;
-      }
-    }
-
-    // 3. Fallback to Contact ID if no conversation history exists yet
-    if (!finalId) {
-        finalId = contactId;
-    }
+    // teamInbox chat links are keyed by WATI contact ID (wAid), not conversation/ticket ID —
+    // using conversationId/ticketId here pointed the link at the wrong chat thread.
+    let finalId = contactId;
 
     if (finalId) {
       const directLink = `https://live.wati.io/${tenantId}/teamInbox/${finalId}`;

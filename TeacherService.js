@@ -1825,6 +1825,7 @@ function searchMatchingTeachers(requestData) {
         auditCount45          : auditData ? (auditData.auditCount || 0) : 0,
         upskillCount          : upskillCountMap[tNorm] || upskillCountMap[tCanon] || 0,
         teacherEmail          : teacherEmailMap[tNorm] || teacherEmailMap[tCanon] || '',
+        teacherCalendarId     : calendarIdMap[tNorm]   || calendarIdMap[tCanon]   || '',
         teacherId             : teacherIdMap[tNorm]    || teacherIdMap[tCanon]    || '',
         _rankScore            : totalScore,
         _traitMatchesCount    : targetTraits.length > 0 ? (targetTraits.length - traitsMissing.length) : 0
@@ -1981,6 +1982,7 @@ function searchMatchingTeachers(requestData) {
           auditGrade: auditGrade2, redFlagCount: redFlagCount2, auditCount45: auditData2 ? (auditData2.auditCount || 0) : 0,
           upskillCount: upskillCountMap[tNorm2] || upskillCountMap[tCanon2] || 0,
           teacherEmail: teacherEmailMap[tNorm2] || teacherEmailMap[tCanon2] || '',
+          teacherCalendarId: calendarIdMap[tNorm2] || calendarIdMap[tCanon2] || '',
           teacherId:    teacherIdMap[tNorm2]    || teacherIdMap[tCanon2]    || '',
           _rankScore: traitScore2 + ageScore2 + courseScore2 + futureScore2 + auditScore2,
           _traitMatchesCount: targetTraits.length > 0 ? (targetTraits.length - traitsMissing2.length) : 0,

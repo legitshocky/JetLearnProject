@@ -190,7 +190,8 @@
                         <td style="width:10px; vertical-align:middle;">
                           <div style="width:6px; height:6px; border-radius:50%;" class="schedule-dot"></div>
                         </td>
-                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= data.classSessions[i].day ?> at <?= timeDisplay ?> (CET)</td>
+                        <? var _s = data.classSessions[i]; ?>
+                        <td style="padding-left:10px; font-size:13px; font-weight:500;" class="schedule-val"><?= _s.day ?> at <?= _s.time ?></td>
                       </tr>
                     </table>
                   </td>

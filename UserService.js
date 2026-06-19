@@ -12,6 +12,7 @@ function getUserProfiles() {
     if (!data || data.length <= 1) return [];
 
     const headers = data[0].map(h => String(h).trim().toLowerCase().replace(/\s/g, ''));
+    const extraIdx = headers.indexOf('extrapermissions');
 
     return data.slice(1).map(row => ({
       username:          row[headers.indexOf('username')],
@@ -23,11 +24,111 @@ function getUserProfiles() {
                          String(row[headers.indexOf('isactive')]).toLowerCase() === 'true',
       lastLogin:         row[headers.indexOf('lastlogin')],
       mustChangePassword: row[headers.indexOf('mustchangepassword')] === true ||
-                         String(row[headers.indexOf('mustchangepassword')]).toLowerCase() === 'true'
+                         String(row[headers.indexOf('mustchangepassword')]).toLowerCase() === 'true',
+      extraPermissions:  (extraIdx > -1 && row[extraIdx]) ? String(row[extraIdx]).split(',').map(s => s.trim()).filter(Boolean) : []
     }));
   } catch (e) {
     Logger.log('Error in getUserProfiles: ' + e.message);
     return [];
+  }
+}
+
+// =============================================
+// FEATURE PERMISSIONS (per-user toggles, on top of role defaults)
+// =============================================
+// Granular, optional permissions a Super Admin can grant/revoke per individual
+// user from the User Management tab — independent of their role.
+const FEATURE_PERMISSIONS = [
+  { key: 'book_classes_calendar', label: 'Book Classes with New Teacher (Calendar Booking)', description: 'Shows "📅 Reserve Slot" (Persona) and "Book Classes with New Teacher" (Migration) buttons, and lets the user create recurring Google Calendar events for learners.' }
+];
+
+function getFeaturePermissionsList() {
+  return FEATURE_PERMISSIONS;
+}
+
+// Returns the data User Management needs to render per-user feature toggles.
+function getPermissionsConfig() {
+  return { featurePermissions: FEATURE_PERMISSIONS, permissionsByRole: PERMISSIONS };
+}
+
+// Looks up extra (per-user) permissions for an email/username by matching
+// the Email column (Google auth) or Username column (legacy accounts).
+function _getExtraPermissionsFor(identifier) {
+  try {
+    if (!identifier) return [];
+    var id = String(identifier).toLowerCase().trim();
+    var profiles = getUserProfiles();
+    var user = profiles.find(function(u) {
+      return (u.email && String(u.email).toLowerCase().trim() === id) ||
+             (u.username && String(u.username).toLowerCase().trim() === id);
+    });
+    return user ? (user.extraPermissions || []) : [];
+  } catch(e) {
+    Logger.log('[_getExtraPermissionsFor] error: ' + e.message);
+    return [];
+  }
+}
+
+// Combines a role's default permissions with any per-user extra permissions granted.
+function _effectivePermissions(role, identifier) {
+  var base = PERMISSIONS[role] || [];
+  var extra = _getExtraPermissionsFor(identifier);
+  var combined = base.slice();
+  extra.forEach(function(p) { if (combined.indexOf(p) === -1) combined.push(p); });
+  return combined;
+}
+
+// Grants or revokes a feature permission for a specific user. Super Admin only.
+function setUserFeaturePermission(targetIdentifier, permKey, enabled, actingUser) {
+  try {
+    if (!actingUser || actingUser.role !== ROLES.SUPER_ADMIN) {
+      return { success: false, message: 'Permission denied. Only the Super Admin can manage feature access.' };
+    }
+    if (!FEATURE_PERMISSIONS.some(function(p) { return p.key === permKey; })) {
+      return { success: false, message: 'Unknown permission: ' + permKey };
+    }
+
+    var sheet = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID).getSheetByName(CONFIG.SHEETS.USER_PROFILES);
+    var data  = sheet.getDataRange().getValues();
+    var headers = data[0].map(function(h) { return String(h).trim().toLowerCase().replace(/\s/g, ''); });
+
+    var id = String(targetIdentifier).toLowerCase().trim();
+    var rowIndex = -1;
+    var emailIdx = headers.indexOf('email');
+    var userIdx  = headers.indexOf('username');
+    for (var i = 1; i < data.length; i++) {
+      var rowEmail = emailIdx > -1 ? String(data[i][emailIdx] || '').toLowerCase().trim() : '';
+      var rowUser  = userIdx  > -1 ? String(data[i][userIdx]  || '').toLowerCase().trim() : '';
+      if (rowEmail === id || rowUser === id) { rowIndex = i + 1; break; }
+    }
+    if (rowIndex === -1) return { success: false, message: 'User not found: ' + targetIdentifier };
+
+    var extraIdx = headers.indexOf('extrapermissions');
+    if (extraIdx === -1) {
+      extraIdx = headers.length;
+      sheet.getRange(1, extraIdx + 1).setValue('ExtraPermissions');
+    }
+
+    var cell = sheet.getRange(rowIndex, extraIdx + 1);
+    var current = String(cell.getValue() || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+    if (enabled) {
+      if (current.indexOf(permKey) === -1) current.push(permKey);
+    } else {
+      current = current.filter(function(p) { return p !== permKey; });
+    }
+    cell.setValue(current.join(','));
+
+    delete _sheetDataCache[`${CONFIG.MIGRATION_SHEET_ID}_${CONFIG.SHEETS.USER_PROFILES}`];
+
+    var logDetails = `Super Admin '${actingUser.username}' set '${permKey}' = ${enabled} for user '${targetIdentifier}'.`;
+    logAction('User Feature Permission Updated', '', '', '', '', '', 'Success', logDetails);
+    Logger.log(logDetails);
+
+    return { success: true, message: 'Permission updated.' };
+  } catch(e) {
+    Logger.log('[setUserFeaturePermission] error: ' + e.message);
+    return { success: false, message: e.message };
   }
 }
 
@@ -85,7 +186,7 @@ function authenticateUser(username, password) {
       role: user.role,
       username: username,
       sessionToken: sessionToken,
-      permissions: PERMISSIONS[user.role] || [],
+      permissions: _effectivePermissions(user.role, user.email || username),
       mustChangePassword: user.mustChangePassword === true ||
                           String(user.mustChangePassword).toLowerCase() === 'true'
     };
@@ -145,7 +246,7 @@ function _createSession(username, role) {
   var sessionData = JSON.stringify({
     username: username,
     role: role,
-    permissions: PERMISSIONS[role] || [],
+    permissions: _effectivePermissions(role, username),
     createdAt: new Date().toISOString()
   });
   CacheService.getScriptCache().put('SESSION_' + token, sessionData, SESSION_TTL);
@@ -286,7 +387,7 @@ function authenticateByEmail(email) {
       username:           displayName,
       email:              email,
       sessionToken:       sessionToken,
-      permissions:        PERMISSIONS[role] || [],
+      permissions:        _effectivePermissions(role, email),
       displayName:        displayName,
       picture:            '',
       mustChangePassword: false
@@ -353,7 +454,7 @@ function authenticateWithGoogle(idToken) {
       username:          displayName,
       email:             email,
       sessionToken:      sessionToken,
-      permissions:       PERMISSIONS[role] || [],
+      permissions:       _effectivePermissions(role, email),
       displayName:       displayName,
       picture:           payload.picture || '',
       mustChangePassword: false
@@ -634,7 +735,8 @@ function getActiveUsers() {
       email: user.email,
       lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never',
       createdDate: user.createdDate ? new Date(user.createdDate).toLocaleDateString() : 'N/A',
-      isActive: user.isActive
+      isActive: user.isActive,
+      extraPermissions: user.extraPermissions || []
     }));
   } catch (error) {
     Logger.log('Error getting active users: ' + error.message);
