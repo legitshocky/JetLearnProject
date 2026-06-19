@@ -46,17 +46,21 @@ function _eqFmtDate(date) {
 }
 
 // ── Parse DD/MM/YYYY → Date ───────────────────────────────────
-function _eqParseDate(str) {
-  if (!str) return null;
-  var s = String(str).trim();
-  if (s instanceof Date) return s;
+function _eqParseDate(val) {
+  if (!val) return null;
+  // Already a Date object (GAS returns sheet date cells as Date)
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  var s = String(val).trim();
+  // Long JS date string: "Fri May 15 2026 00:00:00 GMT+0530 ..."
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return d;
+  // YYYY-MM-DD
   var parts = s.indexOf('/') > -1 ? s.split('/') : s.split('-');
   if (parts.length !== 3) return null;
-  // DD/MM/YYYY
-  var d = parseInt(parts[0],10), m = parseInt(parts[1],10)-1, y = parseInt(parts[2],10);
-  // OR YYYY-MM-DD (from HTML date input)
-  if (parts[0].length === 4) { y = parseInt(parts[0],10); m = parseInt(parts[1],10)-1; d = parseInt(parts[2],10); }
-  var dt = new Date(y, m, d);
+  var dy = parseInt(parts[0],10), dm = parseInt(parts[1],10)-1, dd = parseInt(parts[2],10);
+  if (parts[0].length === 4) { dy = parseInt(parts[0],10); dm = parseInt(parts[1],10)-1; dd = parseInt(parts[2],10); }
+  else { dd = parseInt(parts[0],10); dm = parseInt(parts[1],10)-1; dy = parseInt(parts[2],10); }
+  var dt = new Date(dy, dm, dd);
   return isNaN(dt.getTime()) ? null : dt;
 }
 
@@ -207,6 +211,15 @@ function processEmailQueue() {
       }
       schedDate.setHours(0, 0, 0, 0);
       if (schedDate > today) return; // not yet due
+
+      // More than 24 hours past due — expire instead of sending stale email
+      var hoursPast = (today.getTime() - schedDate.getTime()) / (60 * 60 * 1000);
+      if (hoursPast > 24) {
+        sheet.getRange(sheetRow, EQ_COL.STATUS).setValue('Expired');
+        sheet.getRange(sheetRow, EQ_COL.ERROR).setValue('Auto-expired: ' + Math.floor(hoursPast / 24) + ' day(s) overdue');
+        Logger.log('[EmailQueue] Expired row ' + sheetRow + ' (' + Math.floor(hoursPast / 24) + 'd overdue)');
+        return;
+      }
 
       // Due — attempt send
       var emailType  = String(r[EQ_COL.EMAIL_TYPE      - 1] || '');

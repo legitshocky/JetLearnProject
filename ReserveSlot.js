@@ -214,7 +214,19 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
       if (classLink) eventBody.location = classLink;
 
       var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
-      if (created && created.id) _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
+      if (created && created.id) {
+        _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
+        // Patch first occurrence title to "Migration : <title>"
+        try {
+          var instances = Calendar.Events.instances(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id, { maxResults: 1 });
+          if (instances && instances.items && instances.items.length) {
+            var firstInst = instances.items[0];
+            Calendar.Events.patch({ summary: 'Migration : ' + title }, CONFIG.CLASS_SCHEDULE_CALENDAR_ID, firstInst.id);
+          }
+        } catch(me) {
+          Logger.log('[bookClassesWithNewTeacher] Migration tag patch failed: ' + me.message);
+        }
+      }
 
       if (info.calendarId && info.calendarId !== CONFIG.CLASS_SCHEDULE_CALENDAR_ID) {
         try {
