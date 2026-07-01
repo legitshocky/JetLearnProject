@@ -9019,6 +9019,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V6.15': [
+      "**Migration Intelligence — Learner History Timeline**: Modal now shows a full migration history section with journey stability banner (High/Medium/Low), learner summary, filter tabs (All / JetLearn Initiated / Parent Requested / Completed only), and ticket cards showing From→To teacher, dates, resolution time, and HubSpot ticket link.",
+      "**Migration Intelligence — Progressive Loading**: Learner history prefetches on JLID blur via getMigrationHistoryFast — migration history and frequency counts appear instantly when modal opens, teacher-specific sections load on top.",
+      "**Kit Tracking — CLS Escalation**: After 2 unanswered WhatsApp follow-ups, daily trigger auto-escalates: emails CLS manager (TO) + sourav.pal + TP manager (CC), creates HIGH priority HubSpot task assigned to CLS manager's owner ID, marks sheet cols Y/Z.",
+      "**Parent Will Buy — Escalation Email Rewrite**: Email now reads like a human wrote it — context about failed follow-ups, learner/kit details, asks CLS to skip the course and inform the teacher. No 'contact parent' ask — that's already been done.",
+      "**Parent Will Buy — Escalation UI**: Escalation column now shows task created chip + email sent chip with TO/CC recipients visible inline. Distinguishes auto-escalated (task only) vs manual (task + email).",
+      "**Parent Will Buy — HubSpot Task Owner**: Tasks now assigned to CLS manager's HubSpot owner ID via owners API lookup (cached in script properties). Tasks appear in the correct person's queue instead of floating unassigned.",
+      "**WATI Chat Links — Fixed**: Rewritten to use getMessages/{phone} and extract conversationId — correct field for teamInbox URLs. Old code used wrong contact ID causing 'conversation not found' errors.",
+      "**Invoice Currency — Policy Fix**: INR/PKR/BDT get live EUR conversion (fallback rates if API down). All other currencies (GBP, USD, etc.) display the EUR base price number with their own symbol — no conversion.",
+      "**Booking Timezone — Fixed**: Separate IANA timezone picker for class booking. Calendar events now stamp in the selected parent timezone, not always CET.",
+      "**Email Queue — Date Parse + Expiry**: Fixed date parsing for GAS Date objects and long JS date strings. Emails >24h overdue auto-expire with alert to sourav.pal@jet-learn.com listing failed rows."
+    ],
     'V6.14': [
       "**Migration Intelligence — Fast Load**: Popup now loads ~3× faster. Eliminated duplicate HubSpot ticket search, skipped 500-row audit log read, added 3-min CacheService TTL — repeated triggers (teacher change after JLID entered) are near-instant.",
       "**Migration Intelligence — Last Migration Fixed**: 'Last migration' now shows the previous completed ticket, not the current open WIP. Shows days-since count e.g. '14 May 2026 (12 days ago)'.",
