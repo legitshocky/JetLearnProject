@@ -2246,6 +2246,15 @@ function collectEmailFormData(emailType) {
                 inputs.forEach(inp => { const v = parseFloat(inp.value); if (!isNaN(v) && v >= 0) amounts.push(v); });
                 return amounts.length > 0 ? amounts : null;
             })(),
+            // Custom due dates per installment (leave blank to auto-calculate from First Payment Date)
+            customInstallmentDates: (function() {
+                const chk = document.getElementById('onboardingCustomInstallmentAmounts');
+                if (!chk || !chk.checked) return null;
+                const inputs = document.querySelectorAll('.ob-custom-inst-date');
+                const dates = [];
+                inputs.forEach(inp => { dates.push(inp.value || null); });
+                return dates.some(d => d) ? dates : null;
+            })(),
 
             // --- THIS WAS MISSING ---
             sendWhatsapp: document.getElementById('sendOnboardingWhatsapp').checked,
@@ -4789,6 +4798,7 @@ function mipSelectAlternativeTeacher(teacherName) {
             case 'NZD': return 'NZ$'; case 'AED': return '\u062F.\u0625'; case 'HKD': 'HK$';
             case 'ZAR': return 'R'; case 'SGD': return 'S$'; case 'NOK': return 'kr';
             case 'DKK': return 'kr'; case 'MXN': return 'Mex$'; case 'BRL': return 'R$';
+            case 'PKR': return 'Rs'; case 'BDT': return '৳';
             default: return currencyCode || '';
         }
     }
@@ -4950,33 +4960,23 @@ function calculateInvoicePricingClient(formData) {
 
     // Currency Conversion
     let targetCurrencyCode = formData.currency;
-    let finalConversionRateFromEUR = 1;
     if (targetCurrencyCode === 'CUSTOM') {
         targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase();
+        finalCurrencySymbol = getCurrencySymbolClient(targetCurrencyCode);
+    }
+
+    // Pricing policy: only INR/PKR/BDT get a real EUR conversion rate applied.
+    // Every other currency (GBP, USD, CHF, AED, etc.) shows the EUR number with its own symbol.
+    const _CONVERTED_CURRENCIES_CLIENT = ['INR', 'PKR', 'BDT'];
+    let finalConversionRateFromEUR = 1;
+    if (_CONVERTED_CURRENCIES_CLIENT.includes(targetCurrencyCode)) {
         finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
             ? parseFloat(formData.customCurrencyRate)
             : getConversionRateClient('EUR', targetCurrencyCode);
-        finalCurrencySymbol = getCurrencySymbolClient(targetCurrencyCode);
-    } else {
-        if (['EUR', 'GBP', 'USD'].includes(targetCurrencyCode)) {
-            finalConversionRateFromEUR = 1.0;
-        } else {
-            finalConversionRateFromEUR = getConversionRateClient('EUR', targetCurrencyCode);
-        }
     }
 
-    // Read native price column for GBP/USD; EUR for everything else (avoids EUR→GBP false conversion)
-    let planBasePriceForDefaultTenure = 0;
-    if (formData.currency === 'GBP') {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price GBP'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-        // Fallback to EUR if GBP column empty
-        if (!planBasePriceForDefaultTenure) planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-    } else if (formData.currency === 'USD') {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price USD'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-        if (!planBasePriceForDefaultTenure) planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-    } else {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-    }
+    // Base price always read from the EUR column — canonical price table.
+    const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
     const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1');
     const monthlyRateEUR = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;
 
@@ -4986,10 +4986,8 @@ function calculateInvoicePricingClient(formData) {
     if (formData.currency === 'CUSTOM' && effectiveBasePrice > 0 && customCurrencyExtraDiscountPercentage > 0) {
         effectiveBasePrice *= (1 - customCurrencyExtraDiscountPercentage / 100);
     }
-    // Only apply conversion for non-native currencies (CUSTOM / exotic); GBP/USD/EUR already native
-    if (!['EUR', 'GBP', 'USD'].includes(formData.currency)) {
-        effectiveBasePrice *= finalConversionRateFromEUR;
-    }
+    // Conversion only applies to INR/PKR/BDT — rate is 1 for everything else, so this is safe either way.
+    effectiveBasePrice *= finalConversionRateFromEUR;
 
     // --- FIX: Total Calculation ---
     // The Total is ALWAYS (Base Price - Discount), regardless of what was paid
@@ -5071,7 +5069,7 @@ function calculateInvoicePricingClient(formData) {
 
 
     const EUR_BASE_RATES_CLIENT = {
-      'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348, 'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50, 'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951, 'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
+      'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348, 'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50, 'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951, 'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207, 'PKR': 325.50, 'BDT': 128.40
     };
 
     function getConversionRateClient(fromCurrency, toCurrency) {
@@ -7210,7 +7208,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.style.cssText = 'display:flex;align-items:center;gap:8px;';
                 row.innerHTML = '<label style="font-size:0.8rem;color:#475569;width:110px;flex-shrink:0;">Installment ' + (i+1) + '<\/label>'
                     + '<input type="number" class="form-control ob-custom-inst-amt" data-index="' + i + '" placeholder="Amount" min="0" step="0.01" style="max-width:140px;">'
-                    + '<span style="font-size:0.8rem;color:#94a3b8;">' + (getCurrencySymbolClient(onboardingParentCurrency ? onboardingParentCurrency.value : 'GBP')||'') + '<\/span>';
+                    + '<span style="font-size:0.8rem;color:#94a3b8;">' + (getCurrencySymbolClient(onboardingParentCurrency ? onboardingParentCurrency.value : 'GBP')||'') + '<\/span>'
+                    + '<input type="date" class="form-control ob-custom-inst-date" data-index="' + i + '" style="max-width:160px;margin-left:8px;" title="Due date for installment ' + (i+1) + ' (leave blank to auto-calculate)">';
                 container.appendChild(row);
             }
         }
@@ -7254,7 +7253,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.style.cssText = 'display:flex;align-items:center;gap:8px;';
                 row.innerHTML = '<label style="font-size:0.8rem;color:#475569;width:110px;flex-shrink:0;">Installment ' + (i+1) + '<\/label>'
                     + '<input type="number" class="form-control custom-inst-amt" data-index="' + i + '" placeholder="Amount" min="0" step="0.01" style="max-width:140px;">'
-                    + '<span style="font-size:0.8rem;color:#94a3b8;">' + (getCurrencySymbolClient(document.getElementById('invoiceCurrency').value)||'') + '<\/span>';
+                    + '<span style="font-size:0.8rem;color:#94a3b8;">' + (getCurrencySymbolClient(document.getElementById('invoiceCurrency').value)||'') + '<\/span>'
+                    + '<input type="date" class="form-control custom-inst-date" data-index="' + i + '" style="max-width:160px;margin-left:8px;" title="Due date for installment ' + (i+1) + ' (leave blank to auto-calculate)">';
                 container.appendChild(row);
             }
         }
@@ -7612,10 +7612,10 @@ function triggerMigrationIntelligence() {
 
         clearTimeout(mipDebounce);
         mipDebounce = setTimeout(function() {
-          // FIX: Show the modal
+          // Show the modal
           modal.classList.add('active');
 
-          // Show loading state inside the modal
+          // Show loading state for teacher-specific sections
           document.getElementById('migrationAlertBanners').innerHTML =
             '<div style="padding:0.6rem 1rem;background:#f1f5f9;border-radius:6px;color:#64748b;font-size:0.83rem;">'
             + '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"><\/i>Analysing teacher history\u2026<\/div>';
@@ -7624,6 +7624,19 @@ function triggerMigrationIntelligence() {
           });
           var histEl = document.getElementById('mip_teacherHistoryContent');
           if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading\u2026<\/span>';
+
+          // Render learner history immediately if prefetch already completed
+          if (window._miHistoryResult && window._miHistoryResult.jlid === jlid) {
+            renderMigrationHistory(window._miHistoryResult);
+          } else {
+            // Prefetch still in-flight \u2014 show skeleton for history section
+            var hSection = document.getElementById('mip_learnerHistorySection');
+            var hList    = document.getElementById('mip_learnerHistoryList');
+            if (hSection) hSection.style.display = 'block';
+            if (hList) hList.innerHTML = '<div style="color:#94a3b8;font-size:0.82rem;padding:0.5rem 0;"><i class="fas fa-spinner fa-spin" style="margin-right:6px;"><\/i>Loading migration history\u2026<\/div>';
+            var jsBanner = document.getElementById('mip_journeyStabilityBanner');
+            if (jsBanner) jsBanner.style.display = 'none';
+          }
 
           // Read first class session slot from the migration form
           var slotParams = null;
@@ -7661,15 +7674,182 @@ function triggerMigrationIntelligence() {
       if (newTeacherSelect) newTeacherSelect.addEventListener('change', triggerMigrationIntelligence);
       if (jlidInput)        jlidInput.addEventListener('change',        triggerMigrationIntelligence);
 
-      // Load WATI contacts when JLID is entered manually (blur)
+      // Prefetch migration history + WATI contacts on JLID blur
       if (jlidInput) {
         jlidInput.addEventListener('blur', function() {
           const val = this.value.trim();
-          if (val.length >= 8) _loadWatiContacts(val);
-          else _resetWatiContactPicker();
+          if (val.length >= 8) {
+            _loadWatiContacts(val);
+            // Prefetch learner migration history so modal renders instantly when teacher is selected
+            window._miHistoryResult = null;
+            window._miHistoryJlid   = val;
+            google.script.run
+              .withSuccessHandler(function(r) {
+                if (r && r.success && r.jlid === window._miHistoryJlid) {
+                  window._miHistoryResult = r;
+                  // If modal is already open for this JLID, render immediately
+                  var modal = document.getElementById('migrationIntelModal');
+                  if (modal && modal.classList.contains('active')) renderMigrationHistory(r);
+                }
+              })
+              .withFailureHandler(function(){})
+              .getMigrationHistoryFast(val);
+          } else {
+            _resetWatiContactPicker();
+          }
         });
       }
     })();
+
+    // Stores all migrations for client-side filter tabs
+    window._miAllMigrations = [];
+
+    function mipFilterHistory(filter) {
+      // Update tab styles
+      document.querySelectorAll('.mip-hist-tab').forEach(function(btn) {
+        var isActive = btn.getAttribute('data-filter') === filter;
+        btn.style.background    = isActive ? '#6366f1' : '#fff';
+        btn.style.color         = isActive ? '#fff'    : '#475569';
+        btn.style.borderColor   = isActive ? '#6366f1' : '#e2e8f0';
+        btn.style.fontWeight    = isActive ? '600'     : '400';
+      });
+      var list = document.getElementById('mip_learnerHistoryList');
+      if (!list) return;
+      var items = list.querySelectorAll('.mip-hist-card');
+      items.forEach(function(card) {
+        var t    = card.getAttribute('data-type');
+        var done = card.getAttribute('data-completed') === '1';
+        var show = filter === 'all'
+          || (filter === 'outbound'  && t === 'outbound')
+          || (filter === 'inbound'   && t === 'inbound')
+          || (filter === 'completed' && done);
+        card.style.display = show ? '' : 'none';
+      });
+    }
+
+    function renderMigrationHistory(r) {
+      if (!r || !r.success) return;
+      var PORTAL = '7729491';
+
+      // Journey stability banner
+      var colorMap = {
+        success: { bg:'#f0fdf4', border:'#86efac', color:'#15803d', icon:'fas fa-check-circle' },
+        warning: { bg:'#fffbeb', border:'#fcd34d', color:'#92400e', icon:'fas fa-exclamation-circle' },
+        danger:  { bg:'#fef2f2', border:'#fca5a5', color:'#b91c1c', icon:'fas fa-exclamation-triangle' }
+      };
+      var cm = colorMap[r.journeyStabilityColor] || colorMap.warning;
+      var jsBanner = document.getElementById('mip_journeyStabilityBanner');
+      if (jsBanner) {
+        jsBanner.style.cssText = 'display:block;margin-top:1rem;border-radius:8px;padding:0.65rem 1rem;border:1px solid '
+          + cm.border + ';background:' + cm.bg + ';';
+        document.getElementById('mip_jsTitle').innerHTML =
+          '<i class="' + cm.icon + '" style="margin-right:6px;color:' + cm.color + ';"><\/i>'
+          + '<span style="color:' + cm.color + ';">Journey stability: ' + escapeHtml(r.journeyStability || '') + '<\/span>';
+        document.getElementById('mip_jsReason').innerHTML =
+          '<span style="color:' + cm.color + ';">' + escapeHtml(r.journeyStabilityReason || '') + '<\/span>';
+      }
+
+      // Learner summary text
+      var summaryEl = document.getElementById('mip_learnerSummaryText');
+      if (summaryEl) {
+        var parts = [];
+        if (r.parentRequestedCount > 0) parts.push(r.parentRequestedCount + ' parent-requested');
+        if (r.jlInitiatedCount     > 0) parts.push(r.jlInitiatedCount     + ' JetLearn-initiated');
+        var breakdown = parts.length > 0 ? ' (' + parts.join(', ') + ')' : '';
+        var txt = (r.learnerName || r.jlid) + ' has had <strong>' + (r.totalMigrations || 0)
+          + ' migration event(s)</strong>' + breakdown;
+        if (r.firstMigrationDate)  txt += ', first recorded on <strong>' + escapeHtml(r.firstMigrationDate) + '<\/strong>';
+        if (r.recentMigrationDate && r.recentMigrationDate !== r.firstMigrationDate)
+          txt += ' and most recently on <strong>' + escapeHtml(r.recentMigrationDate) + '<\/strong>';
+        txt += '. Current teacher: <strong>' + escapeHtml(r.currentTeacher || '—') + '<\/strong>.';
+        txt += ' Overall journey stability: <strong>' + escapeHtml(r.journeyStability || '—') + '<\/strong>.';
+        summaryEl.innerHTML = txt;
+      }
+
+      // Populate frequency counts immediately from fast result
+      var setEl = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      setEl('mip_count30', r.migrationCount30d != null ? r.migrationCount30d : '—');
+      setEl('mip_count60', r.migrationCount60d != null ? r.migrationCount60d : '—');
+      setEl('mip_count90', r.migrationCount90d != null ? r.migrationCount90d : '—');
+      setEl('mip_total',   r.totalMigrations   != null ? r.totalMigrations   : '—');
+      if (r.lastMigrationDate) {
+        var ld = new Date(r.lastMigrationDate).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+        var ds = r.daysSinceLastMigration != null ? '  (' + r.daysSinceLastMigration + ' days ago)' : '';
+        setEl('mip_lastDate',   ld + ds);
+        setEl('mip_lastReason', r.lastMigrationReason || '—');
+      }
+
+      // Event count badge
+      var countEl = document.getElementById('mip_histEventCount');
+      if (countEl) countEl.textContent = (r.totalMigrations || 0) + ' event' + ((r.totalMigrations||0) !== 1 ? 's' : '');
+
+      // Build ticket cards
+      var migrations = r.migrations || [];
+      window._miAllMigrations = migrations;
+      var list = document.getElementById('mip_learnerHistoryList');
+      if (!list) return;
+
+      if (migrations.length === 0) {
+        list.innerHTML = '<div style="color:#94a3b8;font-size:0.82rem;padding:0.5rem 0;">No migration history found for this learner.</div>';
+        var sec = document.getElementById('mip_learnerHistorySection');
+        if (sec) sec.style.display = 'block';
+        return;
+      }
+
+      // Show newest first
+      var sorted = migrations.slice().sort(function(a, b) { return new Date(b.date||0) - new Date(a.date||0); });
+      var html = '';
+      sorted.forEach(function(m) {
+        var isCompleted   = m.isCompleted;
+        var borderColor   = isCompleted ? '#86efac' : (m.stage === 'Migration Triggered' ? '#fca5a5' : '#fcd34d');
+        var typeBadgeBg   = m.type === 'inbound'  ? '#ede9fe' : '#fef3c7';
+        var typeBadgeCol  = m.type === 'inbound'  ? '#6d28d9' : '#92400e';
+        var typeBadgeLbl  = m.type === 'inbound'  ? 'Parent Request' : 'JetLearn Initiated';
+        var stageBg       = isCompleted ? '#f0fdf4' : '#fef2f2';
+        var stageCol      = isCompleted ? '#15803d' : '#b91c1c';
+        var trigg = m.date
+          ? new Date(m.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+        var comp  = m.completedDate
+          ? new Date(m.completedDate).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : null;
+        html += '<div class="mip-hist-card" data-type="' + m.type + '" data-completed="' + (isCompleted?'1':'0') + '" '
+          + 'style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid ' + borderColor + ';border-radius:6px;padding:0.65rem 0.9rem;">';
+        // Header row
+        html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.4rem;">';
+        html += '<div style="font-size:0.82rem;font-weight:600;color:#1e293b;"><i class="fas fa-exchange-alt" style="margin-right:5px;color:#6366f1;"><\/i>' + escapeHtml(m.reason) + '<\/div>';
+        html += '<div style="display:flex;gap:0.35rem;flex-wrap:wrap;">';
+        html += '<span style="font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:12px;background:' + typeBadgeBg + ';color:' + typeBadgeCol + ';">' + typeBadgeLbl + '<\/span>';
+        html += '<span style="font-size:0.7rem;font-weight:600;padding:2px 8px;border-radius:12px;background:' + stageBg + ';color:' + stageCol + ';">' + escapeHtml(m.stage) + '<\/span>';
+        html += '<\/div><\/div>';
+        // Teacher row
+        html += '<div style="font-size:0.78rem;color:#475569;margin-bottom:0.35rem;">'
+          + 'From: <strong>' + escapeHtml(m.fromTeacher) + '<\/strong>'
+          + ' <i class="fas fa-arrow-right" style="margin:0 4px;color:#94a3b8;"><\/i> '
+          + 'To: <strong>' + escapeHtml(m.toTeacher) + '<\/strong><\/div>';
+        // Date row
+        html += '<div style="font-size:0.75rem;color:#64748b;margin-bottom:0.35rem;">';
+        html += '<i class="fas fa-calendar-alt" style="margin-right:4px;"><\/i>' + escapeHtml(trigg);
+        if (comp) html += '&nbsp;&nbsp;<i class="fas fa-check-circle" style="margin-right:4px;color:#15803d;"><\/i>Completed ' + escapeHtml(comp);
+        html += '<\/div>';
+        // Footer chips
+        html += '<div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-top:0.2rem;">';
+        if (m.resolutionDays != null && m.resolutionDays >= 0) {
+          html += '<span style="font-size:0.7rem;background:#f1f5f9;color:#475569;border-radius:12px;padding:2px 9px;border:1px solid #e2e8f0;">'
+            + 'Resolved in ' + m.resolutionDays + ' day' + (m.resolutionDays !== 1 ? 's' : '') + '<\/span>';
+        }
+        if (m.ticketId) {
+          html += '<a href="https://app.hubspot.com/contacts/' + encodeURIComponent('7729491') + '/ticket/' + encodeURIComponent(m.ticketId) + '/" '
+            + 'target="_blank" style="font-size:0.7rem;background:#eff6ff;color:#1d4ed8;border-radius:12px;padding:2px 9px;border:1px solid #bfdbfe;text-decoration:none;">'
+            + '<i class="fas fa-external-link-alt" style="margin-right:4px;"><\/i>Ticket #' + escapeHtml(String(m.ticketId)) + '<\/a>';
+        }
+        html += '<\/div><\/div>';
+      });
+      list.innerHTML = html;
+
+      var sec = document.getElementById('mip_learnerHistorySection');
+      if (sec) sec.style.display = 'block';
+      // Reset filter to "All"
+      mipFilterHistory('all');
+    }
 
     function renderMigrationIntelPanel(result) {
       // FIX: No need to show/hide the panel, it's already visible inside the modal
@@ -12923,6 +13103,22 @@ function ktOpenStore() {
   window.open('https://www.' + domain + '/gp/your-account/order-history', '_blank');
 }
 
+// Maps HubSpot's raw "subscription" property value to the kit form's dropdown options
+// (Yearly, 2 Yearly, 3 Yearly, Half Yearly, Quarterly, Monthly).
+function _mapHsSubscriptionToKitOption(raw) {
+  if (!raw) return null;
+  var s = String(raw).toLowerCase().replace(/[-_]/g, ' ').trim();
+
+  if (/(^|\s)3\s*year/.test(s))                         return '3 Yearly';
+  if (/(^|\s)2\s*year/.test(s))                         return '2 Yearly';
+  if (/half/.test(s) && /year/.test(s))                 return 'Half Yearly';
+  if (/quarter/.test(s) || /3\s*month/.test(s))         return 'Quarterly';
+  if (/month/.test(s) && !/year/.test(s))               return 'Monthly';
+  if (/annual/.test(s) || /^1\s*year/.test(s) || /(^|\s)year(ly)?($|\s)/.test(s)) return 'Yearly';
+
+  return null;
+}
+
 function ktFetchByJlid() {
   const jlid = ((document.getElementById('ktfJlid') || {}).value || '').trim();
   if (!jlid) return;
@@ -12947,13 +13143,19 @@ function ktFetchByJlid() {
       set('ktfSubscription', r.subscription);
       set('ktfCountry',      r.country);
 
-      // Map subscription label to dropdown option
+      // Map HubSpot subscription label (e.g. "Annual", "3 Years", "Half-Yearly") to dropdown option
       const subEl = document.getElementById('ktfSubscription');
       if (subEl && r.subscription) {
-        // Try to match option — e.g. "yearly" → "Yearly"
-        Array.from(subEl.options).forEach(opt => {
-          if (opt.value.toLowerCase() === r.subscription.toLowerCase()) subEl.value = opt.value;
-        });
+        const mapped = _mapHsSubscriptionToKitOption(r.subscription);
+        if (mapped) subEl.value = mapped;
+      }
+
+      // >1 subscription line item on deal → Renewed Learner; else New Learner — auto-select reason
+      const reasonEl = document.getElementById('ktfReason');
+      if (reasonEl && !reasonEl.value) {
+        reasonEl.value = r.isRenewedLearner
+          ? 'Renewed Learner- Next course requires the kit'
+          : 'New Learner - Next course requires the Kit';
       }
 
       const existing = r.kitCostSoFar || 0;
@@ -12961,6 +13163,8 @@ function ktFetchByJlid() {
       resultEl.innerHTML = '✔ Found: <strong>' + escapeHtml(r.learnerName) + '<\/strong>' +
         (r.subscription ? ' · ' + escapeHtml(r.subscription) : '') +
         (r.country ? ' · ' + escapeHtml(r.country) : '') +
+        (' · <span style="color:' + (r.isRenewedLearner ? '#7c3aed' : '#0891b2') + ';">' +
+          (r.isRenewedLearner ? '🔄 Renewed learner' : '🆕 New learner') + ' (' + (r.lineItemCount||0) + ' line item' + (r.lineItemCount===1?'':'s') + ')<\/span>') +
         (existing > 0 ? ' · <span style="color:#d97706;">Existing kit cost: €' + existing + '<\/span>' : '');
 
       // ── Address section ──────────────────────────────────────────────────
@@ -13133,7 +13337,9 @@ function submitAddKitEntry() {
   else if (storeType === 'digikey') site = 'digikey';
   else if (storeType === 'other')   site = get('ktfOtherStore').trim() || 'Other';
 
+  const jlidVal = get('ktfJlid').trim();
   const missing = [];
+  if (!jlidVal)   missing.push('JLID');
   if (!learner)   missing.push('Learner Name');
   if (!kit)       missing.push('Kit');
   if (!country)   missing.push('Country');
@@ -13190,6 +13396,7 @@ function submitAddKitEntry() {
         if (result.noteSaved) extras.push('✓ HS note added');
         var msg = 'Sr #' + result.srNo + ' — ' + learner + ' (' + kit + ')' + (extras.length ? ' · ' + extras.join(' · ') : '');
         showToast('success', 'Kit Entry Added', msg);
+        if (result.warning) showToast('warning', 'Some updates skipped', result.warning);
         loadKitTrackingPage();
       } else {
         errEl.textContent = (result && result.message) || 'Failed to add entry.';
@@ -13422,9 +13629,39 @@ function renderPWBTable(rows) {
     const fups   = [r.initialSentAt ? 'Initial ✓' : '', r.fup1SentAt ? 'FUP1 ✓' : '',
                     r.fup2SentAt ? 'FUP2 ✓' : '', r.finalFupSentAt ? 'Final ✓' : '']
                     .filter(Boolean).join(' → ') || '—';
-    const esc    = r.escalated === 'TRUE'
-      ? '<span style="color:#ef4444;font-weight:600;font-size:0.75rem;">⚠ Yes<\/span>'
-      : '<span style="color:#94a3b8;font-size:0.75rem;">No<\/span>';
+    // Escalation status: show task chip + email chip with recipients
+    var escHtml = '';
+    if (r.escalated === 'TRUE') {
+      // Task always created when escalated
+      escHtml += '<div style="display:flex;flex-direction:column;gap:3px;min-width:140px;">';
+      escHtml += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.7rem;font-weight:600;background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;white-space:nowrap;">'
+        + '<i class="fas fa-tasks"><\/i> Task created<\/span>';
+      if (r.emailLog) {
+        // Parse "TO:x | CC:y,z"
+        var toMatch = r.emailLog.match(/TO:([^|]+)/);
+        var ccMatch = r.emailLog.match(/CC:(.+)/);
+        var toAddr  = toMatch ? toMatch[1].trim() : '';
+        var ccAddrs = ccMatch ? ccMatch[1].trim() : '';
+        var tooltip = 'To: ' + toAddr + (ccAddrs ? '\nCC: ' + ccAddrs : '');
+        escHtml += '<span title="' + escapeHtml(tooltip) + '" style="display:inline-flex;align-items:center;gap:4px;font-size:0.7rem;font-weight:600;background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:2px 7px;cursor:help;white-space:nowrap;">'
+          + '<i class="fas fa-envelope-open-text"><\/i> Email sent<\/span>';
+        if (toAddr) {
+          escHtml += '<div style="font-size:0.65rem;color:#64748b;line-height:1.3;max-width:160px;word-break:break-all;">'
+            + '<strong>To:<\/strong> ' + escapeHtml(toAddr) + '<\/div>';
+          if (ccAddrs) {
+            escHtml += '<div style="font-size:0.65rem;color:#94a3b8;line-height:1.3;max-width:160px;word-break:break-all;">'
+              + '<strong>CC:<\/strong> ' + escapeHtml(ccAddrs) + '<\/div>';
+          }
+        }
+      } else {
+        escHtml += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.7rem;color:#94a3b8;border:1px dashed #e2e8f0;border-radius:4px;padding:2px 7px;white-space:nowrap;">'
+          + '<i class="fas fa-envelope"><\/i> Email pending<\/span>';
+      }
+      escHtml += '<\/div>';
+    } else {
+      escHtml = '<span style="color:#94a3b8;font-size:0.75rem;">—<\/span>';
+    }
+    const esc = escHtml;
     const nextFupColor = (r.nextFup || '').indexOf('🔴') > -1 ? '#ef4444'
                        : (r.nextFup || '').indexOf('🟡') > -1 ? '#f59e0b' : '#10b981';
     const pwbId  = r.parentPhone || r.jlid || '';

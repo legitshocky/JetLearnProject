@@ -827,6 +827,32 @@
                 </div>
               </div>
 
+              <!-- Journey Stability Banner -->
+              <div id="mip_journeyStabilityBanner" style="display:none;margin-top:1rem;border-radius:8px;padding:0.65rem 1rem;border:1px solid;">
+                <div style="font-size:0.8rem;font-weight:700;" id="mip_jsTitle"></div>
+                <div style="font-size:0.75rem;margin-top:2px;opacity:0.85;" id="mip_jsReason"></div>
+              </div>
+
+              <!-- Learner Migration History -->
+              <div id="mip_learnerHistorySection" style="display:none;margin-top:1rem;background:#f8f9ff;border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.25rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+                  <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:600;">
+                    <i class="fas fa-exchange-alt" style="margin-right:5px;color:#6366f1;"></i>Migration Tickets
+                  </div>
+                  <span id="mip_histEventCount" style="font-size:0.72rem;color:#64748b;font-weight:600;"></span>
+                </div>
+                <!-- Learner summary text -->
+                <div id="mip_learnerSummaryText" style="font-size:0.78rem;color:#475569;margin-bottom:0.75rem;line-height:1.5;padding:0.5rem 0.75rem;background:#fff;border-radius:6px;border:1px solid #e2e8f0;"></div>
+                <!-- Filter tabs -->
+                <div id="mip_histFilterTabs" style="display:flex;gap:0.4rem;margin-bottom:0.75rem;flex-wrap:wrap;">
+                  <button type="button" class="mip-hist-tab mip-hist-tab-active" data-filter="all" onclick="mipFilterHistory('all')" style="font-size:0.72rem;padding:3px 10px;border-radius:20px;border:1px solid #6366f1;background:#6366f1;color:#fff;cursor:pointer;font-weight:600;">All</button>
+                  <button type="button" class="mip-hist-tab" data-filter="outbound" onclick="mipFilterHistory('outbound')" style="font-size:0.72rem;padding:3px 10px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;">JetLearn Initiated</button>
+                  <button type="button" class="mip-hist-tab" data-filter="inbound" onclick="mipFilterHistory('inbound')" style="font-size:0.72rem;padding:3px 10px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;">Parent Requested</button>
+                  <button type="button" class="mip-hist-tab" data-filter="completed" onclick="mipFilterHistory('completed')" style="font-size:0.72rem;padding:3px 10px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;">Completed only</button>
+                </div>
+                <div id="mip_learnerHistoryList" style="display:flex;flex-direction:column;gap:0.5rem;max-height:320px;overflow-y:auto;"></div>
+              </div>
+
               <!-- Future Courses & Teacher Upskilling -->
               <div id="mip_futureCoursesSection" style="display:none;margin-top:1rem;background:#f8f9ff;border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.25rem;">
                 <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:0.75rem;font-weight:600;">

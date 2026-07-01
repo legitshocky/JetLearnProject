@@ -10,8 +10,11 @@ var _CURRENCY_FALLBACK_RATES = {
   'EUR': 1.0, 'USD': 1.1700, 'GBP': 0.8665, 'INR': 103.16, 'CHF': 0.9348,
   'AED': 4.273, 'CAD': 1.6224, 'AUD': 1.7682, 'JPY': 172.50, 'SGD': 1.50,
   'HKD': 9.1187, 'ZAR': 20.57, 'CNY': 8.3387, 'NZD': 1.9704, 'SEK': 10.951,
-  'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207
+  'NOK': 11.6195, 'DKK': 7.45, 'MXN': 21.8069, 'BRL': 6.3207,
+  'PKR': 325.50, 'BDT': 128.40
 };
+// Note: INR fallback above (103.16) is a static safety net only — live rate (e.g. 107.89)
+// is fetched via getLiveCurrencyRates() when EXCHANGERATE_API_KEY script property is set.
 
 function getLiveCurrencyRates() {
   try {
@@ -132,8 +135,17 @@ function getLiveExchangeRates() {
   }
 }
 function getConversionRate(toCurrency) {
-  // No currency conversion — all amounts shown as-is (1:1 ratio)
-  return 1;
+  // Only INR/PKR/BDT get a real EUR conversion rate; every other currency
+  // shows the EUR number as-is (rate = 1) per pricing policy.
+  var code = String(toCurrency || '').toUpperCase();
+  if (['INR', 'PKR', 'BDT'].indexOf(code) === -1) return 1;
+  try {
+    var rates = getLiveCurrencyRates();
+    if (rates && rates[code]) return rates[code];
+  } catch(e) {
+    Logger.log('getConversionRate live fetch error: ' + e.message);
+  }
+  return _CURRENCY_FALLBACK_RATES[code] || 1;
 }
 function getCurrencySymbol(currencyCode) {
     switch (currencyCode) {
@@ -141,6 +153,8 @@ function getCurrencySymbol(currencyCode) {
         case 'EUR': return '&euro;';
         case 'USD': return '$';
         case 'INR': return '&#8377;';
+        case 'PKR': return 'Rs';
+        case 'BDT': return '&#2547;';
         case 'JPY': return '&yen;';
         case 'AUD': return 'A$';
         case 'CAD': return 'C$';
@@ -183,31 +197,30 @@ function calculateInvoicePricing(formData, previewOnly = false) {
     let fixedClassesPerPlan = parseInt(selectedPlan['Fixed Classes']);
     if (isNaN(fixedClassesPerPlan)) fixedClassesPerPlan = 0;
 
-    let targetCurrencyCode = formData.currency; 
-    let finalConversionRate = 1.0; 
+    let targetCurrencyCode = formData.currency;
 
     if (targetCurrencyCode === 'CUSTOM') {
-        targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase(); 
-        finalConversionRate = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0) 
-            ? parseFloat(formData.customCurrencyRate) 
-            : getConversionRate(targetCurrencyCode);
+        targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase();
         finalCurrencySymbol = getCurrencySymbol(targetCurrencyCode);
-    } else if (!['EUR', 'USD', 'GBP'].includes(targetCurrencyCode)) {
-        finalConversionRate = getConversionRate(targetCurrencyCode);
     }
-    
-    let planBasePriceForDefaultTenure = 0;
-    if (formData.currency === 'USD') {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price USD'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-    } else if (formData.currency === 'GBP') {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price GBP'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-    } else {
-        planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
+
+    // Pricing policy: only INR/PKR/BDT get a real EUR conversion rate applied.
+    // Every other currency (GBP, USD, CHF, AED, etc.) just displays the EUR number
+    // with its own currency symbol — no conversion.
+    const _CONVERTED_CURRENCIES = ['INR', 'PKR', 'BDT'];
+    let finalConversionRate = 1.0;
+    if (_CONVERTED_CURRENCIES.includes(targetCurrencyCode)) {
+        finalConversionRate = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
+            ? parseFloat(formData.customCurrencyRate)
+            : getConversionRate(targetCurrencyCode);
     }
+
+    // Base price always read from the EUR column — that's the canonical price table.
+    const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
 
     const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1');
     const monthlyRate = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;
-    
+
     effectiveBasePrice = monthlyRate * userSelectedTenureMonths * finalConversionRate;
     if (isNaN(effectiveBasePrice)) effectiveBasePrice = 0;
 
@@ -285,6 +298,11 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         const customAmounts = (formData.customInstallmentAmounts && Array.isArray(formData.customInstallmentAmounts) && formData.customInstallmentAmounts.length > 0)
             ? formData.customInstallmentAmounts.map(Number)
             : null;
+        // Custom due dates per installment — overrides the auto-calculated monthly schedule.
+        // Lets ops skip months (e.g. paid June, subscription starts August — skip July).
+        const customDates = (formData.customInstallmentDates && Array.isArray(formData.customInstallmentDates))
+            ? formData.customInstallmentDates
+            : null;
 
         if (customAmounts) {
             // When token/partial payment is already set, ALL custom installments are PENDING.
@@ -293,12 +311,13 @@ function calculateInvoicePricing(formData, previewOnly = false) {
             const allPending = customPaidAmount > 0;
             let lastDueDate = new Date(billingAnchorDate);
             customAmounts.forEach(function(amt, i) {
-                let dueDate = i === 0 ? new Date(billingAnchorDate) : (function() {
+                const customDate = customDates && customDates[i] ? new Date(customDates[i]) : null;
+                let dueDate = customDate || (i === 0 ? new Date(billingAnchorDate) : (function() {
                     let d = new Date(lastDueDate);
                     d.setMonth(d.getMonth() + monthIncrement);
                     d.setDate(dueDay);
                     return d;
-                })();
+                })());
                 installments.push({
                     number: i + 1,
                     amount: amt,
@@ -428,23 +447,25 @@ function validateInvoiceData(formData) {
 
       if (targetCurrencyCode === 'CUSTOM') {
           if (!formData.customCurrencyCode || formData.customCurrencyCode.trim() === '') errors.push('Custom Currency Code is required for custom currency.');
-          targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase(); 
-          finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
-            ? parseFloat(formData.customCurrencyRate)
-            : getConversionRate(targetCurrencyCode);
-
-          if (finalConversionRateFromEUR <= 0) {
-              errors.push(`Invalid conversion rate from EUR to ${targetCurrencyCode}.`);
-          }
+          targetCurrencyCode = (formData.customCurrencyCode || 'EUR').toUpperCase();
           if (customCurrencyExtraDiscountPercentage < 0 || customCurrencyExtraDiscountPercentage > 100) {
               errors.push('Custom currency discount percentage must be between 0 and 100.');
           }
-      } else {
-          finalConversionRateFromEUR = getConversionRate(targetCurrencyCode);
+      }
+
+      // Only INR/PKR/BDT get a real conversion rate; everything else uses EUR number as-is.
+      const _CONVERTED_CURRENCIES_V = ['INR', 'PKR', 'BDT'];
+      if (_CONVERTED_CURRENCIES_V.includes(targetCurrencyCode)) {
+          finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
+            ? parseFloat(formData.customCurrencyRate)
+            : getConversionRate(targetCurrencyCode);
+          if (finalConversionRateFromEUR <= 0) {
+              errors.push(`Invalid conversion rate from EUR to ${targetCurrencyCode}.`);
+          }
       }
 
       const planBasePriceForDefaultTenure = parseFloat(String(selectedPlan['Base Price EUR'] || '0').replace(/[^0-9.-]/g, '')) || 0;
-      const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1'); 
+      const selectedPlanDefaultMonthsTenure = parseInt(selectedPlan['Months Tenure'] || '1');
       const userSelectedTenureMonths = parseInt(formData.subscriptionTenure || formData.subscriptionTenureMonths || '0');
 
       const monthlyRateEUR = selectedPlanDefaultMonthsTenure > 0 ? (planBasePriceForDefaultTenure / selectedPlanDefaultMonthsTenure) : 0;

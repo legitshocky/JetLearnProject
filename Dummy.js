@@ -183,3 +183,9 @@ function testFetchDesc() {
   var res = getExistingEventDescription('JL31741746342C'); // replace with real JLID
   Logger.log(JSON.stringify(res));
 }
+
+function runTestChatLinkDummy() {
+  var phone = '8369118156'; // <-- change this number
+  var res = fetchWatiDirectLink(phone);
+  Logger.log(JSON.stringify(res));
+}

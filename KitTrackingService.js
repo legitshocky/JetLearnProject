@@ -44,7 +44,10 @@ var KIT_COL = {
   FOLLOWUP2_SENT_AT:  22,
   // Address collection columns (appended — W, X)
   DELIVERY_ADDRESS:   23,
-  ADDR_STATUS:        24   // HubSpot / Requested / Received / Verified
+  ADDR_STATUS:        24,  // HubSpot / Requested / Received / Verified
+  // Escalation columns — Y, Z
+  ESCALATED:          25,
+  ESCALATED_AT:       26
 };
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
@@ -82,6 +85,26 @@ function _fetchContactAddress(dealId) {
   } catch(e) {
     Logger.log('[KitTracking] _fetchContactAddress error: ' + e.message);
     return {};
+  }
+}
+
+// ── Count line items on the deal itself ───────────────────────────────────────
+// >1 subscription line item on the deal = renewed learner (added a new course/term
+// to an existing deal rather than this being their first subscription line).
+function _countDealLineItems(dealId) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token || !dealId) return 0;
+    var res = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '/associations/line_items',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() !== 200) return 0;
+    var data = JSON.parse(res.getContentText());
+    return (data.results || []).length;
+  } catch(e) {
+    Logger.log('[KitTracking] _countDealLineItems error: ' + e.message);
+    return 0;
   }
 }
 
@@ -898,8 +921,174 @@ function sendKitFollowUps() {
     });
 
     Logger.log('[KitTracking] sendKitFollowUps done. 2nd reminders sent: ' + sent2);
+
+    // ── 3rd pass: Escalate to CLS after 2nd reminder unanswered 2+ days ──────
+    var escalated = 0;
+    var twoDaysAgo2 = new Date(today);
+    twoDaysAgo2.setDate(twoDaysAgo2.getDate() - 2);
+
+    var rows3 = sheet.getRange(2, 1, lastRow - 1, KIT_COL.ESCALATED_AT).getValues();
+
+    rows3.forEach(function(row, idx) {
+      var sheetRow = idx + 2;
+
+      var deliveryDate   = String(row[KIT_COL.DELIVERY_DATE  - 1] || '').trim();
+      var parentResponse = String(row[KIT_COL.PARENT_RESPONSE - 1] || '').trim();
+      var fup2Sent       = String(row[KIT_COL.FOLLOWUP2_SENT  - 1] || '').trim();
+      var fup2SentAt     = row[KIT_COL.FOLLOWUP2_SENT_AT - 1];
+      var alreadyEsc     = String(row[KIT_COL.ESCALATED       - 1] || '').trim();
+      var jlid           = String(row[KIT_COL.JLID            - 1] || '').trim();
+      var learnerName    = String(row[KIT_COL.LEARNER_NAME    - 1] || '').trim();
+      var kitName        = String(row[KIT_COL.KIT             - 1] || '').trim();
+
+      if (deliveryDate)   return; // delivered
+      if (parentResponse) return; // replied
+      if (alreadyEsc === 'TRUE' || alreadyEsc === 'true') return; // already escalated
+      if (fup2Sent !== 'TRUE' && fup2Sent !== 'true') return; // 2nd reminder not sent yet
+
+      var sentAt2 = (fup2SentAt instanceof Date) ? fup2SentAt : (fup2SentAt ? new Date(fup2SentAt) : null);
+      if (!sentAt2 || isNaN(sentAt2.getTime())) return;
+      sentAt2.setHours(0,0,0,0);
+      if (sentAt2 > twoDaysAgo2) return; // not 2 days old yet
+
+      Logger.log('[KitTracking] Escalating row ' + sheetRow + ' JLID=' + jlid);
+
+      // Fetch learner deal info
+      var dealId = '', currentTeacher = '', parentName = learnerName, courseName = '';
+      if (jlid) {
+        try {
+          var hs3 = fetchHubspotByJlid(jlid);
+          if (hs3 && hs3.success && hs3.data) {
+            dealId         = hs3.data.dealId        || '';
+            currentTeacher = hs3.data.currentTeacher || '';
+            parentName     = hs3.data.parentName    || learnerName;
+            courseName     = hs3.data.courseName    || '';
+          }
+        } catch(he) { Logger.log('[KitTracking] esc HubSpot fetch err: ' + he.message); }
+      }
+
+      // Look up CLS + TP manager emails from teacher sheet
+      var mgrs = _kitGetTeacherManagerEmails(currentTeacher);
+
+      // Send escalation email
+      _sendKitEscalationEmail({
+        jlid: jlid, learnerName: learnerName, parentName: parentName,
+        kitName: kitName, courseName: courseName, currentTeacher: currentTeacher,
+        clsManagerEmail: mgrs.clsEmail, clsManagerName: mgrs.clsName,
+        tpManagerEmail:  mgrs.tpEmail
+      });
+
+      // Create HubSpot task on deal
+      if (dealId) {
+        _createKitEscalationTask(dealId, { jlid: jlid, learnerName: learnerName, kitName: kitName, courseName: courseName, clsManagerEmail: mgrs.clsEmail });
+      }
+
+      // Mark escalated in sheet
+      sheet.getRange(sheetRow, KIT_COL.ESCALATED).setValue('TRUE');
+      sheet.getRange(sheetRow, KIT_COL.ESCALATED_AT).setValue(new Date());
+      escalated++;
+    });
+
+    Logger.log('[KitTracking] sendKitFollowUps done. Escalations: ' + escalated);
   } catch (e) {
     Logger.log('[KitTracking] sendKitFollowUps ERROR: ' + e.message + '\n' + e.stack);
+  }
+}
+
+// ── Kit escalation helpers ────────────────────────────────────────────────────
+
+function _kitGetTeacherManagerEmails(teacherName) {
+  var result = { clsName: '', clsEmail: '', tpName: '', tpEmail: '' };
+  if (!teacherName) return result;
+  try {
+    var sheet = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+    var nameLower = String(teacherName).trim().toLowerCase();
+    for (var r = 1; r < sheet.length; r++) {
+      var rowName = String(sheet[r][1] || '').trim().toLowerCase();
+      if (rowName === nameLower) {
+        result.tpName  = String(sheet[r][6]  || '').trim();
+        result.clsName = String(sheet[r][7]  || '').trim();
+        result.clsEmail = String(sheet[r][9] || '').trim();
+        result.tpEmail  = String(sheet[r][10]|| '').trim();
+        break;
+      }
+    }
+  } catch(e) {
+    Logger.log('[KitTracking] _kitGetTeacherManagerEmails err: ' + e.message);
+  }
+  return result;
+}
+
+function _sendKitEscalationEmail(d) {
+  try {
+    var to  = d.clsManagerEmail || CONFIG.EMAIL.MAIN_MANAGER;
+    var cc  = ['sourav.pal@jet-learn.com'];
+    if (d.tpManagerEmail) cc.push(d.tpManagerEmail);
+    var ccStr = cc.join(',');
+
+    var subject = '[Action Required] Kit Not Received — ' + d.learnerName + ' (' + d.jlid + ')';
+    var body =
+      '<p>Hi ' + (d.clsManagerName || 'Team') + ',</p>' +
+      '<p>The kit follow-up sequence for the learner below has completed. ' +
+      'Two WhatsApp reminders were sent but <strong>no response was received</strong>. ' +
+      'The kit has not been confirmed as delivered.</p>' +
+      '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>JLID</strong></td><td>' + (d.jlid || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Learner</strong></td><td>' + (d.learnerName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Parent</strong></td><td>' + (d.parentName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Kit</strong></td><td>' + (d.kitName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Current Teacher</strong></td><td>' + (d.currentTeacher || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0"><strong>Course</strong></td><td>' + (d.courseName || '—') + '</td></tr>' +
+      '</table>' +
+      '<p><strong>⚠️ Recommended action:</strong> If the kit cannot be confirmed, ' +
+      'please consider <strong>skipping the course module</strong> that requires this kit ' +
+      'and update the learner\'s roadmap accordingly.</p>' +
+      '<p>A task has been created in HubSpot on this learner\'s deal.</p>' +
+      '<p>— JetLearn Operations Platform</p>';
+
+    MailApp.sendEmail({ to: to, cc: ccStr, subject: subject, htmlBody: body,
+      name: CONFIG.EMAIL.FROM_NAME || 'JetLearn Ops', from: CONFIG.EMAIL.FROM });
+    Logger.log('[KitTracking] Escalation email → ' + to + ' CC: ' + ccStr);
+  } catch(e) {
+    Logger.log('[KitTracking] _sendKitEscalationEmail ERROR: ' + e.message);
+  }
+}
+
+function _createKitEscalationTask(dealId, d) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY') || '';
+    if (!token || !dealId) return;
+    var due = new Date(); due.setDate(due.getDate() + 1);
+    var taskProps = {
+      hs_task_subject:  '[Kit Not Received] ' + d.learnerName + ' — ' + d.kitName,
+      hs_task_body:     'Kit has not been confirmed as delivered after 2 WhatsApp follow-ups.\n\n' +
+                        'JLID: ' + d.jlid + '\nKit: ' + d.kitName +
+                        (d.courseName ? '\nCourse: ' + d.courseName : '') +
+                        '\n\nAction: Contact parent directly. If unresolved, skip the course module that requires this kit and update the learner\'s roadmap.',
+      hs_task_status:   'NOT_STARTED',
+      hs_task_priority: 'HIGH',
+      hs_task_type:     'TODO',
+      hs_timestamp:     due.getTime()
+    };
+    var clsOwnerId = d.clsManagerEmail
+      ? _resolveHubSpotOwnerIdByEmail(d.clsManagerEmail, token) : null;
+    if (clsOwnerId) taskProps.hubspot_owner_id = clsOwnerId;
+    var payload = {
+      properties: taskProps,
+      associations: [{
+        to:    { id: String(dealId) },
+        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }]
+      }]
+    };
+    monitoredFetch('https://api.hubapi.com/crm/v3/objects/tasks', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+    Logger.log('[KitTracking] HubSpot task created for deal ' + dealId);
+  } catch(e) {
+    Logger.log('[KitTracking] _createKitEscalationTask ERROR: ' + e.message);
   }
 }
 
@@ -1361,8 +1550,14 @@ function fetchKitLearnerDetails(jlid) {
     var phone        = _normalisePhone(d.parentContact || '');
     var addrPending  = phone ? !!(CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone)) : false;
 
+    // >1 subscription line item on the deal = renewed learner
+    var lineItemCount = d.dealId ? _countDealLineItems(d.dealId) : 0;
+    var isRenewed      = lineItemCount > 1;
+
     return {
       success:          true,
+      isRenewedLearner: isRenewed,
+      lineItemCount:    lineItemCount,
       learnerName:      d.learnerName      || '',
       subscription:     d.planName         || '',
       country:          d.country          || '',
@@ -1462,9 +1657,15 @@ function addKitEntry(data) {
 
     // ── HubSpot updates on kit entry ──────────────────────────────────
     var price = parseFloat(data.price) || 0;
-    if (jlid) {
+    var hsUpdated = false, hsWarning = '';
+    if (!jlid) {
+      hsWarning = 'No JLID — HubSpot status/cost and parent WhatsApp were skipped.';
+    } else {
       try {
         var hs = fetchHubspotByJlid(jlid);
+        if (!hs || !hs.success || !hs.data || !hs.data.dealId) {
+          hsWarning = 'HubSpot deal not found for ' + jlid + ' — status/cost not updated.';
+        }
         if (hs && hs.success && hs.data && hs.data.dealId) {
           var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
           var dealId   = hs.data.dealId;
@@ -1483,6 +1684,10 @@ function addKitEntry(data) {
           // Update subscription plan if provided
           if (data.subscription) hsProps['subscription'] = data.subscription;
 
+          if (!kitProp) {
+            hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit type "' + (data.kit||'') + '" has no HubSpot status property mapped.';
+          }
+
           if (Object.keys(hsProps).length > 0) {
             var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
               method: 'PATCH',
@@ -1493,11 +1698,15 @@ function addKitEntry(data) {
             var patchCode = patchResp.getResponseCode();
             Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchCode + ' props=' + JSON.stringify(hsProps));
             if (patchCode !== 200) {
+              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'HubSpot update failed (HTTP ' + patchCode + ').';
               Logger.log('[KitTracking] addKitEntry PATCH ERROR body: ' + patchResp.getContentText().substring(0, 400));
+            } else {
+              hsUpdated = true;
             }
           }
         }
       } catch (hsErr) {
+        hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'HubSpot update error: ' + hsErr.message;
         Logger.log('[KitTracking] HubSpot kit update ERROR (non-fatal): ' + hsErr.message);
       }
     }
@@ -1557,7 +1766,11 @@ function addKitEntry(data) {
       } catch(kitE) { Logger.log('[addKitEntry] WATI/note block error: ' + kitE.message); }
     }
 
-    return { success: true, srNo: srNo, watiSent: watiSent, noteSaved: noteSaved };
+    if (jlid && !watiSent) {
+      hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'WhatsApp message to parent was not sent.';
+    }
+
+    return { success: true, srNo: srNo, watiSent: watiSent, noteSaved: noteSaved, hsUpdated: hsUpdated, warning: hsWarning || null };
 
   } catch (e) {
     Logger.log('[KitTracking] addKitEntry ERROR: ' + e.message);
@@ -1913,7 +2126,7 @@ function getPWBEntries() {
     if (!sheet) return [];
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];
-    var rows = sheet.getRange(2, 1, lastRow - 1, 21).getValues(); // A–U
+    var rows = sheet.getRange(2, 1, lastRow - 1, 22).getValues(); // A–V
     var tz = Session.getScriptTimeZone();
     function fmtDate(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy') : String(v || ''); }
     function fmtTs(v)   { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy HH:mm') : String(v || ''); }
@@ -1941,6 +2154,7 @@ function getPWBEntries() {
         escalatedAt:    fmtTs(r[18]),
         interval:       Number(r[19]) || 0,
         entryBy:        String(r[20] || ''),
+        emailLog:       String(r[21] || ''),
         nextFup:        _pwbNextFupLabel(r)
       };
     }).filter(function(r) { return r.jlid; });

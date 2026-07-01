@@ -1951,10 +1951,14 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
         var stageLabel  = STAGE_LABELS[stage] || (stage ? 'Stage ' + stage : 'Unknown');
         var isCompleted = stage === COMPLETED_STAGE;
         var triggeredDate = t.createdAt ? new Date(t.createdAt) : null;
+        var completedDate = props.migration_completed_date ? new Date(props.migration_completed_date) : null;
+        var resolutionDays = (triggeredDate && completedDate) ? Math.floor((completedDate - triggeredDate) / 86400000) : null;
         migrations.push({
           id:          t.id,
           ticketId:    props.hs_ticket_id || t.id,
           date:        triggeredDate ? triggeredDate.toISOString() : null,
+          completedDate: completedDate ? completedDate.toISOString() : null,
+          resolutionDays: resolutionDays,
           reason:      reason || 'Unspecified',
           fromTeacher: getTeacherLabel(props.current_teacher__t_) || 'Unknown',
           toTeacher:   getTeacherLabel(props.new_teacher)         || 'Not assigned',
@@ -2148,6 +2152,158 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
 
   } catch (e) {
     Logger.log('[checkNewTeacherForLearner] Error: ' + e.message + '\n' + e.stack);
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Fast prefetch: returns learner migration history without teacher-specific logic.
+ * Uses the same 3-min CacheService key as checkNewTeacherForLearner so the two share a warm cache.
+ */
+function getMigrationHistoryFast(jlid) {
+  try {
+    var PIPELINE        = '66161281';
+    var COMPLETED_STAGE = '128913753';
+    var token   = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    var EXCLUDED_STAGES = ['133821818', '153457301'];
+    var INBOUND_REASONS = ['Slot change - Learner request', 'Slot change -Learner request',
+                           'Teacher Affinity', 'Pause Request', 'Special Learning Needs', 'Course Change'];
+    var IGNORE_KEYWORDS = ['PRM', 'Renewal', 'Feedback', 'Review', 'Kit', 'Laptop', 'Device', 'Tab'];
+    var STAGE_LABELS = {
+      '128913747': 'Migration Triggered', '128913748': 'WIP',
+      '128913750': 'WIP - TP Approval Pending', '128913752': 'WIP - CLS Approval Pending',
+      '1030980247': 'WIP - Rejected by CLS', '133755411': 'WIP - Approved by CLS',
+      '1065336836': 'Execution Pending',    '128913749': 'WIP - PR Approval Pending',
+      '128913753':  'Migration Completed'
+    };
+
+    var learnerProfile = { learnerName: jlid, currentTeacher: '' };
+    try {
+      var dr = fetchHubspotByJlid(jlid);
+      if (dr && dr.success && dr.data) {
+        learnerProfile.learnerName    = dr.data.learnerName    || jlid;
+        learnerProfile.currentTeacher = dr.data.currentTeacher || '';
+      }
+    } catch(de) {}
+
+    var migrations = [];
+    var cacheKey   = 'INTEL_TL_' + jlid;
+    var cachedRaw  = null;
+    try { cachedRaw = CacheService.getScriptCache().get(cacheKey); } catch(ce) {}
+
+    if (cachedRaw) {
+      try { migrations = JSON.parse(cachedRaw); } catch(pe) {}
+    } else {
+      var tBody = {
+        filterGroups: [{ filters: [
+          { propertyName: 'learner_uid', operator: 'EQ', value: jlid },
+          { propertyName: 'hs_pipeline', operator: 'EQ', value: PIPELINE }
+        ]}],
+        properties: ['subject','createdate','reason_of_migration__t_','new_teacher',
+                     'current_teacher__t_','hs_pipeline_stage','migration_completed_date',
+                     'hs_ticket_id','future_course_1','future_course_2','future_course_3'],
+        sorts:  [{ propertyName: 'createdate', direction: 'ASCENDING' }],
+        limit:  100
+      };
+      var tRes  = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+        method: 'post', headers: headers, payload: JSON.stringify(tBody), muteHttpExceptions: true
+      });
+      var tData = JSON.parse(tRes.getContentText());
+      var raw   = (tData && tData.results) ? tData.results : [];
+      raw.forEach(function(t) {
+        var props   = t.properties || {};
+        var subject = String(props.subject || '').trim();
+        var reason  = String(props.reason_of_migration__t_ || '').trim();
+        var stage   = String(props.hs_pipeline_stage || '').trim();
+        if (EXCLUDED_STAGES.indexOf(stage) !== -1) return;
+        if (IGNORE_KEYWORDS.some(function(kw){ return subject.indexOf(kw) !== -1; })) return;
+        if (!reason && subject.indexOf('Migration') === -1) return;
+        var stageLabel    = STAGE_LABELS[stage] || (stage ? 'Stage ' + stage : 'Unknown');
+        var isCompleted   = stage === COMPLETED_STAGE;
+        var triggeredDate = t.createdAt ? new Date(t.createdAt) : null;
+        var completedDate = props.migration_completed_date ? new Date(props.migration_completed_date) : null;
+        var resolutionDays = (triggeredDate && completedDate) ? Math.floor((completedDate - triggeredDate) / 86400000) : null;
+        migrations.push({
+          id: t.id, ticketId: props.hs_ticket_id || t.id,
+          date:          triggeredDate ? triggeredDate.toISOString() : null,
+          completedDate: completedDate  ? completedDate.toISOString()  : null,
+          resolutionDays: resolutionDays,
+          reason:      reason || 'Unspecified',
+          fromTeacher: getTeacherLabel(props.current_teacher__t_) || 'Unknown',
+          toTeacher:   getTeacherLabel(props.new_teacher)         || 'Not assigned',
+          stage: stageLabel, isCompleted: isCompleted,
+          type:  INBOUND_REASONS.indexOf(reason) !== -1 ? 'inbound' : 'outbound',
+          rawProps: {
+            future_course_1: props.future_course_1 || '',
+            future_course_2: props.future_course_2 || '',
+            future_course_3: props.future_course_3 || ''
+          }
+        });
+      });
+      try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(migrations), 180); } catch(ce) {}
+    }
+
+    var now      = new Date();
+    var count30  = 0, count60 = 0, count90 = 0;
+    migrations.forEach(function(m) {
+      if (!m.date) return;
+      var days = (now - new Date(m.date)) / 86400000;
+      if (days <= 30) count30++;
+      if (days <= 60) count60++;
+      if (days <= 90) count90++;
+    });
+
+    var sorted          = migrations.slice().sort(function(a, b) { return new Date(b.date||0) - new Date(a.date||0); });
+    var completedSorted = sorted.filter(function(m) { return m.isCompleted; });
+    var lastMigration   = completedSorted[0] || null;
+
+    var jlInitiated = migrations.filter(function(m) { return m.type === 'outbound'; }).length;
+    var parentReq   = migrations.filter(function(m) { return m.type === 'inbound';  }).length;
+    var stability, stabilityColor, stabilityReason;
+    if (jlInitiated === 0 && migrations.length <= 1) {
+      stability = 'High';   stabilityColor = 'success';
+      stabilityReason = migrations.length === 0
+        ? 'No migrations on record. Journey is stable.'
+        : 'No JetLearn-initiated moves. Journey is stable.';
+    } else if (jlInitiated <= 1 && migrations.length <= 3) {
+      stability = 'Medium'; stabilityColor = 'warning';
+      stabilityReason = (jlInitiated === 1 ? 'One JetLearn-initiated move on record.' : 'Multiple migrations on record.')
+        + ' Journey is mostly stable.';
+    } else {
+      stability = 'Low';    stabilityColor = 'danger';
+      stabilityReason = jlInitiated + ' JetLearn-initiated move(s) on record. High churn risk.';
+    }
+
+    var firstDate = migrations.length > 0 && migrations[0].date
+      ? new Date(migrations[0].date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : null;
+    var recentDate = sorted.length > 0 && sorted[0].date
+      ? new Date(sorted[0].date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : null;
+
+    return {
+      success:              true,
+      jlid:                 jlid,
+      learnerName:          learnerProfile.learnerName,
+      currentTeacher:       learnerProfile.currentTeacher,
+      migrations:           migrations,
+      migrationCount30d:    count30,
+      migrationCount60d:    count60,
+      migrationCount90d:    count90,
+      totalMigrations:      migrations.length,
+      parentRequestedCount: parentReq,
+      jlInitiatedCount:     jlInitiated,
+      lastMigrationDate:    lastMigration ? lastMigration.date   : null,
+      lastMigrationReason:  lastMigration ? lastMigration.reason : null,
+      daysSinceLastMigration: lastMigration && lastMigration.date
+        ? Math.floor((now - new Date(lastMigration.date)) / 86400000) : null,
+      journeyStability:       stability,
+      journeyStabilityColor:  stabilityColor,
+      journeyStabilityReason: stabilityReason,
+      firstMigrationDate:     firstDate,
+      recentMigrationDate:    recentDate
+    };
+  } catch(e) {
+    Logger.log('[getMigrationHistoryFast] Error: ' + e.message);
     return { success: false, message: e.message };
   }
 }

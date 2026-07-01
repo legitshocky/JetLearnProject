@@ -25,7 +25,8 @@ var PWB_COL = {
   ESCALATED:         18,  // R
   ESCALATED_AT:      19,  // S
   INTERVAL:          20,  // T — locked at initial send
-  ENTRY_BY:          21   // U — team member who added the entry
+  ENTRY_BY:          21,  // U — team member who added the entry
+  EMAIL_LOG:         22   // V — "TO:email | CC:email,email" written when escalation email sent
 };
 
 // ── Kit → Course mapping ───────────────────────────────────────────────────
@@ -212,26 +213,40 @@ function _sendPWBEscalationEmail(rowData, reason, isUrgent) {
   }
   var ccStr = ccList.join(',');
 
-  try {
-    var htmlBody = isUrgent
-      ? '<p style="color:#c0392b;font-size:16px;font-weight:bold;">⚠️ URGENT — Kit Not Yet Confirmed</p>' +
-        '<p>Course starts in <strong>' + (rowData.daysLeft || '?') + ' day(s)</strong>. ' +
-        'All automated follow-ups sent. Parent has not confirmed purchase.</p>'
-      : '<p>Hi,</p><p>The <strong>Parent Will Buy Kit</strong> follow-up sequence has completed. ' +
-        'Parent has not purchased the required kit:</p>';
+  var triggeredBy = rowData.triggeredBy || 'Ops Team';
 
-    htmlBody +=
-      '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>JLID</strong></td><td>' + (rowData.jlid || '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Learner</strong></td><td>' + (rowData.learnerName || '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Parent</strong></td><td>' + (rowData.parentName || '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Course</strong></td><td>' + (rowData.courseName || '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Kit Required</strong></td><td>' + (rowData.kitName || '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Course Start</strong></td><td>' + (rowData.courseStartDate ? _formatDMY(rowData.courseStartDate) : '—') + '</td></tr>' +
-      '<tr><td style="padding:4px 16px 4px 0"><strong>Reason</strong></td><td>' + (reason || 'Manual escalation') + '</td></tr>' +
+  try {
+    var urgentBanner = isUrgent
+      ? '<p style="color:#c0392b;font-weight:bold;font-size:15px;font-family:sans-serif;">⚠️ Urgent — course starts in ' + (rowData.daysLeft || '?') + ' day(s)</p>'
+      : '';
+
+    var htmlBody = urgentBanner +
+      '<p style="font-family:sans-serif;font-size:14px;line-height:1.6;">Hi,</p>' +
+      '<p style="font-family:sans-serif;font-size:14px;line-height:1.6;">' +
+      'We\'ve been following up with ' + (rowData.parentName || 'the parent') + ' regarding the <strong>' + (rowData.kitName || 'kit') + '</strong> ' +
+      'required for <strong>' + (rowData.learnerName || 'the learner') + '</strong>\'s upcoming course — ' +
+      '<strong>' + (rowData.courseName || 'as listed below') + '</strong>' +
+      (rowData.courseStartDate ? ', starting <strong>' + _formatDMY(rowData.courseStartDate) + '</strong>' : '') +
+      '. Despite multiple follow-ups over WhatsApp, we haven\'t received any response or confirmation that the kit has been purchased.' +
+      '</p>' +
+      '<p style="font-family:sans-serif;font-size:14px;line-height:1.6;">Here are the details:</p>' +
+      '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;margin-bottom:16px;">' +
+      '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">JLID</td><td><strong>' + (rowData.jlid || '—') + '</strong></td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">Learner</td><td>' + (rowData.learnerName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">Parent</td><td>' + (rowData.parentName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">Kit Required</td><td>' + (rowData.kitName || '—') + '</td></tr>' +
+      '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">Course</td><td>' + (rowData.courseName || '—') + '</td></tr>' +
+      (rowData.courseStartDate ? '<tr><td style="padding:4px 16px 4px 0;color:#64748b;">Course Start</td><td>' + _formatDMY(rowData.courseStartDate) + '</td></tr>' : '') +
       '</table>' +
-      '<p><strong>Action:</strong> Contact parent immediately. If unresolved, update roadmap.</p>' +
-      '<p>— JetLearn Platform (triggered manually by Sourav)</p>';
+      '<p style="font-family:sans-serif;font-size:14px;line-height:1.6;">' +
+      'Since we\'ve exhausted our follow-ups with no success, could you please take the following steps:' +
+      '</p>' +
+      '<ol style="font-family:sans-serif;font-size:14px;line-height:1.8;">' +
+      '<li>Please <strong>skip <em>' + (rowData.courseName || 'this course') + '</em></strong> from ' + (rowData.learnerName || 'the learner') + '\'s roadmap in HubSpot.</li>' +
+      '<li>Let the teacher know to <strong>move on to the next course</strong> in the roadmap.</li>' +
+      '</ol>' +
+      '<p style="font-family:sans-serif;font-size:14px;line-height:1.6;">Thanks for handling this!</p>' +
+      '<p style="font-family:sans-serif;font-size:13px;color:#94a3b8;">— ' + triggeredBy + ' via JetLearn Ops</p>';
 
     var subject = isUrgent
       ? '⚠️ URGENT [' + (rowData.daysLeft || '?') + 'd to course] Kit Not Confirmed — ' + rowData.learnerName + ' (' + rowData.jlid + ')'
@@ -267,15 +282,19 @@ function _escalateToCLS(sheet, sheetRow, rowData, reason) {
         rowData.courseName + '" (starts ' + _formatDMY(rowData.courseStartDate) + ').\n\n' +
         'Reason: ' + reason + '\n\nJLID: ' + rowData.jlid +
         '\nParent: ' + rowData.parentName + '\n\nAction required: contact parent and update roadmap.';
+      var taskProps = {
+        hs_task_subject:  subject,
+        hs_task_body:     body,
+        hs_task_status:   'NOT_STARTED',
+        hs_task_priority: 'HIGH',
+        hs_task_type:     'TODO',
+        hs_timestamp:     dueDate.getTime()
+      };
+      var clsOwnerId = rowData.clsManagerEmail
+        ? _resolveHubSpotOwnerIdByEmail(rowData.clsManagerEmail, token) : null;
+      if (clsOwnerId) taskProps.hubspot_owner_id = clsOwnerId;
       var taskPayload = {
-        properties: {
-          hs_task_subject:  subject,
-          hs_task_body:     body,
-          hs_task_status:   'NOT_STARTED',
-          hs_task_priority: 'HIGH',
-          hs_task_type:     'TODO',
-          hs_timestamp:     dueDate.getTime()
-        },
+        properties: taskProps,
         associations: [{
           to: { id: String(rowData.dealId) },
           types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 }]
@@ -287,7 +306,7 @@ function _escalateToCLS(sheet, sheetRow, rowData, reason) {
         payload: JSON.stringify(taskPayload),
         muteHttpExceptions: true
       });
-      Logger.log('[PWB] HubSpot task created for row ' + sheetRow);
+      Logger.log('[PWB] HubSpot task created for row ' + sheetRow + ' owner=' + (clsOwnerId || 'unassigned'));
     }
   } catch(taskErr) {
     Logger.log('[PWB] HubSpot task creation failed: ' + taskErr.message);
@@ -582,6 +601,9 @@ function sendPWBManualEscalation(jlid) {
     var courseStart    = (courseStartRaw instanceof Date) ? courseStartRaw : _parseDMY(String(courseStartRaw || ''));
     var daysLeft       = courseStart ? _pwbDaysUntil(courseStart, new Date()) : null;
 
+    var activeUser = '';
+    try { activeUser = Session.getActiveUser().getEmail() || ''; } catch(ue) {}
+
     var rowData = {
       jlid:           jlid,
       learnerName:    String(row[PWB_COL.LEARNER_NAME - 1] || '').trim() || 'Learner',
@@ -592,7 +614,8 @@ function sendPWBManualEscalation(jlid) {
       daysLeft:       daysLeft,
       dealId:         dealId,
       clsManagerEmail:clsEmail,
-      tpManagerEmail: tpManagerEmail
+      tpManagerEmail: tpManagerEmail,
+      triggeredBy:    activeUser || 'Ops Team'
     };
 
     var isUrgent = daysLeft !== null && daysLeft <= 7;
@@ -605,6 +628,11 @@ function sendPWBManualEscalation(jlid) {
     sheet.getRange(sheetRow, PWB_COL.STATUS).setValue("⚠️ CLS Notified - Awaiting Response");
     sheet.getRange(sheetRow, PWB_COL.ESCALATED).setValue('TRUE');
     sheet.getRange(sheetRow, PWB_COL.ESCALATED_AT).setValue(new Date());
+    if (sent) {
+      var ccParts = ['sourav.pal@jet-learn.com'];
+      if (tpManagerEmail) ccParts.push(tpManagerEmail);
+      sheet.getRange(sheetRow, PWB_COL.EMAIL_LOG).setValue('TO:' + clsEmail + ' | CC:' + ccParts.join(', '));
+    }
 
     // HubSpot note + status
     if (dealId) {

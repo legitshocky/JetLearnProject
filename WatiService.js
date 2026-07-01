@@ -632,35 +632,37 @@ function fetchWatiDirectLink(phoneNumber) {
 
   const tenantId = API_ENDPOINT_BASE.split('/').pop();
   const cleanPhone = String(phoneNumber).replace(/\D/g, '');
-  
+
   const options = {
     "headers": { "Authorization": ACCESS_TOKEN, "Content-Type": "application/json" },
     "muteHttpExceptions": true
   };
 
   try {
-    // 1. Ensure Contact Exists (addContact)
-    // We still need this to handle the "New Contact" case gracefully and get a fallback ID
-    const addContactUrl = `${API_ENDPOINT_BASE}/api/v1/addContact/${cleanPhone}`;
-    const contactRes = monitoredFetch(addContactUrl, { ...options, "method": "post", "payload": JSON.stringify({ "name": "Unknown Parent" }) });
-    
-    let contactId = null;
-    // Extract contact ID just in case we don't find a conversation history
-    if (contactRes.getResponseCode() === 200 || contactRes.getResponseCode() === 201) {
-        const cData = JSON.parse(contactRes.getContentText());
-        contactId = cData.contact?.id || cData.id;
+    // teamInbox chat links are keyed by conversationId (from getMessages), NOT the contact's
+    // internal id/wAid. getMessages requires the FULL international phone (with country code) —
+    // a bare local number (no country code) returns "Can't find Conversation".
+    const phoneVariants = [cleanPhone];
+    if (cleanPhone.length === 10) phoneVariants.push('91' + cleanPhone); // bare Indian local number
+    if (cleanPhone.length > 10) phoneVariants.push(cleanPhone.slice(-10)); // strip a country code, just in case
+
+    let conversationId = null;
+    for (let i = 0; i < phoneVariants.length && !conversationId; i++) {
+      const msgRes = monitoredFetch(`${API_ENDPOINT_BASE}/api/v1/getMessages/${encodeURIComponent(phoneVariants[i])}`, { ...options, "method": "get" });
+      if (msgRes.getResponseCode() !== 200) continue;
+      const mData = JSON.parse(msgRes.getContentText());
+      const items = (mData.messages && mData.messages.items) || [];
+      if (items.length > 0 && items[0].conversationId) {
+        conversationId = items[0].conversationId;
+      }
     }
 
-    // teamInbox chat links are keyed by WATI contact ID (wAid), not conversation/ticket ID —
-    // using conversationId/ticketId here pointed the link at the wrong chat thread.
-    let finalId = contactId;
-
-    if (finalId) {
-      const directLink = `https://live.wati.io/${tenantId}/teamInbox/${finalId}`;
+    if (conversationId) {
+      const directLink = `https://live.wati.io/${tenantId}/teamInbox/${conversationId}`;
       return { success: true, link: directLink };
     }
-    
-    return { success: false, message: "Could not find Conversation ID." };
+
+    return { success: false, message: "Could not find an existing conversation for this phone number." };
 
   } catch (e) {
     Logger.log("WATI Link Error: " + e.message);
@@ -900,6 +902,70 @@ function sendWatiChat(phone, messageType, payload) {
     Logger.log('[sendWatiChat] ERROR: ' + e.message);
     return { success: false, error: e.message };
   }
+}
+
+// Diagnostic: logs RAW responses from every WATI lookup endpoint for a given phone,
+// so we can see exactly which field/value WATI expects for teamInbox links.
+// Run from GAS editor: debugWatiContactLookup('8369118156')
+function debugWatiContactLookup(phoneNumber) {
+  var p = PropertiesService.getScriptProperties();
+  var base = (p.getProperty('WATI_API_ENDPOINT') || '').trim().replace(/\/$/, '');
+  var token = (p.getProperty('WATI_ACCESS_TOKEN') || '').trim();
+  if (!token.startsWith('Bearer ')) token = 'Bearer ' + token;
+  var cleanPhone = String(phoneNumber).replace(/\D/g, '');
+  var opts = { headers: { Authorization: token, 'Content-Type': 'application/json' }, muteHttpExceptions: true };
+
+  Logger.log('=== WATI_API_ENDPOINT: ' + base + ' ===');
+  Logger.log('=== Testing phone: ' + cleanPhone + ' ===');
+
+  // 1. getContacts with phone filter
+  try {
+    var r1 = monitoredFetch(base + '/api/v1/getContacts?pageSize=10&pageNumber=1&phone=' + encodeURIComponent(cleanPhone), Object.assign({method:'get'}, opts));
+    Logger.log('--- getContacts?phone=' + cleanPhone + ' --- HTTP ' + r1.getResponseCode());
+    Logger.log(r1.getContentText().substring(0, 2000));
+  } catch(e) { Logger.log('getContacts error: ' + e.message); }
+
+  // 2. getContacts unfiltered (just to see shape)
+  try {
+    var r2 = monitoredFetch(base + '/api/v1/getContacts?pageSize=5&pageNumber=1', Object.assign({method:'get'}, opts));
+    Logger.log('--- getContacts (no filter) --- HTTP ' + r2.getResponseCode());
+    Logger.log(r2.getContentText().substring(0, 1500));
+  } catch(e) { Logger.log('getContacts (no filter) error: ' + e.message); }
+
+  // 3. singular contact/{phone} — try bare number AND with 91 country code prepended
+  var variantsToTry = [cleanPhone];
+  if (cleanPhone.length === 10) variantsToTry.push('91' + cleanPhone);
+  variantsToTry.forEach(function(v) {
+    try {
+      var r3 = monitoredFetch(base + '/api/v1/contact/' + encodeURIComponent(v), Object.assign({method:'get'}, opts));
+      Logger.log('--- contact/' + v + ' --- HTTP ' + r3.getResponseCode());
+      Logger.log(r3.getContentText().substring(0, 1500));
+    } catch(e) { Logger.log('contact/' + v + ' error: ' + e.message); }
+  });
+
+  // 4. getMessages (conversation-based) — try same variants
+  variantsToTry.forEach(function(v) {
+    try {
+      var r4 = monitoredFetch(base + '/api/v1/getMessages/' + encodeURIComponent(v), Object.assign({method:'get'}, opts));
+      Logger.log('--- getMessages/' + v + ' --- HTTP ' + r4.getResponseCode());
+      Logger.log(r4.getContentText().substring(0, 1500));
+    } catch(e) { Logger.log('getMessages/' + v + ' error: ' + e.message); }
+  });
+
+  Logger.log('=== Compare the id/wAid values above against the WORKING dashboard URL contact id ===');
+}
+
+// Wrapper so GAS editor's Run button works (Run can't pass arguments) —
+// edit the phone number below, save, then Run this one.
+function runDebugWatiContactLookup() {
+  debugWatiContactLookup('8369118156'); // <-- change this number if needed
+}
+
+// Tests the actual fixed fetchWatiDirectLink() — edit the number below, save, then Run.
+// Check the Execution log for the resulting link.
+function runTestChatLink() {
+  var res = fetchWatiDirectLink('8369118156'); // <-- change this number if needed
+  Logger.log(JSON.stringify(res));
 }
 
 function testWatiConnection() {

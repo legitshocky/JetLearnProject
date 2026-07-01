@@ -197,6 +197,7 @@ function processEmailQueue() {
     var today = new Date(); today.setHours(0, 0, 0, 0);
     var data  = sheet.getRange(2, 1, lastRow - 1, EQ_COL.ERROR).getValues();
     var sent  = 0; var failed = 0;
+    var alerts = []; // collected failure/expiry details for the alert email
 
     data.forEach(function(r, idx) {
       var sheetRow = idx + 2;
@@ -215,9 +216,12 @@ function processEmailQueue() {
       // More than 24 hours past due — expire instead of sending stale email
       var hoursPast = (today.getTime() - schedDate.getTime()) / (60 * 60 * 1000);
       if (hoursPast > 24) {
+        var expMsg = 'Auto-expired: ' + Math.floor(hoursPast / 24) + ' day(s) overdue';
         sheet.getRange(sheetRow, EQ_COL.STATUS).setValue('Expired');
-        sheet.getRange(sheetRow, EQ_COL.ERROR).setValue('Auto-expired: ' + Math.floor(hoursPast / 24) + ' day(s) overdue');
+        sheet.getRange(sheetRow, EQ_COL.ERROR).setValue(expMsg);
         Logger.log('[EmailQueue] Expired row ' + sheetRow + ' (' + Math.floor(hoursPast / 24) + 'd overdue)');
+        alerts.push({ row: sheetRow, type: 'Expired', emailType: String(r[EQ_COL.EMAIL_TYPE - 1] || ''),
+          jlid: String(r[EQ_COL.JLID - 1] || ''), learner: String(r[EQ_COL.LEARNER_NAME - 1] || ''), reason: expMsg });
         return;
       }
 
@@ -244,19 +248,61 @@ function processEmailQueue() {
           sheet.getRange(sheetRow, EQ_COL.STATUS).setValue('Failed');
           sheet.getRange(sheetRow, EQ_COL.ERROR).setValue(errMsg);
           Logger.log('[EmailQueue] Failed row ' + sheetRow + ': ' + errMsg);
+          alerts.push({ row: sheetRow, type: 'Failed', emailType: emailType, jlid: jlid, learner: learner, reason: errMsg });
           failed++;
         }
       } catch(sendErr) {
         sheet.getRange(sheetRow, EQ_COL.STATUS).setValue('Failed');
         sheet.getRange(sheetRow, EQ_COL.ERROR).setValue(sendErr.message);
         Logger.log('[EmailQueue] Send error row ' + sheetRow + ': ' + sendErr.message);
+        alerts.push({ row: sheetRow, type: 'Failed', emailType: emailType, jlid: jlid, learner: learner, reason: sendErr.message });
         failed++;
       }
     });
 
     Logger.log('[EmailQueue] processEmailQueue done. sent=' + sent + ' failed=' + failed);
+
+    if (alerts.length > 0) _sendEmailQueueAlert(alerts);
   } catch(e) {
     Logger.log('[EmailQueue] processEmailQueue ERROR: ' + e.message + '\n' + e.stack);
+    _sendEmailQueueAlert([{ row: '-', type: 'Fatal Error', emailType: '-', jlid: '-', learner: '-', reason: e.message }]);
+  }
+}
+
+// ── Alert sourav.pal@jet-learn.com when any queued email fails or expires ────
+function _sendEmailQueueAlert(alerts) {
+  try {
+    var rows = alerts.map(function(a) {
+      return '<tr>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.row + '</td>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.type + '</td>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.emailType + '</td>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.jlid + '</td>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.learner + '</td>'
+        + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">' + a.reason + '</td>'
+        + '<\/tr>';
+    }).join('');
+
+    var html = '<p>The scheduled Email Queue had ' + alerts.length + ' issue(s) during today\'s run:<\/p>'
+      + '<table style="border-collapse:collapse;font-size:13px;font-family:sans-serif;">'
+      + '<tr style="background:#f1f5f9;font-weight:bold;">'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">Row<\/td>'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">Type<\/td>'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">Email Type<\/td>'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">JLID<\/td>'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">Learner<\/td>'
+      + '<td style="padding:6px 10px;border:1px solid #e2e8f0;">Reason<\/td>'
+      + '<\/tr>' + rows + '<\/table>'
+      + '<p style="color:#64748b;font-size:12px;">Check the "Email Queue" sheet for full details.<\/p>';
+
+    MailApp.sendEmail({
+      to: 'sourav.pal@jet-learn.com',
+      subject: '⚠ Email Queue: ' + alerts.length + ' issue(s) — ' + new Date().toDateString(),
+      htmlBody: html
+    });
+    Logger.log('[EmailQueue] Alert email sent for ' + alerts.length + ' issue(s).');
+  } catch(e) {
+    Logger.log('[EmailQueue] _sendEmailQueueAlert ERROR: ' + e.message);
   }
 }
 
