@@ -3202,6 +3202,9 @@
       <button id="ktTabPWB" onclick="ktSwitchTab('pwb')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;">
         <i class="fas fa-shopping-cart" style="margin-right:5px;color:#8b5cf6;"></i>Parent Will Buy
       </button>
+      <button id="ktTabPivot" onclick="ktSwitchTab('pivot')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-chart-bar" style="margin-right:5px;color:#0ea5e9;"></i>Pivot Report
+      </button>
     </div>
 
     <!-- KPI Strip — JetLearn Sends -->
@@ -3289,34 +3292,33 @@
       <div id="ktEscalatedList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
 
-    <!-- Filter bar -->
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
-      <select id="ktFilterMonth" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
-        <option value="">All Months</option>
-      </select>
-      <select id="ktFilterStatus" class="form-control form-select" style="flex:0 1 170px;min-width:140px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
-        <option value="">All Statuses</option>
-        <option value="delivered">✅ Delivered</option>
-        <option value="awaiting">⏳ Awaiting Response</option>
-        <option value="not_received">❌ Not Received</option>
-        <option value="need_check">🔍 Need To Check</option>
-        <option value="overdue">🚨 Overdue (No FUP)</option>
-        <option value="pending">📭 Follow-up Not Sent</option>
-        <option value="escalated">🔴 Escalated (2nd Reminder)</option>
-      </select>
-      <select id="ktFilterKit" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
-        <option value="">All Kits</option>
-        <option value="VR">VR Headset</option>
-        <option value="Microbit">Microbit</option>
-        <option value="Makey">Makey-Makey</option>
-        <option value="Arduino">Arduino</option>
-      </select>
-      <input type="text" id="ktSearch" class="form-control" placeholder="Search learner or JLID…" style="flex:1 1 180px;min-width:150px;height:36px;padding:4px 10px;font-size:0.8rem;" oninput="renderKitTrackingTable()">
-      <span id="ktResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;"></span>
-    </div>
-
     <!-- JetLearn Sends Table -->
     <div id="ktViewJL">
+      <!-- Filter bar — JetLearn Sends -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
+        <select id="ktFilterMonth" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
+          <option value="">All Months</option>
+        </select>
+        <select id="ktFilterStatus" class="form-control form-select" style="flex:0 1 170px;min-width:140px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
+          <option value="">All Statuses</option>
+          <option value="delivered">✅ Delivered</option>
+          <option value="awaiting">⏳ Awaiting Response</option>
+          <option value="not_received">❌ Not Received</option>
+          <option value="need_check">🔍 Need To Check</option>
+          <option value="overdue">🚨 Overdue (No FUP)</option>
+          <option value="pending">📭 Follow-up Not Sent</option>
+          <option value="escalated">🔴 Escalated (2nd Reminder)</option>
+        </select>
+        <select id="ktFilterKit" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
+          <option value="">All Kits</option>
+          <option value="VR">VR Headset</option>
+          <option value="Microbit">Microbit</option>
+          <option value="Makey">Makey-Makey</option>
+          <option value="Arduino">Arduino</option>
+        </select>
+        <input type="text" id="ktSearch" class="form-control" placeholder="Search learner or JLID…" style="flex:1 1 180px;min-width:150px;height:36px;padding:4px 10px;font-size:0.8rem;" oninput="renderKitTrackingTable()">
+        <span id="ktResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;"></span>
+      </div>
       <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
         <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
           <thead>
@@ -3343,6 +3345,24 @@
 
     <!-- Parent Will Buy Table -->
     <div id="ktViewPWB" style="display:none;">
+      <!-- Filter bar — Parent Will Buy -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
+        <input type="text" id="pwbFilterJlid" class="form-control" placeholder="Search JLID or learner…" style="flex:1 1 180px;min-width:150px;height:36px;padding:4px 10px;font-size:0.8rem;" oninput="filterPWBTable()">
+        <select id="pwbFilterMonth" class="form-control form-select" style="flex:0 1 150px;min-width:120px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="filterPWBTable()">
+          <option value="">All Months</option>
+        </select>
+        <select id="pwbFilterStatus" class="form-control form-select" style="flex:0 1 200px;min-width:160px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="filterPWBTable()">
+          <option value="">All Statuses</option>
+          <option value="Pending">Pending</option>
+          <option value="In Progress">In Progress</option>
+          <option value="In Progress - URGENT 🔴">In Progress - URGENT</option>
+          <option value="Order Placed">Order Placed</option>
+          <option value="Kit Received">Kit Received</option>
+          <option value="⚠️ CLS Notified - Awaiting Response">CLS Notified</option>
+          <option value="Parent Didn't Buy - Roadmap Changed">Roadmap Changed</option>
+        </select>
+        <span id="pwbResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;"></span>
+      </div>
       <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
         <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
           <thead>
@@ -3357,14 +3377,75 @@
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">FUPs Sent</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Update Status</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Entry By</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Escalated</th>
             </tr>
           </thead>
           <tbody id="ktPWBTableBody">
-            <tr><td colspan="9" style="padding:3rem;text-align:center;color:#94a3b8;">Click <strong>Parent Will Buy</strong> tab to load data.</td></tr>
+            <tr><td colspan="13" style="padding:3rem;text-align:center;color:#94a3b8;">Click <strong>Parent Will Buy</strong> tab to load data.</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Pivot Report View -->
+    <div id="ktViewPivot" style="display:none;">
+      <!-- Pivot filter bar -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
+        <select id="pivotFilterMonth" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitPivot()">
+          <option value="">All Months</option>
+        </select>
+        <span style="font-size:0.78rem;color:#64748b;">Filter applies to JetLearn Sends data</span>
+      </div>
+      <!-- Two pivot tables side by side -->
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;">
+        <!-- Country pivot -->
+        <div style="flex:1 1 320px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;overflow:hidden;">
+          <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1e293b;font-size:0.88rem;">By Country</div>
+          <div id="pivotByCountry" style="padding:0;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:8px 14px;text-align:left;font-weight:600;color:#64748b;">Country</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">No. of Kits</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">SUM Price (EUR)</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">Avg Cost/Kit</th>
+                </tr>
+              </thead>
+              <tbody id="pivotCountryBody">
+                <tr><td colspan="4" style="padding:2rem;text-align:center;color:#94a3b8;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Kit Type pivot -->
+        <div style="flex:1 1 320px;border-radius:12px;border:1px solid #e2e8f0;background:#fff;overflow:hidden;">
+          <div style="background:#f8fafc;padding:10px 16px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1e293b;font-size:0.88rem;">By Kit Type</div>
+          <div id="pivotByKit" style="padding:0;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+              <thead>
+                <tr style="background:#f1f5f9;">
+                  <th style="padding:8px 14px;text-align:left;font-weight:600;color:#64748b;">Kit Type</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">Total Cost (EUR)</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">No. of Kits</th>
+                  <th style="padding:8px 14px;text-align:right;font-weight:600;color:#64748b;">Avg Cost/Kit</th>
+                </tr>
+              </thead>
+              <tbody id="pivotKitBody">
+                <tr><td colspan="4" style="padding:2rem;text-align:center;color:#94a3b8;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- Debug: HubSpot enum values -->
+      <div style="margin-top:1.5rem;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="font-size:0.78rem;color:#64748b;font-weight:600;">HubSpot Kit Status Enum Check</span>
+          <button onclick="ktCheckEnums()" class="btn btn-sm" style="font-size:0.78rem;padding:4px 14px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;color:#475569;">Check Valid Values</button>
+        </div>
+        <div id="ktEnumResult" style="margin-top:10px;font-size:0.78rem;color:#475569;display:none;"></div>
       </div>
     </div>
 

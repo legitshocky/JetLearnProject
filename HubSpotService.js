@@ -1995,6 +1995,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
 
     // Build periods: when assigned → when they left
     var assignmentPeriods = [];
+    var hadDeparture = false;
     if (wasEverAssigned) {
       assignmentHistory.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
       assignmentHistory.forEach(function(assignment) {
@@ -2007,6 +2008,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
             if (!departure || new Date(m.date) < new Date(departure.date)) departure = m;
           }
         }
+        if (departure) hadDeparture = true;
         var fromFmt = assignedDate ? new Date(assignedDate).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : 'Unknown';
         var toFmt   = departure ? new Date(departure.date).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : 'Present';
         assignmentPeriods.push({
@@ -2018,6 +2020,9 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
         });
       });
     }
+    // wasPreviousTeacher = only true if teacher was assigned AND subsequently departed.
+    // If all periods show "Present", they are the current teacher — don't flag as previous.
+    var wasPreviousTeacher = wasEverAssigned && hadDeparture;
 
     // ── 3. Escalation events involving the new teacher + this learner ─────────
     var escalationEvents = migrations.filter(function(m) {
@@ -2065,8 +2070,8 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
         message: escalationEvents.length + ' past escalation event(s) involving ' + resolvedNew + ' for this learner.' });
     }
 
-    // Returning teacher alert
-    if (wasEverAssigned && !isAffinityCase) {
+    // Returning teacher alert — only if teacher actually departed previously, not if they're current
+    if (wasPreviousTeacher && !isAffinityCase) {
       alerts.push({ level: 'warning', icon: 'history',
         message: resolvedNew + ' was a previous teacher for this learner. Confirm re-assignment is intentional.' });
     }
@@ -2132,6 +2137,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
       migrationCount90d: count90,
       totalMigrations:   migrations.length,
       wasEverAssigned:   wasEverAssigned,
+      wasPreviousTeacher: wasPreviousTeacher,
       assignmentPeriods: assignmentPeriods,
       isAffinityCase:    isAffinityCase,
       escalationCount:   escalationEvents.length,

@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-07-05] — Kit Dashboard & PWB Fixes (V6.17)
+
+### Kit Dashboard — Kit Status HubSpot Fix (`KitTrackingService.js`)
+- `microbit_kit_status`, `makey_makey_kit_status`, `vr_headset__oculus_status`, `arduino_kit_status` now correctly updated to `Sent` in HubSpot when a kit entry is added
+- Split into two separate HubSpot PATCHes: one for kit status, one for `learning_kit_cost` + subscription — a bad enum on one no longer blocks the other
+- Full HubSpot error body now logged when PATCH fails (up to 500 chars) for easier debugging
+
+### Kit Dashboard — HubSpot Enum Check (`KitTrackingService.js` + `Index.html` + `JavaScript.html`)
+- New `getKitStatusEnums()` server function fetches valid enum options for all 4 kit status properties from HubSpot Properties API
+- "Check Valid Values" button in Pivot Report tab calls this and renders a table of `Label → internal value` — no need to open GAS editor
+
+### Parent Will Buy — Column Order Fix (`JavaScript.html`)
+- Learner and Date columns were swapped in the rendered table rows (Date appeared under Learner header and vice versa)
+- Fixed: Learner + JLID now renders in column 2, Date in column 3, matching the table headers
+
+### Parent Will Buy — Month Filter Format Fix (`KitTrackingService.js`)
+- `entryMonth` (sheet col C) was storing Date objects in older rows, which serialised to `"Mon Jun 01 2026 00:00:00 GMT+0530 (India Standard Time)"` in the dropdown
+- Added `fmtMonth()` helper: reformats Date objects and date strings to `"MMMM yyyy"` (e.g. `"June 2026"`)
+
+### Parent Will Buy — Month Filter Sort Fix (`JavaScript.html`)
+- Month dropdown was sorting alphabetically (`April → July → June → May`)
+- Now sorts chronologically by year then month index (`May 2026 → June 2026 → July 2026`)
+
+---
+
 ## [2026-06-19] — Book Classes with New Teacher Overhaul
 
 ### Booking Timezone — IANA Google Calendar Timezones (`Code.js` + `Index.html` + `JavaScript.html` + `ReserveSlot.js`)

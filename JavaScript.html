@@ -7625,6 +7625,11 @@ function triggerMigrationIntelligence() {
           var histEl = document.getElementById('mip_teacherHistoryContent');
           if (histEl) histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.82rem;">Loading\u2026<\/span>';
 
+          // Render teacher history instantly from cached migrations (no server round-trip)
+          var teacherOption = newTeacherSelect && newTeacherSelect.options[newTeacherSelect.selectedIndex];
+          var teacherDisplayName = teacherOption ? teacherOption.text.trim() : newTeacher;
+          _renderTeacherHistoryFromCache(teacherDisplayName);
+
           // Render learner history immediately if prefetch already completed
           if (window._miHistoryResult && window._miHistoryResult.jlid === jlid) {
             renderMigrationHistory(window._miHistoryResult);
@@ -7851,6 +7856,58 @@ function triggerMigrationIntelligence() {
       mipFilterHistory('all');
     }
 
+    function _renderTeacherHistoryFromCache(teacherDisplayName) {
+      var histEl = document.getElementById('mip_teacherHistoryContent');
+      if (!histEl || !window._miAllMigrations || !window._miAllMigrations.length) return false;
+      var nameLower = teacherDisplayName.trim().toLowerCase();
+      var migrations = window._miAllMigrations;
+
+      var assignmentHistory = migrations.filter(function(m) {
+        return (m.toTeacher || '').trim().toLowerCase() === nameLower;
+      });
+
+      if (assignmentHistory.length === 0) {
+        histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">No prior relationship — first time with this teacher.<\/span>';
+        return true;
+      }
+
+      assignmentHistory.sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+      var periods = [];
+      var hadDeparture = false;
+      assignmentHistory.forEach(function(assignment) {
+        var departure = null;
+        migrations.forEach(function(m) {
+          if ((m.fromTeacher || '').trim().toLowerCase() === nameLower
+              && new Date(m.date) > new Date(assignment.date)) {
+            if (!departure || new Date(m.date) < new Date(departure.date)) departure = m;
+          }
+        });
+        if (departure) hadDeparture = true;
+        var fromFmt = assignment.date
+          ? new Date(assignment.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : 'Unknown';
+        var toFmt = departure
+          ? new Date(departure.date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : 'Present';
+        periods.push({ fromFormatted: fromFmt, toFormatted: toFmt, departureReason: departure ? departure.reason : null });
+      });
+
+      if (!hadDeparture) {
+        histEl.innerHTML = '<span style="color:#10b981;font-size:0.83rem;"><i class="fas fa-check-circle" style="margin-right:5px;"><\/i>Currently assigned teacher — no prior departure on record.<\/span>';
+        return true;
+      }
+
+      var html = '<div style="font-size:0.82rem;">';
+      html += '<div style="margin-bottom:4px;color:#475569;font-weight:600;">Assignment Periods:<\/div>';
+      periods.forEach(function(p) {
+        html += '<div style="margin-bottom:3px;padding:4px 8px;background:#f1f5f9;border-radius:4px;border-left:3px solid #6366f1;">'
+          + escapeHtml(p.fromFormatted) + ' → ' + escapeHtml(p.toFormatted);
+        if (p.departureReason) html += ' <span style="color:#94a3b8;font-size:0.75rem;">(' + escapeHtml(p.departureReason) + ')<\/span>';
+        html += '<\/div>';
+      });
+      html += '<\/div>';
+      histEl.innerHTML = html;
+      return true;
+    }
+
     function renderMigrationIntelPanel(result) {
       // FIX: No need to show/hide the panel, it's already visible inside the modal
       // The logic to populate the content remains the same.
@@ -7918,6 +7975,8 @@ function triggerMigrationIntelligence() {
       if (histEl) {
         if (!result.wasEverAssigned) {
           histEl.innerHTML = '<span style="color:#94a3b8;font-size:0.83rem;">No prior relationship \u2014 first time with this teacher.<\/span>';
+        } else if (!result.wasPreviousTeacher) {
+          histEl.innerHTML = '<span style="color:#10b981;font-size:0.83rem;"><i class="fas fa-check-circle" style="margin-right:5px;"><\/i>Currently assigned teacher \u2014 no prior departure on record.<\/span>';
         } else {
           var html = '<div style="font-size:0.82rem;">';
           if (result.isAffinityCase) {
@@ -8679,6 +8738,21 @@ function fetchMigrationSpecificData() {
 
                     // Load WhatsApp contacts after successful fetch
                     _loadWatiContacts(jlid);
+
+                    // Prefetch migration history so teacher history renders instantly on teacher select
+                    window._miHistoryResult = null;
+                    window._miHistoryJlid = jlid;
+                    google.script.run
+                        .withSuccessHandler(function(r) {
+                            if (r && r.success && r.jlid === window._miHistoryJlid) {
+                                window._miHistoryResult = r;
+                                window._miAllMigrations = r.migrations || [];
+                                var modal = document.getElementById('migrationIntelModal');
+                                if (modal && modal.classList.contains('active')) renderMigrationHistory(r);
+                            }
+                        })
+                        .withFailureHandler(function(){})
+                        .getMigrationHistoryFast(jlid);
                 } else {
                     showToast('error', 'Error', result.message);
                 }
@@ -9019,6 +9093,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V6.17': [
+      "**Kit Dashboard — Kit Status Fix**: microbit_kit_status, makey_makey_kit_status, vr_headset__oculus_status now correctly updated to 'Sent' in HubSpot when a kit entry is added. Kit status and learning_kit_cost PATCHed in separate HubSpot calls so a failure in one doesn't block the other.",
+      "**Kit Dashboard — HubSpot Enum Check**: New 'Check Valid Values' button in Pivot Report tab fetches and displays valid enum options for all kit status properties directly from HubSpot API — no need to open GAS editor.",
+      "**Parent Will Buy — Column Order Fix**: Learner and Date columns were swapped in the table; now correctly shows Learner first, Date second matching the headers.",
+      "**Parent Will Buy — Month Filter Format**: Month dropdown was showing raw Date objects with timezone strings (e.g. 'Mon Jun 01 2026 00:00:00 GMT+0530'). Now correctly formatted as 'June 2026', 'July 2026' etc.",
+      "**Parent Will Buy — Month Filter Order**: Month dropdown now sorts chronologically (May 2026 → June 2026 → July 2026) instead of alphabetically.",
+    ],
+    'V6.16': [
+      "**Kit Dashboard — Pivot Report Tab**: New 📊 Pivot Report tab shows month-filterable breakdown by Country (No. of Kits / SUM Price EUR / Avg Cost) and by Kit Type (Total Cost / No. of Kits / Avg Cost). Refunded kits excluded from all totals.",
+      "**Kit Dashboard — Refund Tracking**: Each JetLearn Sends row now has a ↩ Refund button. Clicking it zeros the price and marks the row as refunded (sheet col AA) so lost/returned kits don't inflate monthly spend totals.",
+      "**Parent Will Buy — Filters Fixed**: JLID/learner search, month dropdown, and status filter now work correctly in the PWB tab. Filter bar was previously shared with JL view and had no effect on PWB data.",
+      "**Parent Will Buy — Update Status Dropdown**: Each PWB row now has an inline dropdown to manually set Order Placed / Kit Received / Course Changed / Reset to In Progress — no need to go to the sheet. Updates HubSpot deal status automatically.",
+    ],
     'V6.15': [
       "**Migration Intelligence — Learner History Timeline**: Modal now shows a full migration history section with journey stability banner (High/Medium/Low), learner summary, filter tabs (All / JetLearn Initiated / Parent Requested / Completed only), and ticket cards showing From→To teacher, dates, resolution time, and HubSpot ticket link.",
       "**Migration Intelligence — Progressive Loading**: Learner history prefetches on JLID blur via getMigrationHistoryFast — migration history and frequency counts appear instantly when modal opens, teacher-specific sections load on top.",
@@ -12702,6 +12789,17 @@ function loadKitTrackingPage() {
           months.map(function(m) { return '<option value="' + m + '"' + (m === current ? ' selected' : '') + '>' + m + '<\/option>'; }).join('');
       }
 
+      // Also populate pivot month dropdown
+      var pivotMonthSel = document.getElementById('pivotFilterMonth');
+      if (pivotMonthSel) {
+        const months2 = [...new Set(_kitTrackingData.map(r => r.orderMonth).filter(Boolean))];
+        const monthOrder2 = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        months2.sort(function(a,b){const[am,ay]=a.split(' ');const[bm,by]=b.split(' ');return(parseInt(ay)-parseInt(by))||(monthOrder2.indexOf(am)-monthOrder2.indexOf(bm));});
+        const cur2 = pivotMonthSel.value;
+        pivotMonthSel.innerHTML = '<option value="">All Months<\/option>' +
+          months2.map(function(m){return '<option value="'+m+'"'+(m===cur2?' selected':'')+'>'+m+'<\/option>';}).join('');
+      }
+
       // Update sidebar pending badge (always use all-data stats)
       const s = result.stats || {};
       const badge = document.getElementById('kitPendingBadge');
@@ -12712,6 +12810,8 @@ function loadKitTrackingPage() {
       }
 
       renderKitTrackingTable();
+      // Re-render pivot if it's the active tab
+      if (_ktCurrentTab === 'pivot') renderKitPivot();
     })
     .withFailureHandler(function(err) {
       tbody.innerHTML = '<tr><td colspan="11" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
@@ -12806,6 +12906,9 @@ function renderKitTrackingTable(filterArg) {
     // Action buttons
     let actionBtn = '';
     const editBtn = '<button onclick="ktOpenEdit(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\', \'' + escapeHtml(row.deliveryDate) + '\', \'' + escapeHtml(row.response) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Edit row"><i class="fas fa-pencil-alt"><\/i><\/button>';
+    const refundBtn = !row.refunded
+      ? '<button onclick="event.stopPropagation();ktMarkRefunded(' + row.rowIndex + ',this)" style="background:none;border:1px solid #f59e0b;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#d97706;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Mark as refunded — removes from monthly totals">↩ Refund<\/button>'
+      : '<span style="font-size:0.7rem;color:#94a3b8;margin-left:4px;border:1px dashed #e2e8f0;border-radius:6px;padding:2px 6px;">Refunded<\/span>';
     const msgBtn  = '<button onclick="event.stopPropagation();openWatiChatFromBtn(this)" '
       + 'data-wid="'      + escapeHtml(row.jlid        || '') + '" '
       + 'data-wname="'    + escapeHtml(row.learnerName || '') + '" '
@@ -12814,13 +12917,13 @@ function renderKitTrackingTable(filterArg) {
       + 'data-wlearner="' + escapeHtml(row.learnerName || '') + '" '
       + 'style="background:none;border:1px solid #25d366;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#25d366;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Message Parent">💬<\/button>';
     if (row.status === 'overdue' || row.status === 'pending') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"><\/i> Send Follow-up<\/button>' + msgBtn + editBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"><\/i> Send Follow-up<\/button>' + msgBtn + editBtn + refundBtn;
     } else if (row.status === 'escalated') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"><\/i> Re-send Urgent<\/button>' + msgBtn + editBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"><\/i> Re-send Urgent<\/button>' + msgBtn + editBtn + refundBtn;
     } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + editBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + editBtn + refundBtn;
     } else {
-      actionBtn = msgBtn + editBtn;
+      actionBtn = msgBtn + editBtn + refundBtn;
     }
 
     const jlidBadge = row.jlid
@@ -13426,29 +13529,36 @@ function submitAddKitEntry() {
 
 // ── Kit Tracking — tab switching ──────────────────────────────────────────
 var _ktCurrentTab = 'jl';
+var _pwbAllData   = [];
 function ktSwitchTab(tab) {
   _ktCurrentTab = tab;
-  const jlBtn   = document.getElementById('ktTabJL');
-  const pwbBtn  = document.getElementById('ktTabPWB');
-  const jlView  = document.getElementById('ktViewJL');
-  const pwbView = document.getElementById('ktViewPWB');
-  const jlKpi   = document.getElementById('ktKpiJL');
-  const pwbKpi  = document.getElementById('ktKpiPWB');
+  const jlBtn     = document.getElementById('ktTabJL');
+  const pwbBtn    = document.getElementById('ktTabPWB');
+  const pivotBtn  = document.getElementById('ktTabPivot');
+  const jlView    = document.getElementById('ktViewJL');
+  const pwbView   = document.getElementById('ktViewPWB');
+  const pivotView = document.getElementById('ktViewPivot');
+  const jlKpi     = document.getElementById('ktKpiJL');
+  const pwbKpi    = document.getElementById('ktKpiPWB');
+  const activeStyle  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
+  const inactiveStyle= 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
+  [jlBtn,pwbBtn,pivotBtn].forEach(function(b){if(b)b.style.cssText=inactiveStyle;});
+  [jlView,pwbView,pivotView].forEach(function(v){if(v)v.style.display='none';});
+  if(jlKpi)  jlKpi.style.display  = 'none';
+  if(pwbKpi) pwbKpi.style.display = 'none';
   if (tab === 'jl') {
-    jlBtn.style.cssText  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
-    pwbBtn.style.cssText = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
-    jlView.style.display  = '';
-    pwbView.style.display = 'none';
-    jlKpi.style.display   = '';
-    pwbKpi.style.display  = 'none';
-  } else {
-    pwbBtn.style.cssText = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
-    jlBtn.style.cssText  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
-    jlView.style.display  = 'none';
-    pwbView.style.display = '';
-    jlKpi.style.display   = 'none';
-    pwbKpi.style.display  = '';
+    if(jlBtn)    jlBtn.style.cssText   = activeStyle;
+    if(jlView)   jlView.style.display  = '';
+    if(jlKpi)    jlKpi.style.display   = '';
+  } else if (tab === 'pwb') {
+    if(pwbBtn)   pwbBtn.style.cssText  = activeStyle;
+    if(pwbView)  pwbView.style.display = '';
+    if(pwbKpi)   pwbKpi.style.display  = '';
     loadPWBTable();
+  } else if (tab === 'pivot') {
+    if(pivotBtn)   pivotBtn.style.cssText   = activeStyle;
+    if(pivotView)  pivotView.style.display  = '';
+    renderKitPivot();
   }
 }
 
@@ -13608,16 +13718,43 @@ function submitAddPWBEntry() {
 function loadPWBTable() {
   const tbody = document.getElementById('ktPWBTableBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"><\/i>Loading…<\/td><\/tr>';
+  tbody.innerHTML = '<tr><td colspan="13" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"><\/i>Loading…<\/td><\/tr>';
   google.script.run
     .withSuccessHandler(function(data) {
-      renderPWBTable(data);
-      _updatePWBKpis(data);
+      _pwbAllData = data || [];
+      // Populate month dropdown
+      var monthSel = document.getElementById('pwbFilterMonth');
+      if (monthSel) {
+        var months = [];
+        _pwbAllData.forEach(function(r) { if (r.entryMonth && months.indexOf(r.entryMonth) === -1) months.push(r.entryMonth); });
+        var _mo = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        months.sort(function(a,b){var ap=a.split(' '),bp=b.split(' ');return(parseInt(ap[1])-parseInt(bp[1]))||(_mo.indexOf(ap[0])-_mo.indexOf(bp[0]));});
+        var cur = monthSel.value;
+        monthSel.innerHTML = '<option value="">All Months<\/option>' +
+          months.map(function(m){ return '<option value="' + m + '"' + (m===cur?' selected':'') + '>' + m + '<\/option>'; }).join('');
+      }
+      _updatePWBKpis(_pwbAllData);
+      filterPWBTable();
     })
     .withFailureHandler(function(err) {
-      tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">Error: ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
+      tbody.innerHTML = '<tr><td colspan="13" style="padding:2rem;text-align:center;color:#ef4444;">Error: ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
     })
     .getPWBEntries();
+}
+
+function filterPWBTable() {
+  var search  = ((document.getElementById('pwbFilterJlid')   || {}).value || '').toLowerCase().trim();
+  var month   = ((document.getElementById('pwbFilterMonth')  || {}).value || '');
+  var status  = ((document.getElementById('pwbFilterStatus') || {}).value || '');
+  var filtered = _pwbAllData.filter(function(r) {
+    if (search && r.jlid.toLowerCase().indexOf(search) === -1 && (r.learnerName||'').toLowerCase().indexOf(search) === -1) return false;
+    if (month  && r.entryMonth !== month)  return false;
+    if (status && r.status     !== status) return false;
+    return true;
+  });
+  var cntEl = document.getElementById('pwbResultCount');
+  if (cntEl) cntEl.textContent = filtered.length + ' of ' + _pwbAllData.length;
+  renderPWBTable(filtered);
 }
 
 function renderPWBTable(rows) {
@@ -13719,7 +13856,39 @@ function renderPWBTable(rows) {
         + 'title="Email CLS + TP manager + Sourav now">'
         + '<i class="fas fa-exclamation-triangle" style="margin-right:3px;"><\/i>Escalate to CLS<\/button>'
       : '';
-    return "<tr style=\"border-bottom:1px solid #f1f5f9;\">\r\n      <td style=\"padding:10px 14px;color:#94a3b8;\">" + (i+1) + "<\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.75rem;color:#64748b;\">" + (escapeHtml(r.entryDate || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;\">\r\n        <div style=\"font-weight:600;color:#1e293b;\">" + (escapeHtml(r.learnerName || '—')) + "<\/div>\r\n        <div style=\"font-size:0.72rem;color:#94a3b8;font-family:monospace;\">" + (escapeHtml(r.jlid || '')) + "<\/div>\r\n      <\/td>\r\n      <td style=\"padding:10px 14px;\"><span style=\"background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:0.75rem;\">" + (escapeHtml(r.kit || '—')) + "<\/span><\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + (escapeHtml(r.courseName || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + (escapeHtml(r.courseStartDate || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.78rem;font-weight:600;color:" + (nextFupColor) + ";\">" + (escapeHtml(r.nextFup || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.75rem;color:#7c3aed;\">" + (fups) + "<\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + (escapeHtml(r.parentResponse || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;\"><span style=\"color:" + (color) + ";font-weight:600;font-size:0.78rem;\">" + (escapeHtml(r.status || 'Pending')) + "<\/span><\/td>\r\n      <td style=\"padding:10px 14px;font-size:0.75rem;color:#64748b;\">" + (escapeHtml(r.entryBy || '—')) + "<\/td>\r\n      <td style=\"padding:10px 14px;\">" + (esc) + "<\/td>\r\n      <td style=\"padding:6px 8px;\">" + (fupBtn) + "<\/td>\r\n      <td style=\"padding:4px 8px;\">" + (overrideBtn) + "<\/td>\r\n      <td style=\"padding:4px 8px;\">" + (escalateBtn) + "<\/td>\r\n      <td style=\"padding:6px 8px;\">" + (msgPWB) + "<\/td>\r\n    <\/tr>";
+    var selId = 'pwbStatusSel_' + i;
+    var updateStatusHtml = r.jlid
+      ? '<div style="display:flex;gap:4px;align-items:center;">'
+        + '<select id="' + selId + '" style="height:28px;font-size:0.72rem;border:1px solid #e2e8f0;border-radius:6px;padding:2px 4px;color:#475569;max-width:155px;">'
+        + '<option value="">— set status —<\/option>'
+        + '<option value="Order Placed">Order Placed<\/option>'
+        + '<option value="Kit Received">Kit Received<\/option>'
+        + '<option value="Parent Didn\'t Buy - Roadmap Changed">Course Changed<\/option>'
+        + '<option value="In Progress">Reset → In Progress<\/option>'
+        + '<\/select>'
+        + '<button onclick="pwbUpdateStatus(\'' + escapeHtml(r.jlid) + '\',document.getElementById(\'' + selId + '\').value,this)" '
+        + 'style="background:#475569;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;">Set<\/button>'
+        + '<\/div>'
+      : '';
+    return "<tr style=\"border-bottom:1px solid #f1f5f9;\">"
+      + "<td style=\"padding:10px 14px;color:#94a3b8;\">" + (i+1) + "<\/td>"
+      + "<td style=\"padding:10px 14px;\"><div style=\"font-weight:600;color:#1e293b;\">" + escapeHtml(r.learnerName || '—') + "<\/div><div style=\"font-size:0.72rem;color:#94a3b8;font-family:monospace;\">" + escapeHtml(r.jlid || '') + "<\/div><\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.75rem;color:#64748b;\">" + escapeHtml(r.entryDate || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;\"><span style=\"background:#f1f5f9;padding:2px 8px;border-radius:6px;font-size:0.75rem;\">" + escapeHtml(r.kit || '—') + "<\/span><\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + escapeHtml(r.courseName || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + escapeHtml(r.courseStartDate || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.78rem;font-weight:600;color:" + nextFupColor + ";\">" + escapeHtml(r.nextFup || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.75rem;color:#7c3aed;\">" + fups + "<\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.78rem;color:#475569;\">" + escapeHtml(r.parentResponse || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;\"><span style=\"color:" + color + ";font-weight:600;font-size:0.78rem;\">" + escapeHtml(r.status || 'Pending') + "<\/span><\/td>"
+      + "<td style=\"padding:6px 8px;\">" + updateStatusHtml + "<\/td>"
+      + "<td style=\"padding:10px 14px;font-size:0.75rem;color:#64748b;\">" + escapeHtml(r.entryBy || '—') + "<\/td>"
+      + "<td style=\"padding:10px 14px;\">" + esc + "<\/td>"
+      + "<td style=\"padding:6px 8px;\">" + fupBtn + "<\/td>"
+      + "<td style=\"padding:4px 8px;\">" + overrideBtn + "<\/td>"
+      + "<td style=\"padding:4px 8px;\">" + escalateBtn + "<\/td>"
+      + "<td style=\"padding:6px 8px;\">" + msgPWB + "<\/td>"
+      + "<\/tr>";
   }).join('');
 }
 
@@ -13783,6 +13952,180 @@ function pwbSendManualFup(jlid, btn) {
       showToast('error', 'FUP Error', err && err.message ? err.message : String(err));
     })
     .sendPWBManualFup(jlid);
+}
+
+// ── PWB: manual status update from dropdown ───────────────────────────────
+function pwbUpdateStatus(jlid, newStatus, btn) {
+  if (!newStatus) { showToast('error', 'No Status', 'Select a status first'); return; }
+  if (!confirm('Set "' + jlid + '" → ' + newStatus + '?')) return;
+  var origHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      if (res && res.success) {
+        showToast('success', 'Status Updated', jlid + ' → ' + newStatus);
+        loadPWBTable();
+      } else { showToast('error', 'Update Failed', (res && res.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .updatePWBStatus(jlid, newStatus);
+}
+
+// ── Kit Tracking: mark kit as refunded (logistics loss) ───────────────────
+function ktMarkRefunded(rowIndex, btn) {
+  if (!confirm('Mark this kit as refunded?\n\nThis will zero the price so it doesn\'t count in monthly totals. Cannot be undone easily.')) return;
+  var origHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      if (res && res.success) {
+        showToast('success', 'Marked Refunded', 'Price zeroed — excluded from monthly totals');
+        loadKitTrackingPage();
+      } else { showToast('error', 'Failed', (res && res.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .markKitAsRefunded(rowIndex);
+}
+
+// ── Debug: fetch HubSpot kit status enum values ───────────────────────────
+function ktCheckEnums() {
+  var box = document.getElementById('ktEnumResult');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Fetching from HubSpot…';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        box.innerHTML = '<span style="color:#ef4444;">Error: ' + (res && res.message ? res.message : 'Unknown') + '<\/span>';
+        return;
+      }
+      var html = '<table style="border-collapse:collapse;width:100%;">'
+        + '<thead><tr><th style="text-align:left;padding:3px 8px;color:#64748b;border-bottom:1px solid #e2e8f0;">Property</th>'
+        + '<th style="text-align:left;padding:3px 8px;color:#64748b;border-bottom:1px solid #e2e8f0;">Label → Internal Value</th></tr></thead><tbody>';
+      Object.keys(res.enums).forEach(function(prop) {
+        var opts = res.enums[prop];
+        var optStr = Array.isArray(opts)
+          ? (opts.length ? opts.map(function(o){ return '"' + o.label + '" → <b>' + o.value + '</b>'; }).join(', ') : '(no options — free-text field?)')
+          : opts;
+        html += '<tr><td style="padding:3px 8px;font-family:monospace;color:#0ea5e9;">' + prop + '<\/td>'
+          + '<td style="padding:3px 8px;">' + optStr + '<\/td><\/tr>';
+      });
+      html += '<\/tbody><\/table>';
+      box.innerHTML = html;
+    })
+    .withFailureHandler(function(err) {
+      box.innerHTML = '<span style="color:#ef4444;">Failed: ' + (err && err.message ? err.message : String(err)) + '<\/span>';
+    })
+    .getKitStatusEnums();
+}
+
+// ── Pivot Report: compute from _kitTrackingData client-side ──────────────
+function renderKitPivot() {
+  if (!_kitTrackingData || !_kitTrackingData.length) {
+    // Data not loaded yet — trigger load which will call renderKitPivot on success
+    loadKitTrackingPage();
+    var cb = document.getElementById('pivotCountryBody');
+    var kb = document.getElementById('pivotKitBody');
+    var spinner = '<tr><td colspan="4" style="padding:2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Loading…<\/td><\/tr>';
+    if (cb) cb.innerHTML = spinner;
+    if (kb) kb.innerHTML = spinner;
+    return;
+  }
+
+  // Populate pivot month dropdown
+  var pivotMonthSel = document.getElementById('pivotFilterMonth');
+  if (pivotMonthSel && pivotMonthSel.options.length <= 1) {
+    var months = [...new Set((_kitTrackingData||[]).map(function(r){return r.orderMonth;}).filter(Boolean))];
+    var monthOrder = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    months.sort(function(a,b){
+      var ap=a.split(' '), bp=b.split(' ');
+      return (parseInt(ap[1])-parseInt(bp[1])) || (monthOrder.indexOf(ap[0])-monthOrder.indexOf(bp[0]));
+    });
+    var cur = pivotMonthSel.value;
+    pivotMonthSel.innerHTML = '<option value="">All Months<\/option>' +
+      months.map(function(m){ return '<option value="'+m+'"'+(m===cur?' selected':'')+'>'+m+'<\/option>'; }).join('');
+  }
+
+  var filterMonth = (pivotMonthSel || {}).value || '';
+  var data = (_kitTrackingData||[]).filter(function(r) {
+    if (r.refunded) return false; // exclude refunded
+    if (filterMonth && r.orderMonth !== filterMonth) return false;
+    return true;
+  });
+
+  // Aggregate by country
+  var byCountry = {};
+  data.forEach(function(r) {
+    var c = r.country || 'Unknown';
+    if (!byCountry[c]) byCountry[c] = { count: 0, total: 0 };
+    byCountry[c].count++;
+    byCountry[c].total += parseFloat(r.price) || 0;
+  });
+
+  // Aggregate by kit type
+  var byKit = {};
+  data.forEach(function(r) {
+    var k = r.kit || 'Unknown';
+    if (!byKit[k]) byKit[k] = { count: 0, total: 0 };
+    byKit[k].count++;
+    byKit[k].total += parseFloat(r.price) || 0;
+  });
+
+  var fmt = function(n) { return Math.round(n * 100) / 100; };
+
+  // Render country pivot
+  var countryRows = Object.keys(byCountry).sort();
+  var countryTotal = { count: 0, total: 0 };
+  countryRows.forEach(function(c){ countryTotal.count += byCountry[c].count; countryTotal.total += byCountry[c].total; });
+  var countryHtml = countryRows.map(function(c, idx) {
+    var d = byCountry[c];
+    var avg = d.count ? fmt(d.total / d.count) : 0;
+    return '<tr style="border-bottom:1px solid #f1f5f9;background:' + (idx%2===0?'#fff':'#fafbfc') + ';">'
+      + '<td style="padding:8px 14px;color:#1e293b;">' + escapeHtml(c) + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">' + d.count + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">€' + fmt(d.total) + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">€' + avg + '<\/td>'
+      + '<\/tr>';
+  }).join('') +
+  '<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #e2e8f0;">'
+    + '<td style="padding:8px 14px;">Grand Total<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">' + countryTotal.count + '<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">€' + fmt(countryTotal.total) + '<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">€' + (countryTotal.count ? fmt(countryTotal.total/countryTotal.count) : 0) + '<\/td>'
+  + '<\/tr>';
+  var cb = document.getElementById('pivotCountryBody');
+  if (cb) cb.innerHTML = countryHtml || '<tr><td colspan="4" style="padding:2rem;text-align:center;color:#94a3b8;">No data<\/td><\/tr>';
+
+  // Render kit pivot
+  var kitRows = Object.keys(byKit).sort();
+  var kitTotal = { count: 0, total: 0 };
+  kitRows.forEach(function(k){ kitTotal.count += byKit[k].count; kitTotal.total += byKit[k].total; });
+  var kitHtml = kitRows.map(function(k, idx) {
+    var d = byKit[k];
+    var avg = d.count ? fmt(d.total / d.count) : 0;
+    return '<tr style="border-bottom:1px solid #f1f5f9;background:' + (idx%2===0?'#fff':'#fafbfc') + ';">'
+      + '<td style="padding:8px 14px;color:#1e293b;">' + escapeHtml(k) + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">€' + fmt(d.total) + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">' + d.count + '<\/td>'
+      + '<td style="padding:8px 14px;text-align:right;color:#475569;">€' + avg + '<\/td>'
+      + '<\/tr>';
+  }).join('') +
+  '<tr style="background:#f1f5f9;font-weight:700;border-top:2px solid #e2e8f0;">'
+    + '<td style="padding:8px 14px;">Grand Total<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">€' + fmt(kitTotal.total) + '<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">' + kitTotal.count + '<\/td>'
+    + '<td style="padding:8px 14px;text-align:right;">€' + (kitTotal.count ? fmt(kitTotal.total/kitTotal.count) : 0) + '<\/td>'
+  + '<\/tr>';
+  var kb = document.getElementById('pivotKitBody');
+  if (kb) kb.innerHTML = kitHtml || '<tr><td colspan="4" style="padding:2rem;text-align:center;color:#94a3b8;">No data<\/td><\/tr>';
 }
 
 function loadBulkCertificatesPage() {

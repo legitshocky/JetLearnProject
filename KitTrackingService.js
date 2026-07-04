@@ -47,10 +47,42 @@ var KIT_COL = {
   ADDR_STATUS:        24,  // HubSpot / Requested / Received / Verified
   // Escalation columns — Y, Z
   ESCALATED:          25,
-  ESCALATED_AT:       26
+  ESCALATED_AT:       26,
+  // Refunded flag — AA(27)
+  REFUNDED:           27
 };
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
+// Fetch current learning_kit_cost directly from deal GET — bypasses search cache
+function _getHubSpotDealKitCost(dealId, token) {
+  try {
+    var resp = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=learning_kit_cost',
+      { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (resp.getResponseCode() === 200) {
+      var d = JSON.parse(resp.getContentText());
+      return parseFloat((d.properties || {}).learning_kit_cost) || 0;
+    }
+    Logger.log('[_getHubSpotDealKitCost] HTTP ' + resp.getResponseCode());
+  } catch(e) { Logger.log('[_getHubSpotDealKitCost] ERROR: ' + e.message); }
+  return 0;
+}
+
+// Patch learning_kit_cost on a deal (used by add + refund)
+function _patchHubSpotKitCost(dealId, token, newValue) {
+  try {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ properties: { learning_kit_cost: newValue } }),
+      muteHttpExceptions: true
+    });
+    Logger.log('[_patchHubSpotKitCost] dealId=' + dealId + ' newValue=' + newValue + ' HTTP ' + resp.getResponseCode());
+    return resp.getResponseCode() === 200;
+  } catch(e) { Logger.log('[_patchHubSpotKitCost] ERROR: ' + e.message); return false; }
+}
+
 function _kitPropertyForType(kitName) {
   if (!kitName) return null;
   var k = kitName.toLowerCase().trim();
@@ -1326,6 +1358,35 @@ function _updateHubspotKitStatus(jlid, kitName, statusValue) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET KIT STATUS ENUM VALUES — callable from client to discover valid HubSpot values
+// ─────────────────────────────────────────────────────────────────────────────
+function getKitStatusEnums() {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    if (!token) return { success: false, message: 'No API key' };
+    var props = ['microbit_kit_status', 'makey_makey_kit_status', 'vr_headset__oculus_status', 'arduino_kit_status'];
+    var results = {};
+    props.forEach(function(prop) {
+      Utilities.sleep(500);
+      var resp = monitoredFetch('https://api.hubapi.com/crm/v3/properties/deals/' + prop, {
+        headers: { 'Authorization': 'Bearer ' + token },
+        muteHttpExceptions: true
+      });
+      var code = resp.getResponseCode();
+      if (code === 200) {
+        var d = JSON.parse(resp.getContentText());
+        results[prop] = (d.options || []).map(function(o) { return { label: o.label, value: o.value }; });
+      } else {
+        results[prop] = 'HTTP ' + code;
+      }
+    });
+    return { success: true, enums: results };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ADD NOTE TO HUBSPOT DEAL
 // ─────────────────────────────────────────────────────────────────────────────
 function _addNoteToDeal(dealId, noteBody) {
@@ -1380,7 +1441,7 @@ function getKitTrackingData() {
     var today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_COL.FOLLOWUP2_SENT_AT).getValues();
+    var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_COL.REFUNDED).getValues();
     var rows = [];
 
     var cutoff = new Date(2026, 0, 1); // Jan 1 2026 — ignore older rows
@@ -1493,6 +1554,7 @@ function getKitTrackingData() {
         response:      response,
         jlid:          jlid,
         status:        status,
+        refunded:      String(r[26] || '').trim().toUpperCase() === 'TRUE',
         // Extra detail fields
         country:      String(r[3]  || '').trim(),   // D: Country
         price:        String(r[4]  || '').trim(),   // E: Price EUR
@@ -1675,10 +1737,11 @@ function addKitEntry(data) {
           // Kit status → "Sent by Us" (internal enum = "Sent")
           if (kitProp) hsProps[kitProp] = 'Sent';
 
-          // Accumulate learning_kit_cost — send as number, not string
+          // Accumulate learning_kit_cost — fetch current value directly from deal (not search cache)
           if (price > 0) {
-            var existing = parseFloat(hs.data.learningKitCost) || 0;
-            hsProps['learning_kit_cost'] = existing + price;  // numeric, not String()
+            var existing = _getHubSpotDealKitCost(dealId, token);
+            hsProps['learning_kit_cost'] = existing + price;
+            Logger.log('[KitTracking] learning_kit_cost: existing=' + existing + ' + new=' + price + ' = ' + hsProps['learning_kit_cost']);
           }
 
           // Update subscription plan if provided
@@ -1688,18 +1751,42 @@ function addKitEntry(data) {
             hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit type "' + (data.kit||'') + '" has no HubSpot status property mapped.';
           }
 
-          if (Object.keys(hsProps).length > 0) {
-            var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
-              method: 'PATCH',
-              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              payload: JSON.stringify({ properties: hsProps }),
+          var dealUrl = 'https://api.hubapi.com/crm/v3/objects/deals/' + dealId;
+          var patchHdr = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+          // PATCH 1: kit status (separate so a bad enum doesn't block cost update)
+          if (kitProp) {
+            var statusResp = monitoredFetch(dealUrl, {
+              method: 'PATCH', headers: patchHdr,
+              payload: JSON.stringify({ properties: { [kitProp]: 'Sent' } }),
               muteHttpExceptions: true
             });
-            var patchCode = patchResp.getResponseCode();
-            Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchCode + ' props=' + JSON.stringify(hsProps));
-            if (patchCode !== 200) {
-              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'HubSpot update failed (HTTP ' + patchCode + ').';
-              Logger.log('[KitTracking] addKitEntry PATCH ERROR body: ' + patchResp.getContentText().substring(0, 400));
+            var statusCode = statusResp.getResponseCode();
+            Logger.log('[KitTracking] addKitEntry kit status PATCH HTTP ' + statusCode + ' prop=' + kitProp + ' val=Sent');
+            if (statusCode !== 200) {
+              var statusBody = statusResp.getContentText();
+              Logger.log('[KitTracking] addKitEntry kit status PATCH ERROR: ' + statusBody.substring(0, 500));
+              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit status update failed (HTTP ' + statusCode + '): ' + statusBody.substring(0, 200);
+            } else {
+              hsUpdated = true;
+            }
+          }
+
+          // PATCH 2: cost + subscription (independent of kit status)
+          var costProps = {};
+          if (price > 0) costProps['learning_kit_cost'] = hsProps['learning_kit_cost'];
+          if (data.subscription) costProps['subscription'] = data.subscription;
+          if (Object.keys(costProps).length > 0) {
+            var costResp = monitoredFetch(dealUrl, {
+              method: 'PATCH', headers: patchHdr,
+              payload: JSON.stringify({ properties: costProps }),
+              muteHttpExceptions: true
+            });
+            var costCode = costResp.getResponseCode();
+            Logger.log('[KitTracking] addKitEntry cost PATCH HTTP ' + costCode + ' props=' + JSON.stringify(costProps));
+            if (costCode !== 200) {
+              Logger.log('[KitTracking] addKitEntry cost PATCH ERROR: ' + costResp.getContentText().substring(0, 400));
+              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Cost update failed (HTTP ' + costCode + ').';
             } else {
               hsUpdated = true;
             }
@@ -2130,12 +2217,21 @@ function getPWBEntries() {
     var tz = Session.getScriptTimeZone();
     function fmtDate(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy') : String(v || ''); }
     function fmtTs(v)   { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy HH:mm') : String(v || ''); }
+    function fmtMonth(v) {
+      if (v instanceof Date) return Utilities.formatDate(v, tz, 'MMMM yyyy');
+      var s = String(v || '').trim();
+      // If it looks like a date string (contains timezone/GMT info), parse and reformat
+      if (s && (s.indexOf('GMT') > -1 || s.indexOf(':') > -1)) {
+        try { return Utilities.formatDate(new Date(s), tz, 'MMMM yyyy'); } catch(e) {}
+      }
+      return s;
+    }
 
     return rows.map(function(r) {
       return {
         srNo:           r[0],
         entryDate:      fmtDate(r[1]),
-        entryMonth:     String(r[2]  || ''),
+        entryMonth:     fmtMonth(r[2]),
         jlid:           String(r[3]  || ''),
         learnerName:    String(r[4]  || ''),
         parentName:     String(r[5]  || ''),
@@ -2161,6 +2257,76 @@ function getPWBEntries() {
   } catch(e) {
     Logger.log('[getPWBEntries] ERROR: ' + e.message);
     return [];
+  }
+}
+
+// ── Mark kit as refunded (logistics loss) — zeros price, sets refunded flag, subtracts from HubSpot ──
+function markKitAsRefunded(rowIndex) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var sheet = _getKitSheet();
+    var row   = sheet.getRange(rowIndex, 1, 1, KIT_COL.REFUNDED).getValues()[0];
+
+    var price = parseFloat(row[4]) || 0;    // col E (index 4) = price
+    var jlid  = String(row[KIT_COL.JLID - 1] || '').trim(); // col P (index 15)
+
+    // Mark refunded + zero sheet price
+    sheet.getRange(rowIndex, KIT_COL.REFUNDED).setValue('TRUE');
+    sheet.getRange(rowIndex, 5).setValue(0);
+    Logger.log('[KitTracking] markKitAsRefunded row=' + rowIndex + ' price=' + price + ' jlid=' + jlid);
+
+    // Subtract from HubSpot learning_kit_cost
+    if (price > 0 && jlid) {
+      try {
+        var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY') || '';
+        if (token) {
+          var hs = fetchHubspotByJlid(jlid);
+          if (hs && hs.success && hs.data && hs.data.dealId) {
+            var current = _getHubSpotDealKitCost(hs.data.dealId, token);
+            var updated = Math.max(0, current - price);
+            _patchHubSpotKitCost(hs.data.dealId, token, updated);
+            Logger.log('[KitTracking] markKitAsRefunded HS: ' + current + ' - ' + price + ' = ' + updated);
+          }
+        }
+      } catch(hsErr) { Logger.log('[KitTracking] markKitAsRefunded HS error: ' + hsErr.message); }
+    }
+
+    return { success: true, price: price };
+  } catch(e) {
+    Logger.log('[KitTracking] markKitAsRefunded ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Update PWB row status manually (Order Placed / Kit Received / Course Changed) ──
+function updatePWBStatus(jlid, newStatus) {
+  if (!jlid || !newStatus) return { success: false, message: 'Missing jlid or status' };
+  try {
+    var sheet   = _getPWBSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, message: 'PWB sheet empty' };
+    var data    = sheet.getRange(2, 1, lastRow - 1, PWB_COL.EMAIL_LOG).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][PWB_COL.JLID - 1] || '').trim() !== jlid.trim()) continue;
+      var sheetRow = i + 2;
+      sheet.getRange(sheetRow, PWB_COL.STATUS).setValue(newStatus);
+      // Update HubSpot deal status to match
+      try {
+        var kitName = String(data[i][PWB_COL.KIT - 1] || '').trim();
+        var hs = fetchHubspotByJlid(jlid);
+        if (hs && hs.success && hs.data && hs.data.dealId && kitName) {
+          var hsVal = (newStatus === 'Order Placed' || newStatus === 'Kit Received')
+            ? PWB_HS_STATUSES.BOUGHT : PWB_HS_STATUSES.ROADMAP;
+          _updateHubspotPWBStatus(hs.data.dealId, hsVal, kitName);
+        }
+      } catch(he) { Logger.log('[updatePWBStatus] HS: ' + he.message); }
+      Logger.log('[updatePWBStatus] ' + jlid + ' → ' + newStatus);
+      return { success: true };
+    }
+    return { success: false, message: 'JLID not found: ' + jlid };
+  } catch(e) {
+    Logger.log('[updatePWBStatus] ERROR: ' + e.message);
+    return { success: false, message: e.message };
   }
 }
 
