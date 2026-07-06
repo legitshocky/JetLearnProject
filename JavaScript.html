@@ -9093,6 +9093,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V6.18': [
+      "**Certificate — Slide from Sheet**: Certificate template slide (Foundation / Math / Pro+Advanced) now driven by Tagging column (col C) of the Course Name sheet — no hardcoded lists.",
+      "**Certificate — Dynamic Course Dropdown**: Course dropdown in Certificate Center now loads live from the Course Name sheet instead of a hardcoded list.",
+      "**Certificate — Sent from hello@jet-learn.com**: All certificate emails now send from hello@jet-learn.com.",
+      "**Certificate — Re-send Button**: Every row in the certificate log now has a Re-send button to resend a previously sent certificate.",
+      "**Certificate — Drive Link in HubSpot Notes**: Certificate PDF Drive link included in HubSpot deal note so team can view/share without opening email.",
+      "**Course Name Sheet — Category Tagging**: Added updateCourseCategories() to auto-populate col C with Foundation / Math / Advanced / Pro labels.",
+    ],
     'V6.17': [
       "**Kit Dashboard — Kit Status Fix**: microbit_kit_status, makey_makey_kit_status, vr_headset__oculus_status now correctly updated to 'Sent' in HubSpot when a kit entry is added. Kit status and learning_kit_cost PATCHed in separate HubSpot calls so a failure in one doesn't block the other.",
       "**Kit Dashboard — HubSpot Enum Check**: New 'Check Valid Values' button in Pivot Report tab fetches and displays valid enum options for all kit status properties directly from HubSpot API — no need to open GAS editor.",
@@ -12668,84 +12676,30 @@ var _cpAllLearners  = [];
 // ══════════════════════════════════════════════════════════════════════
 
 var _bcRowCount   = 0;
-var _bcCourseList = [
-  'Advanced Microbit',
-  'Advanced Minecraft with AI and Python',
-  'Advanced Robotics using Makey Makey',
-  'Advanced Scratch',
-  'Advanced Sprite Lab',
-  'Advanced Website Engineering',
-  'AI Architects: Designing Tomorrow\'s Smart Solutions',
-  'AI Changemakers: Building with Purpose & Heart',
-  'AI Creators : Imagination Meets Technology',
-  'AI Discovery: First Steps into the Future',
-  'AI Investors: Young Minds Solving Real Problems',
-  'AI with DeepSeek',
-  'AI with Pictoblox',
-  'Animation with Scratch Jr',
-  'App It Up',
-  'ARDUINO',
-  'Build GUI with Python',
-  'Building blocks of AI (TM)',
-  'Crack JavaScript Gaming',
-  'Data Science with Python',
-  'Data Structures and Algorithm using Python',
-  'Deep Learning with Python',
-  'Design Code and create with Roblox',
-  'Design Pro with Roblox',
-  'Design with Roblox',
-  'Explore GenAI',
-  'Fundamentals of Python with AI',
-  'Game Dev and AI with Scratch',
-  'GCSE Custom Revision',
-  'GCSE NC',
-  'GCSE Premium CS Pro',
-  'Immersive AR and VR Modeling (CoSpaces)',
-  'Immersive VR Experiences with Javascript',
-  'Introduction to Coding (code.org)',
-  'Introduction to Coding II (code.org)',
-  'Learn with Minecraft',
-  'Machine Learning and Artificial Intelligence with Python',
-  'Machine Learning Wizkids',
-  'Maths UK Revision Yr 2',
-  'Maths UK Revision Yr 3',
-  'Maths UK Revision Yr 4',
-  'Maths UK Revision Yr 5',
-  'Maths UK Revision Yr 6',
-  'Maths UK Year 1',
-  'Maths UK Year 2',
-  'Maths UK Year 3',
-  'Maths UK Year 4',
-  'Maths UK Year 5',
-  'Maths UK Year 6',
-  'Maths Year 1',
-  'Maths Year 2',
-  'Maths Year 3',
-  'Maths Year 4',
-  'Maths Year 5',
-  'Maths Year 6',
-  'Maths Year 7',
-  'Maths Year 8',
-  'Minecraft Edu',
-  'Open CV with Python',
-  'PCEP Certification Prep',
-  'Pro Game Developer in Python',
-  'Programming with Robotics (Microbit)',
-  'Python 2.0: Beyond the Basics',
-  'Python EduBlocks',
-  'Python Game Developer',
-  'Robotics with Microbit (Jr)',
-  'Science Adventures with Sprite Lab',
-  'Special Project',
-  'SQL',
-  'Summer Jam for Advanced',
-  'Summer Jam for Foundation',
-  'Summer Jam for Pro',
-  'Tynker Animation Lab',
-  'Unity',
-  'Web 3.0',
-  'Website Wizardry'
-];
+var _bcCourseList = []; // populated dynamically from Course Name sheet
+
+function _bcLoadCourseList(callback) {
+  if (_bcCourseList.length > 0) { if (callback) callback(); return; }
+  google.script.run
+    .withSuccessHandler(function(courses) {
+      _bcCourseList = Array.isArray(courses) ? courses : [];
+      // Refresh any open dropdowns
+      document.querySelectorAll('#bcCourseRows .bc-course-name').forEach(function(sel) {
+        var saved = sel.value;
+        while (sel.options.length > 1) sel.remove(1);
+        _bcCourseList.forEach(function(c) {
+          var opt = document.createElement('option');
+          opt.value = c; opt.textContent = c;
+          sel.appendChild(opt);
+        });
+        if (saved) sel.value = saved;
+        sel.options[0].textContent = '-- Select Course --';
+      });
+      if (callback) callback();
+    })
+    .withFailureHandler(function() { if (callback) callback(); })
+    .getCourseNames();
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // KIT TRACKING PAGE
@@ -14133,7 +14087,8 @@ function loadBulkCertificatesPage() {
   _bcRowCount = 0;
   document.getElementById('bcSendStatus').style.display = 'none';
   container.innerHTML = '';
-  bcAddCourseRow();
+  _bcLoadCourseList(function() { if (!document.querySelector('#bcCourseRows > div')) bcAddCourseRow(); });
+  if (_bcCourseList.length > 0) bcAddCourseRow();
   document.getElementById('bcLearnerName').addEventListener('input', _bcUpdatePreview);
   container.addEventListener('change', _bcUpdatePreview);
   // Load certificate log
@@ -14384,6 +14339,7 @@ function bcLoadLog() {
         + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Sent To<\/th>'
         + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">By<\/th>'
         + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Status<\/th>'
+        + '<th style="padding:8px 12px;text-align:left;color:#64748b;font-weight:600;">Actions<\/th>'
         + '<\/tr><\/thead><tbody>';
 
       _bcLogRows.forEach(function(r, i) {
@@ -14416,6 +14372,13 @@ function bcLoadLog() {
           +   (r.driveUrl ? ' <a href="' + r.driveUrl + '" target="_blank" style="color:#6366f1;font-size:0.7rem;margin-left:4px;"><i class="fas fa-external-link-alt"><\/i><\/a>' : '')
           +   (isFailed && r.notes ? '<span style="display:block;font-size:0.67rem;color:#94a3b8;margin-top:2px;" title="' + escapeHtml(r.notes) + '">' + escapeHtml(r.notes.substring(0, 40)) + (r.notes.length > 40 ? '…' : '') + '<\/span>' : '')
           + '<\/td>'
+          + '<td style="padding:8px 12px;">'
+          +   '<button onclick="bcResendSingle(' + JSON.stringify(r.jlid) + ',' + JSON.stringify(r.learnerName) + ',' + JSON.stringify(r.course) + ',' + JSON.stringify(r.parentEmail) + ',' + JSON.stringify(r.driveUrl || "") + ',this)" '
+          +     'style="padding:4px 10px;font-size:0.72rem;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;color:#475569;cursor:pointer;" '
+          +     'title="Re-send this certificate">'
+          +     '<i class="fas fa-redo" style="margin-right:4px;"><\/i>Re-send'
+          +   '<\/button>'
+          + '<\/td>'
           + '<\/tr>';
       });
 
@@ -14426,6 +14389,30 @@ function bcLoadLog() {
       container.innerHTML = '<div style="padding:1.5rem;text-align:center;color:#ef4444;font-size:0.82rem;">' + escapeHtml(err.message || String(err)) + '<\/div>';
     })
     .getCertificateLog(50);
+}
+
+function bcResendSingle(jlid, learnerName, course, parentEmail, driveUrl, btn) {
+  if (!confirm('Re-send certificate for ' + learnerName + ' (' + course + ')?\n\nWill email parent and create HubSpot note.')) return;
+  var origHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+      if (res && res.success) {
+        showToast('success', 'Certificate Re-sent', res.message || 'Done');
+        setTimeout(bcLoadLog, 2000);
+      } else {
+        showToast('error', 'Re-send Failed', (res && res.message) || 'Unknown error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+      showToast('error', 'Re-send Error', err.message || String(err));
+    })
+    .resendCertificate(jlid, learnerName, course, parentEmail, '', '', driveUrl);
 }
 
 function bcToggleAllFailed(checked) {

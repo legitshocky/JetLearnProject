@@ -2,6 +2,34 @@
 
 ---
 
+## [2026-07-06] — Certificate Improvements (V6.18)
+
+### Certificate — Slide Selected from Course Name Sheet (`CertificateService.js`)
+- Certificate template slide (Foundation / Math / Pro+Advanced) now driven by **col C (Tagging)** of the Course Name sheet — no more hardcoded keyword list
+- `_buildCertCategoryCache()` reads sheet once per execution and caches; bulk sends hit the sheet only once
+- Fallback to math-keyword regex if course not found in sheet
+
+### Certificate — Course Dropdown Loads from Sheet (`JavaScript.html`)
+- `_bcCourseList` was hardcoded in frontend; now fetched live from Course Name sheet via `getCourseNames()` on page load
+- Any course added/renamed in the sheet appears in the dropdown automatically
+
+### Certificate — Sent from hello@jet-learn.com (`CertificateService.js`)
+- All certificate emails now explicitly send from `hello@jet-learn.com` (script owner account)
+
+### Certificate — Re-send Button in Log (`JavaScript.html`)
+- Every row in the certificate log now has a **Re-send** button
+- Calls `resendCertificate()` — re-uses existing Drive file if available, falls back to regenerating
+- Reloads log on success; shows toast on failure
+
+### Certificate — Drive Link in HubSpot Notes (`CertificateService.js` + `Code.js`)
+- Certificate PDF saved to Google Drive with public shareable link
+- HubSpot deal note includes `🔗 View/Download Certificate: <drive_url>` so team can view/share without opening email
+
+### Course Name Sheet — Category Tagging (`CertificateService.js`)
+- Added `updateCourseCategories()` — run once from Apps Script editor to populate col C with Foundation / Math / Advanced / Pro labels based on course name
+
+---
+
 ## [2026-07-05] — Kit Dashboard & PWB Fixes (V6.17)
 
 ### Kit Dashboard — Kit Status HubSpot Fix (`KitTrackingService.js`)
