@@ -14,7 +14,8 @@
       "Bash(node _check.js)",
       "Bash(npx clasp *)",
       "Bash(node -e ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(clasp push *)"
     ]
   }
 }

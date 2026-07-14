@@ -628,6 +628,7 @@ function getCourseNames() {
   }
 }
 
+
 function getCourseDetails() {
   Logger.log('getCourseDetails called for Courses Page');
   try {

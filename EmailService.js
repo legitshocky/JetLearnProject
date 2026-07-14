@@ -180,6 +180,7 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
   let watiStatus = []; 
   let overallStatus = 'Failed';
   let logNotes = '';
+  let timeline = [];
 
   try {
     // --- 1. VALIDATE & PREPARE DATA ---
@@ -187,8 +188,10 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     if (!formData.teacherName) throw new Error('A teacher must be assigned.');
 
     // --- 2. LOOKUP TEACHER & APPLY PREFIX ---
-    const teacherData = getTeacherData();
-    const teacherInfo = teacherData.find(t => 
+    const teacherData = _timelineStep(timeline, 'prepare', 'Onboarding Details Prepared', function() {
+      return getTeacherData();
+    });
+    const teacherInfo = teacherData.find(t =>
       String(t.name).trim().toLowerCase() === String(formData.teacherName).trim().toLowerCase()
     );
 
@@ -206,23 +209,30 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     }
 
     let allAttachments = [];
-    if (attachmentsBase64 && attachmentsBase64.length > 0) {
-      allAttachments.push(...uploadAttachments(attachmentsBase64));
-    }
+    const pricingDetails = _timelineStep(timeline, 'invoice', 'Invoice Generated', function() {
+      if (attachmentsBase64 && attachmentsBase64.length > 0) {
+        allAttachments.push(...uploadAttachments(attachmentsBase64));
+      }
 
-    // Call InvoiceService logic (Global scope allows this)
-    const pricingDetails = calculateInvoicePricing(formData);
-    formData.sessions = pricingDetails.displayTotalSessions;
+      // Call InvoiceService logic (Global scope allows this)
+      const details = calculateInvoicePricing(formData);
+      formData.sessions = details.displayTotalSessions;
 
-    // Generate Invoice PDF
-    if (formData.generateAndAttachInvoice) {
-      const validationErrors = validateInvoiceData(formData);
-      if (validationErrors.length > 0) throw new Error('Invoice data is invalid: ' + validationErrors.join('; '));
-      
-      const invoiceHtml = getInvoiceHTML(formData, pricingDetails);
-      const pdfName = `Invoice-${formData.learnerName.replace(/\s/g, '_')}-${formData.jlid || 'NA'}.pdf`;
-      const invoiceBlob = Utilities.newBlob(invoiceHtml, 'text/html').getAs(MimeType.PDF).setName(pdfName);
-      allAttachments.push(invoiceBlob);
+      // Generate Invoice PDF
+      if (formData.generateAndAttachInvoice) {
+        const validationErrors = validateInvoiceData(formData);
+        if (validationErrors.length > 0) throw new Error('Invoice data is invalid: ' + validationErrors.join('; '));
+
+        const invoiceHtml = getInvoiceHTML(formData, details);
+        const pdfName = `Invoice-${formData.learnerName.replace(/\s/g, '_')}-${formData.jlid || 'NA'}.pdf`;
+        const invoiceBlob = Utilities.newBlob(invoiceHtml, 'text/html').getAs(MimeType.PDF).setName(pdfName);
+        allAttachments.push(invoiceBlob);
+      }
+      return details;
+    });
+    if (!formData.generateAndAttachInvoice) {
+      timeline[timeline.length - 1].status = 'skipped';
+      timeline[timeline.length - 1].label = 'Invoice Skipped';
     }
 
     // --- 4. SEND TRACKED EMAIL TO PARENT ---
@@ -237,12 +247,14 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     });
     const parentToAddress = Object.values(parentEmailSet).join(',');
 
-    const parentEmailResult = sendTrackedEmail({
-      to: parentToAddress,
-      subject: parentSubject,
-      htmlBody: parentHtmlBody, 
-      jlid: formData.jlid, 
-      attachments: allAttachments
+    const parentEmailResult = _timelineStep(timeline, 'parent_email', 'Parent Email Sent', function() {
+      return sendTrackedEmail({
+        to: parentToAddress,
+        subject: parentSubject,
+        htmlBody: parentHtmlBody,
+        jlid: formData.jlid,
+        attachments: allAttachments
+      });
     });
     parentTrackingId = parentEmailResult.trackingId;
     
@@ -251,10 +263,13 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     // --- 5. SEND WHATSAPP SEQUENCE ---
     if (formData.sendWhatsapp) { 
         // Call WatiService logic
-        watiStatus = sendOnboardingWhatsAppSequence(formData);
+        watiStatus = _timelineStep(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', function() {
+          return sendOnboardingWhatsAppSequence(formData);
+        });
         Logger.log("WATI Onboarding Status: " + JSON.stringify(watiStatus));
     } else {
         watiStatus = ["Skipped (Checkbox unchecked)"];
+        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Skipped', 'skipped', new Date().getTime(), 'Checkbox unchecked');
     }
 
     // --- 6. SEND TRACKED EMAIL TO TEACHER ---
@@ -263,15 +278,20 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     if(clsManagerEmail) ccList.add(clsManagerEmail);
     if(teacherInfo.tpManagerEmail) ccList.add(teacherInfo.tpManagerEmail);
 
+    // Enrich sessions with CET conversion for teacher email
+    formData.classSessions = _enrichSessionsWithCET(formData.classSessions || [], formData.selectedTimezone || formData.manualTimezone || formData.timezone || '');
+
     const teacherSubject = `New Learner Onboarded || ${formData.learnerName} (${formData.jlid || 'N/A'})`;
     const teacherHtmlBody = getOnboardingEmailHTML(formData);
     
-    const teacherEmailResult = sendTrackedEmail({
-      to: teacherInfo.email,
-      cc: Array.from(ccList).join(','),
-      subject: teacherSubject,
-      htmlBody: teacherHtmlBody,
-      jlid: formData.jlid
+    const teacherEmailResult = _timelineStep(timeline, 'teacher_email', 'Teacher Email Sent', function() {
+      return sendTrackedEmail({
+        to: teacherInfo.email,
+        cc: Array.from(ccList).join(','),
+        subject: teacherSubject,
+        htmlBody: teacherHtmlBody,
+        jlid: formData.jlid
+      });
     });
     teacherTrackingId = teacherEmailResult.trackingId;
 
@@ -279,14 +299,14 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
     overallStatus = 'Success';
     logNotes = `Parent Email Sent (TID: ${parentTrackingId}). Teacher Email Sent (TID: ${teacherTrackingId}). WhatsApp: [${watiStatus.join(', ')}].`;
     
-    return { success: true, message: 'Onboarding emails and WhatsApp messages sent successfully.' };
+    return { success: true, message: 'Onboarding emails and WhatsApp messages sent successfully.', timeline: timeline };
 
   } catch (error) {
     // --- UPDATED ERROR LOGGING ---
     logError('EmailService: sendParentOnboardingWithInvoice', error);
     
     logNotes = `Failed during onboarding process: ${error.message}.`;
-    return { success: false, message: `Failed to complete onboarding: ${error.message}` };
+    return { success: false, message: `Failed to complete onboarding: ${error.message}`, timeline: timeline };
 
   } finally {
     logAction('New Learner Onboarded', formData.jlid, formData.learnerName, '', formData.teacherName, formData.course, overallStatus, logNotes, '', formData.performedBy || '');
@@ -411,11 +431,13 @@ function sendMigrationEmail(data, attachments = []) {
   let finalStatus = 'Partial Success';
   let notes = [];
   let watiSuccess = true; 
+  let timeline = [];
 
   try {
     // ==========================================
     // 0. TRANSFER PRACTICE DOC ACCESS TO NEW TEACHER
     // ==========================================
+    var practiceStarted = new Date().getTime();
     try {
       const pdHsResult = fetchHubspotByJlid(data.jlid);
       const existingDocLink = pdHsResult.success ? (pdHsResult.data.practiceDocumentLink || '') : '';
@@ -423,9 +445,11 @@ function sendMigrationEmail(data, attachments = []) {
         const pdUpdateRes = _updateExistingPracticeDocTeacher(existingDocLink, data.newTeacher);
         if (!pdUpdateRes.success) notes.push('Practice doc access transfer failed: ' + pdUpdateRes.error);
       }
+      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'success', practiceStarted, existingDocLink ? '' : 'No existing practice doc link found');
     } catch(pde) {
       Logger.log('[sendMigrationEmail] Practice doc transfer error: ' + pde.message);
       notes.push('Practice doc access transfer error: ' + pde.message);
+      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'failed', practiceStarted, pde.message);
     }
 
     // ==========================================
@@ -486,13 +510,15 @@ function sendMigrationEmail(data, attachments = []) {
 
         const finalClsEmailForCC = findClsEmailByManagerName(data.clsManager);
 
-        const newTeacherResult = sendTrackedEmail({
-          to: newTeacherInfo.email,
-          cc: finalClsEmailForCC,
-          subject: `Migration Notice - ${data.learner} Assigned`,
-          htmlBody: getNewTeacherEmailHTML(enrichedData, data.newTeacherComments || ''),
-          jlid: data.jlid,
-          attachments: attachments
+        const newTeacherResult = _timelineStep(timeline, 'teacher_email', 'Teacher Email Sent', function() {
+          return sendTrackedEmail({
+            to: newTeacherInfo.email,
+            cc: finalClsEmailForCC,
+            subject: `Migration Notice - ${data.learner} Assigned`,
+            htmlBody: getNewTeacherEmailHTML(enrichedData, data.newTeacherComments || ''),
+            jlid: data.jlid,
+            attachments: attachments
+          });
         });
         notes.push(`Teacher Email Sent (TID: ${newTeacherResult.trackingId})`);
 
@@ -542,12 +568,14 @@ function sendMigrationEmail(data, attachments = []) {
         // --- B. OLD TEACHER (Moved Here to ensure it runs) ---
         if (oldTeacherInfo && isValidEmail(oldTeacherInfo.email)) {
            try {
-             sendTrackedEmail({
-              to: oldTeacherInfo.email, 
-              cc: finalClsEmailForCC, 
-              subject: `${data.learner} - Migration`,
-              htmlBody: getOldTeacherEmailHTML(Object.assign({}, data, { classSessions: _enrichSessionsWithCET(data.classSessions || [], data.manualTimezone || data.timezone || '') }), ''),
-              jlid: data.jlid
+             _timelineStep(timeline, 'old_teacher_email', 'Old Teacher Email Sent', function() {
+               return sendTrackedEmail({
+                to: oldTeacherInfo.email,
+                cc: finalClsEmailForCC,
+                subject: `${data.learner} - Migration`,
+                htmlBody: getOldTeacherEmailHTML(Object.assign({}, data, { classSessions: _enrichSessionsWithCET(data.classSessions || [], data.manualTimezone || data.timezone || '') }), ''),
+                jlid: data.jlid
+              });
             });
             notes.push("Old Teacher Email Sent.");
            } catch(e) {
@@ -556,9 +584,11 @@ function sendMigrationEmail(data, attachments = []) {
            }
         } else if (data.oldTeacher) {
            notes.push("Old Teacher Email Skipped (Invalid Email/Not Found).");
+           _timelineAdd(timeline, 'old_teacher_email', 'Old Teacher Email Skipped', 'skipped', new Date().getTime(), 'Invalid email or teacher not found');
         }
     } else {
         notes.push("Teacher Email Skipped.");
+        _timelineAdd(timeline, 'teacher_email', 'Teacher Email Skipped', 'skipped', new Date().getTime(), 'Checkbox unchecked');
     }
 
     // Safety Pause
@@ -574,6 +604,7 @@ function sendMigrationEmail(data, attachments = []) {
     let watiSentCount    = 0;
 
     if (data.sendWhatsappToParent) {
+      var whatsappStarted = new Date().getTime();
       try {
         // SAFE HUBSPOT FETCH
         let hsData = {};
@@ -633,11 +664,17 @@ function sendMigrationEmail(data, attachments = []) {
         if (failedTargets.length > 0 && watiSentCount === 0) {
           watiSuccess = false;
           watiErrorMessage = failedTargets.map(f => f.phone + ': ' + f.reason).join('; ');
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage);
         } else if (failedTargets.length > 0) {
           // Partial — some sent, some failed
           notes.push(`WATI Partial: ${failedTargets.length} of ${targetPhones.length} failed`);
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} sent, ${failedTargets.length} failed`);
         } else {
           notes.push(`WATI OK → all ${watiSentCount} sent [DATA: ${logDetail}]`);
+        }
+
+        if (!timeline.some(function(step) { return step.key === 'parent_whatsapp'; })) {
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} recipient(s)`);
         }
 
       } catch(e) {
@@ -645,25 +682,31 @@ function sendMigrationEmail(data, attachments = []) {
         watiErrorMessage = e.message.substring(0, 200);
         Logger.log("WATI Block Error: " + e.message);
         notes.push("WATI Error: " + watiErrorMessage);
+        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage);
       }
     } else {
         notes.push("WhatsApp Skipped.");
+        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Skipped', 'skipped', new Date().getTime(), 'Checkbox unchecked');
     }
 
     // ==========================================
     // 2b. ADDITIONAL EMAIL TO PARENT (tick) — useful while WhatsApp is down
     // ==========================================
     if (data.sendEmailToParentAlso) {
+      var parentEmailStarted = new Date().getTime();
       try {
         var emailRes = sendMigrationParentFallbackEmail(data.jlid, data, data.performedBy, data.parentEmailTargets || []);
         if (emailRes.success) {
           notes.push('Parent Email Sent (TID: ' + emailRes.trackingId + ')');
+          _timelineAdd(timeline, 'parent_email', 'Parent Email Sent', 'success', parentEmailStarted, '');
         } else {
           notes.push('Parent Email Skipped: ' + emailRes.message);
+          _timelineAdd(timeline, 'parent_email', 'Parent Email Skipped', 'skipped', parentEmailStarted, emailRes.message);
         }
       } catch(pe) {
         Logger.log('[sendMigrationEmail] Parent email failed: ' + pe.message);
         notes.push('Parent Email Failed: ' + pe.message);
+        _timelineAdd(timeline, 'parent_email', 'Parent Email Failed', 'failed', parentEmailStarted, pe.message);
       }
     }
 
@@ -698,6 +741,7 @@ function sendMigrationEmail(data, attachments = []) {
 
     // ── Send course completion certificate to parent ───────────────────────────
     if (data.sendCertificate && data.course) {
+      var certificateStarted = new Date().getTime();
       try {
         // Fetch parent email if not already in data
         let certParentEmail = data.parentEmail || watiParentEmail || '';
@@ -722,6 +766,7 @@ function sendMigrationEmail(data, attachments = []) {
 
           if (certResult.success) {
             notes.push('Certificate Sent to ' + certParentEmail);
+            _timelineAdd(timeline, 'certificate', 'Certificate Sent', 'success', certificateStarted, certParentEmail);
 
             // ── HubSpot note: certificate sent ─────────────────────────────
             try {
@@ -746,6 +791,7 @@ function sendMigrationEmail(data, attachments = []) {
             }
           } else {
             notes.push('Certificate Failed: ' + certResult.message);
+            _timelineAdd(timeline, 'certificate', 'Certificate Failed', 'failed', certificateStarted, certResult.message);
           }
         } else {
           notes.push('Certificate Skipped — no parent email found.');
@@ -753,11 +799,12 @@ function sendMigrationEmail(data, attachments = []) {
       } catch(certErr) {
         Logger.log('[sendMigrationEmail] Certificate block error: ' + certErr.message);
         notes.push('Certificate Error: ' + certErr.message);
+        _timelineAdd(timeline, 'certificate', 'Certificate Failed', 'failed', certificateStarted, certErr.message);
       }
     }
 
     if (watiSuccess) {
-        return { success: true, message: 'Migration process completed successfully.', watiError: false };
+        return { success: true, message: 'Migration process completed successfully.', watiError: false, timeline: timeline };
     } else {
         return {
           success: true,
@@ -768,14 +815,15 @@ function sendMigrationEmail(data, attachments = []) {
           learner: data.learner || '',
           newTeacher: data.newTeacher || '',
           course: data.course || '',
-          jlid: data.jlid || ''
+          jlid: data.jlid || '',
+          timeline: timeline
         };
     }
 
   } catch (error) {
     Logger.log(`Error in Migration Process: ${error.message}`);
     notes.push(`Critical Error: ${error.message}`);
-    return { success: false, message: `Failed: ${error.message}` };
+    return { success: false, message: `Failed: ${error.message}`, timeline: timeline };
   } finally {
     // Include performedBy (actual username) so Impact Score is attributed correctly
     const intervenedParts = Array.isArray(data.migrationIntervenedBy)
@@ -786,6 +834,7 @@ function sendMigrationEmail(data, attachments = []) {
     }
     const intervenedStr = intervenedParts.filter(Boolean).join(', ');
 
+    var auditStarted = new Date().getTime();
     logAction(
         'Migration Process', 
         data.jlid, 
@@ -798,6 +847,7 @@ function sendMigrationEmail(data, attachments = []) {
         data.reasonOfMigration, 
         intervenedStr // <--- THIS WAS MISSING!
     );
+    _timelineAdd(timeline, 'audit_log', 'Audit Log Updated', 'success', auditStarted, '');
   }
 }
 

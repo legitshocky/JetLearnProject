@@ -21,36 +21,77 @@ var CERT_TEMPLATE_ID  = '1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI';
 var CERT_SAVE_FOLDER  = '1Eaub-wn5J7yMhYrHeQCiHKOXJEKR6vFX';
 
 // ── Course → slide index mapping ─────────────────────────────────────
+// Reads col A (Course Name) + col C (Tagging) from the Course Name sheet.
+// Tagging values: Foundation | Math | Advanced | Pro
+// Cached per script execution so bulk sends only hit the sheet once.
 
-var CERT_FOUNDATION_COURSES = [
-  'introduction to coding (code.org)',
-  'animation with scratch jr',
-  'introduction to coding ii (code.org)',
-  'science adventures with sprite lab',
-  'robotics with microbit (jr)',
-  'building blocks of ai with google',
-  'tynker ai animation lab',
-  'learn with minecraft'
-];
+var _certCategoryCache = null;
 
-// Any course containing "maths" or "math" → slide 2
-// Everything else not in foundation → slide 3 (Pro/Advanced)
+function _buildCertCategoryCache() {
+  if (_certCategoryCache) return _certCategoryCache;
+  _certCategoryCache = {};
+  try {
+    var data = _getCachedSheetData(CONFIG.SHEETS.COURSE_NAME);
+    if (data && data.length > 1) {
+      for (var i = 1; i < data.length; i++) {
+        var name = String(data[i][0] || '').trim();
+        var tag  = String(data[i][2] || '').trim(); // col C
+        if (name && tag) _certCategoryCache[name.toLowerCase()] = tag.toLowerCase();
+      }
+    }
+    Logger.log('[Cert] Category cache built: ' + Object.keys(_certCategoryCache).length + ' entries');
+  } catch(e) {
+    Logger.log('[Cert] Category cache error: ' + e.message);
+  }
+  return _certCategoryCache;
+}
 
 function _getCertSlideIndex(courseName) {
-  if (!courseName) return 2; // default to Pro
-  var low = courseName.toLowerCase().trim();
+  if (!courseName) return 2;
+  var low   = courseName.toLowerCase().trim();
+  var cache = _buildCertCategoryCache();
+  var tag   = cache[low] || '';
 
-  // Maths check
+  if (tag === 'foundation') return 0;
+  if (tag === 'math')       return 1;
+  // Advanced and Pro both use slide 3
+  if (tag === 'advanced' || tag === 'pro') return 2;
+
+  // Fallback if course not in sheet yet
+  Logger.log('[Cert] Course not in category sheet, using fallback: ' + courseName);
   if (/\bmath/i.test(low)) return 1;
-
-  // Foundation check
-  for (var i = 0; i < CERT_FOUNDATION_COURSES.length; i++) {
-    if (low.indexOf(CERT_FOUNDATION_COURSES[i]) > -1 ||
-        CERT_FOUNDATION_COURSES[i].indexOf(low) > -1) return 0;
-  }
-
-  // Default: Pro/Advanced
   return 2;
+}
+
+// ── Populate col C of Course Name sheet with category ────────────────
+function updateCourseCategories() {
+  try {
+    var ss    = _getSpreadsheet(CONFIG.MIGRATION_SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEETS.COURSE_NAME);
+    if (!sheet) throw new Error('Course Name sheet not found');
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) { Logger.log('[updateCourseCategories] No data rows'); return; }
+
+    sheet.getRange(1, 3).setValue('Category');
+
+    var courseCol  = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    var categories = courseCol.map(function(row) {
+      var name = String(row[0] || '').trim();
+      if (!name) return [''];
+      var idx = _getCertSlideIndex(name);
+      var label = idx === 0 ? 'Foundation' : idx === 1 ? 'Math'
+                : /^advanced\b/i.test(name) ? 'Advanced' : 'Pro';
+      return [label];
+    });
+
+    sheet.getRange(2, 3, categories.length, 1).setValues(categories);
+    Logger.log('[updateCourseCategories] Updated ' + categories.length + ' rows');
+    return { success: true, updated: categories.length };
+  } catch(e) {
+    Logger.log('[updateCourseCategories] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
 }
 
 // ── Certificate Log ──────────────────────────────────────────────────
@@ -277,7 +318,8 @@ function generateCertificatePDF(learnerName, courseName, yearOverride) {
     try {
       var folder   = DriveApp.getFolderById(CERT_SAVE_FOLDER);
       savedFile    = folder.createFile(pdfBlob);
-      driveUrl     = savedFile.getUrl();
+      savedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      driveUrl     = 'https://drive.google.com/file/d/' + savedFile.getId() + '/view';
       Logger.log('[Cert] Saved to Drive: ' + driveUrl);
     } catch(fe) {
       Logger.log('[Cert] Drive save warning (non-fatal): ' + fe.message);
@@ -445,6 +487,7 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
       htmlBody   : htmlBody,
       attachments: [pdfBlob],
       name       : 'JetLearn',
+      from       : 'hello@jet-learn.com',
       replyTo    : 'hello@jet-learn.com'
     });
 
@@ -481,7 +524,7 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
       if (jlid) {
         var sc2 = CacheService.getScriptCache();
         var singlePayload = { jlid: jlid, learnerName: learnerName, parentEmail: parentEmail,
-          performedBy: performedBy || '',
+          performedBy: performedBy || '', driveUrl: pdfBlob._driveUrl || '',
           courses: [{ name: courseName, year: new Date().getFullYear() }], failed: [] };
         sc2.put('CERT_HS_PENDING_' + jlid, JSON.stringify(singlePayload), 600);
         var qRaw2 = sc2.get('CERT_HS_QUEUE');
@@ -506,6 +549,65 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
 
   } catch(e) {
     Logger.log('[Cert] sendCourseCertificateEmail error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Re-send certificate from log (uses existing Drive file if available) ──
+function resendCertificate(jlid, learnerName, courseName, parentEmail, parentName, performedBy, existingDriveUrl) {
+  try {
+    if (!parentEmail) return { success: false, message: 'No parent email.' };
+
+    var pdfBlob;
+    if (existingDriveUrl) {
+      // Re-use existing Drive file — extract file ID and fetch as blob
+      try {
+        var match = existingDriveUrl.match(/\/d\/([a-zA-Z0-9_-]+)\//);
+        if (match) {
+          var file = DriveApp.getFileById(match[1]);
+          pdfBlob = file.getBlob().setName(learnerName + ' - ' + courseName + ' Certificate.pdf');
+          pdfBlob._driveUrl = existingDriveUrl;
+        }
+      } catch(fe) {
+        Logger.log('[Cert] Re-use Drive file failed, regenerating: ' + fe.message);
+      }
+    }
+    // Fall back to regenerating if Drive file not available
+    if (!pdfBlob) {
+      pdfBlob = generateCertificatePDF(learnerName, courseName);
+      if (!pdfBlob) return { success: false, message: 'Certificate PDF generation failed.' };
+    }
+
+    var year    = new Date().getFullYear();
+    var subject = 'JetLearn - ' + learnerName + ' has completed ' + courseName + ' - Certificate Enclosed';
+    GmailApp.sendEmail(parentEmail, subject, '', {
+      htmlBody   : '<p>Dear ' + (parentName || 'Parent') + ',</p><p>Please find attached the certificate for <b>' + learnerName + '</b> completing <b>' + courseName + '</b>.</p><p>You can also view it online: <a href="' + (pdfBlob._driveUrl || '') + '">' + (pdfBlob._driveUrl ? 'View Certificate' : '') + '</a></p><p>Team JetLearn</p>',
+      attachments: [pdfBlob],
+      name       : 'JetLearn',
+      from       : 'hello@jet-learn.com',
+      replyTo    : 'hello@jet-learn.com'
+    });
+
+    _logCertificate(jlid, learnerName, courseName, year, parentEmail, performedBy, pdfBlob._driveUrl || '', 'Re-sent', 'Resent from dashboard');
+
+    // HubSpot note
+    try {
+      var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+      if (token && jlid) {
+        var dr = fetchHubspotByJlid(jlid);
+        if (dr && dr.success && dr.data && dr.data.dealId) {
+          var noteLines = ['📜 Certificate Re-sent', 'Learner : ' + learnerName + ' (' + jlid + ')',
+            'Sent to : ' + parentEmail, 'Sent by : ' + (performedBy || 'System'),
+            'Course  : ' + courseName];
+          if (pdfBlob._driveUrl) noteLines.push('\n🔗 View/Download: ' + pdfBlob._driveUrl);
+          _certCreateDealNote(dr.data.dealId, noteLines.join('\n'), token);
+        }
+      }
+    } catch(he) { Logger.log('[Cert] Resend HS note (non-fatal): ' + he.message); }
+
+    return { success: true, message: 'Certificate re-sent to ' + parentEmail, driveUrl: pdfBlob._driveUrl || null };
+  } catch(e) {
+    Logger.log('[Cert] resendCertificate error: ' + e.message);
     return { success: false, message: e.message };
   }
 }
@@ -791,8 +893,9 @@ function _generateBulkCertPDFs(learnerName, courses) {
         // Save to Drive folder
         try {
           var saved = DriveApp.getFolderById(CERT_SAVE_FOLDER).createFile(blob);
-          result.driveUrl  = saved.getUrl();
-          blob._driveUrl   = result.driveUrl;
+          saved.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          result.driveUrl = 'https://drive.google.com/file/d/' + saved.getId() + '/view';
+          blob._driveUrl  = result.driveUrl;
         } catch(fe) {
           Logger.log('[Cert] Drive folder save (non-fatal): ' + fe.message);
         }
@@ -1010,6 +1113,7 @@ function sendBulkCertificates(data) {
       htmlBody   : htmlBody,
       attachments: blobs,
       name       : 'JetLearn',
+      from       : 'hello@jet-learn.com',
       replyTo    : 'hello@jet-learn.com'
     });
 
@@ -1040,8 +1144,10 @@ function sendBulkCertificates(data) {
         var sc3 = CacheService.getScriptCache();
         // Strip error detail from failed names before storing in HS payload
         var failedNames = failed.map(function(f){ return f.replace(/\s*\[.*\]$/, ''); });
+        var firstDriveUrl = (blobs[0] && blobs[0]._driveUrl) ? blobs[0]._driveUrl : '';
         var certPayload = { jlid: jlid, learnerName: learnerName, parentEmail: parentEmail,
-                            performedBy: performedBy || '', courses: courses, failed: failedNames };
+                            performedBy: performedBy || '', driveUrl: firstDriveUrl,
+                            courses: courses, failed: failedNames };
         sc3.put('CERT_HS_PENDING_' + jlid, JSON.stringify(certPayload), 600);
         // Queue: append jlid so trigger knows which keys to process
         var qRaw = sc3.get('CERT_HS_QUEUE');

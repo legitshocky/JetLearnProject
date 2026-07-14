@@ -34,6 +34,7 @@ function fetchHubspotByJlid(jlid) {
     'module_start_date', 'module_end_date', 'total_classes_committed_through_learner_s_journey',
     'current_teacher', 'current_course', 'time_zone', 'regular_class_day', 'frequency_of_classes',
     'payment_type', 'subscription', 'subscription_tenure', 'payment_term', 'class_timings',
+    'regular_class_time__in_cet_', 'regular_class_time_in_cet',
     'learner_practice_document_link', 'installment_type', 'installment_terms_final',
     'installment_months', 'installment_received_months__cloned_', 'payment_due_date',
     'full_payment_received__y_n_', 'jet_guide', 'cls_manager', 'teacher_manager',
@@ -157,6 +158,7 @@ function fetchHubspotByJlid(jlid) {
         learnerStatus: contactProperties.learner_status || 'Unknown',
         pauseDate: contactProperties.urge_on_pause_date || null,
         classSessions: parseClassTimings(contactProperties.class_timings || contactProperties.regular_class_day),
+        cetClassSessions: (function(){ var s = parseClassTimings(contactProperties.class_timings || contactProperties.regular_class_day); if (s.length > 0 && s[0].time) return s; var _t = contactProperties.regular_class_time_in_cet || contactProperties.regular_class_time__in_cet_ || ''; if (_t) return [{day: contactProperties.regular_class_day || '', time: _t}]; return s; })(),
         paymentType: paymentPlanParsed.paymentPlanType,
         installmentFrequency: paymentPlanParsed.installmentFrequency,
         customPlanDetails: paymentPlanParsed.customPlanDetails,
@@ -324,8 +326,12 @@ function fetchLatestMigrationTicket(jlid) {
       
       Logger.log(`✅ Selected Newest Ticket:`);
       Logger.log(`   ID: ${latestTicket.id}`);
-      Logger.log(`   Root CreatedAt: ${latestTicket.createdAt}`); // This should show the real date
+      Logger.log(`   Root CreatedAt: ${latestTicket.createdAt}`);
       Logger.log(`   Subject: ${props.subject}`);
+      Logger.log(`   current_course__t_: ${props.current_course__t_}`);
+      Logger.log(`   current_course: ${props.current_course}`);
+      Logger.log(`   future_course_1: ${props.future_course_1}`);
+      Logger.log(`   future_course_2: ${props.future_course_2}`);
 
       return {
         found: true,
@@ -333,7 +339,7 @@ function fetchLatestMigrationTicket(jlid) {
         oldTeacher: getTeacherLabel(props.current_teacher__t_) || '',
         newTeacher: getTeacherLabel(props.new_teacher) || '',
         reason: props.reason_of_migration__t_ || '',
-        ticketCourse: getCourseLabel(props.current_course__t_ || props.current_course) || '',
+        ticketCourse: props.current_course__t_ ? (getCourseLabel(props.current_course__t_) || props.current_course__t_) : '',
         classDay: props.regular_class_day__t_ || '',
         classTime: props.regular_class_time__in_cet_ || '',
         rawProperties: props
@@ -3692,7 +3698,7 @@ function fetchPersonaSmartData(jlid) {
   // 3. Logic: If active ticket exists, switch to Migration mode and override courses
   if (ticketResult.found) {
     mode = "Migration";
-    contextData.currentCourse = ticketResult.ticketCourse || d.course;
+    contextData.currentCourse = ticketResult.ticketCourse || '';
     contextData.currentTeacher = ticketResult.oldTeacher || d.currentTeacher;
     contextData.migrationReason = ticketResult.reason || "";
 

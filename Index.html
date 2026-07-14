@@ -693,6 +693,11 @@
                 <div class="form-group">
                   <label class="form-label">Timezone</label>
                   <select id="migrationTimezone" class="form-control form-select"><option value="" disabled selected>Select Timezone</option></select>
+                  <div style="margin-top:6px;display:flex;gap:14px;font-size:0.8rem;color:var(--text-light);">
+                    <span style="font-weight:600;">Class time (CET):</span>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="migrationCetMode" value="CET" checked> UTC+1 Winter</label>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="migrationCetMode" value="CEST"> UTC+2 Summer</label>
+                  </div>
                 </div>
                 <div class="form-group full-width"><label class="form-label">Class Schedule</label><div id="classSessionsContainer"></div><button type="button" class="btn btn-outline" id="addClassSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button></div>
                 <div class="form-group"><label for="clsManager" class="form-label">CLS Manager</label><select id="clsManager" class="form-control" required><option value="" disabled selected>Select CLS</option></select></div>
@@ -929,7 +934,15 @@
                  <div class="form-grid">
                     <div class="form-group"><label for="onboardingParentStartDate" class="form-label">Start Date</label><input type="date" id="onboardingParentStartDate" class="form-control" required></div>
                     <div class="form-group"><label for="onboardingParentEndDate" class="form-label">End Date</label><input type="date" id="onboardingParentEndDate" class="form-control" required></div>
-                    <div class="form-group"><label for="onboardingParentTimezone" class="form-label">Timezone</label><select id="onboardingParentTimezone" class="form-control form-select" required></select></div>
+                    <div class="form-group">
+                      <label for="onboardingParentTimezone" class="form-label">Timezone</label>
+                      <select id="onboardingParentTimezone" class="form-control form-select" required></select>
+                      <div style="margin-top:6px;display:flex;gap:14px;font-size:0.8rem;color:var(--text-light);">
+                        <span style="font-weight:600;">Class time (CET):</span>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="onboardingCetMode" value="CET" checked> UTC+1 Winter</label>
+                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="radio" name="onboardingCetMode" value="CEST"> UTC+2 Summer</label>
+                      </div>
+                    </div>
                     <div class="form-group full-width"><label class="form-label">Class Schedule</label><div id="onboardingParentClassSessionsContainer"></div><button type="button" class="btn btn-outline" id="addOnboardingParentClassSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Session</button></div>
                     <div class="form-group"><label for="onboardingParentZoomLink" class="form-label">Zoom Link</label><input type="url" id="onboardingParentZoomLink" class="form-control" required></div>
                     <div class="form-group"><label for="onboardingParentPracticeDocumentLink" class="form-label">Practice Doc Link (Optional)</label><input type="url" id="onboardingParentPracticeDocumentLink" class="form-control"></div>
@@ -962,7 +975,20 @@
 
                     <div class="form-group"><label for="onboardingParentFreeClasses" class="form-label">Free Classes</label><input type="number" id="onboardingParentFreeClasses" class="form-control" value="0" min="0"></div>
                     <div class="form-group"><label for="onboardingParentDiscount" class="form-label">Discount</label><input type="number" id="onboardingParentDiscount" class="form-control" value="0" min="0" step="0.01"></div>                    
-                  <div class="form-group"><label for="onboardingParentPartialPayment" class="form-label">Partial Payment Received (Optional)</label><input type="number" id="onboardingParentPartialPayment" class="form-control" placeholder="e.g., 250.50" min="0" step="0.01"></div>
+                  <div class="form-group">
+                    <label for="onboardingParentPartialPayment" class="form-label">Partial Payment Received (Optional)</label>
+                    <input type="number" id="onboardingParentPartialPayment" class="form-control" placeholder="e.g., 250.50" min="0" step="0.01">
+                    <div style="margin-top:8px;display:flex;gap:16px;font-size:0.82rem;">
+                      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                        <input type="radio" name="onboardingPaymentLabel" id="onboardingLabelToken" value="token" checked>
+                        <span>Token / Deposit</span>
+                      </label>
+                      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                        <input type="radio" name="onboardingPaymentLabel" id="onboardingLabelInstallment" value="installment">
+                        <span>1st Installment</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 
                 <div class="form-group full-width" style="border-top: 1px solid var(--gray); padding-top: 1.5rem;">
@@ -1520,7 +1546,20 @@
                 <div class="form-group"><label for="invoiceSessionsPerWeek" class="form-label">Sessions per Week</label><select id="invoiceSessionsPerWeek" class="form-control form-select" required><option value="" disabled selected>Select sessions</option></select></div>
                 <div class="form-group"><label for="invoiceFreeClasses" class="form-label">Free Classes</label><input type="number" id="invoiceFreeClasses" class="form-control" value="0" min="0"></div> 
                 <div class="form-group"><label for="invoiceDiscount" class="form-label">Discount</label><input type="number" id="invoiceDiscount" class="form-control" value="0" min="0" step="0.01"></div>
-                <div class="form-group"><label for="invoiceCustomPaidAmount" class="form-label">Partial Payment Received (Optional)</label><input type="number" id="invoiceCustomPaidAmount" class="form-control" placeholder="e.g., 250" min="0"></div>
+                <div class="form-group">
+                  <label for="invoiceCustomPaidAmount" class="form-label">Partial Payment Received (Optional)</label>
+                  <input type="number" id="invoiceCustomPaidAmount" class="form-control" placeholder="e.g., 250" min="0">
+                  <div style="margin-top:8px;display:flex;gap:16px;font-size:0.82rem;">
+                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                      <input type="radio" name="invoicePaymentLabel" id="invoiceLabelToken" value="token" checked>
+                      <span>Token / Deposit</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                      <input type="radio" name="invoicePaymentLabel" id="invoiceLabelInstallment" value="installment">
+                      <span>1st Installment</span>
+                    </label>
+                  </div>
+                </div>
                 <div class="form-group"><label for="invoiceSubscriptionTenure" class="form-label">Subscription Tenure (Months)</label><select id="invoiceSubscriptionTenure" class="form-control form-select" required><option value="" disabled selected>Select tenure</option></select></div>
                 <div class="form-group"><label for="invoiceStartDate" class="form-label">Start Date</label><input type="date" id="invoiceStartDate" class="form-control" required></div>
                 <div class="form-group"><label for="invoiceEndDate" class="form-label">End Date</label><input type="date" id="invoiceEndDate" class="form-control" required></div>
@@ -1654,6 +1693,20 @@
                   <div class="form-group">
                       <label class="form-label">Payment Received Date</label>
                       <input type="date" id="renewalPaymentDate" class="form-control" required>
+                  </div>
+                  <div class="form-group">
+                      <label class="form-label">Partial Payment Received (Optional)</label>
+                      <input type="number" id="renewalCustomPaidAmount" class="form-control" placeholder="e.g., 100" min="0">
+                      <div style="margin-top:8px;display:flex;gap:16px;font-size:0.82rem;">
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                          <input type="radio" name="renewalPaymentLabel" id="renewalLabelToken" value="token" checked>
+                          <span>Token / Deposit</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                          <input type="radio" name="renewalPaymentLabel" id="renewalLabelInstallment" value="installment">
+                          <span>1st Installment</span>
+                        </label>
+                      </div>
                   </div>
                   <div class="form-group">
                       <label class="form-label">Payment Type</label>
@@ -3334,6 +3387,7 @@
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Actions</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">HS Deal</th>
             </tr>
           </thead>
           <tbody id="ktTableBody">
@@ -3380,6 +3434,8 @@
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Update Status</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Entry By</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Escalated</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Chat</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">HS Deal</th>
             </tr>
           </thead>
           <tbody id="ktPWBTableBody">
@@ -3552,7 +3608,7 @@
               <div style="font-size:0.78rem;color:#78350f;margin-top:0.2rem;">Password: <strong>jetlearn</strong></div>
             </div>
 
-            <button class="btn btn-primary" style="width:100%;margin-bottom:0.9rem;" onclick="generateScratchCreds()">
+            <button id="credGenerateBtn" class="btn btn-primary" style="width:100%;margin-bottom:0.9rem;display:none;" onclick="generateScratchCreds()">
               <i class="fas fa-magic"></i> Generate &amp; Add to Calendar
             </button>
 
@@ -3567,33 +3623,47 @@
             <div id="credResult" style="display:none;padding:0.65rem 0.9rem;border-radius:8px;font-size:0.82rem;"></div>
           </div>
 
-          <!-- Right: Steps -->
-          <div style="display:flex;flex-direction:column;gap:1rem;">
-            <div class="card" style="padding:1.25rem;">
-              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.9rem;">Steps</div>
-              <div style="display:flex;flex-direction:column;gap:0.75rem;">
-                <div style="display:flex;align-items:center;gap:0.65rem;">
-                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">1</div>
-                  <span style="font-size:0.82rem;color:#374151;">Enter JLID → <strong>Lookup</strong> learner name</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:0.65rem;">
-                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">2</div>
-                  <span style="font-size:0.82rem;color:#374151;">Click <strong>Generate</strong> — username assigned + calendar updated</span>
-                </div>
-                <div style="display:flex;align-items:center;gap:0.65rem;">
-                  <div style="width:24px;height:24px;background:#6366f1;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.72rem;font-weight:700;color:#fff;">3</div>
-                  <span style="font-size:0.82rem;color:#374151;">Click <strong>Register on Scratch</strong> to create the account</span>
-                </div>
-              </div>
+          <!-- Right: Calendar Preview -->
+          <div id="credCalendarPreview" style="display:flex;flex-direction:column;gap:1rem;">
+
+            <!-- Placeholder before lookup -->
+            <div id="credPreviewEmpty" class="card" style="padding:2rem;text-align:center;color:#94a3b8;">
+              <i class="fas fa-calendar-alt" style="font-size:2rem;margin-bottom:0.75rem;display:block;"></i>
+              <div style="font-size:0.85rem;">Enter a JLID and click <strong>Lookup</strong> to see upcoming sessions</div>
             </div>
-            <div class="card" style="padding:1.25rem;background:#f8fafc;">
-              <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.6rem;">What Gets Updated</div>
-              <div style="font-size:0.8rem;color:#475569;line-height:2;">
-                <div><i class="fas fa-table" style="color:#f97316;width:16px;margin-right:6px;"></i>Scratch Credentials sheet — new row</div>
-                <div><i class="fas fa-calendar-alt" style="color:#6366f1;width:16px;margin-right:6px;"></i>Google Calendar — event description updated</div>
-                <div><i class="fas fa-lock" style="color:#10b981;width:16px;margin-right:6px;"></i>Password always: <strong>jetlearn</strong></div>
+
+            <!-- Loaded preview -->
+            <div id="credPreviewCard" style="display:none;flex-direction:column;gap:1rem;">
+
+              <!-- Session count + schedule -->
+              <div class="card" style="padding:1.25rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+                  <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;">Upcoming Sessions</div>
+                  <span id="credSessionCount" style="background:#ede9fe;color:#5b21b6;font-weight:800;font-size:0.85rem;padding:3px 12px;border-radius:99px;"></span>
+                </div>
+                <div id="credLastSession" style="font-size:0.75rem;color:#64748b;margin-bottom:0.9rem;"></div>
+                <div id="credSessionList" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
               </div>
+
+              <!-- Participants -->
+              <div class="card" style="padding:1.25rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.6rem;">Participants</div>
+                <div id="credAttendeeList" style="font-size:0.82rem;color:#374151;line-height:1.8;"></div>
+              </div>
+
+              <!-- Current description -->
+              <div class="card" style="padding:1.25rem;">
+                <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:0.6rem;">Current Calendar Description</div>
+                <pre id="credCurrentDesc" style="font-size:0.78rem;color:#374151;white-space:pre-wrap;margin:0;font-family:inherit;background:#f8fafc;padding:0.75rem;border-radius:8px;max-height:140px;overflow-y:auto;"></pre>
+              </div>
+
             </div>
+
+            <!-- Error state -->
+            <div id="credPreviewError" style="display:none;" class="card">
+              <div style="padding:1rem;font-size:0.82rem;color:#991b1b;background:#fef2f2;border-radius:8px;"></div>
+            </div>
+
           </div>
         </div>
       </div><!-- end scratch panel -->
@@ -4593,7 +4663,7 @@
   </div>
 
 <!-- ── Utility modals: outside appContainer AND before JS include so getElementById works ── -->
-<div class="modal-overlay" id="loadingModal"><div class="modal" style="max-width: 300px;"><div class="modal-body" style="text-align: center;"><div class="spinner"></div><p style="margin-top: 1rem;" id="loadingMessage">Processing your request...</p></div></div></div>
+<div class="modal-overlay" id="loadingModal"><div class="modal loading-timeline-modal"><div class="modal-body"><div class="loading-timeline-head"><div class="spinner" id="loadingSpinner"></div><i class="fas fa-check-circle" id="loadingDoneIcon" style="display:none;color:#22c55e;font-size:1.6rem;flex-shrink:0;"></i><div><p id="loadingMessage">Processing your request...</p><div id="loadingElapsed">Elapsed 0s</div></div></div><div id="loadingTimeline" class="loading-timeline-list"></div><div id="loadingDoneBar" style="display:none;padding-top:1rem;text-align:right;border-top:1px solid var(--gray);margin-top:1rem;"><button class="btn btn-primary btn-sm" onclick="hideLoading()">Close</button></div></div></div></div>
 <div class="modal-overlay" id="confirmModal">
   <div class="confirm-card">
     <div class="confirm-card-icon" id="confirmIconWrap"><i class="fas fa-sign-out-alt" id="confirmIcon"></i></div>
@@ -6860,5 +6930,4 @@
 
 </body>
 </html>
-
 

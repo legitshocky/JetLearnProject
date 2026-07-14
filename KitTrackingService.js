@@ -1141,36 +1141,31 @@ function handleKitReply(waId, buttonText) {
     if (lastRow < 2) return;
 
     var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.PHONE_SENT_TO).getValues();
-    var matchRow = -1;
 
-    // Find matching row by phone AND no delivery date yet
+    // Collect ALL pending rows for this phone (siblings share same parent phone)
+    var matchedRows = [];
     rows.forEach(function(row, idx) {
-      if (matchRow > -1) return;
       var phone        = _normalisePhone(String(row[KIT_COL.PHONE_SENT_TO - 1] || ''));
       var deliveryDate = String(row[KIT_COL.DELIVERY_DATE - 1] || '').trim();
-      if (phone && phone === normPhone && !deliveryDate) {
-        matchRow = idx + 2; // 1-based
-      }
+      if (phone && phone === normPhone && !deliveryDate) matchedRows.push(idx + 2);
     });
 
-    if (matchRow === -1) {
+    if (!matchedRows.length) {
       Logger.log('[KitTracking] No matching pending row for phone ' + normPhone);
       return;
     }
+    Logger.log('[KitTracking] Found ' + matchedRows.length + ' pending row(s) for phone ' + normPhone);
 
+    matchedRows.forEach(function(matchRow) {
     var dataRow      = rows[matchRow - 2];
     var jlid         = String(dataRow[KIT_COL.JLID - 1]         || '').trim();
     var kitName      = String(dataRow[KIT_COL.KIT - 1]          || '').trim();
     var learnerName  = String(dataRow[KIT_COL.LEARNER_NAME - 1] || '').trim();
     var orderDateRaw = dataRow[KIT_COL.DATE_OF_ORDER - 1];
-
-    // Normalise JLID � strip trailing non-alphanumeric chars (e.g. JL39611449152C2 ? JL39611449152C)
     var normJlid = jlid.replace(/[^A-Z0-9]$/i, '').trim();
-    if (normJlid !== jlid) Logger.log('[KitTracking] JLID normalised: �' + jlid + '� ? �' + normJlid + '�');
+    Logger.log('[KitTracking] Processing row ' + matchRow + ' JLID=' + normJlid + ' kit=' + kitName);
 
-    Logger.log('[KitTracking] Matched row ' + matchRow + ' JLID=' + normJlid + ' kit=' + kitName);
-
-    // Write parent response regardless
+    // Write parent response
     sheet.getRange(matchRow, KIT_COL.PARENT_RESPONSE).setValue(buttonText);
 
     if (buttonText === 'Kit Received') {
@@ -1240,6 +1235,7 @@ function handleKitReply(waId, buttonText) {
       Logger.log('[KitTracking] Need to check � row ' + matchRow + ' flagged, HS note added.');
     }
 
+    }); // end matchedRows.forEach
   } catch (e) {
     Logger.log('[KitTracking] handleKitReply ERROR: ' + e.message + '\n' + e.stack);
   }
@@ -1567,7 +1563,8 @@ function getKitTrackingData() {
         reason:       String(r[11] || '').trim(),   // L: Reason
         subscription: String(r[12] || '').trim(),   // M: Subscription
         roadmap:      String(r[13] || '').trim(),   // N: Roadmap
-        sentBy:       String(r[14] || '').trim()    // O: Sent By
+        sentBy:       String(r[14] || '').trim(),   // O: Sent By
+        phone:        String(r[19] || '').replace(/\D/g, '')  // T: Phone Sent To
       });
     });
 
@@ -1751,42 +1748,20 @@ function addKitEntry(data) {
             hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit type "' + (data.kit||'') + '" has no HubSpot status property mapped.';
           }
 
-          var dealUrl = 'https://api.hubapi.com/crm/v3/objects/deals/' + dealId;
-          var patchHdr = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
-
-          // PATCH 1: kit status (separate so a bad enum doesn't block cost update)
-          if (kitProp) {
-            var statusResp = monitoredFetch(dealUrl, {
-              method: 'PATCH', headers: patchHdr,
-              payload: JSON.stringify({ properties: { [kitProp]: 'Sent' } }),
+          // Single PATCH — all props together (status enum confirmed valid, no need to split)
+          if (Object.keys(hsProps).length > 0) {
+            var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+              method: 'PATCH',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              payload: JSON.stringify({ properties: hsProps }),
               muteHttpExceptions: true
             });
-            var statusCode = statusResp.getResponseCode();
-            Logger.log('[KitTracking] addKitEntry kit status PATCH HTTP ' + statusCode + ' prop=' + kitProp + ' val=Sent');
-            if (statusCode !== 200) {
-              var statusBody = statusResp.getContentText();
-              Logger.log('[KitTracking] addKitEntry kit status PATCH ERROR: ' + statusBody.substring(0, 500));
-              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit status update failed (HTTP ' + statusCode + '): ' + statusBody.substring(0, 200);
-            } else {
-              hsUpdated = true;
-            }
-          }
-
-          // PATCH 2: cost + subscription (independent of kit status)
-          var costProps = {};
-          if (price > 0) costProps['learning_kit_cost'] = hsProps['learning_kit_cost'];
-          if (data.subscription) costProps['subscription'] = data.subscription;
-          if (Object.keys(costProps).length > 0) {
-            var costResp = monitoredFetch(dealUrl, {
-              method: 'PATCH', headers: patchHdr,
-              payload: JSON.stringify({ properties: costProps }),
-              muteHttpExceptions: true
-            });
-            var costCode = costResp.getResponseCode();
-            Logger.log('[KitTracking] addKitEntry cost PATCH HTTP ' + costCode + ' props=' + JSON.stringify(costProps));
-            if (costCode !== 200) {
-              Logger.log('[KitTracking] addKitEntry cost PATCH ERROR: ' + costResp.getContentText().substring(0, 400));
-              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Cost update failed (HTTP ' + costCode + ').';
+            var patchCode = patchResp.getResponseCode();
+            Logger.log('[KitTracking] addKitEntry HubSpot PATCH HTTP ' + patchCode + ' props=' + JSON.stringify(hsProps));
+            if (patchCode !== 200) {
+              var patchErr = patchResp.getContentText();
+              Logger.log('[KitTracking] addKitEntry PATCH ERROR: ' + patchErr.substring(0, 500));
+              hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'HubSpot update failed (HTTP ' + patchCode + '): ' + patchErr.substring(0, 200);
             } else {
               hsUpdated = true;
             }
@@ -1869,6 +1844,7 @@ function addKitEntry(data) {
 // SEND FOLLOW-UP BY ROW INDEX  (manual send — handles missing JLID via auto-lookup)
 // ─────────────────────────────────────────────────────────────────────────────
 function sendKitFollowUpByRow(rowIndex, jlidOverride) {
+  var timeline = [];
   try {
     var sheet = _getKitSheet();
     var row   = sheet.getRange(rowIndex, 1, 1, KIT_COL.PHONE_SENT_TO).getValues()[0];
@@ -1880,34 +1856,43 @@ function sendKitFollowUpByRow(rowIndex, jlidOverride) {
     // Auto-find JLID if missing
     if (!jlid) {
       jlid = _findJlidByKitStatus(learnerName, kitName) || '';
-      if (!jlid) return { success: false, needJlid: true, message: 'Could not auto-find JLID for "' + learnerName + '". Please enter JLID manually.' };
+      if (!jlid) return { success: false, needJlid: true, message: 'Could not auto-find JLID for "' + learnerName + '". Please enter JLID manually.', timeline: timeline };
       // Save it to sheet
       sheet.getRange(rowIndex, KIT_COL.JLID).setValue(jlid);
       Logger.log('[KitTracking] sendKitFollowUpByRow: auto-filled JLID=' + jlid + ' for row ' + rowIndex);
     }
 
+    var hsStarted = new Date().getTime();
     var hs = fetchHubspotByJlid(jlid);
-    if (!hs || !hs.success || !hs.data.parentContact) return { success: false, message: 'HubSpot lookup failed for ' + jlid + ': ' + (hs && hs.message) };
+    if (!hs || !hs.success || !hs.data.parentContact) {
+      _timelineAdd(timeline, 'hubspot_lookup', 'HubSpot Parent Contact Failed', 'failed', hsStarted, (hs && hs.message) || '');
+      return { success: false, message: 'HubSpot lookup failed for ' + jlid + ': ' + (hs && hs.message), timeline: timeline };
+    }
+    _timelineAdd(timeline, 'hubspot_lookup', 'HubSpot Parent Contact Found', 'success', hsStarted, '');
 
     var phone      = _normalisePhone(hs.data.parentContact);
     var parentName = hs.data.parentName || hs.data && hs.data.parentName || learnerName;
-    if (!phone) return { success: false, message: 'No phone number found for ' + jlid };
+    if (!phone) return { success: false, message: 'No phone number found for ' + jlid, timeline: timeline };
 
+    var whatsappStarted = new Date().getTime();
     var watiResult = sendWatiMessage(phone, 'migration_kit_fup_sent_by_us', [
       { name: 'Parent',   value: parentName  },
       { name: 'Kit_name', value: kitName     },
       { name: 'Learner',  value: learnerName }
     ]);
     Logger.log('[KitTracking] sendKitFollowUpByRow: WATI=' + JSON.stringify(watiResult));
+    _timelineAdd(timeline, 'kit_whatsapp', 'Parent WhatsApp Sent', watiResult && watiResult.success === false ? 'failed' : 'success', whatsappStarted, phone);
 
+    var sheetStarted = new Date().getTime();
     sheet.getRange(rowIndex, KIT_COL.FOLLOWUP_SENT).setValue('TRUE');
     sheet.getRange(rowIndex, KIT_COL.FOLLOWUP_SENT_AT).setValue(new Date());
     sheet.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone);
+    _timelineAdd(timeline, 'sheet_update', 'Kit Reminder Logged', 'success', sheetStarted, '');
 
-    return { success: true, message: 'Follow-up sent to ' + phone, jlid: jlid };
+    return { success: true, message: 'Follow-up sent to ' + phone, jlid: jlid, timeline: timeline };
   } catch (e) {
     Logger.log('[KitTracking] sendKitFollowUpByRow ERROR: ' + e.message);
-    return { success: false, message: e.message };
+    return { success: false, message: e.message, timeline: timeline };
   }
 }
 
@@ -1915,11 +1900,12 @@ function sendKitFollowUpByRow(rowIndex, jlidOverride) {
 // RESEND KIT FOLLOW-UP  (manual resend from dashboard)
 // ─────────────────────────────────────────────────────────────────────────────
 function resendKitFollowUp(jlid) {
+  var timeline = [];
   try {
-    if (!jlid) return { success: false, message: 'No JLID provided.' };
+    if (!jlid) return { success: false, message: 'No JLID provided.', timeline: timeline };
     var sheet   = _getKitSheet();
     var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return { success: false, message: 'Sheet empty.' };
+    if (lastRow < 2) return { success: false, message: 'Sheet empty.', timeline: timeline };
 
     var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.PHONE_SENT_TO).getValues();
     var matchRow = -1;
@@ -1928,37 +1914,44 @@ function resendKitFollowUp(jlid) {
       if (String(r[KIT_COL.JLID - 1] || '').trim() === jlid) matchRow = idx + 2;
     });
 
-    if (matchRow === -1) return { success: false, message: 'JLID not found in sheet: ' + jlid };
+    if (matchRow === -1) return { success: false, message: 'JLID not found in sheet: ' + jlid, timeline: timeline };
 
     var dataRow     = rows[matchRow - 2];
     var learnerName = String(dataRow[KIT_COL.LEARNER_NAME - 1] || '').trim();
     var kitName     = String(dataRow[KIT_COL.KIT - 1]          || '').trim();
 
+    var hsStarted = new Date().getTime();
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success || !hs.data.parentContact) {
-      return { success: false, message: 'HubSpot lookup failed for ' + jlid };
+      _timelineAdd(timeline, 'hubspot_lookup', 'HubSpot Parent Contact Failed', 'failed', hsStarted, (hs && hs.message) || '');
+      return { success: false, message: 'HubSpot lookup failed for ' + jlid, timeline: timeline };
     }
+    _timelineAdd(timeline, 'hubspot_lookup', 'HubSpot Parent Contact Found', 'success', hsStarted, '');
 
     var phone      = _normalisePhone(hs.data.parentContact);
     var parentName = hs.data.parentName || learnerName || 'Parent';
-    if (!phone) return { success: false, message: 'No phone found for ' + jlid };
+    if (!phone) return { success: false, message: 'No phone found for ' + jlid, timeline: timeline };
 
+    var whatsappStarted = new Date().getTime();
     var watiResult = sendWatiMessage(phone, 'migration_kit_fup_sent_by_us', [
       { name: 'Parent',   value: parentName  },
       { name: 'Kit_name', value: kitName     },
       { name: 'Learner',  value: learnerName }
     ]);
     Logger.log('[KitTracking] Resend result: ' + JSON.stringify(watiResult));
+    _timelineAdd(timeline, 'kit_whatsapp', 'Parent WhatsApp Sent', watiResult && watiResult.success === false ? 'failed' : 'success', whatsappStarted, phone);
 
     // Update sheet
+    var sheetStarted = new Date().getTime();
     sheet.getRange(matchRow, KIT_COL.FOLLOWUP_SENT).setValue('TRUE');
     sheet.getRange(matchRow, KIT_COL.FOLLOWUP_SENT_AT).setValue(new Date());
     sheet.getRange(matchRow, KIT_COL.PHONE_SENT_TO).setValue(phone);
+    _timelineAdd(timeline, 'sheet_update', 'Kit Reminder Logged', 'success', sheetStarted, '');
 
-    return { success: true, message: 'Follow-up resent to ' + phone };
+    return { success: true, message: 'Follow-up resent to ' + phone, timeline: timeline };
   } catch (e) {
     Logger.log('[KitTracking] resendKitFollowUp ERROR: ' + e.message);
-    return { success: false, message: e.message };
+    return { success: false, message: e.message, timeline: timeline };
   }
 }
 

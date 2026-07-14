@@ -3017,6 +3017,105 @@
       margin: 0 auto;
     }
 
+    .loading-timeline-modal {
+      max-width: 460px;
+      width: min(92vw, 460px);
+    }
+    .loading-timeline-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .loading-timeline-head .spinner {
+      margin: 0;
+      flex-shrink: 0;
+    }
+    #loadingMessage {
+      margin: 0;
+      color: #111827;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+    #loadingElapsed {
+      margin-top: 3px;
+      color: #94a3b8;
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+    .loading-timeline-list {
+      display: none;
+      margin-top: 16px;
+      border: 1px solid #edf2f7;
+      border-radius: 10px;
+      overflow: hidden;
+      text-align: left;
+    }
+    .loading-timeline-list.active {
+      display: block;
+    }
+    .loading-timeline-row {
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      background: #ffffff;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .loading-timeline-row:last-child {
+      border-bottom: 0;
+    }
+    .loading-timeline-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      background: #f1f5f9;
+      color: #94a3b8;
+    }
+    .loading-timeline-label {
+      color: #334155;
+      font-size: 0.84rem;
+      font-weight: 650;
+      line-height: 1.25;
+    }
+    .loading-timeline-detail {
+      margin-top: 2px;
+      color: #94a3b8;
+      font-size: 0.72rem;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .loading-timeline-time {
+      color: #64748b;
+      font-size: 0.72rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .loading-timeline-row.pending .loading-timeline-icon {
+      background: #f8fafc;
+      color: #cbd5e1;
+    }
+    .loading-timeline-row.running .loading-timeline-icon {
+      background: #eef2ff;
+      color: #6366f1;
+    }
+    .loading-timeline-row.success .loading-timeline-icon {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    .loading-timeline-row.failed .loading-timeline-icon {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .loading-timeline-row.skipped .loading-timeline-icon {
+      background: #f1f5f9;
+      color: #94a3b8;
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }

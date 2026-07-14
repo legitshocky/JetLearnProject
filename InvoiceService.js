@@ -149,13 +149,13 @@ function getConversionRate(toCurrency) {
 }
 function getCurrencySymbol(currencyCode) {
     switch (currencyCode) {
-        case 'GBP': return '&pound;';
-        case 'EUR': return '&euro;';
+        case 'GBP': return '£';
+        case 'EUR': return '€';
         case 'USD': return '$';
-        case 'INR': return '&#8377;';
+        case 'INR': return '₹';
         case 'PKR': return 'Rs';
-        case 'BDT': return '&#2547;';
-        case 'JPY': return '&yen;';
+        case 'BDT': return '৳';
+        case 'JPY': return '¥';
         case 'AUD': return 'A$';
         case 'CAD': return 'C$';
         case 'CHF': return 'CHF';
@@ -396,7 +396,7 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         discount: discount,
         finalTotal: finalTotal, // Total Deal Value
         amountPaid: amountPaid,       // Collected
-        isTokenPayment: customPaidAmount > 0, // true only when explicit token/deposit entered
+        isTokenPayment: formData.isTokenPayment === true || formData.isTokenPayment === 'true', // explicitly set by user
         balanceDue: balanceDue,       // Remaining
         currencySymbol: finalCurrencySymbol,
         subscriptionTenureMonths: userSelectedTenureMonths,

@@ -51,6 +51,39 @@ function getOrCreateSheet(sheetName) {
   }
 }
 
+function _timelineStep(timeline, key, label, fn) {
+  var started = new Date().getTime();
+  try {
+    var value = fn();
+    timeline.push({
+      key: key,
+      label: label,
+      status: 'success',
+      durationMs: new Date().getTime() - started
+    });
+    return value;
+  } catch (e) {
+    timeline.push({
+      key: key,
+      label: label,
+      status: 'failed',
+      durationMs: new Date().getTime() - started,
+      detail: e && e.message ? e.message : String(e)
+    });
+    throw e;
+  }
+}
+
+function _timelineAdd(timeline, key, label, status, started, detail) {
+  timeline.push({
+    key: key,
+    label: label,
+    status: status || 'success',
+    durationMs: started ? (new Date().getTime() - started) : 0,
+    detail: detail || ''
+  });
+}
+
 // Opens (or creates) a sheet in the JetLearn App Data spreadsheet
 function getOrCreateAppDataSheet(sheetName) {
   try {

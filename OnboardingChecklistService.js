@@ -375,8 +375,15 @@ function runOnboardingChecklist(dealId, extraData) {
       }
 
       // ── 2. Fetch WATI conversation ID → proper teamInbox chat URL ──
+      // Wait 3s so WATI registers the new conversation before we fetch the link
       try {
+        Utilities.sleep(3000);
         var linkRes = fetchWatiDirectLink(phone);
+        // Retry once if first attempt fails (WATI sometimes needs extra time)
+        if (!linkRes || !linkRes.success) {
+          Utilities.sleep(3000);
+          linkRes = fetchWatiDirectLink(phone);
+        }
         if (linkRes && linkRes.success && linkRes.link) {
           Logger.log('[OBC] WATI chat link: ' + linkRes.link);
           chatLinkUpdated = _obcPatchDeal(dealId, { timelines_chat_link: linkRes.link });

@@ -8,44 +8,66 @@
 
 var CREDS_SPREADSHEET_ID = '1KsyxldnHpm7gEyTcmmQFkz-uaqTM_FMhNTxh7OXBCTk';
 var SCRATCH_SHEET_TAB    = 'Scratch Credentials';
-var SCRATCH_PREFIX       = 'SHJLK';
+var SCRATCH_PREFIX       = 'JLRCB';
 var SCRATCH_PASSWORD     = 'jetlearn';
 
 // ─── Public ──────────────────────────────────────────────────────────────────
 
 /**
- * Generate next Scratch username for a learner, log to sheet, update calendar.
- * Called from client after user has created the account on scratch.mit.edu.
+ * Assign the next available Scratch credential (col A = username, col B = password)
+ * to a learner by writing their name (col C) and JLID (col D).
+ * Picks the first row where col C is empty — no new usernames are generated.
  *
  * @param {string} jlid        - e.g. "JL55030989090C"
- * @param {string} learnerName - display name for logging
- * @returns {{ success, username, password, calendarUpdated, registerLink, nextUsername }}
+ * @param {string} learnerName - display name
+ * @returns {{ success, username, password, calendarUpdated }}
  */
 function generateScratchCredentials(jlid, learnerName) {
   try {
     if (!jlid) return { success: false, error: 'JLID required' };
 
-    // 1. Get next username
-    var username = _getNextScratchUsername();
-
-    // 2. Log to credentials sheet
     var ss    = SpreadsheetApp.openById(CREDS_SPREADSHEET_ID);
     var sheet = ss.getSheetByName(SCRATCH_SHEET_TAB);
-    if (!sheet) return { success: false, error: 'Sheet "' + SCRATCH_SHEET_TAB + '" not found in credentials spreadsheet' };
-    sheet.appendRow([username, SCRATCH_PASSWORD, learnerName || jlid, jlid, new Date()]);
+    if (!sheet) return { success: false, error: 'Sheet "' + SCRATCH_SHEET_TAB + '" not found' };
 
-    // 3. Update calendar event description
-    var calUpdated = _updateCalendarWithCredentials(jlid, 'Scratch = ' + username + '\npass = ' + SCRATCH_PASSWORD);
+    var data = sheet.getDataRange().getValues();
 
-    Logger.log('[Credentials] Generated ' + username + ' for ' + jlid + ' | calendar=' + calUpdated);
+    // Find first row where col A (username) exists and col C (learner name) is empty
+    var targetRow = -1;
+    var username  = '';
+    var password  = '';
+    for (var i = 0; i < data.length; i++) {
+      var colA = String(data[i][0] || '').trim();
+      var colC = String(data[i][2] || '').trim();
+      if (colA && !colC) {
+        targetRow = i + 1; // 1-indexed sheet row
+        username  = colA;
+        password  = String(data[i][1] || SCRATCH_PASSWORD).trim();
+        break;
+      }
+    }
+
+    if (targetRow === -1) {
+      return { success: false, error: 'No available Scratch credentials left. Please add more to the sheet.' };
+    }
+
+    // Write learner name (col C) and JLID (col D) to claim the credential
+    sheet.getRange(targetRow, 3).setValue(learnerName || jlid);
+    sheet.getRange(targetRow, 4).setValue(jlid);
+
+    // Update calendar event description
+    var credText = 'Student Account on MIT Scratch coding platform:\nLogin URL: https://scratch.mit.edu/\nLogin Name: ' + username + '\nTemporary Password: ' + password;
+    var calUpdated = _updateCalendarWithCredentials(jlid, credText);
+
+    Logger.log('[Credentials] Assigned ' + username + ' to ' + jlid + ' | calendar=' + calUpdated);
 
     return {
-      success:         true,
-      username:        username,
-      password:        SCRATCH_PASSWORD,
-      calendarUpdated: calUpdated,
-      registerLink:    'https://scratch.mit.edu/join',
-      platform:        'Scratch'
+      success:          true,
+      username:         username,
+      password:         password,
+      calendarUpdated:  calUpdated > 0,
+      eventsUpdated:    calUpdated,
+      platform:         'Scratch'
     };
 
   } catch(e) {
@@ -55,83 +77,140 @@ function generateScratchCredentials(jlid, learnerName) {
 }
 
 /**
- * Peek at the next Scratch username without committing — shown in UI before generation.
+ * Preview the next available username without assigning it.
  */
 function peekNextScratchUsername() {
   try {
-    return { success: true, username: _getNextScratchUsername() };
+    var ss    = SpreadsheetApp.openById(CREDS_SPREADSHEET_ID);
+    var sheet = ss.getSheetByName(SCRATCH_SHEET_TAB);
+    if (!sheet) return { success: false, error: 'Sheet not found' };
+    var data = sheet.getDataRange().getValues();
+    for (var i = 0; i < data.length; i++) {
+      var colA = String(data[i][0] || '').trim();
+      var colC = String(data[i][2] || '').trim();
+      if (colA && !colC) return { success: true, username: colA };
+    }
+    return { success: false, error: 'No available credentials left.' };
   } catch(e) {
     return { success: false, error: e.message };
   }
 }
 
-// ─── Private ─────────────────────────────────────────────────────────────────
-
 /**
- * Read Scratch Credentials sheet, find highest SHJLK number, return incremented username.
+ * Fetch upcoming calendar sessions for a JLID — shown as preview before generating credentials.
+ * Returns session count, CET times, attendees, and current description of first event.
  */
-function _getNextScratchUsername() {
-  var ss      = SpreadsheetApp.openById(CREDS_SPREADSHEET_ID);
-  var sheet   = ss.getSheetByName(SCRATCH_SHEET_TAB);
-  var data    = sheet.getDataRange().getValues();
-  var lastNum = 0;
+function getScratchCalendarPreview(jlid) {
+  try {
+    var calendarId = CONFIG.CLASS_SCHEDULE_CALENDAR_ID;
+    if (!calendarId) return { success: false, error: 'Calendar not configured.' };
+    if (!jlid)       return { success: false, error: 'JLID required.' };
 
-  for (var i = 0; i < data.length; i++) {
-    var u = String(data[i][0] || '').trim().toUpperCase();
-    if (u.startsWith(SCRATCH_PREFIX)) {
-      var n = parseInt(u.replace(SCRATCH_PREFIX, ''), 10);
-      if (!isNaN(n) && n > lastNum) lastNum = n;
+    var now    = new Date();
+    var future = new Date();
+    future.setFullYear(future.getFullYear() + 3);
+
+    var items = Calendar.Events.list(calendarId, {
+      q:            jlid,
+      timeMin:      now.toISOString(),
+      timeMax:      future.toISOString(),
+      singleEvents: true,
+      orderBy:      'startTime',
+      maxResults:   500
+    }).items || [];
+
+    if (items.length === 0) {
+      return { success: true, count: 0, sessions: [], description: '', attendees: [] };
     }
-  }
 
-  var next = lastNum + 1;
-  // Zero-pad to at least 2 digits: SHJLK01 … SHJLK09 SHJLK10 … SHJLK99
-  return SCRATCH_PREFIX + (next < 10 ? '0' : '') + next;
+    var sessions = items.slice(0, 5).map(function(ev) {
+      var start   = ev.start && ev.start.dateTime ? new Date(ev.start.dateTime) : null;
+      var end     = ev.end   && ev.end.dateTime   ? new Date(ev.end.dateTime)   : null;
+      var dayCET      = start ? Utilities.formatDate(start, 'Europe/Paris', 'EEEE') : '—';
+      var startCET    = start ? Utilities.formatDate(start, 'Europe/Paris', 'HH:mm') : '—';
+      var endCET      = end   ? Utilities.formatDate(end,   'Europe/Paris', 'HH:mm') : '—';
+      return { day: dayCET, time: startCET + ' – ' + endCET + ' CET' };
+    });
+
+    // Last session = subscription end date
+    var lastEvent = items[items.length - 1];
+    var lastStart = lastEvent.start && lastEvent.start.dateTime ? new Date(lastEvent.start.dateTime) : null;
+    var lastSessionDate = lastStart ? Utilities.formatDate(lastStart, 'Europe/Paris', 'EEE, d MMM yyyy') : '—';
+
+    var firstAttendees = (items[0].attendees || []).map(function(a) {
+      return a.displayName || a.email || '';
+    }).filter(Boolean);
+
+    var currentDesc = (items[0].description || '').trim();
+
+    return {
+      success:         true,
+      count:           items.length,
+      sessions:        sessions,
+      lastSessionDate: lastSessionDate,
+      attendees:       firstAttendees,
+      description:     currentDesc
+    };
+
+  } catch(e) {
+    Logger.log('[CredentialsService] getScratchCalendarPreview error: ' + e.message);
+    return { success: false, error: e.message };
+  }
 }
 
 /**
  * Search Google Calendar for events whose title contains the JLID.
  * Appends credText to each matching event's description.
- * Searches from today → 180 days ahead.
  *
- * @returns {boolean} true if at least one event was updated
+ * @returns {number} count of events updated
  */
 function _updateCalendarWithCredentials(jlid, credText) {
   try {
-    var cal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
-    if (!cal) {
-      Logger.log('[Credentials] Calendar not found: ' + CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
-      return false;
+    var calendarId = CONFIG.CLASS_SCHEDULE_CALENDAR_ID;
+    if (!calendarId) {
+      Logger.log('[Credentials] No calendar ID configured.');
+      return 0;
     }
 
-    var now    = new Date();
-    var future = new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000);
-    var events = cal.getEvents(now, future);
+    var now = new Date();
+    var future = new Date();
+    future.setFullYear(future.getFullYear() + 3); // search up to 3 years ahead
 
-    // JLID in calendar title looks like: "Mazin (JL55030989090C) : ..."
-    // Strip trailing C for safer matching — covers both "JL...C" and bare "JL..."
-    var jlidBase = jlid.replace(/C$/i, '');
-    var updated  = 0;
+    // Use Calendar API (same as verifySubscriptionWithCalendar) for accurate search
+    var items = Calendar.Events.list(calendarId, {
+      q: jlid,
+      timeMin: now.toISOString(),
+      timeMax: future.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 500
+    }).items || [];
 
-    for (var i = 0; i < events.length; i++) {
-      var title = events[i].getTitle();
-      if (title.indexOf(jlidBase) === -1 && title.indexOf(jlid) === -1) continue;
+    if (items.length === 0) {
+      Logger.log('[Credentials] No upcoming calendar events found for JLID: ' + jlid);
+      return 0;
+    }
 
-      var desc = events[i].getDescription() || '';
+    var updated = 0;
+    for (var i = 0; i < items.length; i++) {
+      var event = items[i];
+      var desc = (event.description || '').trim();
 
-      // Remove stale Scratch credentials block if present
-      desc = desc.replace(/Scratch = SHJLK\d+\s*\npass = \w+/g, '').trim();
+      // Remove any stale Scratch credentials block
+      desc = desc.replace(/Student Account on MIT Scratch coding platform:[\s\S]*?Temporary Password: \S+/g, '').trim();
 
-      events[i].setDescription(desc + (desc ? '\n\n' : '') + credText);
+      var newDesc = desc + (desc ? '\n\n' : '') + credText;
+
+      Calendar.Events.patch({ description: newDesc }, calendarId, event.id);
       updated++;
     }
 
-    Logger.log('[Credentials] Calendar events updated: ' + updated + ' for JLID ' + jlid);
-    return updated > 0;
+    Logger.log('[Credentials] Updated ' + updated + ' calendar events for JLID ' + jlid);
+    return updated;
 
   } catch(e) {
     Logger.log('[CredentialsService] _updateCalendarWithCredentials error: ' + e.message);
-    return false;
+    return 0;
   }
 }
 // v1
