@@ -614,10 +614,10 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.00";
+const APP_VERSION = "7.37";
 
 function getAppVersion() {
-  return APP_VERSION;
+  return APP_VERSION;s
 }
 
 // Direct course list for Certificate Center — bypasses all caching/indirection
@@ -1233,6 +1233,7 @@ function _processPendingCertHS() {
       var noteLines = ['📜 Certificates Sent', 'Learner : ' + d.learnerName + ' (' + d.jlid + ')',
         'Sent to : ' + d.parentEmail, 'Sent by : ' + (d.performedBy || 'System'), 'Courses:'];
       (d.courses || []).forEach(function(c){ noteLines.push('  • ' + c.name + ' (' + c.year + ')'); });
+      if (d.driveUrl) noteLines.push('\n🔗 View/Download Certificate: ' + d.driveUrl);
       _certCreateDealNote(dealId, noteLines.join('\n'), hsToken);
       (d.courses || []).forEach(function(c) {
         if ((d.failed || []).indexOf(c.name) === -1) _certTickCourseSent(dealId, c.name, hsToken);

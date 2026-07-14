@@ -2,6 +2,26 @@
 
 ---
 
+## [2026-07-14] — CET Preview, GCSE Tag, Migration Fixes (V7.35)
+
+### CET Time Preview — Migration & Onboarding Parent Forms (`JavaScript.html`)
+- Purple `⌚ Day H:MM AM/PM CET` badge now appears below every Class Schedule row in Migration and Onboarding Parent forms
+- Shows **"⌚ CET: select time above"** by default (always visible), updates live when Day / Hr / Min / AM-PM change
+- Handles both IANA timezone strings (Booking Timezone) and GMT display strings like `(GMT -5:00) Eastern Time...` via offset parsing
+- Fixed sign bug in UTC conversion (`- diff` → `+ diff`) that was producing wrong CET times
+- Uses selected weekday's actual date for accurate day-rollover (e.g. Tue 7 PM Eastern → Wed 1:00 AM CET)
+
+### GCSE Event Tag (`ReserveSlot.js`)
+- Courses containing "gcse" (GCSE Premium CS Pro, GCSE NC, GCSE Custom Revision) now produce calendar event title: `Learner (JLID) : JetLearn GCSE Lesson (TJL...)`
+
+### Migration Tag — First Session Only (`ReserveSlot.js`)
+- When booking multiple sessions, `Migration :` prefix is now applied only to the **first session's** first occurrence, not all sessions
+
+### App Version (`Code.js`)
+- `APP_VERSION` updated to `"7.35"`
+
+---
+
 ## [2026-07-06] — Certificate Improvements (V6.18)
 
 ### Certificate — Slide Selected from Course Name Sheet (`CertificateService.js`)

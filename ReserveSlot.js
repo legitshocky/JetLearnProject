@@ -17,6 +17,7 @@ function _courseTypeLabel(courseName, jlid) {
   var c = String(courseName || '').toLowerCase();
   if (c.indexOf('financial') > -1 || c.indexOf('finlit') > -1) return 'Financial Literacy';
   if (c.indexOf('math') > -1) return 'Fun with Maths';
+  if (c.indexOf('gcse') > -1) return 'GCSE';
   if (c.indexOf('coding') > -1 || c.indexOf('code') > -1 || c.indexOf('ai') > -1) return 'AI-Coding';
   return courseName || 'Lesson';
 }
@@ -171,6 +172,7 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     var attendees = guests.map(function(g) { return { email: g }; });
 
     var booked = [];
+    var _sessIndex = 0;
     classSessions.forEach(function(sess) {
       var dayIdx = _DAY_INDEX[sess.day];
       var t = _parse12hTime(sess.time);
@@ -216,17 +218,20 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
       var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
       if (created && created.id) {
         _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
-        // Patch first occurrence title to "Migration : <title>"
-        try {
-          var instances = Calendar.Events.instances(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id, { maxResults: 1 });
-          if (instances && instances.items && instances.items.length) {
-            var firstInst = instances.items[0];
-            Calendar.Events.patch({ summary: 'Migration : ' + title }, CONFIG.CLASS_SCHEDULE_CALENDAR_ID, firstInst.id);
+        // Patch first occurrence of first session only with "Migration : <title>"
+        if (_sessIndex === 0) {
+          try {
+            var instances = Calendar.Events.instances(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id, { maxResults: 1 });
+            if (instances && instances.items && instances.items.length) {
+              var firstInst = instances.items[0];
+              Calendar.Events.patch({ summary: 'Migration : ' + title }, CONFIG.CLASS_SCHEDULE_CALENDAR_ID, firstInst.id);
+            }
+          } catch(me) {
+            Logger.log('[bookClassesWithNewTeacher] Migration tag patch failed: ' + me.message);
           }
-        } catch(me) {
-          Logger.log('[bookClassesWithNewTeacher] Migration tag patch failed: ' + me.message);
         }
       }
+      _sessIndex++;
 
       if (info.calendarId && info.calendarId !== CONFIG.CLASS_SCHEDULE_CALENDAR_ID) {
         try {

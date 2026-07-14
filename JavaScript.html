@@ -184,6 +184,9 @@ const classSessionsContainer = document.getElementById('classSessionsContainer')
 const addClassSessionBtn = document.getElementById('addClassSessionBtn');
 let sessionCounter = 0;
 
+// Cache for CET re-conversion when radio toggled
+var _lastCetSessions = { migration: null, onboarding: null }; // {cetSessions, timezone, formPrefix}
+
 // Onboarding Parent Email Form elements
 const onboardingParentEmailForm = document.getElementById('onboardingParentEmailForm');
 const onboardingParentJlid = document.getElementById('onboardingParentJlid');
@@ -629,6 +632,8 @@ function _setBookingTzByIana(iana) {
   hidden.value = iana || '';
   var match = globalBookingTimezones.find(function(t){ return t.id === iana; });
   inp.value = match ? match.label : (iana || '');
+  // Update CET previews on all migration session groups
+  document.querySelectorAll('#classSessionsContainer .class-session-group').forEach(function(sg) { _updateSessionGroupCET(sg, 'migration'); });
 }
 
 function makeSearchableSelect(sel, placeholder, optionsProvider) {
@@ -803,6 +808,93 @@ function makeSearchableSelect(sel, placeholder, optionsProvider) {
   _syncTrigger();
 }
 
+function convertCetToTimezone(cetDay, cetTime, timezoneStr, cetOffsetHours) {
+    // cetDay: "Thursday", cetTime: "10:30 AM", timezoneStr: "(GMT +5:30) Bombay..."
+    // cetOffsetHours: 1 = CET (UTC+1 winter), 2 = CEST (UTC+2 summer)
+    if (!cetDay || !cetTime) return null;
+    // Normalize HubSpot enum values: "5_pm" → "5 PM", "10:30_am" → "10:30 AM"
+    cetTime = String(cetTime).replace(/_/g, ' ').replace(/\bam\b/i, 'AM').replace(/\bpm\b/i, 'PM').trim();
+    var h, m;
+    var ampmMatch   = String(cetTime).match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+    var noMinMatch  = String(cetTime).match(/^(\d{1,2})\s*(AM|PM)$/i);
+    var h24Match    = String(cetTime).match(/^(\d{1,2}):(\d{2})/);
+    if (ampmMatch) {
+        h = parseInt(ampmMatch[1]); m = parseInt(ampmMatch[2]);
+        var mer = ampmMatch[3].toUpperCase();
+        if (mer === 'PM' && h !== 12) h += 12;
+        if (mer === 'AM' && h === 12) h = 0;
+    } else if (noMinMatch) {
+        h = parseInt(noMinMatch[1]); m = 0;
+        var mer2 = noMinMatch[2].toUpperCase();
+        if (mer2 === 'PM' && h !== 12) h += 12;
+        if (mer2 === 'AM' && h === 12) h = 0;
+    } else if (h24Match) {
+        h = parseInt(h24Match[1]); m = parseInt(h24Match[2]);
+    } else {
+        return null;
+    }
+
+    var cetOffset = (cetOffsetHours || 1) * 60; // default CET = UTC+1
+    var utcMins = h * 60 + m - cetOffset;
+
+    // Extract learner offset from "(GMT +5:30)" or "(GMT-5:00)"
+    var offMatch = String(timezoneStr || '').match(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/i);
+    var offsetMins = 0;
+    if (offMatch) {
+        offsetMins = (offMatch[1] === '+' ? 1 : -1) * (parseInt(offMatch[2]) * 60 + parseInt(offMatch[3]));
+    }
+
+    var localMins = utcMins + offsetMins;
+    var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var dayIdx = DAYS.findIndex(function(d){ return d.toLowerCase() === String(cetDay).trim().toLowerCase(); });
+    if (dayIdx === -1) return null;
+
+    var dayOffset = 0;
+    if (localMins < 0) { localMins += 1440; dayOffset = -1; }
+    else if (localMins >= 1440) { localMins -= 1440; dayOffset = 1; }
+
+    var localDay = DAYS[(dayIdx + dayOffset + 7) % 7];
+    var lh = Math.floor(localMins / 60), lm = localMins % 60;
+    var lmer = lh >= 12 ? 'PM' : 'AM';
+    var dh = lh % 12 || 12;
+    var localTime = String(dh).padStart(2, '0') + ':' + String(lm).padStart(2, '0') + ' ' + lmer;
+    return { day: localDay, time: localTime };
+}
+
+function _applyLastCetConversion(formPrefix) {
+    var cache = _lastCetSessions[formPrefix];
+    if (!cache || !cache.cetSessions || cache.cetSessions.length === 0) return;
+    var _cetRadioName = formPrefix === 'migration' ? 'migrationCetMode' : 'onboardingCetMode';
+    var _cetRadio = document.querySelector('input[name="' + _cetRadioName + '"]:checked');
+    var _cetOffset = (_cetRadio && _cetRadio.value === 'CEST') ? 2 : 1;
+    var converted = cache.cetSessions.map(function(s) {
+        return convertCetToTimezone(s.day, s.time, cache.timezone, _cetOffset);
+    }).filter(Boolean);
+    if (converted.length === 0) return;
+    var containers = { migration: 'classSessionsContainer', onboarding: 'onboardingClassSessionsContainer', onboardingParent: 'onboardingParentClassSessionsContainer' };
+    var container = document.getElementById(containers[formPrefix]);
+    if (!container) return;
+    container.innerHTML = '';
+    converted.forEach(function(session, index) {
+        var grp = createClassSessionGroup(index === 0, formPrefix);
+        container.appendChild(grp);
+        if (session.day) {
+            var _dl = session.day.toLowerCase();
+            var _opt = Array.from(grp.querySelector('.class-day-select').options).find(function(o){ return o.value.toLowerCase() === _dl; });
+            if (_opt) grp.querySelector('.class-day-select').value = _opt.value;
+        }
+        if (session.time) {
+            var _tp = session.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+            if (_tp) {
+                grp.querySelector('.class-hour-select').value = String(parseInt(_tp[1])).padStart(2,'0');
+                grp.querySelector('.class-minute-select').value = String(Math.round(parseInt(_tp[2])/15)*15%60).padStart(2,'0');
+                grp.querySelector('.class-meridiem-select').value = _tp[3].toUpperCase();
+            }
+        }
+        _updateSessionGroupCET(grp, formPrefix);
+    });
+}
+
 function populateLiveCurrencyRates() {
     const selectElement = document.getElementById('invoiceCustomCurrencyCode');
     if (!selectElement) return;
@@ -877,27 +969,231 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       if (removeBtn) {
           removeBtn.addEventListener('click', (e) => e.target.closest('.class-session-group').remove());
       }
+
+      // CET preview element
+      var cetPreview = document.createElement('div');
+      cetPreview.className = 'session-cet-preview';
+      cetPreview.style.cssText = 'font-size:0.72rem;color:#6366f1;font-weight:600;padding:2px 8px;display:none;background:#eef2ff;border-radius:4px;margin-top:4px;display:inline-block;';
+      cetPreview.style.display = 'none';
+      sessionGroup.appendChild(cetPreview);
+
+      // Wire listeners so preview updates on time/day change
+      var _doUpdateCET = function() { _updateSessionGroupCET(sessionGroup, uniquePrefix); };
+      sessionGroup.querySelector('.class-hour-select').addEventListener('change', _doUpdateCET);
+      sessionGroup.querySelector('.class-minute-select').addEventListener('change', _doUpdateCET);
+      sessionGroup.querySelector('.class-meridiem-select').addEventListener('change', _doUpdateCET);
+      sessionGroup.querySelector('.class-day-select').addEventListener('change', _doUpdateCET);
+      // Show immediately if values already populated
+      setTimeout(_doUpdateCET, 0);
+
       return sessionGroup;
     }
 
-    function showLoading(message = 'Processing...') {
+function _updateSessionGroupCET(sessionGroup, prefix) {
+  var preview = sessionGroup.querySelector('.session-cet-preview');
+  if (!preview) return;
+  var tzVal = '';
+  if (prefix === 'migration') {
+    var mtz = document.getElementById('migrationTimezone'); tzVal = (mtz && mtz.value) ? mtz.value : '';
+  } else if (prefix === 'onboardingParent') {
+    var optz = document.getElementById('onboardingParentTimezone'); tzVal = (optz && optz.value) ? optz.value : '';
+  } else if (prefix === 'onboarding') {
+    var otz = document.getElementById('onboardingTimezone'); tzVal = (otz && otz.value) ? otz.value : '';
+  }
+  var hourEl = sessionGroup.querySelector('.class-hour-select');
+  var minEl  = sessionGroup.querySelector('.class-minute-select');
+  var merEl  = sessionGroup.querySelector('.class-meridiem-select');
+  var dayEl  = sessionGroup.querySelector('.class-day-select');
+  if (!hourEl || !minEl || !merEl) { preview.style.display = 'none'; return; }
+  if (!tzVal || !hourEl.value || !merEl.value) { preview.textContent = '⌚ CET: select time above'; preview.style.display = 'inline-block'; return; }
+  try {
+    var h = parseInt(hourEl.value), m = parseInt(minEl.value || '0'), ap = merEl.value;
+    if (ap === 'PM' && h !== 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    // Use the selected weekday's actual date so day rollover is accurate
+    var _dayMap = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+    var _now = new Date();
+    var _targetDow = dayEl && dayEl.value ? (_dayMap[dayEl.value.substring(0,3)] || 0) : _now.getUTCDay();
+    var _diff = (_targetDow - _now.getUTCDay() + 7) % 7;
+    var _baseDate = new Date(Date.UTC(_now.getUTCFullYear(), _now.getUTCMonth(), _now.getUTCDate() + _diff));
+    var dateStr = _baseDate.toISOString().split('T')[0];
+    var utcBase = new Date(dateStr + 'T' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':00Z');
+    var fromH, fromM;
+    try {
+      fromH = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:tzVal,hour:'numeric',hour12:false,hourCycle:'h23'}).format(utcBase));
+      fromM = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:tzVal,minute:'numeric'}).format(utcBase));
+    } catch(e2) {
+      // tzVal is a GMT display string like "(GMT+04:00) Abu Dhabi..." — parse offset
+      var gm = tzVal.match(/GMT([+-])(\d{1,2}):(\d{2})/);
+      if (!gm) { preview.style.display = 'none'; return; }
+      var offMins = (gm[1] === '+' ? 1 : -1) * (parseInt(gm[2]) * 60 + parseInt(gm[3]));
+      var tzTotal = ((h * 60 + m + offMins) % 1440 + 1440) % 1440;
+      fromH = Math.floor(tzTotal / 60);
+      fromM = tzTotal % 60;
+    }
+    var cetDiff = (h*60+m) - (fromH*60+fromM);
+    var corrected = new Date(utcBase.getTime() + cetDiff*60000);
+    var cetDay  = new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',weekday:'short'}).format(corrected);
+    var cetH24  = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',hour:'numeric',hour12:false,hourCycle:'h23'}).format(corrected));
+    var cetMin  = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',minute:'numeric'}).format(corrected));
+    var cetAP   = cetH24 >= 12 ? 'PM' : 'AM';
+    var cetH12  = cetH24 % 12 || 12;
+    preview.textContent = '⌚ ' + cetDay + ' ' + cetH12 + ':' + String(cetMin).padStart(2,'0') + ' ' + cetAP + ' CET';
+    preview.style.display = 'inline-block';
+  } catch(e) { preview.style.display = 'none'; }
+}
+
+    var _loadingTimelineTimer = null;
+    var _loadingTimelineStartedAt = 0;
+
+    function _formatDuration(ms) {
+        ms = Math.max(0, Number(ms) || 0);
+        if (ms < 1000) return ms + 'ms';
+        var seconds = ms / 1000;
+        if (seconds < 60) return seconds.toFixed(seconds < 10 ? 1 : 0) + 's';
+        var minutes = Math.floor(seconds / 60);
+        var rest = Math.round(seconds % 60);
+        return minutes + 'm ' + String(rest).padStart(2, '0') + 's';
+    }
+
+    function _timelineIcon(status) {
+        if (status === 'success') return 'fa-check';
+        if (status === 'failed') return 'fa-times';
+        if (status === 'skipped') return 'fa-minus';
+        if (status === 'running') return 'fa-spinner fa-spin';
+        return 'fa-circle';
+    }
+
+    function renderLoadingTimeline(steps) {
+        var list = document.getElementById('loadingTimeline');
+        if (!list) return;
+        steps = steps || [];
+        if (!steps.length) {
+            list.classList.remove('active');
+            list.innerHTML = '';
+            return;
+        }
+        list.classList.add('active');
+        list.innerHTML = steps.map(function(step, idx) {
+            var status = step.status || (idx === 0 ? 'running' : 'pending');
+            var detail = step.detail ? '<div class="loading-timeline-detail">' + escapeHtml(step.detail) + '<\/div>' : '';
+            var time = (status === 'success' || status === 'failed' || status === 'skipped')
+                ? _formatDuration(step.durationMs || 0)
+                : '';
+            return '<div class="loading-timeline-row ' + status + '">' +
+                '<span class="loading-timeline-icon"><i class="fas ' + _timelineIcon(status) + '"><\/i><\/span>' +
+                '<div><div class="loading-timeline-label">' + escapeHtml(step.label || step.key || 'Step') + '<\/div>' + detail + '<\/div>' +
+                '<div class="loading-timeline-time">' + time + '<\/div>' +
+            '<\/div>';
+        }).join('');
+    }
+
+    function showLoading(message = 'Processing...', steps) {
         const modal = document.getElementById('loadingModal');
         const msg = document.getElementById('loadingMessage');
+        const elapsed = document.getElementById('loadingElapsed');
         if (msg) msg.textContent = message;
+        _loadingTimelineStartedAt = Date.now();
+        if (_loadingTimelineTimer) clearInterval(_loadingTimelineTimer);
+        if (elapsed) elapsed.textContent = 'Elapsed 0s';
+        _loadingTimelineTimer = setInterval(function() {
+            if (elapsed) elapsed.textContent = 'Elapsed ' + _formatDuration(Date.now() - _loadingTimelineStartedAt);
+        }, 500);
+        renderLoadingTimeline(steps || []);
         if (modal) modal.classList.add('active');
         }
 
 
     function hideLoading() {
         const modal = document.getElementById('loadingModal');
-    if (modal) modal.classList.remove('active');
+        if (_loadingTimelineTimer) { clearInterval(_loadingTimelineTimer); _loadingTimelineTimer = null; }
+        if (modal) modal.classList.remove('active');
+        // Reset done state for next use
+        var spinner = document.getElementById('loadingSpinner');
+        var doneIcon = document.getElementById('loadingDoneIcon');
+        var doneBar = document.getElementById('loadingDoneBar');
+        if (spinner) spinner.style.display = '';
+        if (doneIcon) doneIcon.style.display = 'none';
+        if (doneBar) doneBar.style.display = 'none';
+    }
+
+    function finalizeLoadingTimeline(result, fallbackSteps) {
+        var timeline = (result && result.timeline && result.timeline.length) ? result.timeline : (fallbackSteps || []);
+        if (_loadingTimelineTimer) { clearInterval(_loadingTimelineTimer); _loadingTimelineTimer = null; }
+        if (timeline.length) renderLoadingTimeline(timeline);
+        var elapsed = document.getElementById('loadingElapsed');
+        if (elapsed) {
+            var total = timeline.reduce(function(sum, s) { return sum + (Number(s.durationMs) || 0); }, 0);
+            elapsed.textContent = 'Completed in ' + _formatDuration(total || (Date.now() - (_loadingTimelineStartedAt || Date.now())));
+        }
+        // Show done state — spinner → checkmark, show Close button
+        var spinner = document.getElementById('loadingSpinner');
+        var doneIcon = document.getElementById('loadingDoneIcon');
+        var doneBar = document.getElementById('loadingDoneBar');
+        if (spinner) spinner.style.display = 'none';
+        if (doneIcon) doneIcon.style.display = '';
+        if (doneBar) doneBar.style.display = '';
+    }
+
+    function getMigrationTimelineSteps(data) {
+        var steps = [];
+        steps.push({ key: 'practice_doc', label: 'Practice Doc Access Checked', status: 'running' });
+        if (data && data.sendEmailToTeacher) {
+            steps.push({ key: 'teacher_email', label: 'Teacher Email Sent', status: 'pending' });
+            if (data.oldTeacher) steps.push({ key: 'old_teacher_email', label: 'Old Teacher Email Sent', status: 'pending' });
+        }
+        if (data && data.sendWhatsappToParent) steps.push({ key: 'parent_whatsapp', label: 'Parent WhatsApp Sent', status: 'pending' });
+        if (data && data.sendEmailToParentAlso) steps.push({ key: 'parent_email', label: 'Parent Email Sent', status: 'pending' });
+        if (data && data.sendCertificate) steps.push({ key: 'certificate', label: 'Certificate Sent', status: 'pending' });
+        steps.push({ key: 'audit_log', label: 'Audit Log Updated', status: 'pending' });
+        return steps;
+    }
+
+    function getParentOnboardingTimelineSteps(fd) {
+        var steps = [
+            { key: 'prepare', label: 'Onboarding Details Prepared', status: 'running' }
+        ];
+        if (fd && fd.generateAndAttachInvoice) steps.push({ key: 'invoice', label: 'Invoice Generated', status: 'pending' });
+        steps.push({ key: 'parent_email', label: 'Parent Email Sent', status: 'pending' });
+        if (fd && fd.sendWhatsapp) steps.push({ key: 'parent_whatsapp', label: 'Parent WhatsApp Sent', status: 'pending' });
+        steps.push({ key: 'teacher_email', label: 'Teacher Email Sent', status: 'pending' });
+        steps.push({ key: 'practice_doc', label: 'Practice Doc Created', status: 'pending' });
+        return steps;
+    }
+
+    function getKitTimelineSteps() {
+        return [
+            { key: 'hubspot_lookup', label: 'HubSpot Parent Contact Found', status: 'running' },
+            { key: 'kit_whatsapp', label: 'Parent WhatsApp Sent', status: 'pending' },
+            { key: 'sheet_update', label: 'Kit Reminder Logged', status: 'pending' }
+        ];
+    }
+
+    function getCertTimelineSteps(courses) {
+        var steps = [{ key: 'prepare', label: 'Preparing Certificate Generation', status: 'running' }];
+        (courses || []).forEach(function(c) {
+            steps.push({ key: 'cert_' + c.name, label: 'Certificate: ' + c.name, status: 'pending' });
+        });
+        steps.push({ key: 'drive', label: 'Uploading to Google Drive', status: 'pending' });
+        steps.push({ key: 'email', label: 'Certificate Email Sent to Parent', status: 'pending' });
+        steps.push({ key: 'hubspot', label: 'HubSpot Note Updated', status: 'pending' });
+        return steps;
+    }
+
+    function getKitOrderTimelineSteps() {
+        return [
+            { key: 'lookup',   label: 'Learner Details Verified',   status: 'running' },
+            { key: 'wati',     label: 'WATI WhatsApp Sent to Parent', status: 'pending' },
+            { key: 'hubspot',  label: 'HubSpot Note Written',        status: 'pending' },
+            { key: 'sheet',    label: 'Kit Tracking Sheet Logged',   status: 'pending' }
+        ];
     }
 
 
     function showConfirm(title, message, callback) {
       const isLogout = title.toLowerCase().includes('logout') || title.toLowerCase().includes('sign out');
       confirmTitle.textContent = isLogout ? 'Sign out?' : title;
-      confirmMessage.textContent = isLogout ? "You'll need to sign back in to access the JetLearn Migration System." : message;
+      confirmMessage.innerHTML = isLogout ? "You'll need to sign back in to access the JetLearn Migration System." : message;
       confirmModal.setAttribute('data-type', isLogout ? 'logout' : 'action');
       // Update button labels
       const okBtn = document.getElementById('confirmOk');
@@ -1566,14 +1862,15 @@ function submitMigrationForm(e) {
 
       showConfirm('Confirm Migration', "Migrate " + (migrationData.learner) + " to " + (migrationData.newTeacher) + "?", confirmed => {
         if (confirmed) {
-          showLoading('Processing migration...');
+          var migrationTimelineSteps = getMigrationTimelineSteps(migrationData);
+          showLoading('Processing migration...', migrationTimelineSteps);
           google.script.run
             .withSuccessHandler(result => {
-              hideLoading();
+              finalizeLoadingTimeline(result, migrationTimelineSteps);
               if (result && result.success) {
                 if (result.watiError) {
                   // WhatsApp failed — show fallback modal
-                  _showWatiFailureBanner(result, migrationData);
+                  setTimeout(function() { _showWatiFailureBanner(result, migrationData); }, 950);
                 } else {
                   showToast('success', 'Migration Complete', result.message);
                 }
@@ -1589,7 +1886,7 @@ function submitMigrationForm(e) {
                 showToast('error', 'Migration Failed', (result && result.message) ? result.message : 'Unknown error processing migration.');
               }
             })
-            .withFailureHandler(showError)
+            .withFailureHandler(function(err) { hideLoading(); showError(err); })
             .sendMigrationEmail(migrationData, []);
         }
       });
@@ -1912,14 +2209,27 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     }
 
                     // Dates
-                    if (startingDateInputEl && data.startingDate) {
-                        startingDateInputEl.value = new Date(data.startingDate).toISOString().split('T')[0];
+                    function _parseHsDate(val) {
+                        if (!val) return null;
+                        // HubSpot returns date props as epoch-ms strings OR ISO date strings
+                        var n = Number(val);
+                        var d = isNaN(n) ? new Date(val) : new Date(n);
+                        return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
                     }
-                    if (endDateInputEl && data.endDate) {
-                        endDateInputEl.value = new Date(data.endDate).toISOString().split('T')[0];
+                    if (startingDateInputEl && data.startingDate) {
+                        startingDateInputEl.value = _parseHsDate(data.startingDate) || '';
+                    }
+                    // Invoice: don't use HubSpot end date — it's the current sub's end, not the new one.
+                    // All other forms: use HubSpot value directly and lock it so recalc doesn't overwrite.
+                    if (endDateInputEl && data.endDate && formPrefix !== 'invoice') {
+                        var parsedEnd = _parseHsDate(data.endDate);
+                        if (parsedEnd) {
+                            endDateInputEl.value = parsedEnd;
+                            if (formPrefix === 'onboardingParent') isParentInvoiceEndDateManuallySet = true;
+                        }
                     }
                     if (subscriptionStartDateInputEl && data.subscriptionStartDate) {
-                        subscriptionStartDateInputEl.value = new Date(data.subscriptionStartDate).toISOString().split('T')[0];
+                        subscriptionStartDateInputEl.value = _parseHsDate(data.subscriptionStartDate) || '';
                     }
 
                     // Selects
@@ -1980,29 +2290,52 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     // ---------------------------------------
 
                     // --- 6. Class Sessions Logic ---
+                    // Cache CET sessions for radio toggle re-conversion
+                    var _tzForConversion = (timezoneSelectEl && timezoneSelectEl.value) ? timezoneSelectEl.value : data.timezone;
+                    if (data.cetClassSessions && data.cetClassSessions.length > 0) {
+                        _lastCetSessions[formPrefix] = { cetSessions: data.cetClassSessions, timezone: _tzForConversion || data.timezone };
+                    }
+                    if (data.cetClassSessions && data.cetClassSessions.length > 0 && _tzForConversion) {
+                        var _cetRadioName = (formPrefix === 'migration') ? 'migrationCetMode' : 'onboardingCetMode';
+                        var _cetRadio = document.querySelector('input[name="' + _cetRadioName + '"]:checked');
+                        var _cetOffset = (_cetRadio && _cetRadio.value === 'CEST') ? 2 : 1;
+                        var _converted = data.cetClassSessions.map(function(s) {
+                            return convertCetToTimezone(s.day, s.time, _tzForConversion, _cetOffset);
+                        }).filter(Boolean);
+                        if (_converted.length > 0) data.classSessions = _converted;
+                    }
+
                     const sessionContainerMap = {
                         'onboardingParent': document.getElementById('onboardingParentClassSessionsContainer'),
                         'onboarding': document.getElementById('onboardingClassSessionsContainer'),
                         'migration': document.getElementById('classSessionsContainer')
                     };
                     const targetSessionContainer = sessionContainerMap[formPrefix];
-                    
+
                     if (targetSessionContainer && data.classSessions && data.classSessions.length > 0) {
-                        targetSessionContainer.innerHTML = ''; 
+                        targetSessionContainer.innerHTML = '';
                         data.classSessions.forEach((session, index) => {
                             const isInitial = index === 0;
                             const newSession = createClassSessionGroup(isInitial, formPrefix);
                             targetSessionContainer.appendChild(newSession);
-                            
+
+                            // Case-insensitive day match
                             const daySelect = newSession.querySelector('.class-day-select');
-                            if(daySelect) daySelect.value = session.day;
-                            
+                            if (daySelect && session.day) {
+                                var _dayLower = session.day.trim().toLowerCase();
+                                var _dayOpt = Array.from(daySelect.options).find(function(o){ return o.value.toLowerCase() === _dayLower; });
+                                if (_dayOpt) daySelect.value = _dayOpt.value;
+                            }
+
                             if (session.time) {
-                                const timeParts = session.time.match(/(\d{1,2}):(\d{2})\s(AM|PM)/i);
+                                const timeParts = session.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
                                 if (timeParts) {
                                     const [_, hour, minute, meridiem] = timeParts;
-                                    newSession.querySelector('.class-hour-select').value = hour.padStart(2, '0');
-                                    newSession.querySelector('.class-minute-select').value = minute;
+                                    newSession.querySelector('.class-hour-select').value = String(parseInt(hour)).padStart(2, '0');
+                                    // Round to nearest 15-min option
+                                    var _minNum = parseInt(minute);
+                                    var _minRounded = String(Math.round(_minNum / 15) * 15 % 60).padStart(2, '0');
+                                    newSession.querySelector('.class-minute-select').value = _minRounded;
                                     newSession.querySelector('.class-meridiem-select').value = meridiem.toUpperCase();
                                 }
                             }
@@ -2011,7 +2344,15 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                         targetSessionContainer.appendChild(createClassSessionGroup(true, formPrefix));
                     }
 
-                    // --- 7. Parent Onboarding Specific Logic ---
+                    // --- 7. Invoice-specific: recalculate end date from fetched start+tenure ---
+                    if (formPrefix === 'invoice') {
+                        isInvoiceEndDateManuallySet = false;
+                        if (typeof updateInvoicePlanDetails === 'function') {
+                            updateInvoicePlanDetails();
+                        }
+                    }
+
+                    // --- 8. Parent Onboarding Specific Logic ---
                     if (formPrefix === 'onboardingParent') {
                         const installmentRadio = document.getElementById('onboardingParentPaymentInstallment');
                         const upfrontRadio = document.getElementById('onboardingParentPaymentUpfront');
@@ -2078,7 +2419,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
             invoiceParentEmail.value = '';
             invoiceParentContact.value = '';
             invoicePlanName.value = '';
-            populateSelect(invoiceCurrency, ['EUR', 'GBP', 'USD', 'CUSTOM'], false, "Select currency");
+            populateSelect(invoiceCurrency, ['EUR', 'GBP', 'USD', 'INR', 'PKR', 'BDT', 'CUSTOM'], false, "Select currency");
             invoiceCurrency.value = '';
             customCurrencyCodeGroup.style.display = 'none';
             invoiceCustomCurrencyCode.value = '';
@@ -2231,6 +2572,7 @@ function collectEmailFormData(emailType) {
             freeClasses: onboardingParentFreeClasses.value,
             discount: onboardingParentDiscount.value,
             customPaidAmount: document.getElementById('onboardingParentPartialPayment').value,
+            isTokenPayment: (function(){ var el = document.querySelector('input[name="onboardingPaymentLabel"]:checked'); return el ? el.value === 'token' : true; })(),
             subscriptionTenure: onboardingParentSubscriptionTenure.value,
             subscriptionTenureMonths: onboardingParentSubscriptionTenure.value,
             paymentType: document.querySelector('input[name="onboardingParentPaymentType"]:checked').value,
@@ -2437,10 +2779,12 @@ function collectEmailFormData(emailType) {
             return;
         }
 
+        var timelineSteps = emailType === 'onboardingParent' ? getParentOnboardingTimelineSteps(fd) : [];
+
         // Close modal, start send
         var modal = document.getElementById('emailPreviewModal');
         if (modal) { modal.style.display = ''; modal.classList.remove('active'); }
-        showLoading('Sending email...');
+        showLoading(emailType === 'onboardingParent' ? 'Processing new onboarding...' : 'Sending email...', timelineSteps);
 
         var files = formSelectedFiles.get(formId) || [];
         var base64Files = await Promise.all(files.map(function(file) {
@@ -2453,7 +2797,7 @@ function collectEmailFormData(emailType) {
         }));
 
         function onSendOk(result) {
-            hideLoading();
+            finalizeLoadingTimeline(result, timelineSteps);
             if (result && result.success) {
                 showToast('success', 'Email Sent', result.message || 'Email sent successfully.');
                 var tab = document.querySelector('#communicationPage .tab-button.active');
@@ -2471,8 +2815,12 @@ function collectEmailFormData(emailType) {
         if (emailType === 'onboardingParent') {
             // After email sent: create practice doc + post HubSpot note automatically
             function onParentOnboardingOk(result) {
-                hideLoading();
                 if (result && result.success) {
+                    var liveTimeline = (result.timeline && result.timeline.length) ? result.timeline.slice() : timelineSteps.slice();
+                    liveTimeline = liveTimeline.map(function(step) {
+                        return step.key === 'practice_doc' ? Object.assign({}, step, { status: 'running', durationMs: 0 }) : step;
+                    });
+                    renderLoadingTimeline(liveTimeline);
                     showToast('success', 'Email Sent', result.message || 'Onboarding email sent successfully.');
 
                     // Build note data from form fields
@@ -2500,8 +2848,20 @@ function collectEmailFormData(emailType) {
                     };
 
                     // Fire-and-forget: create doc + post note (background, non-blocking)
+                    var docStartedAt = Date.now();
                     google.script.run
                         .withSuccessHandler(function(docRes) {
+                            var doneTimeline = liveTimeline.map(function(step) {
+                                if (step.key !== 'practice_doc') return step;
+                                return {
+                                    key: 'practice_doc',
+                                    label: 'Practice Doc Created',
+                                    status: docRes && docRes.success ? 'success' : 'failed',
+                                    durationMs: Date.now() - docStartedAt,
+                                    detail: docRes && docRes.success ? (docRes.name || '') : ((docRes && docRes.error) || 'Could not create practice doc.')
+                                };
+                            });
+                            finalizeLoadingTimeline({ timeline: doneTimeline }, timelineSteps);
                             if (docRes && docRes.success) {
                                 // Fill practice doc link field
                                 var pdField = document.getElementById('onboardingParentPracticeDocumentLink');
@@ -2512,6 +2872,17 @@ function collectEmailFormData(emailType) {
                             }
                         })
                         .withFailureHandler(function(err) {
+                            var failedTimeline = liveTimeline.map(function(step) {
+                                if (step.key !== 'practice_doc') return step;
+                                return {
+                                    key: 'practice_doc',
+                                    label: 'Practice Doc Created',
+                                    status: 'failed',
+                                    durationMs: Date.now() - docStartedAt,
+                                    detail: err && err.message ? err.message : String(err)
+                                };
+                            });
+                            finalizeLoadingTimeline({ timeline: failedTimeline }, timelineSteps);
                             showToast('warning', 'Practice Doc Error', err && err.message ? err.message : String(err));
                         })
                         .createPracticeDocAndPostNote(
@@ -2523,6 +2894,7 @@ function collectEmailFormData(emailType) {
                     if (tab) resetHubspotFields(tab.dataset.tab);
                     initDateInputs();
                 } else {
+                    finalizeLoadingTimeline(result, timelineSteps);
                     showToast('error', 'Email Failed', result ? result.message : 'Unknown error.');
                 }
             }
@@ -4870,9 +5242,7 @@ function mipSelectAlternativeTeacher(teacherName) {
             }
             const endDate = new Date(startDate);
             if (weeksRequired > 0) {
-                endDate.setDate(startDate.getDate() + (weeksRequired * 7) - 1);
-            } else {
-                endDate.setDate(startDate.getDate());
+                endDate.setUTCDate(startDate.getUTCDate() + (weeksRequired - 1) * 7);
             }
             invoiceEndDate.value = endDate.toISOString().split('T')[0];
         }
@@ -5115,6 +5485,7 @@ function collectInvoiceFormData() {
             freeClasses: invoiceFreeClasses.value,
             discount: invoiceDiscount.value,
             customPaidAmount: invoiceCustomPaidAmount.value,
+            isTokenPayment: (function(){ var el = document.querySelector('input[name="invoicePaymentLabel"]:checked'); return el ? el.value === 'token' : true; })(),
             subscriptionTenure: invoiceSubscriptionTenure.value,
             startDate: invoiceStartDate.value,
             endDate: invoiceEndDate.value,
@@ -5161,6 +5532,8 @@ function collectInvoiceFormData() {
             if (!formData.customCurrencyCode) errors.push('Custom Currency Code is required when selecting Custom Currency.');
             if (!formData.customCurrencyRate || parseFloat(formData.customCurrencyRate) <= 0) errors.push('Conversion rate must be a positive number for custom currency.');
             if (parseFloat(formData.customCurrencyExtraDiscountPercentage || '0') < 0 || parseFloat(formData.customCurrencyExtraDiscountPercentage || '0') > 100) errors.push('Custom currency discount percentage must be between 0 and 100.');
+        } else if (['INR', 'PKR', 'BDT'].includes(formData.currency)) {
+            if (!formData.customCurrencyRate || parseFloat(formData.customCurrencyRate) <= 0) errors.push('Conversion rate required for ' + formData.currency + '.');
         }
         const pricingDetails = calculateInvoicePricingClient(formData);
         if (discount > pricingDetails.effectiveBasePrice) {
@@ -5288,6 +5661,7 @@ function collectInvoiceFormData() {
             freeClasses: document.getElementById('onboardingParentFreeClasses').value,
             discount: document.getElementById('onboardingParentDiscount').value,
             customPaidAmount: document.getElementById('onboardingParentPartialPayment').value,
+            isTokenPayment: (function(){ var el = document.querySelector('input[name="onboardingPaymentLabel"]:checked'); return el ? el.value === 'token' : true; })(),
             startDate: document.getElementById('onboardingParentStartDate').value,
             endDate: document.getElementById('onboardingParentEndDate').value
         };
@@ -5384,10 +5758,10 @@ function collectInvoiceFormData() {
                  let weeksRequired = (currentSessionsPerWeekCount > 0) ? Math.ceil(totalClasses / currentSessionsPerWeekCount) : (totalClasses > 0 ? totalClasses : 0);
                  
                  const startDate = new Date(startDateString);
-                 if (!isNaN(startDate)) { // Bug fix: Check for valid date before calculation
+                 if (!isNaN(startDate)) {
                     const endDate = new Date(startDate);
                     if (weeksRequired > 0) {
-                        endDate.setDate(startDate.getDate() + (weeksRequired * 7) - 1);
+                        endDate.setUTCDate(startDate.getUTCDate() + (weeksRequired - 1) * 7);
                     }
                     onboardingParentEndDate.value = endDate.toISOString().split('T')[0];
                  }
@@ -6910,23 +7284,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // =============================================
     // NEW: Function to handle Custom Currency UI
     // =============================================
+    const _DIRECT_CONVERTED_CURRENCIES = ['INR', 'PKR', 'BDT'];
+
     function handleCurrencyChange(prefix) {
         const currencySelect = document.getElementById((prefix) + "Currency");
         if (!currencySelect) return;
-        const isCustom = currencySelect.value === 'CUSTOM';
+        const val = currencySelect.value;
+        const isCustom = val === 'CUSTOM';
+        const isDirectConverted = _DIRECT_CONVERTED_CURRENCIES.includes(val);
 
         const codeGroup = document.getElementById((prefix) + "CustomCurrencyCodeGroup");
         const rateGroup = document.getElementById((prefix) + "CustomCurrencyRateGroup");
         const discountGroup = document.getElementById((prefix) + "CustomCurrencyDiscountGroup");
 
         if (codeGroup) codeGroup.style.display = isCustom ? 'block' : 'none';
-        if (rateGroup) rateGroup.style.display = isCustom ? 'block' : 'none';
+        if (rateGroup) rateGroup.style.display = (isCustom || isDirectConverted) ? 'block' : 'none';
         if (discountGroup) discountGroup.style.display = isCustom ? 'block' : 'none';
 
         if (isCustom) {
             if (codeGroup) codeGroup.querySelector('select').required = true;
             if (rateGroup) rateGroup.querySelector('input').required = true;
             if (discountGroup) discountGroup.querySelector('input').required = true;
+        } else if (isDirectConverted) {
+            if (rateGroup) rateGroup.querySelector('input').required = true;
+            // Auto-fill rate from live rates
+            const rateInput = rateGroup ? rateGroup.querySelector('input') : null;
+            if (rateInput && (!rateInput.value || parseFloat(rateInput.value) <= 1)) {
+                const liveRate = getConversionRateClient('EUR', val);
+                if (liveRate && liveRate > 1) rateInput.value = liveRate.toFixed(2);
+            }
+            if (codeGroup) codeGroup.querySelector('select').required = false;
+            if (discountGroup) discountGroup.querySelector('input').required = false;
         } else {
             if (codeGroup) codeGroup.querySelector('select').required = false;
             if (rateGroup) rateGroup.querySelector('input').required = false;
@@ -7122,6 +7510,40 @@ document.addEventListener('DOMContentLoaded', () => {
             onboardingClsManagerSelect, onboardingTpManagerSelect
         ));
     }
+
+    // Auto-select CET/CEST based on current date (Europe DST: last Sun March → CEST, last Sun Oct → CET)
+    (function() {
+        function _lastSundayOf(year, month) {
+            var d = new Date(Date.UTC(year, month, 1));
+            d.setUTCDate(d.getUTCDate() - 1); // last day of month
+            d.setUTCDate(d.getUTCDate() - d.getUTCDay()); // back to Sunday
+            return d;
+        }
+        var now = new Date();
+        var y = now.getUTCFullYear();
+        var cestStart = _lastSundayOf(y, 3);  // last Sunday of March
+        var cestEnd   = _lastSundayOf(y, 10); // last Sunday of October
+        var isCEST = now >= cestStart && now < cestEnd;
+        var mode = isCEST ? 'CEST' : 'CET';
+        ['migrationCetMode', 'onboardingCetMode'].forEach(function(name) {
+            var radio = document.querySelector('input[name="' + name + '"][value="' + mode + '"]');
+            if (radio) radio.checked = true;
+        });
+    })();
+
+    // CET/CEST radio → re-convert class schedule live
+    document.querySelectorAll('input[name="migrationCetMode"]').forEach(function(r) {
+        r.addEventListener('change', function() { _applyLastCetConversion('migration'); });
+    });
+    document.querySelectorAll('input[name="onboardingCetMode"]').forEach(function(r) {
+        r.addEventListener('change', function() { _applyLastCetConversion('onboardingParent'); });
+    });
+
+    // CET preview: update all session groups when onboardingParent timezone changes
+    var _opTz = document.getElementById('onboardingParentTimezone');
+    if (_opTz) _opTz.addEventListener('change', function() {
+        document.querySelectorAll('#onboardingParentClassSessionsContainer .class-session-group').forEach(function(sg) { _updateSessionGroupCET(sg, 'onboardingParent'); });
+    });
 
     // *** UPDATED MIGRATION FETCH ***
     if (fetchMigrationDataBtn) {
@@ -7407,7 +7829,9 @@ function recalcRenewalTotals(e) {
             paymentDate: document.getElementById('renewalPaymentDate').value,
             paymentType: document.querySelector('input[name="renewalPaymentType"]:checked').value,
             installments: document.getElementById('renewalInstallmentCount').value,
-            frequency: document.getElementById('renewalInstallmentFreq').value
+            frequency: document.getElementById('renewalInstallmentFreq').value,
+            customPaidAmount: document.getElementById('renewalCustomPaidAmount').value,
+            isTokenPayment: (function(){ var el = document.querySelector('input[name="renewalPaymentLabel"]:checked'); return el ? el.value === 'token' : true; })()
         };
     }
 // 6. Preview Button Logic
@@ -7732,7 +8156,7 @@ function triggerMigrationIntelligence() {
       });
     }
 
-    function renderMigrationHistory(r) {
+    window.renderMigrationHistory = function renderMigrationHistory(r) {
       if (!r || !r.success) return;
       var PORTAL = '7729491';
 
@@ -8363,6 +8787,21 @@ if (watiCheckbox) {
         document.getElementById('emailNextPage').disabled = pagination.currentPage >= pagination.totalPages;
     }
 
+// Tab switcher for email activity modal
+(function() {
+    var modal = document.getElementById('emailActivityModal');
+    if (!modal) return;
+    modal.querySelectorAll('.tab-button').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            modal.querySelectorAll('.tab-button').forEach(function(b) { b.classList.remove('active'); });
+            modal.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+            btn.classList.add('active');
+            var target = modal.querySelector('.tab-content#' + btn.dataset.tab + 'Tab') || modal.querySelector('#' + btn.dataset.tab + 'Tab');
+            if (target) target.classList.add('active');
+        });
+    });
+})();
+
 function viewEmailActivityDetails(trackingId) {
     if (!trackingId || trackingId === 'undefined') {
         showToast('error', 'System Error', 'The Tracking ID is missing. Please refresh the table.');
@@ -8374,7 +8813,9 @@ function viewEmailActivityDetails(trackingId) {
         .withSuccessHandler(function(response) {
             hideLoading();
             if (!response || !response.success) {
-                showError(response || { message: 'Server returned no data.' });
+                var _errMsg = (response && response.message) ? response.message : 'Server returned no data.';
+                showToast('error', 'Could not load email details', _errMsg);
+                console.error('[viewEmailActivityDetails] server error:', _errMsg);
                 return;
             }
             var log = response.data;
@@ -8402,12 +8843,16 @@ function viewEmailActivityDetails(trackingId) {
             }
             document.getElementById('timelineTab').innerHTML = timelineHtml;
 
-            document.querySelector('#emailActivityModal .tab-button[data-tab="timeline"]').click();
-            document.getElementById('emailActivityModal').classList.add('active');
+            var _tlBtn = document.querySelector('#emailActivityModal .tab-button[data-tab="timeline"]');
+            if (_tlBtn) _tlBtn.click();
+            var _eaModal = document.getElementById('emailActivityModal');
+            _eaModal.classList.add('active');
+            _eaModal.style.display = 'flex';
         })
         .withFailureHandler(function(error) {
             hideLoading();
-            showError(error);
+            var _msg = (error && error.message) ? error.message : 'Failed to load email details.';
+            showToast('error', 'Could not load email details', _msg);
         })
         .getEmailLogDetails(trackingId);
 }
@@ -8709,26 +9154,38 @@ function fetchMigrationSpecificData() {
                         newTeacherSelect.dispatchEvent(new Event('change'));
                     }
 
-                    // 4. Populate Schedule from Ticket (if available)
+                    // 4. Populate Schedule from Ticket (CET→local conversion)
                     classSessionsContainer.innerHTML = '';
                     if (data.ticketSchedule && (data.ticketSchedule.day || data.ticketSchedule.time)) {
+                        var _migTzForConv = (migTzEl && migTzEl.value) ? migTzEl.value : (data.timezone || '');
+                        // Cache for radio toggle re-conversion
+                        _lastCetSessions['migration'] = { cetSessions: [{ day: data.ticketSchedule.day, time: data.ticketSchedule.time }], timezone: _migTzForConv };
+                        var _cetRadio = document.querySelector('input[name="migrationCetMode"]:checked');
+                        var _cetOff = (_cetRadio && _cetRadio.value === 'CEST') ? 2 : 1;
+                        var _converted = convertCetToTimezone(data.ticketSchedule.day, data.ticketSchedule.time, _migTzForConv, _cetOff);
+                        var _sched = _converted || { day: data.ticketSchedule.day, time: '' };
+
                         const newGroup = createClassSessionGroup(true, 'migration');
                         classSessionsContainer.appendChild(newGroup);
-                        
-                        if(data.ticketSchedule.day) {
-                             const daySelect = newGroup.querySelector('.class-day-select');
-                             const dayVal = data.ticketSchedule.day.trim();
-                             if([...daySelect.options].some(o => o.value === dayVal)) daySelect.value = dayVal;
+
+                        // Day — case-insensitive
+                        if (_sched.day) {
+                            var _dayLower = _sched.day.trim().toLowerCase();
+                            var _dayOpt = Array.from(newGroup.querySelector('.class-day-select').options).find(function(o){ return o.value.toLowerCase() === _dayLower; });
+                            if (_dayOpt) newGroup.querySelector('.class-day-select').value = _dayOpt.value;
                         }
-                        if(data.ticketSchedule.time) {
-                            const t = data.ticketSchedule.time.toUpperCase();
-                            const match = t.match(/(\d+)/);
-                            if(match) newGroup.querySelector('.class-hour-select').value = match[0].padStart(2,'0');
-                            newGroup.querySelector('.class-minute-select').value = '00'; 
-                            newGroup.querySelector('.class-meridiem-select').value = t.includes('AM') ? 'AM' : 'PM';
+                        // Time
+                        if (_sched.time) {
+                            var _tp = _sched.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+                            if (_tp) {
+                                newGroup.querySelector('.class-hour-select').value = String(parseInt(_tp[1])).padStart(2,'0');
+                                var _minR = String(Math.round(parseInt(_tp[2])/15)*15%60).padStart(2,'0');
+                                newGroup.querySelector('.class-minute-select').value = _minR;
+                                newGroup.querySelector('.class-meridiem-select').value = _tp[3].toUpperCase();
+                            }
                         }
+                        _updateSessionGroupCET(newGroup, 'migration');
                     } else {
-                        // Create default empty row
                         classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
                     }
 
@@ -9996,6 +10453,12 @@ function initPersonaSmartLogic() {
     // Add first slot row so the form is ready without needing JLID fetch
     var sc = document.getElementById('personaSlotsContainer');
     if (sc && sc.querySelectorAll('.slot-row').length === 0) addSingleSlotRow(true);
+
+    // CET preview: update all rows when timezone changes
+    var tzSel = document.getElementById('pReserveTimezone');
+    if (tzSel) tzSel.addEventListener('change', function() {
+        document.querySelectorAll('#personaSlotsContainer .slot-row').forEach(function(r) { _updateSlotCET(r); });
+    });
 }
 
 /**
@@ -10020,6 +10483,7 @@ function handleSmartFetchAction() {
                 if (!res.success) { showToast('error', 'Fetch Error', res.message); return; }
 
                 const d = res.data;
+                console.log('[TIC SmartFetch] mode=' + res.mode + ' data=', JSON.stringify(d));
 
                 // Summary bar
                 const summaryBar = document.getElementById('personaLearnerSummary');
@@ -10185,24 +10649,70 @@ function handleSmartFetchAction() {
 /**
  * Adds a session row for multi-slot matching
  */
+function _slotCETPreview(dateStr, slotStr, fromTz) {
+  if (!dateStr || !slotStr || !fromTz) return '';
+  try {
+    var parse12h = function(s) {
+      var m = s.trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if (!m) return null;
+      var h = parseInt(m[1]);
+      if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+      if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+      return h;
+    };
+    var parts = slotStr.split(' - ');
+    var startH = parse12h(parts[0]);
+    if (startH === null) return '';
+    // Place startH as UTC, shift so fromTz reads startH
+    var utcBase = new Date(dateStr + 'T' + String(startH).padStart(2,'0') + ':00:00Z');
+    var fromHour = parseInt(new Intl.DateTimeFormat('en-US', {timeZone: fromTz, hour: 'numeric', hour12: false, hourCycle: 'h23'}).format(utcBase));
+    var corrected = new Date(utcBase.getTime() - (fromHour - startH) * 3600000);
+    var fmt = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false});
+    return fmt.format(corrected) + ' – ' + fmt.format(new Date(corrected.getTime() + 3600000)) + ' CET';
+  } catch(e) { return ''; }
+}
+
+function _updateSlotCET(row) {
+  var tz = (document.getElementById('pReserveTimezone') || {}).value || 'Europe/Paris';
+  var dateEl = row.querySelector('.p-slot-date');
+  var timeEl = row.querySelector('.p-slot-time');
+  var preview = row.querySelector('.p-slot-cet-preview');
+  if (!preview || !dateEl || !timeEl) return;
+  var cet = _slotCETPreview(dateEl.value, timeEl.value, tz);
+  if (cet && tz !== 'Europe/Paris' && tz !== 'Europe/Berlin') {
+    preview.textContent = '⌚ ' + cet;
+    preview.style.display = 'block';
+  } else if (cet && (tz === 'Europe/Paris' || tz === 'Europe/Berlin')) {
+    preview.textContent = '⌚ ' + cet + ' (same tz)';
+    preview.style.display = 'block';
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
 function addSingleSlotRow(isFirst = false) {
     const container = document.getElementById('personaSlotsContainer');
     if (!container) return;
 
     const row = document.createElement('div');
     row.className = 'form-grid slot-row';
-    row.style.cssText = "display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px; margin-bottom: 10px; align-items: center;";
-    
-    const slots = generateTimeSlotsForPersona(); 
+    row.style.cssText = "display: grid; grid-template-columns: 1fr 2fr auto; gap: 10px; margin-bottom: 10px; align-items: start;";
+
+    const slots = generateTimeSlotsForPersona();
     let slotOptions = '<option value="" disabled selected>Select Time Slot (CET)<\/option>';
     slots.forEach(function(s) { slotOptions += '<option value="' + s + '">' + s + '<\/option>'; });
 
-    row.innerHTML = '<input type="date" class="form-control p-slot-date" required style="height:42px;">'
-        + '<select class="form-control form-select p-slot-time" required style="height:42px;">' + slotOptions + '<\/select>'
+    row.innerHTML = '<input type="date" class="form-control p-slot-date" required style="height:42px;margin-top:0;">'
+        + '<div style="display:flex;flex-direction:column;gap:3px;">'
+        +   '<select class="form-control form-select p-slot-time" required style="height:42px;">' + slotOptions + '<\/select>'
+        +   '<div class="p-slot-cet-preview" style="font-size:0.72rem;color:#6366f1;font-weight:600;padding:2px 6px;display:none;background:#eef2ff;border-radius:4px;"><\/div>'
+        + '<\/div>'
         + '<div style="width:42px;">'
         + (!isFirst ? '<button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.parentElement.remove()" style="height:42px; width:42px;"><i class="fas fa-trash"><\/i><\/button>' : '')
         + '<\/div>';
     container.appendChild(row);
+    row.querySelector('.p-slot-date').addEventListener('change', function() { _updateSlotCET(row); });
+    row.querySelector('.p-slot-time').addEventListener('change', function() { _updateSlotCET(row); });
 }
 
 /**
@@ -12863,13 +13373,12 @@ function renderKitTrackingTable(filterArg) {
     const refundBtn = !row.refunded
       ? '<button onclick="event.stopPropagation();ktMarkRefunded(' + row.rowIndex + ',this)" style="background:none;border:1px solid #f59e0b;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#d97706;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Mark as refunded — removes from monthly totals">↩ Refund<\/button>'
       : '<span style="font-size:0.7rem;color:#94a3b8;margin-left:4px;border:1px dashed #e2e8f0;border-radius:6px;padding:2px 6px;">Refunded<\/span>';
-    const msgBtn  = '<button onclick="event.stopPropagation();openWatiChatFromBtn(this)" '
-      + 'data-wid="'      + escapeHtml(row.jlid        || '') + '" '
-      + 'data-wname="'    + escapeHtml(row.learnerName || '') + '" '
-      + 'data-wctx="kit" '
-      + 'data-wkit="'     + escapeHtml(row.kit         || '') + '" '
-      + 'data-wlearner="' + escapeHtml(row.learnerName || '') + '" '
-      + 'style="background:none;border:1px solid #25d366;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#25d366;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Message Parent">💬<\/button>';
+    var ktChatPhone = (row.phone || '').replace(/\D/g, '');
+    const msgBtn = ktChatPhone
+      ? '<button onclick="event.stopPropagation();pwbOpenChat(\'' + ktChatPhone + '\', this)" '
+        + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Open WATI chat">'
+        + '<i class="fab fa-whatsapp" style="margin-right:3px;"><\/i>Chat<\/button>'
+      : '';
     if (row.status === 'overdue' || row.status === 'pending') {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"><\/i> Send Follow-up<\/button>' + msgBtn + editBtn + refundBtn;
     } else if (row.status === 'escalated') {
@@ -12928,6 +13437,9 @@ function renderKitTrackingTable(filterArg) {
       + '<td style="padding:10px 14px;">' + responseCell + '<\/td>'
       + '<td style="padding:10px 14px;">' + statusBadge + '<\/td>'
       + '<td style="padding:10px 14px;" onclick="event.stopPropagation()">' + actionBtn + '<\/td>'
+      + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
+      +   (row.jlid ? '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>' : '')
+      + '<\/td>'
       + '<\/tr>' + detailHtml;
   }).join('');
 }
@@ -12942,26 +13454,34 @@ function ktToggleDetail(detailRowId, mainRow) {
 
 function ktSendFollowUp(rowIndex, jlid, btn) {
   const origHTML = btn.innerHTML;
+  const timelineSteps = getKitTimelineSteps();
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
   btn.disabled = true;
+  showLoading('Sending kit reminder...', timelineSteps);
 
   google.script.run
     .withSuccessHandler(function(result) {
       btn.innerHTML = origHTML;
       btn.disabled = false;
+      finalizeLoadingTimeline(result, timelineSteps);
       if (result && result.success) {
+        setTimeout(hideLoading, 800);
         showToast('success', 'Follow-up Sent', result.message || 'WhatsApp message sent.');
         loadKitTrackingPage();
       } else if (result && result.needJlid) {
+        hideLoading();
         // Auto-lookup failed — ask for JLID manually
         const jlidInput = prompt('Could not auto-find JLID for this learner.\nEnter JLID manually (e.g. JL52767973402C):');
         if (jlidInput && jlidInput.trim()) {
           btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
           btn.disabled = true;
+          showLoading('Sending kit reminder...', timelineSteps);
           google.script.run
             .withSuccessHandler(function(r2) {
               btn.innerHTML = origHTML;
               btn.disabled = false;
+              finalizeLoadingTimeline(r2, timelineSteps);
+              setTimeout(hideLoading, 800);
               if (r2 && r2.success) {
                 showToast('success', 'Follow-up Sent', r2.message || 'WhatsApp message sent.');
                 loadKitTrackingPage();
@@ -12972,17 +13492,20 @@ function ktSendFollowUp(rowIndex, jlid, btn) {
             .withFailureHandler(function(err) {
               btn.innerHTML = origHTML;
               btn.disabled = false;
+              hideLoading();
               showToast('error', 'Failed', err.message || String(err));
             })
             .sendKitFollowUpByRow(rowIndex, jlidInput.trim());
         }
       } else {
+        setTimeout(hideLoading, 800);
         showToast('error', 'Failed', (result && result.message) || 'Unknown error.');
       }
     })
     .withFailureHandler(function(err) {
       btn.innerHTML = origHTML;
       btn.disabled = false;
+      hideLoading();
       showToast('error', 'Failed', err.message || String(err));
     })
     .sendKitFollowUpByRow(rowIndex, jlid || '');
@@ -12991,12 +13514,16 @@ function ktSendFollowUp(rowIndex, jlid, btn) {
 function ktResendFollowUp(jlid, btn) {
   if (!jlid) return;
   const origHTML = btn.innerHTML;
+  const timelineSteps = getKitTimelineSteps();
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
   btn.disabled = true;
+  showLoading('Sending kit reminder...', timelineSteps);
   google.script.run
     .withSuccessHandler(function(result) {
       btn.innerHTML = origHTML;
       btn.disabled = false;
+      finalizeLoadingTimeline(result, timelineSteps);
+      setTimeout(hideLoading, 800);
       if (result && result.success) {
         showToast('success', 'Follow-up Sent', result.message || 'WhatsApp message sent.');
         loadKitTrackingPage();
@@ -13007,6 +13534,7 @@ function ktResendFollowUp(jlid, btn) {
     .withFailureHandler(function(err) {
       btn.innerHTML = origHTML;
       btn.disabled = false;
+      hideLoading();
       showToast('error', 'Resend Failed', err.message || String(err));
     })
     .resendKitFollowUp(jlid);
@@ -13801,14 +14329,22 @@ function renderPWBTable(rows) {
         + 'title="Override — parent didn\'t actually buy, reset to In Progress">'
         + '↩ Override<\/button>'
       : '';
-    // Escalate button: appears when CLS needs to be notified
-    var ESCALATE_STATUSES = ['⚠️ CLS Notified - Awaiting Response','In Progress - URGENT 🔴'];
+    // Escalate button: always available unless already escalated
     var escalated = r.escalated === 'TRUE';
-    const escalateBtn = (!escalated && r.jlid && (ESCALATE_STATUSES.indexOf(r.status) > -1 || (r.finalFupSentAt && !r.parentResponse && TERMINAL_PWB.indexOf(r.status) === -1)))
+    const escalateBtn = (!escalated && r.jlid)
       ? '<button onclick="pwbManualEscalate(\'' + escapeHtml(r.jlid) + '\', this)" '
         + 'style="background:#dc2626;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;font-weight:600;white-space:nowrap;" '
         + 'title="Email CLS + TP manager + Sourav now">'
         + '<i class="fas fa-exclamation-triangle" style="margin-right:3px;"><\/i>Escalate to CLS<\/button>'
+      : '<span style="font-size:0.7rem;color:#94a3b8;">Escalated<\/span>';
+
+    // Chat button — opens WATI conversation for parent
+    var chatPhone = (r.parentPhone || '').replace(/\D/g, '');
+    var chatBtn = chatPhone
+      ? '<button onclick="pwbOpenChat(\'' + chatPhone + '\', this)" '
+        + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;" '
+        + 'title="Open WATI chat">'
+        + '<i class="fab fa-whatsapp" style="margin-right:3px;"><\/i>Chat<\/button>'
       : '';
     var selId = 'pwbStatusSel_' + i;
     var updateStatusHtml = r.jlid
@@ -13841,6 +14377,8 @@ function renderPWBTable(rows) {
       + "<td style=\"padding:6px 8px;\">" + fupBtn + "<\/td>"
       + "<td style=\"padding:4px 8px;\">" + overrideBtn + "<\/td>"
       + "<td style=\"padding:4px 8px;\">" + escalateBtn + "<\/td>"
+      + "<td style=\"padding:4px 8px;\">" + chatBtn + "<\/td>"
+      + "<td style=\"padding:4px 8px;\">" + (r.jlid ? '<button onclick=\"openHsDeal(\\\'' + escapeHtml(r.jlid) + '\\\',this)\" style=\"background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;\"><i class=\"fas fa-external-link-alt\" style=\"margin-right:3px;\"><\/i>HS Deal<\/button>' : '') + "<\/td>"
       + "<td style=\"padding:6px 8px;\">" + msgPWB + "<\/td>"
       + "<\/tr>";
   }).join('');
@@ -13864,6 +14402,47 @@ function pwbOverrideStatus(jlid, btn) {
       showToast('error', 'Override Error', err && err.message ? err.message : String(err));
     })
     .sendPWBStatusOverride(jlid);
+}
+
+var _hsDealCache = {};
+function openHsDeal(jlid, btn) {
+  if (_hsDealCache[jlid]) { window.open(_hsDealCache[jlid], '_blank'); return; }
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success && res.data && res.data.dealId) {
+        var url = 'https://app.hubspot.com/contacts/7729491/deal/' + res.data.dealId;
+        _hsDealCache[jlid] = url;
+        window.open(url, '_blank');
+      } else { showToast('error', 'HubSpot', 'Deal not found for ' + jlid); }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = orig;
+      showToast('error', 'HubSpot', err.message || String(err));
+    })
+    .fetchHubspotByJlid(jlid);
+}
+
+function pwbOpenChat(phone, btn) {
+  var orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success && res.link) {
+        window.open(res.link, '_blank');
+      } else {
+        // Fallback: open wa.me
+        window.open('https://wa.me/' + phone, '_blank');
+      }
+    })
+    .withFailureHandler(function() {
+      btn.disabled = false; btn.innerHTML = orig;
+      window.open('https://wa.me/' + phone, '_blank');
+    })
+    .fetchWatiDirectLink(phone);
 }
 
 function pwbManualEscalate(jlid, btn) {
@@ -14243,17 +14822,24 @@ function bcSendSelected() {
     courses     : courses
   };
 
+  var certSteps = getCertTimelineSteps(courses);
+  showLoading('Generating & sending certificates…', certSteps);
+
   google.script.run
     .withSuccessHandler(function(res) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-paper-plane"><\/i> Send Certificates';
+      // Build finalized timeline from server result or mark all success/failed
+      var finalSteps = res.timeline && res.timeline.length ? res.timeline : certSteps.map(function(s) {
+        return Object.assign({}, s, { status: res.success ? 'success' : 'failed', durationMs: s.durationMs || 0 });
+      });
+      finalizeLoadingTimeline({ timeline: finalSteps }, certSteps);
       if (res.success) {
         showToast('success', 'Certificates', res.message);
         var st = document.getElementById('bcSendStatus');
         st.style.display = 'flex';
         st.innerHTML = '<i class="fas fa-check-circle"><\/i>&nbsp;' + escapeHtml(res.message);
         if (res.failed && res.failed.length) showToast('warning', 'Partial Failure', 'Failed: ' + res.failed.join(', '));
-        // Refresh log after short delay (allow sheet write to complete)
         setTimeout(bcLoadLog, 2000);
       } else {
         showToast('error', 'Certificates', res.message);
@@ -14262,6 +14848,7 @@ function bcSendSelected() {
     .withFailureHandler(function(e) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-paper-plane"><\/i> Send Certificates';
+      finalizeLoadingTimeline({ timeline: certSteps.map(function(s, i) { return Object.assign({}, s, { status: i === 0 ? 'failed' : 'pending' }); }) }, certSteps);
       showToast('error', 'Certificates', e.message);
     })
     .sendBulkCertificates(data);
@@ -16495,7 +17082,7 @@ function kitOrderLookup() {
       infoEl.style.color = '#991b1b';
       infoEl.textContent = '❌ Error: ' + (err && err.message ? err.message : 'Server error');
     })
-    .getKitOrderData(jlid);
+    .fetchHubspotByJlid(jlid);
 }
 
 function submitKitOrder() {
@@ -16521,18 +17108,29 @@ function submitKitOrder() {
     deliveryDisplay = dd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   } catch(e) {}
 
-  showLoading('Sending WATI · Writing HubSpot note · Logging to sheet…');
+  var kitOrderSteps = getKitOrderTimelineSteps();
+  showLoading('Processing kit order…', kitOrderSteps);
 
   google.script.run
     .withSuccessHandler(function(res) {
-      hideLoading();
       if (!res || !res.success) {
+        var failSteps = kitOrderSteps.map(function(s, i) {
+          return Object.assign({}, s, { status: i === 0 ? 'failed' : 'pending' });
+        });
+        finalizeLoadingTimeline({ timeline: failSteps }, kitOrderSteps);
         resultEl.style.display = 'block';
         resultEl.style.background = '#fef2f2';
         resultEl.style.color = '#991b1b';
-        resultEl.textContent = '❌ ' + (res.error || 'Something went wrong');
+        resultEl.textContent = '❌ ' + (res ? res.error : 'Something went wrong');
         return;
       }
+      var doneSteps = [
+        Object.assign({}, kitOrderSteps[0], { status: 'success' }),
+        Object.assign({}, kitOrderSteps[1], { status: res.watiSent    ? 'success' : 'skipped', detail: res.watiSent ? '' : 'No phone number found' }),
+        Object.assign({}, kitOrderSteps[2], { status: res.noteSaved   ? 'success' : 'skipped' }),
+        Object.assign({}, kitOrderSteps[3], { status: res.sheetLogged ? 'success' : 'skipped' })
+      ];
+      finalizeLoadingTimeline({ timeline: doneSteps }, kitOrderSteps);
       resultEl.style.display = 'block';
       resultEl.style.background = '#f0fdf4';
       resultEl.style.color = '#166534';
@@ -16541,7 +17139,6 @@ function submitKitOrder() {
         (res.watiSent    ? '✓ WATI sent to parent<br>'    : '⚠ WATI not sent (no phone?)<br>') +
         (res.noteSaved   ? '✓ HubSpot note written<br>'   : '⚠ HubSpot note skipped<br>') +
         (res.sheetLogged ? '✓ Logged to Kit Tracking'     : '⚠ Sheet log skipped');
-
       showToast('success', 'Kit Order Logged', 'WATI sent · Note written · Sheet updated');
 
       // Clear form
@@ -16555,7 +17152,10 @@ function submitKitOrder() {
       _kitOrderHsData = null;
     })
     .withFailureHandler(function(err) {
-      hideLoading();
+      var failSteps = kitOrderSteps.map(function(s, i) {
+        return Object.assign({}, s, { status: i === 0 ? 'failed' : 'pending' });
+      });
+      finalizeLoadingTimeline({ timeline: failSteps }, kitOrderSteps);
       resultEl.style.display = 'block';
       resultEl.style.background = '#fef2f2';
       resultEl.style.color = '#991b1b';
@@ -16577,33 +17177,107 @@ function submitKitOrder() {
 var _credHsData = null;
 
 function credLookup() {
-  var jlid = (document.getElementById('credJlid').value || '').trim();
+  var jlid = (document.getElementById('credJlid').value || '').trim().toUpperCase();
   if (!jlid) { showToast('error', 'Missing JLID', 'Enter a JLID first.'); return; }
+  document.getElementById('credJlid').value = jlid;
 
   var infoEl = document.getElementById('credLearnerInfo');
   infoEl.style.display = 'block';
   infoEl.textContent = 'Looking up…';
   _credHsData = null;
 
+  // Hide generate button until preview loads
+  document.getElementById('credGenerateBtn').style.display = 'none';
+  document.getElementById('credPreviewEmpty').style.display = 'block';
+  document.getElementById('credPreviewCard').style.display = 'none';
+  document.getElementById('credPreviewError').style.display = 'none';
+
+  // 1. Learner name lookup via fetchHubspotByJlid
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res || !res.success) {
         infoEl.style.background = '#fef2f2';
         infoEl.style.color = '#991b1b';
-        infoEl.textContent = '❌ ' + (res.error || 'Learner not found');
+        infoEl.textContent = '❌ ' + (res.message || 'Learner not found');
         return;
       }
       _credHsData = res.data;
+      var name = res.data.learnerName || jlid;
       infoEl.style.background = '#fff7ed';
       infoEl.style.color = '#92400e';
-      infoEl.textContent = '✓ ' + res.data.learnerName;
+      infoEl.textContent = '✓ ' + name + ' — loading calendar…';
+
+      // 2. Calendar preview
+      google.script.run
+        .withSuccessHandler(function(cal) {
+          infoEl.textContent = '✓ ' + name;
+          _credRenderCalendarPreview(cal);
+        })
+        .withFailureHandler(function(err) {
+          infoEl.textContent = '✓ ' + name;
+          document.getElementById('credPreviewError').style.display = 'block';
+          document.getElementById('credPreviewError').querySelector('div').textContent = '❌ Calendar error: ' + (err && err.message ? err.message : 'Unknown');
+        })
+        .getScratchCalendarPreview(jlid);
     })
     .withFailureHandler(function(err) {
       infoEl.style.background = '#fef2f2';
       infoEl.style.color = '#991b1b';
       infoEl.textContent = '❌ ' + (err && err.message ? err.message : 'Server error');
     })
-    .getKitOrderData(jlid); // reuse — returns learner name
+    .fetchHubspotByJlid(jlid);
+}
+
+function _credRenderCalendarPreview(cal) {
+  var emptyEl = document.getElementById('credPreviewEmpty');
+  var cardEl  = document.getElementById('credPreviewCard');
+  var errEl   = document.getElementById('credPreviewError');
+
+  if (!cal || !cal.success) {
+    emptyEl.style.display = 'none';
+    errEl.style.display = 'block';
+    errEl.querySelector('div').textContent = '❌ ' + (cal && cal.error ? cal.error : 'Could not load calendar.');
+    return;
+  }
+
+  if (cal.count === 0) {
+    emptyEl.style.display = 'block';
+    emptyEl.querySelector('div').textContent = '⚠ No upcoming sessions found for this JLID on the calendar.';
+    cardEl.style.display = 'none';
+    return;
+  }
+
+  // Session count badge
+  document.getElementById('credSessionCount').textContent = cal.count + ' session' + (cal.count !== 1 ? 's' : '');
+
+  // Last session date
+  var lastEl = document.getElementById('credLastSession');
+  if (lastEl) lastEl.textContent = 'Ends: ' + (cal.lastSessionDate || '—');
+
+  // Session list (up to 5)
+  var listEl = document.getElementById('credSessionList');
+  listEl.innerHTML = cal.sessions.map(function(s) {
+    return '<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;color:#374151;">'
+      + '<i class="fas fa-clock" style="color:#6366f1;font-size:0.72rem;"></i>'
+      + '<span>' + escapeHtml(s.day) + ' &nbsp;·&nbsp; ' + escapeHtml(s.time) + '</span>'
+      + '</div>';
+  }).join('') + (cal.count > 5 ? '<div style="font-size:0.75rem;color:#94a3b8;margin-top:0.25rem;">+ ' + (cal.count - 5) + ' more…</div>' : '');
+
+  // Attendees
+  var attEl = document.getElementById('credAttendeeList');
+  attEl.innerHTML = cal.attendees.length
+    ? cal.attendees.map(function(a) { return '<div><i class="fas fa-user" style="color:#94a3b8;font-size:0.72rem;margin-right:6px;"></i>' + escapeHtml(a) + '</div>'; }).join('')
+    : '<span style="color:#94a3b8;font-size:0.8rem;">No attendees found</span>';
+
+  // Current description
+  document.getElementById('credCurrentDesc').textContent = cal.description || '(no description)';
+
+  emptyEl.style.display = 'none';
+  cardEl.style.display = 'flex';
+  errEl.style.display = 'none';
+
+  // Show generate button now that preview is loaded
+  document.getElementById('credGenerateBtn').style.display = 'block';
 }
 
 function generateScratchCreds() {
