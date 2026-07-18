@@ -1023,15 +1023,17 @@ function _updateSessionGroupCET(sessionGroup, prefix) {
       fromH = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:tzVal,hour:'numeric',hour12:false,hourCycle:'h23'}).format(utcBase));
       fromM = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:tzVal,minute:'numeric'}).format(utcBase));
     } catch(e2) {
-      // tzVal is a GMT display string like "(GMT+04:00) Abu Dhabi..." — parse offset
+      // tzVal is a GMT display string like "(GMT+04:00) Abu Dhabi..." or "(GMT) London..." — parse offset
       var gm = tzVal.match(/GMT([+-])(\d{1,2}):(\d{2})/);
-      if (!gm) { preview.style.display = 'none'; return; }
-      var offMins = (gm[1] === '+' ? 1 : -1) * (parseInt(gm[2]) * 60 + parseInt(gm[3]));
+      var offMins = gm ? (gm[1] === '+' ? 1 : -1) * (parseInt(gm[2]) * 60 + parseInt(gm[3])) : (/GMT/.test(tzVal) ? 0 : null);
+      if (offMins === null) { preview.style.display = 'none'; return; }
       var tzTotal = ((h * 60 + m + offMins) % 1440 + 1440) % 1440;
       fromH = Math.floor(tzTotal / 60);
       fromM = tzTotal % 60;
     }
     var cetDiff = (h*60+m) - (fromH*60+fromM);
+    // Normalize to [-12h, +12h) — day rollover in the tz makes raw diff wrap by ±24h
+    cetDiff = ((cetDiff + 720) % 1440 + 1440) % 1440 - 720;
     var corrected = new Date(utcBase.getTime() + cetDiff*60000);
     var cetDay  = new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',weekday:'short'}).format(corrected);
     var cetH24  = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Paris',hour:'numeric',hour12:false,hourCycle:'h23'}).format(corrected));
@@ -9789,7 +9791,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (versionLink) {
     versionLink.addEventListener('click', (e) => {
       e.preventDefault();
-      
+
       // Build the changelog HTML
       let html = '';
       for (const version in changelogData) {
@@ -10025,7 +10027,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Wire up buttons
     card.querySelector('.view-profile-btn').dataset.teacherName = teacher.name;
     card.querySelector('.view-profile-btn').addEventListener('click', function() {
-        switchPage('teacherProfilePage', this.dataset.teacherName);
+        openTeacherProfileModal(this.dataset.teacherName);
     });
     card.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
     card.querySelector('.find-replacement-btn').addEventListener('click', function() {
@@ -10255,7 +10257,7 @@ function openCloneModal(teacherName) {
                         tr.querySelector('.view-profile-btn').addEventListener('click', function() {
                             var modal = document.getElementById('cloneTeacherModal');
                             if (modal) modal.classList.remove('active');
-                            switchPage('teacherProfilePage', this.dataset.teacherName);
+                            openTeacherProfileModal(this.dataset.teacherName);
                         });
 
                         tbody.appendChild(tr);
@@ -10666,7 +10668,10 @@ function _slotCETPreview(dateStr, slotStr, fromTz) {
     // Place startH as UTC, shift so fromTz reads startH
     var utcBase = new Date(dateStr + 'T' + String(startH).padStart(2,'0') + ':00:00Z');
     var fromHour = parseInt(new Intl.DateTimeFormat('en-US', {timeZone: fromTz, hour: 'numeric', hour12: false, hourCycle: 'h23'}).format(utcBase));
-    var corrected = new Date(utcBase.getTime() - (fromHour - startH) * 3600000);
+    var hourDiff = fromHour - startH;
+    // Normalize to [-12h, +12h) — day rollover in the tz wraps the raw diff by ±24h
+    hourDiff = ((hourDiff + 12) % 24 + 24) % 24 - 12;
+    var corrected = new Date(utcBase.getTime() - hourDiff * 3600000);
     var fmt = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false});
     return fmt.format(corrected) + ' – ' + fmt.format(new Date(corrected.getTime() + 3600000)) + ' CET';
   } catch(e) { return ''; }
@@ -12373,9 +12378,36 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    // Double-booking guard: check teacher's calendars before confirming
+    showLoading('Checking teacher availability…');
+    google.script.run
+      .withSuccessHandler(function(chk) {
+        hideLoading();
+        var warnHtml = '';
+        if (chk && chk.success && chk.conflicts && chk.conflicts.length) {
+          warnHtml = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-top:8px;text-align:left;">'
+            + '<strong style="color:#dc2626;">⚠ Teacher already booked:<\/strong><br>'
+            + chk.conflicts.map(function(c) {
+                return '<span style="font-size:0.8rem;color:#991b1b;">• ' + escapeHtml(c.day) + ' ' + escapeHtml(c.time) + ' — ' + escapeHtml(c.eventTitle) + '<\/span>';
+              }).join('<br>')
+            + '<br><span style="font-size:0.75rem;color:#94a3b8;">Booking anyway will double-book this teacher.<\/span><\/div>';
+        } else if (chk && chk.success && chk.unverifiable) {
+          warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Could not verify teacher calendar — check manually.<\/div>';
+        } else if (!chk || !chk.success) {
+          warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Availability check failed — proceeding without verification.<\/div>';
+        }
+        _showBookingConfirm(warnHtml);
+      })
+      .withFailureHandler(function() {
+        hideLoading();
+        _showBookingConfirm('<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Availability check failed — proceeding without verification.<\/div>');
+      })
+      .checkBookingConflicts(teacherName, classSessions, startDate, gmtTzLabel);
+
+    function _showBookingConfirm(warnHtml) {
     showConfirm(
       'Book Classes with New Teacher',
-      'Book ' + classSessions.length + ' weekly session(s) x ' + numEvents + ' weeks with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+      'Book ' + classSessions.length + ' weekly session(s) x ' + numEvents + ' weeks with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + warnHtml,
       function(confirmed) {
         if (!confirmed) return;
         showLoading('Booking classes (' + numEvents + ' weeks)…');
@@ -12411,6 +12443,7 @@ document.addEventListener('DOMContentLoaded', function() {
           );
       }
     );
+    }
   });
 });
 

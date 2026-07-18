@@ -2,6 +2,33 @@
 
 ---
 
+## [2026-07-18] — Popup Fix, Double-Booking Guard, Booking Log (V7.43)
+
+### All Popups Fixed — Missing `</div>` (`Index.html`)
+- `#documentationOverlay` was never closed, so the browser auto-nested **every modal** (changelog, email details, teacher profile, etc.) inside the hidden overlay — popups opened but were invisible
+- One closing `</div>` added; version popup, Email Activity View Details, and TIC View Profile all work again
+
+### Double-Booking Guard (`ReserveSlot.js` + `JavaScript.html`)
+- New `checkBookingConflicts()` — before booking, checks the teacher's personal calendar **and** master class calendar for events overlapping each session's first occurrence
+- Conflicts shown as a red warning inside the booking confirm popup; operator can still book anyway or cancel
+- Unverifiable calendars flagged instead of silently passing
+
+### CET Preview — Day Rollover Fix (`JavaScript.html`)
+- Conversions crossing midnight (e.g. 11 PM India, late-evening US) were off by ±24h; diff now normalized to ±12h
+- Preview shows Day + 12-hour time (e.g. `⌚ Wed 1:00 AM CET`), always visible with "select time above" placeholder
+- Handles `(GMT)` zero-offset labels and both IANA and GMT display-string timezones
+
+### TIC View Profile → Popup (`JavaScript.html`)
+- Persona cards and replacement table View Profile buttons now open the profile popup modal instead of navigating to the profile page
+
+### Class Booking Log (`ReserveSlot.js`)
+- Every successful booking appends a row to the "Class Booking Log" sheet in the Audit spreadsheet (auto-created): Timestamp, JLID, Learner, Teacher, Course, Sessions, Weeks, Start Date, Timezone, Performed By, Class Link, Event Title
+
+### Login Page — Light Redesign (`Styles.html`)
+- Lavender-white gradient, white feature cards, indigo accents; white sign-in panel — replaces the previous dark theme via `#loginPage` override block (structure and animations untouched)
+
+---
+
 ## [2026-07-14] — CET Preview, GCSE Tag, Migration Fixes (V7.35)
 
 ### CET Time Preview — Migration & Onboarding Parent Forms (`JavaScript.html`)

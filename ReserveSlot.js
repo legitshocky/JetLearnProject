@@ -7,6 +7,13 @@
 // Returns { success, message, title, start, end, occurrences, eventSeriesId }
 // ─────────────────────────────────────────────────────────────────────────────
 function _courseTypeLabel(courseName, jlid) {
+  // Check course name first — GCSE and other specific courses override JLID suffix
+  var c = String(courseName || '').toLowerCase();
+  if (c.indexOf('gcse') > -1) return 'GCSE';
+  if (c.indexOf('financial') > -1 || c.indexOf('finlit') > -1) return 'Financial Literacy';
+  if (c.indexOf('math') > -1) return 'Fun with Maths';
+
+  // Fall back to JLID suffix
   var j = String(jlid || '').toUpperCase();
   var m = j.match(/(FL|[CM])\d*$/);
   var suf = m ? m[1] : '';
@@ -14,10 +21,6 @@ function _courseTypeLabel(courseName, jlid) {
   if (suf === 'M') return 'Fun with Maths';
   if (suf === 'C') return 'AI-Coding';
 
-  var c = String(courseName || '').toLowerCase();
-  if (c.indexOf('financial') > -1 || c.indexOf('finlit') > -1) return 'Financial Literacy';
-  if (c.indexOf('math') > -1) return 'Fun with Maths';
-  if (c.indexOf('gcse') > -1) return 'GCSE';
   if (c.indexOf('coding') > -1 || c.indexOf('code') > -1 || c.indexOf('ai') > -1) return 'AI-Coding';
   return courseName || 'Lesson';
 }
@@ -107,6 +110,101 @@ function _resolveOffsetMinutes(dateStr, gmtLabel) {
   return _gmtLabelToOffsetMinutes(gmtLabel);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// checkBookingConflicts
+// Pre-booking guard: for each session's FIRST occurrence, checks the teacher's
+// personal calendar and the master class calendar for overlapping events.
+// classSessions: [{ day: 'Monday', time: '5:00 PM' }, ...]; iana e.g. "Asia/Kolkata".
+// Returns { success, conflicts: [{day, time, eventTitle, calendar}], unverifiable }
+// ─────────────────────────────────────────────────────────────────────────────
+function checkBookingConflicts(teacherName, classSessions, startDate, iana) {
+  try {
+    if (!teacherName || !classSessions || !classSessions.length || !startDate) {
+      return { success: false, message: 'Teacher, sessions, and start date required.' };
+    }
+    iana = iana || 'Europe/London';
+    var info = _lookupTeacherCalendarInfo(teacherName);
+    var teacherEmailLower = (info.email || '').toLowerCase();
+    var calIdLower = (info.calendarId || '').toLowerCase();
+
+    var sdp = String(startDate).split('-');
+    var startBase = new Date(Date.UTC(parseInt(sdp[0],10), parseInt(sdp[1],10)-1, parseInt(sdp[2],10)));
+    var nameParts = String(teacherName).trim().toLowerCase().split(/\s+/).filter(function(p){ return p.length >= 3; });
+
+    var conflicts = [];
+    var unverifiable = !info.calendarId;
+
+    classSessions.forEach(function(sess) {
+      var dayIdx = _DAY_INDEX[sess.day];
+      var t = _parse12hTime(sess.time);
+      if (dayIdx === undefined || !t) return;
+
+      var diff = (dayIdx - startBase.getUTCDay() + 7) % 7;
+      var occDate = new Date(startBase.getTime() + diff * 86400000);
+      var oy = occDate.getUTCFullYear(), om = occDate.getUTCMonth() + 1, od = occDate.getUTCDate();
+      var pad = function(n) { return ('0' + n).slice(-2); };
+      var dateStr = oy + '-' + pad(om) + '-' + pad(od);
+
+      var offMins;
+      try { offMins = Math.round(_tzOffsetHours(dateStr, iana) * 60); }
+      catch(e) { offMins = 0; }
+      var slotStartMs = Date.UTC(oy, om-1, od, t.h, t.m) - offMins * 60000;
+      var slotEndMs   = slotStartMs + 3600000;
+      var tMin = new Date(slotStartMs).toISOString();
+      var tMax = new Date(slotEndMs).toISOString();
+
+      // Teacher's personal calendar — any busy event is a conflict
+      if (info.calendarId) {
+        try {
+          var persList = Calendar.Events.list(info.calendarId, {
+            timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 20
+          });
+          (persList.items || []).forEach(function(ev) {
+            if (ev.status === 'cancelled' || ev.transparency === 'transparent') return;
+            conflicts.push({ day: sess.day, time: sess.time, eventTitle: ev.summary || 'Busy', calendar: 'teacher' });
+          });
+        } catch(pe) {
+          Logger.log('[checkBookingConflicts] personal cal error: ' + pe.message);
+          unverifiable = true;
+        }
+      }
+
+      // Master class calendar — conflict only if the event involves this teacher
+      try {
+        var masterList = Calendar.Events.list(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, {
+          timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 50
+        });
+        (masterList.items || []).forEach(function(ev) {
+          if (ev.status === 'cancelled') return;
+          var guests = (ev.attendees || []).map(function(a){ return (a.email || '').toLowerCase(); });
+          var guestMatch = (calIdLower && guests.indexOf(calIdLower) > -1)
+                        || (teacherEmailLower && guests.indexOf(teacherEmailLower) > -1);
+          var titleLow = (ev.summary || '').toLowerCase();
+          var nameMatch = nameParts.length > 0 && nameParts.every(function(p){ return titleLow.indexOf(p) > -1; });
+          if (guestMatch || nameMatch) {
+            conflicts.push({ day: sess.day, time: sess.time, eventTitle: ev.summary || 'Class', calendar: 'master' });
+          }
+        });
+      } catch(me) {
+        Logger.log('[checkBookingConflicts] master cal error: ' + me.message);
+      }
+    });
+
+    // De-duplicate (same event may appear on both calendars)
+    var seen = {};
+    conflicts = conflicts.filter(function(c) {
+      var k = c.day + '|' + c.time + '|' + c.eventTitle;
+      if (seen[k]) return false;
+      seen[k] = true; return true;
+    });
+
+    return { success: true, conflicts: conflicts, unverifiable: unverifiable };
+  } catch(e) {
+    Logger.log('[checkBookingConflicts] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // Parses "HH:MM AM/PM" (12-hour) into {h, m} 24-hour.
 function _parse12hTime(timeStr) {
   var m = String(timeStr || '').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
@@ -133,6 +231,36 @@ var _JETGUIDE_EMAILS = {
   'Sana Rais':       'sana.rais@jet-learn.com',
   'Satyam Mehra':    'satyam.mehra@jet-learn.com'
 };
+
+function _logBooking(jlid, learnerName, teacherName, courseName, booked, numEvents, startDate, gmtTimezoneLabel, performedBy, classLink, title) {
+  try {
+    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+    var sheet = ss.getSheetByName('Class Booking Log');
+    if (!sheet) {
+      sheet = ss.insertSheet('Class Booking Log');
+      sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Teacher', 'Course', 'Sessions', 'Weeks', 'Start Date', 'Timezone', 'Performed By', 'Class Link', 'Event Title']);
+      sheet.getRange(1, 1, 1, 12).setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    }
+    var sessionStr = booked.map(function(b) { return b.day + ' ' + b.time; }).join(', ');
+    sheet.appendRow([
+      new Date(),
+      jlid || '',
+      learnerName || '',
+      teacherName || '',
+      courseName || '',
+      sessionStr,
+      numEvents || '',
+      startDate || '',
+      gmtTimezoneLabel || '',
+      performedBy || '',
+      classLink || '',
+      title || ''
+    ]);
+  } catch(e) {
+    Logger.log('[_logBooking] Failed to write booking log: ' + e.message);
+  }
+}
 
 function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, gmtTimezoneLabel, numEvents, extraEmails, performedBy, classLink, jetGuideName, eventDescription) {
   try {
@@ -256,6 +384,7 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     if (!booked.length) return { success: false, message: 'No valid sessions could be parsed.' };
 
     Logger.log('[bookClassesWithNewTeacher] Booked ' + booked.length + ' session(s) x' + NUM_EVENTS + ' weeks for ' + (learnerName || jlid) + ' with ' + teacherName);
+    _logBooking(jlid, learnerName, teacherName, courseName, booked, NUM_EVENTS, startDate, gmtTimezoneLabel, performedBy, classLink, title);
 
     return { success: true, title: title, booked: booked, occurrences: NUM_EVENTS };
   } catch(e) {

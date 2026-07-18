@@ -614,10 +614,10 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.37";
+const APP_VERSION = "7.43";
 
 function getAppVersion() {
-  return APP_VERSION;s
+  return APP_VERSION;
 }
 
 // Direct course list for Certificate Center — bypasses all caching/indirection

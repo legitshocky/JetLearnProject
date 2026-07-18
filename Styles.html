@@ -1893,6 +1893,93 @@
     }
 
     /* ============================================= */
+    /* LOGIN LIGHT THEME (V7.36 redesign)            */
+    /* ID selectors out-rank the class !important's  */
+    /* ============================================= */
+    #loginPage.login-container { background: #f4f5fb !important; }
+    #loginPage .login-bg-gradient {
+      background:
+        radial-gradient(ellipse 90% 70% at 70% 110%, rgba(129,140,248,0.28) 0%, rgba(167,139,250,0.14) 40%, transparent 70%),
+        radial-gradient(ellipse 55% 40% at 0% 0%, rgba(196,181,253,0.22) 0%, transparent 55%),
+        linear-gradient(175deg, #f8f8fe 0%, #f2f2fb 50%, #ecebfa 100%);
+    }
+    #loginPage .login-anim-canvas { opacity: 0.22; }
+    #loginPage .particle { opacity: 0.35; }
+
+    /* Left panel — dark text on light */
+    #loginPage .login-logo i { color: #6366f1 !important; filter: drop-shadow(0 0 10px rgba(99,102,241,0.35)); }
+    #loginPage .login-logo h1 { color: #1e1b4b !important; }
+    #loginPage .login-kicker { color: #6366f1 !important; background: rgba(99,102,241,0.08) !important; border: 1px solid rgba(99,102,241,0.18) !important; }
+    #loginPage .login-title { color: #1e1b4b !important; }
+    #loginPage .login-title span { color: #6366f1 !important; }
+    #loginPage .login-subtitle { color: #64748b !important; }
+    #loginPage .feature-item {
+      background: #ffffff !important;
+      border: 1px solid #e5e7f5 !important;
+      box-shadow: 0 1px 3px rgba(30,27,75,0.05);
+    }
+    #loginPage .feature-item:hover {
+      background: #ffffff !important;
+      border-color: rgba(99,102,241,0.45) !important;
+      box-shadow: 0 6px 20px rgba(99,102,241,0.14);
+    }
+    #loginPage .feature-icon {
+      background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12)) !important;
+      border: 1px solid rgba(99,102,241,0.20) !important;
+    }
+    #loginPage .feature-icon i { color: #6366f1 !important; }
+    #loginPage .feature-text h3 { color: #1e293b !important; }
+    #loginPage .feature-text p { color: #64748b !important; }
+    #loginPage .login-stat-row { border-top-color: #e2e4f2; }
+    #loginPage .login-stat-num { color: #1e1b4b !important; }
+    #loginPage .login-stat-label { color: #94a3b8 !important; }
+
+    /* Right panel — clean white card */
+    #loginPage .login-right {
+      background: #ffffff;
+      border-left: 1px solid #e7e8f4;
+      box-shadow: -12px 0 40px rgba(30,27,75,0.06);
+    }
+    #loginPage .login-status-bar { color: #64748b; }
+    #loginPage .login-form-title { color: #1e1b4b; }
+    #loginPage .login-form-subtitle { color: #64748b; }
+    #loginPage .google-signin-btn {
+      background: #ffffff;
+      border: 1px solid #dfe1ef;
+      color: #1e293b;
+      box-shadow: 0 1px 3px rgba(30,27,75,0.06);
+    }
+    #loginPage .google-signin-btn:hover {
+      background: #f8f8fe;
+      border-color: rgba(99,102,241,0.5);
+      box-shadow: 0 8px 24px rgba(99,102,241,0.15);
+    }
+    #loginPage .google-signin-btn svg { filter: none; }
+    #loginPage .signin-divider span { background: #e7e8f4; }
+    #loginPage .signin-divider p { color: #94a3b8; }
+    #loginPage .trust-item { background: #f6f7fc; border: 1px solid #e7e8f4; }
+    #loginPage .trust-item i { color: #6366f1; }
+    #loginPage .trust-item span { color: #64748b; }
+    #loginPage .login-assist-note { color: #94a3b8 !important; }
+    #loginPage .login-assist-note a { color: #6366f1 !important; }
+    #loginPage .login-version { color: #a5aac5; border-top-color: #ebedf7; }
+    #loginPage .login-form .form-label { color: #64748b; }
+    #loginPage .login-form .form-control {
+      color: #1e293b;
+      background: #f8f9fd;
+      border: 1px solid #dfe1ef;
+    }
+    #loginPage .login-form .form-control::placeholder { color: #a5aac5; }
+    #loginPage .checkbox-text { color: #64748b; }
+    #loginPage .custom-checkbox { border-color: #cbd1e8; }
+    #loginPage .password-toggle { color: #94a3b8; }
+    #loginPage .back-to-login-link { color: #64748b; }
+    #loginPage .google-auth-error { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+    @media (max-width: 960px) {
+      #loginPage .login-right { border-top: 1px solid #e7e8f4; border-left: none; }
+    }
+
+    /* ============================================= */
     /* ✨ LOGOUT BUTTON (sidebar)                   */
     /* ============================================= */
     .logout-btn {
