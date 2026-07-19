@@ -153,7 +153,8 @@ function checkBookingConflicts(teacherName, classSessions, startDate, iana) {
       var tMin = new Date(slotStartMs).toISOString();
       var tMax = new Date(slotEndMs).toISOString();
 
-      // Teacher's personal calendar — any busy event is a conflict
+      // Teacher's personal calendar — any busy event is a conflict, except
+      // "Availability Hour" markers, which represent OPEN slots, not bookings.
       if (info.calendarId) {
         try {
           var persList = Calendar.Events.list(info.calendarId, {
@@ -161,6 +162,7 @@ function checkBookingConflicts(teacherName, classSessions, startDate, iana) {
           });
           (persList.items || []).forEach(function(ev) {
             if (ev.status === 'cancelled' || ev.transparency === 'transparent') return;
+            if (/availability\s*hour/i.test(ev.summary || '')) return;
             conflicts.push({ day: sess.day, time: sess.time, eventTitle: ev.summary || 'Busy', calendar: 'teacher' });
           });
         } catch(pe) {
@@ -170,12 +172,14 @@ function checkBookingConflicts(teacherName, classSessions, startDate, iana) {
       }
 
       // Master class calendar — conflict only if the event involves this teacher
+      // (same Availability Hour exclusion — those are open-slot markers, not bookings)
       try {
         var masterList = Calendar.Events.list(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, {
           timeMin: tMin, timeMax: tMax, singleEvents: true, maxResults: 50
         });
         (masterList.items || []).forEach(function(ev) {
           if (ev.status === 'cancelled') return;
+          if (/availability\s*hour/i.test(ev.summary || '')) return;
           var guests = (ev.attendees || []).map(function(a){ return (a.email || '').toLowerCase(); });
           var guestMatch = (calIdLower && guests.indexOf(calIdLower) > -1)
                         || (teacherEmailLower && guests.indexOf(teacherEmailLower) > -1);

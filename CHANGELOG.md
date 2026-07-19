@@ -2,6 +2,41 @@
 
 ---
 
+## [2026-07-19] — Kit HubSpot Fix, PWB AI Brain, Booking Fixes (V7.47)
+
+### Kit Entry — HubSpot Update Fix (`KitTrackingService.js`)
+- Kit status ("Sent by Us"), cost accumulation, and subscription were sent in a single PATCH; an invalid subscription enum value silently failed the whole call, so price/status never updated
+- Subscription now maps to HubSpot's exact enum (`Yearly`→`Annual`, `2 Yearly`→`2 Years`, etc.) and PATCHes separately — status/cost can no longer be blocked by a bad subscription value
+
+### Kit Delivery Follow-up — Trigger Was Never Installed (`KitTrackingService.js`)
+- `sendKitFollowUps()` existed but no trigger ever called it — added `setupKitFollowUpTrigger()` (run once from the editor) to install a daily 9 AM trigger
+
+### Refunded Kits No Longer Show as Overdue (`KitTrackingService.js`)
+- Refunded rows now get their own `refunded` status — excluded from Overdue count/badge and skipped by the follow-up sender
+
+### Parent Will Buy — AI Reply Classification (`ParentWillBuyService.js`)
+- Free-text WhatsApp replies are now classified by Gemini into BOUGHT / WILL_BUY / WONT_BUY / UNCLEAR
+- WILL_BUY extracts a promised date, pauses reminders/escalation until it passes (+1 day grace), then auto-escalates as "Parent didn't buy - Roadmap changed" if still unbought
+- Fixed the roadmap-changed HubSpot enum value, which differs per kit property (no space vs. space before the hyphen) — was silently failing for 2 of 3 kits
+- New guard: before any escalation, checks whether the deal's course has changed and no longer needs this kit — closes the row quietly with a note instead of escalating to CLS
+
+### Kit Purchase Links — Auto-fill by Country (`ParentWillBuyService.js`)
+- New "Kit Links" sheet (seed via `setupKitLinksSheet()`) maps each kit to all 22 Amazon marketplaces + an "Other" fallback per kit for non-Amazon countries
+- PWB auto-fills the purchase link by learner country when not already set — no more manually finding and pasting Amazon links
+
+### Monthly KPIs — Avg Time to Deliver / Avg Response Time (`JavaScript.html`, `Index.html`)
+- Kit Tracking tab: new "⏱ Avg Time to Deliver" KPI (order → delivery), respects month/kit/search filters
+- Parent Will Buy tab: new "⏱ Avg Response Time" KPI (first message → parent reply); also fixed PWB KPIs never recalculating on month change
+- New "Response At" column tracks first-reply timestamp going forward
+
+### TIC "Clear All" Fix (`JavaScript.html`)
+- Clear All button now properly resets the Smart Context Fetch summary bar, trait chips, JLID field, and slot rows
+
+### Double-Booking Guard — False Positives on "Availability Hour" (`ReserveSlot.js`, `HubSpotService.js`)
+- "Teacher's Availability Hour" calendar markers (open slots, not bookings) were being flagged as conflicts in both the migration booking guard and the TIC slot check — both now correctly ignore them
+
+---
+
 ## [2026-07-18] — Popup Fix, Double-Booking Guard, Booking Log (V7.43)
 
 ### All Popups Fixed — Missing `</div>` (`Index.html`)

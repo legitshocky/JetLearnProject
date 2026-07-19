@@ -26,7 +26,10 @@ var PWB_COL = {
   ESCALATED_AT:      19,  // S
   INTERVAL:          20,  // T — locked at initial send
   ENTRY_BY:          21,  // U — team member who added the entry
-  EMAIL_LOG:         22   // V — "TO:email | CC:email,email" written when escalation email sent
+  EMAIL_LOG:         22,  // V — "TO:email | CC:email,email" written when escalation email sent
+  PROMISED_DATE:     23,  // W — AI-extracted date parent promised to buy (YYYY-MM-DD)
+  AI_INTENT:         24,  // X — AI classification of last parent reply
+  RESPONSE_AT:       25   // Y — timestamp of first parent response (for avg response-time KPI)
 };
 
 // ── Kit → Course mapping ───────────────────────────────────────────────────
@@ -61,6 +64,42 @@ var PWB_KIT_HS_PROP = {
   'Makey Makey': 'makey_makey_kit_status',
   'Arduino':     'arduino_kit_status'
 };
+
+// HubSpot's roadmap-changed enum internal value differs per property:
+// microbit/VR have no space before the hyphen, makey has one, arduino lacks the option.
+var PWB_ROADMAP_HS_VALUE = {
+  'vr_headset__oculus_status': "Parent didn't buy- Roadmap changed",
+  'microbit_kit_status':       "Parent didn't buy- Roadmap changed",
+  'makey_makey_kit_status':    "Parent didn't buy - Roadmap changed"
+};
+
+// ── AI reply analysis — classify parent's free-text WhatsApp reply ─────────
+// Returns { intent: 'BOUGHT'|'WILL_BUY'|'WONT_BUY'|'UNCLEAR', promisedDate: 'YYYY-MM-DD'|null }
+function _pwbAnalyzeReply(replyText, courseStartDate) {
+  try {
+    var todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var prompt =
+      'You classify a parent\'s WhatsApp reply about buying a learning kit for their child\'s course.\n' +
+      'Today is ' + todayStr + '. The course starts on ' +
+      (courseStartDate ? Utilities.formatDate(courseStartDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : 'unknown') + '.\n\n' +
+      'Parent\'s reply: "' + String(replyText).replace(/"/g, "'") + '"\n\n' +
+      'Classify the intent:\n' +
+      '- BOUGHT: parent says they already ordered/bought/received the kit\n' +
+      '- WILL_BUY: parent intends to buy (extract the promised date if any — "this weekend", "after salary", "next Monday" → resolve to an actual date; if intent but no date, promisedDate is null)\n' +
+      '- WONT_BUY: parent clearly declines, cannot afford, or wants a different course\n' +
+      '- UNCLEAR: anything else (questions, unrelated, ambiguous)\n\n' +
+      'Reply with ONLY this JSON: {"intent":"...","promisedDate":"YYYY-MM-DD" or null}';
+    var raw = _callGemini([{ role: 'user', parts: [{ text: prompt }] }], null, 512);
+    var parsed = JSON.parse(raw);
+    var intent = String(parsed.intent || 'UNCLEAR').toUpperCase();
+    if (['BOUGHT','WILL_BUY','WONT_BUY','UNCLEAR'].indexOf(intent) === -1) intent = 'UNCLEAR';
+    var pd = parsed.promisedDate && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.promisedDate)) ? String(parsed.promisedDate) : null;
+    return { intent: intent, promisedDate: pd };
+  } catch(e) {
+    Logger.log('[PWB] _pwbAnalyzeReply AI error: ' + e.message);
+    return { intent: 'UNCLEAR', promisedDate: null };
+  }
+}
 
 // ── PATCH HubSpot deal property for PWB status ─────────────────────────────
 function _updateHubspotPWBStatus(dealId, statusValue, kitName) {
@@ -125,6 +164,102 @@ function _getPWBSheet() {
   var sheet = ss.getSheetByName('Parent_will_buy');
   if (!sheet) throw new Error('[PWB] Sheet "Parent_will_buy" not found in spreadsheet ' + sheetId);
   return sheet;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KIT LINKS — per-country Amazon (or local store) purchase links
+// Sheet "Kit Links": Kit | Marketplace | Countries | Link
+// Fill the Link column once; PWB auto-picks by learner country.
+// "Other" marketplace rows cover countries with no Amazon — set Countries to a
+// comma-separated country list and Link to the local store URL.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Amazon marketplace → countries it serves (lowercase, comma-matched loosely)
+var PWB_AMAZON_MARKETS = [
+  { market: 'amazon.com',     countries: 'usa, united states, us' },
+  { market: 'amazon.ca',      countries: 'canada' },
+  { market: 'amazon.com.mx',  countries: 'mexico' },
+  { market: 'amazon.com.br',  countries: 'brazil' },
+  { market: 'amazon.co.uk',   countries: 'uk, united kingdom, england, scotland, wales, great britain' },
+  { market: 'amazon.ie',      countries: 'ireland' },
+  { market: 'amazon.de',      countries: 'germany, austria, switzerland, liechtenstein' },
+  { market: 'amazon.fr',      countries: 'france, monaco' },
+  { market: 'amazon.it',      countries: 'italy' },
+  { market: 'amazon.es',      countries: 'spain, portugal' },
+  { market: 'amazon.nl',      countries: 'netherlands, holland' },
+  { market: 'amazon.com.be',  countries: 'belgium, luxembourg' },
+  { market: 'amazon.se',      countries: 'sweden, norway, denmark, finland' },
+  { market: 'amazon.pl',      countries: 'poland' },
+  { market: 'amazon.com.tr',  countries: 'turkey' },
+  { market: 'amazon.ae',      countries: 'uae, united arab emirates, dubai, abu dhabi, oman, qatar, bahrain, kuwait' },
+  { market: 'amazon.sa',      countries: 'saudi arabia, ksa' },
+  { market: 'amazon.eg',      countries: 'egypt' },
+  { market: 'amazon.in',      countries: 'india' },
+  { market: 'amazon.co.jp',   countries: 'japan' },
+  { market: 'amazon.sg',      countries: 'singapore, malaysia' },
+  { market: 'amazon.com.au',  countries: 'australia, new zealand' }
+];
+
+var PWB_ALL_KITS = ['VR Headset', 'Microbit', 'Makey Makey', 'Arduino'];
+
+function _getKitLinksSheet() {
+  var sheetId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING')
+                || '17Jsa2Kl2AkI5SgtlITYGqb-Q-PxfzkNFzzG5HwBJp_Q';
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sheet = ss.getSheetByName('Kit Links');
+  if (!sheet) {
+    sheet = ss.insertSheet('Kit Links');
+    sheet.appendRow(['Kit', 'Marketplace', 'Countries', 'Link']);
+    sheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    // Seed: every kit × every Amazon marketplace + one "Other" template row per kit
+    var rows = [];
+    PWB_ALL_KITS.forEach(function(kit) {
+      PWB_AMAZON_MARKETS.forEach(function(m) {
+        rows.push([kit, m.market, m.countries, '']);
+      });
+      rows.push([kit, 'Other', '<country names here>', '<local store link here>']);
+    });
+    sheet.getRange(2, 1, rows.length, 4).setValues(rows);
+    Logger.log('[PWB] Kit Links sheet created with ' + rows.length + ' seed rows.');
+  }
+  return sheet;
+}
+
+// Run once from the editor to create/seed the Kit Links sheet.
+function setupKitLinksSheet() {
+  _getKitLinksSheet();
+  return 'Kit Links sheet ready — fill in the Link column.';
+}
+
+// Resolves the purchase link for a kit + learner country.
+// Priority: exact marketplace country match → "Other" row country match → ''.
+function getKitPurchaseLink(kitName, country) {
+  try {
+    if (!kitName || !country) return '';
+    var c = String(country).toLowerCase().trim();
+    var kitLow = String(kitName).toLowerCase().replace(/[-\s]/g, '');
+    var rows = _getKitLinksSheet().getDataRange().getValues();
+    var otherFallback = '';
+    for (var i = 1; i < rows.length; i++) {
+      var rKit  = String(rows[i][0] || '').toLowerCase().replace(/[-\s]/g, '');
+      var rMkt  = String(rows[i][1] || '').trim();
+      var rCtry = String(rows[i][2] || '').toLowerCase();
+      var rLink = String(rows[i][3] || '').trim();
+      if (rKit !== kitLow || !rLink || rLink.indexOf('<') === 0) continue;
+      var matched = rCtry.split(',').some(function(cc) {
+        cc = cc.trim();
+        return cc && (cc === c || c.indexOf(cc) > -1 || cc.indexOf(c) > -1);
+      });
+      if (!matched) continue;
+      if (rMkt.toLowerCase() === 'other') { otherFallback = rLink; continue; }
+      return rLink; // Amazon marketplace match wins
+    }
+    return otherFallback;
+  } catch(e) {
+    Logger.log('[PWB] getKitPurchaseLink error: ' + e.message);
+    return '';
+  }
 }
 
 // ── Course → Kit lookup ────────────────────────────────────────────────────
@@ -319,14 +454,64 @@ function _escalateToCLS(sheet, sheetRow, rowData, reason) {
   sheet.getRange(sheetRow, PWB_COL.ESCALATED).setValue('TRUE');
   sheet.getRange(sheetRow, PWB_COL.ESCALATED_AT).setValue(new Date());
 
-  // 4. Update HubSpot deal status → Escalated to CLS
+  // 4. Update HubSpot deal status — roadmap-changed (per-kit enum value) when the
+  // purchase window is over; plain "Escalated to CLS" otherwise
   if (rowData.dealId) {
-    _updateHubspotPWBStatus(rowData.dealId, PWB_HS_STATUSES.ESCALATED, rowData.kitName);
+    var hsValue = PWB_HS_STATUSES.ESCALATED;
+    if (rowData.useRoadmapStatus) {
+      var kitProp = PWB_KIT_HS_PROP[rowData.kitName];
+      hsValue = (kitProp && PWB_ROADMAP_HS_VALUE[kitProp]) || PWB_HS_STATUSES.ESCALATED;
+    }
+    _updateHubspotPWBStatus(rowData.dealId, hsValue, rowData.kitName);
+  }
+}
+
+// Before escalating: if the deal's current course has changed away from the
+// course this kit was for (and the new course doesn't need the same kit),
+// close the row quietly — no CLS escalation needed.
+// Returns true if the row was closed as course-changed.
+function _pwbCheckCourseChanged(sheet, sheetRow, row) {
+  try {
+    var jlid       = String(row[PWB_COL.JLID - 1] || '').trim();
+    var rowCourse  = String(row[PWB_COL.COURSE_NAME - 1] || '').trim();
+    var rowKit     = String(row[PWB_COL.KIT - 1] || '').trim();
+    if (!jlid || !rowCourse) return false;
+
+    var hs = fetchHubspotByJlid(jlid);
+    if (!hs || !hs.success || !hs.data || !hs.data.course) return false;
+    var dealCourse = String(hs.data.course).trim();
+    if (!dealCourse || dealCourse === 'N/A') return false;
+
+    // Same course → nothing changed
+    if (dealCourse.toLowerCase() === rowCourse.toLowerCase()) return false;
+
+    // Course changed — does the NEW course still need this kit?
+    var newKit = _getKitForCourse(dealCourse);
+    if (newKit && rowKit && newKit === rowKit) return false; // same kit still needed → proceed normally
+
+    // Course changed and kit no longer needed → close row, no escalation
+    Logger.log('[PWB] Row ' + sheetRow + ': course changed "' + rowCourse + '" → "' + dealCourse + '" — kit not needed, closing without escalation.');
+    sheet.getRange(sheetRow, PWB_COL.STATUS).setValue('Course Changed - Kit Not Needed');
+    sheet.getRange(sheetRow, PWB_COL.ESCALATED).setValue('TRUE');
+    sheet.getRange(sheetRow, PWB_COL.ESCALATED_AT).setValue(new Date());
+    if (hs.data.dealId) {
+      try {
+        _addNoteToDeal(hs.data.dealId,
+          '[Parent Will Buy Kit] Follow-up closed automatically: course changed from "' + rowCourse +
+          '" to "' + dealCourse + '" and the ' + (rowKit || 'kit') + ' is no longer required. No CLS escalation raised.');
+      } catch(ne) { Logger.log('[PWB] course-change note error: ' + ne.message); }
+    }
+    return true;
+  } catch(e) {
+    Logger.log('[PWB] _pwbCheckCourseChanged error: ' + e.message);
+    return false; // on error, fall through to normal escalation
   }
 }
 
 // ── Extract rowData from raw row array then escalate ──────────────────────
-function _runPWBEscalation(sheet, sheetRow, row, reason) {
+function _runPWBEscalation(sheet, sheetRow, row, reason, useRoadmapStatus) {
+  // Guard: course changed on the deal → kit may no longer be needed
+  if (_pwbCheckCourseChanged(sheet, sheetRow, row)) return;
   var jlid           = String(row[PWB_COL.JLID - 1]             || '').trim();
   var learnerName    = String(row[PWB_COL.LEARNER_NAME - 1]      || '').trim();
   var parentName     = String(row[PWB_COL.PARENT_NAME - 1]       || '').trim();
@@ -355,7 +540,7 @@ function _runPWBEscalation(sheet, sheetRow, row, reason) {
     jlid: jlid, learnerName: learnerName, parentName: parentName,
     courseName: courseName, kitName: kitName,
     courseStartDate: courseStart, dealId: dealId,
-    clsManagerEmail: clsEmail
+    clsManagerEmail: clsEmail, useRoadmapStatus: !!useRoadmapStatus
   }, reason);
 }
 
@@ -428,10 +613,31 @@ function _processPWBRow(sheet, sheetRow, row, today) {
   Logger.log('[PWB] Row ' + sheetRow + ' JLID=' + jlid +
              ' daysUntil=' + daysUntilStart + ' interval=' + interval + ' urgent=' + isUrgent);
 
+  // Parent promised a purchase date (AI-extracted) — wait for it (+1 day grace)
+  var promisedRaw = String(row[PWB_COL.PROMISED_DATE - 1] || '').trim();
+  var promisedDate = null;
+  if (promisedRaw) {
+    var pp = promisedRaw.split('-');
+    if (pp.length === 3) { promisedDate = new Date(parseInt(pp[0]), parseInt(pp[1])-1, parseInt(pp[2])); promisedDate.setHours(0,0,0,0); }
+  }
+
+  // Promised date passed without purchase — auto roadmap change
+  if (promisedDate) {
+    var graceEnd = new Date(promisedDate); graceEnd.setDate(graceEnd.getDate() + 1);
+    if (today > graceEnd) {
+      Logger.log('[PWB] Row ' + sheetRow + ': promised date ' + promisedRaw + ' passed without purchase — roadmap change.');
+      _runPWBEscalation(sheet, sheetRow, row, 'Parent promised to buy by ' + promisedRaw + ' but did not — roadmap change needed', true);
+      return;
+    }
+    // Still within promise window — pause reminders and escalation
+    Logger.log('[PWB] Row ' + sheetRow + ': waiting on promised date ' + promisedRaw + ' — paused.');
+    return;
+  }
+
   // Course already started — full escalation (roadmap change needed)
   if (daysUntilStart < 0) {
     Logger.log('[PWB] Row ' + sheetRow + ': course started, escalating.');
-    _runPWBEscalation(sheet, sheetRow, row, 'Course started without kit purchase confirmation');
+    _runPWBEscalation(sheet, sheetRow, row, 'Course started without kit purchase confirmation', true);
     return;
   }
 
@@ -458,6 +664,16 @@ function _processPWBRow(sheet, sheetRow, row, today) {
   }
 
   _pwbAutoFillHSData(sheet, sheetRow, row, learnerName, parentName, phone, kitName);
+
+  // Auto-fill purchase link from Kit Links sheet by learner country if not set
+  if (!amazonLink) {
+    var autoLink = getKitPurchaseLink(kitName, hs.data.country || '');
+    if (autoLink) {
+      amazonLink = autoLink;
+      sheet.getRange(sheetRow, PWB_COL.AMAZON_LINK).setValue(autoLink);
+      Logger.log('[PWB] Row ' + sheetRow + ': auto-filled link for ' + kitName + ' / ' + (hs.data.country || '?') + ' → ' + autoLink);
+    }
+  }
 
   // Resolve learner's CLS manager email from HubSpot deal
   var clsManagerName  = hs.data.clsManagerName || '';
@@ -881,14 +1097,44 @@ function handleParentWillBuyReply(waId, buttonText, isFreeText) {
     }
 
     sheet.getRange(matchRow, PWB_COL.PARENT_RESPONSE).setValue(buttonText);
+    // Only stamp the FIRST response — used for avg response-time KPI, shouldn't reset on later replies
+    if (!dataRow[PWB_COL.RESPONSE_AT - 1]) {
+      sheet.getRange(matchRow, PWB_COL.RESPONSE_AT).setValue(new Date());
+    }
 
-    // ── Free text reply — log + notify CLS immediately ─────────────────────
+    // ── Free text reply — AI classify, then act ─────────────────────────────
     if (isFreeText) {
       Logger.log('[PWB] Free text reply from row ' + matchRow + ': "' + buttonText + '"');
+
+      var ftStartRaw = dataRow[PWB_COL.COURSE_START_DATE - 1];
+      var ftStart = (ftStartRaw instanceof Date) ? ftStartRaw : _parseDMY(String(ftStartRaw || ''));
+      var ai = _pwbAnalyzeReply(buttonText, ftStart);
+      Logger.log('[PWB] AI classification: ' + JSON.stringify(ai));
+      sheet.getRange(matchRow, PWB_COL.AI_INTENT).setValue(ai.intent + (ai.promisedDate ? ' (' + ai.promisedDate + ')' : ''));
+
+      if (ai.intent === 'BOUGHT') {
+        sheet.getRange(matchRow, PWB_COL.STATUS).setValue('Order Placed');
+        _updateHubspotPWBStatus(replyDealId, PWB_HS_STATUSES.BOUGHT, replyKitName);
+        if (replyDealId) {
+          try { _addNoteToDeal(replyDealId, '[Parent Will Buy Kit — AI] Parent indicated the kit is bought: "' + buttonText + '" (' + _formatDMY(new Date()) + ').'); } catch(ne) {}
+        }
+        return;
+      }
+
+      if (ai.intent === 'WILL_BUY') {
+        if (ai.promisedDate) sheet.getRange(matchRow, PWB_COL.PROMISED_DATE).setValue(ai.promisedDate);
+        _updateHubspotPWBStatus(replyDealId, 'Parent will buy', replyKitName);
+        if (replyDealId) {
+          try { _addNoteToDeal(replyDealId, '[Parent Will Buy Kit — AI] Parent will buy' + (ai.promisedDate ? ' by ' + ai.promisedDate : '') + ': "' + buttonText + '" (' + _formatDMY(new Date()) + '). Escalation paused until then.'); } catch(ne) {}
+        }
+        return; // no CLS email — schedule continues, escalation waits for promised date
+      }
+
+      // WONT_BUY and UNCLEAR both go to CLS; WONT_BUY flagged as such in the note
       if (replyDealId) {
         try {
           _addNoteToDeal(replyDealId,
-            '[Parent Will Buy Kit — Parent Message] Parent replied: "' + buttonText + '" on ' +
+            '[Parent Will Buy Kit — Parent Message' + (ai.intent === 'WONT_BUY' ? ' — DECLINED' : '') + '] Parent replied: "' + buttonText + '" on ' +
             _formatDMY(new Date()) + '. Manual follow-up may be needed.');
         } catch(ne) { Logger.log('[PWB] Note error: ' + ne.message); }
       }

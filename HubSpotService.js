@@ -2437,6 +2437,7 @@ function checkTeacherSlotForMigration(teacherName, slotParams) {
       var masterData = JSON.parse(masterResp.getContentText());
       var booked = (masterData.items || []).some(function(ev) {
         if (ev.status === 'cancelled') return false;
+        if (/availability\s*hour/i.test(ev.summary || '')) return false; // open-slot marker, not a booking
         var guestEmails = (ev.attendees || []).map(function(a){ return (a.email || '').toLowerCase(); });
         var calIdLow = calId ? calId.toLowerCase() : '';
         var guestMatch = (calIdLow && guestEmails.indexOf(calIdLow) > -1)
@@ -2465,7 +2466,9 @@ function checkTeacherSlotForMigration(teacherName, slotParams) {
       if (persResp.getResponseCode() === 200) {
         var persData = JSON.parse(persResp.getContentText());
         var persEvents = (persData.items || []).filter(function(ev){
-          return ev.status !== 'cancelled' && !ev.transparency; // transparent = free
+          if (ev.status === 'cancelled' || ev.transparency) return false; // transparent = free
+          if (/availability\s*hour/i.test(ev.summary || '')) return false; // open-slot marker, not a booking
+          return true;
         });
         if (persEvents.length > 0) {
           return { checked: true, cetDate: cetDateStr, cetTime: cetTimeStr,

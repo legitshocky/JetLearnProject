@@ -659,6 +659,17 @@ function setupKitAddressPollTrigger() {
   Logger.log('[KitTracking] 1-min kit address poll trigger created.');
 }
 
+// Installs the daily kit follow-up trigger (9 AM). Run once from the editor,
+// or call again any time — it de-dupes existing triggers first.
+function setupKitFollowUpTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'sendKitFollowUps') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('sendKitFollowUps').timeBased().everyDays(1).atHour(9).create();
+  Logger.log('[KitTracking] Daily 9AM sendKitFollowUps trigger created.');
+  return 'Daily 9AM kit follow-up trigger installed.';
+}
+
 // ── Get Kit Tracking sheet ────────────────────────────────────────────────────
 function _getKitSheet() {
   var ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING');
@@ -805,11 +816,14 @@ function sendKitFollowUps() {
     var today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.PHONE_SENT_TO).getValues();
+    var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.REFUNDED).getValues();
     var sent = 0;
 
     rows.forEach(function(row, idx) {
       var sheetRow = idx + 2;
+
+      // Refunded kits need no delivery follow-up
+      if (String(row[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE') return;
 
       var jlid          = String(row[KIT_COL.JLID - 1]          || '').trim();
       var deliveryDate  = String(row[KIT_COL.DELIVERY_DATE - 1]  || '').trim();
@@ -1516,9 +1530,12 @@ function getKitTrackingData() {
         daysSince2nd = Math.floor((today - t2) / 86400000);
       }
 
-      // Compute status
+      // Compute status — refunded wins over everything (no ETA/overdue tracking applies)
+      var isRefunded = String(r[26] || '').trim().toUpperCase() === 'TRUE';
       var status = 'pending';
-      if (deliveryDate || response === 'Kit Received') {
+      if (isRefunded) {
+        status = 'refunded';
+      } else if (deliveryDate || response === 'Kit Received') {
         status = 'delivered';
       } else if (response === 'Not Received yet') {
         status = 'not_received';
@@ -1550,7 +1567,7 @@ function getKitTrackingData() {
         response:      response,
         jlid:          jlid,
         status:        status,
-        refunded:      String(r[26] || '').trim().toUpperCase() === 'TRUE',
+        refunded:      isRefunded,
         // Extra detail fields
         country:      String(r[3]  || '').trim(),   // D: Country
         price:        String(r[4]  || '').trim(),   // E: Price EUR
@@ -1575,7 +1592,8 @@ function getKitTrackingData() {
       awaiting:    rows.filter(function(r) { return r.status === 'awaiting'; }).length,
       notReceived: rows.filter(function(r) { return r.status === 'not_received' || r.status === 'need_check'; }).length,
       overdue:     rows.filter(function(r) { return r.status === 'overdue'; }).length,
-      escalated:   rows.filter(function(r) { return r.status === 'escalated'; }).length
+      escalated:   rows.filter(function(r) { return r.status === 'escalated'; }).length,
+      refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length
     };
 
     Logger.log('[KitTracking] getKitTrackingData: ' + rows.length + ' rows, stats=' + JSON.stringify(stats));
@@ -1741,14 +1759,11 @@ function addKitEntry(data) {
             Logger.log('[KitTracking] learning_kit_cost: existing=' + existing + ' + new=' + price + ' = ' + hsProps['learning_kit_cost']);
           }
 
-          // Update subscription plan if provided
-          if (data.subscription) hsProps['subscription'] = data.subscription;
-
           if (!kitProp) {
             hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'Kit type "' + (data.kit||'') + '" has no HubSpot status property mapped.';
           }
 
-          // Single PATCH — all props together (status enum confirmed valid, no need to split)
+          // PATCH 1: kit status + cost (never blocked by subscription enum issues)
           if (Object.keys(hsProps).length > 0) {
             var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
               method: 'PATCH',
@@ -1764,6 +1779,38 @@ function addKitEntry(data) {
               hsWarning = (hsWarning ? hsWarning + ' ' : '') + 'HubSpot update failed (HTTP ' + patchCode + '): ' + patchErr.substring(0, 200);
             } else {
               hsUpdated = true;
+            }
+          }
+
+          // PATCH 2: subscription — mapped to HubSpot's internal enum values.
+          // Form dropdown uses "Yearly"/"2 Yearly"/"3 Yearly"/"Half Yearly"; HS wants
+          // "Annual"/"2 Years"/"3 years"/"Half-Yearly". A bad value here only skips
+          // subscription, never the status/cost above.
+          if (data.subscription) {
+            var _SUB_HS_MAP = {
+              'yearly': 'Annual', 'annual': 'Annual', '1 year': 'Annual',
+              '2 yearly': '2 Years', '2 years': '2 Years',
+              '3 yearly': '3 years', '3 years': '3 years',
+              '4 yearly': '4 years', '4 years': '4 years',
+              'half yearly': 'Half-Yearly', 'half-yearly': 'Half-Yearly',
+              'quarterly': 'Quarterly', 'monthly': 'Monthly',
+              'credit transfer': 'Credit Transfer'
+            };
+            var subKey = String(data.subscription).toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+            var hsSub = _SUB_HS_MAP[subKey] || (String(data.subscription).indexOf('GCSE') === 0 ? data.subscription : null);
+            if (hsSub) {
+              var subResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+                method: 'PATCH',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                payload: JSON.stringify({ properties: { subscription: hsSub } }),
+                muteHttpExceptions: true
+              });
+              Logger.log('[KitTracking] addKitEntry subscription PATCH "' + hsSub + '" HTTP ' + subResp.getResponseCode());
+              if (subResp.getResponseCode() !== 200) {
+                Logger.log('[KitTracking] subscription PATCH ERROR: ' + subResp.getContentText().substring(0, 300));
+              }
+            } else {
+              Logger.log('[KitTracking] subscription "' + data.subscription + '" not mappable to HS enum — skipped.');
             }
           }
         }
@@ -2206,7 +2253,7 @@ function getPWBEntries() {
     if (!sheet) return [];
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return [];
-    var rows = sheet.getRange(2, 1, lastRow - 1, 22).getValues(); // A–V
+    var rows = sheet.getRange(2, 1, lastRow - 1, 25).getValues(); // A–Y
     var tz = Session.getScriptTimeZone();
     function fmtDate(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy') : String(v || ''); }
     function fmtTs(v)   { return v instanceof Date ? Utilities.formatDate(v, tz, 'dd/MM/yyyy HH:mm') : String(v || ''); }
@@ -2244,6 +2291,9 @@ function getPWBEntries() {
         interval:       Number(r[19]) || 0,
         entryBy:        String(r[20] || ''),
         emailLog:       String(r[21] || ''),
+        promisedDate:   String(r[22] || ''),
+        aiIntent:       String(r[23] || ''),
+        responseAt:     fmtTs(r[24]),
         nextFup:        _pwbNextFupLabel(r)
       };
     }).filter(function(r) { return r.jlid; });

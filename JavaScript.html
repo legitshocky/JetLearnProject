@@ -4102,6 +4102,46 @@ function renderCourseDetailPanel(data) {
     };
     // ─────────────────────────────────────────────────────────────────────────
 
+    // "Clear All" — the button was a native type=reset, which only resets standard
+    // form controls inside #personaFormEnhanced. It never touched the Smart Context
+    // Fetch summary bar (Learner/Teacher/Mode/Reason/Age are plain <div>s, not form
+    // fields), the trait chip picker (custom JS state, not reflected by reset), or
+    // extra dynamically-added slot rows. This clears all of it.
+    window.ticClearAll = function() {
+      if (personaForm) personaForm.reset();
+      window._pClearTraits();
+
+      // Smart Context Fetch summary bar
+      var jlidInput = document.getElementById('smartPersonaJlid');
+      if (jlidInput) jlidInput.value = '';
+      var summaryBar = document.getElementById('personaLearnerSummary');
+      if (summaryBar) summaryBar.style.display = 'none';
+      var setText = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      setText('pDetectedMode', '---');
+      setText('pDispMigrationReason', '---');
+      setText('pDispName', '---');
+      setText('pDispJlid', '---');
+      setText('pDispAge', '---');
+      var teacherDd = document.getElementById('pCurrentTeacherDropdown');
+      if (teacherDd) teacherDd.innerHTML = '';
+      var migReasonCol = document.getElementById('pMigrationReasonCol');
+      if (migReasonCol) migReasonCol.style.display = 'none';
+      var completedCol = document.getElementById('pCompletedCourseCol');
+      if (completedCol) completedCol.style.display = 'none';
+      var dispCompleted = document.getElementById('pDispCompletedCourse');
+      if (dispCompleted) dispCompleted.textContent = '—';
+
+      // Slot rows — collapse back to a single blank row
+      var slotsContainer = document.getElementById('personaSlotsContainer');
+      if (slotsContainer) {
+        slotsContainer.innerHTML = '';
+        addSingleSlotRow(true);
+      }
+
+      // Results
+      if (personaResultsContainer) personaResultsContainer.style.display = 'none';
+    };
+
     // JLID Fetch is handled by handleSmartFetchAction (wired via initPersonaSmartLogic)
 
     // Search submit \u2014 uses new personaFormEnhanced and new slot/course IDs
@@ -13338,7 +13378,8 @@ function renderKitTrackingTable(filterArg) {
     need_check:   { label: '🔍 Need To Check',       color: '#8b5cf6', bg: '#faf5ff' },
     overdue:      { label: '🚨 Overdue',             color: '#6366f1', bg: '#eef2ff' },
     pending:      { label: '📭 Not Sent Yet',        color: '#94a3b8', bg: '#f8fafc' },
-    escalated:    { label: '🔴 Escalated',           color: '#dc2626', bg: '#fef2f2' }
+    escalated:    { label: '🔴 Escalated',           color: '#dc2626', bg: '#fef2f2' },
+    refunded:     { label: '↩ Refunded',             color: '#64748b', bg: '#f1f5f9' }
   };
 
   // Base filter (month + kit + search) — used for KPI recalc
@@ -13358,6 +13399,22 @@ function renderKitTrackingTable(filterArg) {
   setKpi('ktKpiOverdue',     baseFiltered.filter(r => r.status === 'overdue').length);
   const escalatedRows = baseFiltered.filter(r => r.status === 'escalated');
   setKpi('ktKpiEscalated', escalatedRows.length);
+
+  // Avg days order → delivery (parses DD/MM/YYYY; ignores rows missing either date)
+  const _parseDMYClient = (s) => {
+    const p = String(s || '').split('/');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const deliverDays = baseFiltered.map(function(r) {
+    if (r.status === 'refunded' || !r.orderDate || !r.deliveryDate) return null;
+    const od = _parseDMYClient(r.orderDate), dd = _parseDMYClient(r.deliveryDate);
+    if (!od || !dd) return null;
+    const diff = Math.round((dd - od) / 86400000);
+    return diff >= 0 ? diff : null;
+  }).filter(function(v) { return v !== null; });
+  setKpi('ktKpiAvgDeliverDays', deliverDays.length ? (deliverDays.reduce((a,b)=>a+b,0) / deliverDays.length).toFixed(1) + 'd' : '—');
 
   // Escalated banner
   const banner = document.getElementById('ktEscalatedBanner');
@@ -14099,6 +14156,23 @@ function _updatePWBKpis(rows) {
   document.getElementById('pwbKpiNoResponse').textContent    = noResponse;
   document.getElementById('pwbKpiEscalated').textContent     = escalated;
   document.getElementById('pwbKpiRoadmapChanged').textContent= roadmapChanged;
+
+  // Avg days from first message (initialSentAt) to first parent response (responseAt)
+  const _parseTs = (s) => {
+    const m = String(s || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const d = new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]), parseInt(m[4]), parseInt(m[5]));
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const responseDays = rows.map(function(r) {
+    if (!r.initialSentAt || !r.responseAt) return null;
+    const start = _parseTs(r.initialSentAt), end = _parseTs(r.responseAt);
+    if (!start || !end) return null;
+    const diff = (end - start) / 86400000;
+    return diff >= 0 ? diff : null;
+  }).filter(function(v) { return v !== null; });
+  const avgEl = document.getElementById('pwbKpiAvgResponseDays');
+  if (avgEl) avgEl.textContent = responseDays.length ? (responseDays.reduce((a,b)=>a+b,0) / responseDays.length).toFixed(1) + 'd' : '—';
 }
 
 // ── Modal mode toggle ─────────────────────────────────────────────────────
@@ -14248,7 +14322,6 @@ function loadPWBTable() {
         monthSel.innerHTML = '<option value="">All Months<\/option>' +
           months.map(function(m){ return '<option value="' + m + '"' + (m===cur?' selected':'') + '>' + m + '<\/option>'; }).join('');
       }
-      _updatePWBKpis(_pwbAllData);
       filterPWBTable();
     })
     .withFailureHandler(function(err) {
@@ -14261,10 +14334,17 @@ function filterPWBTable() {
   var search  = ((document.getElementById('pwbFilterJlid')   || {}).value || '').toLowerCase().trim();
   var month   = ((document.getElementById('pwbFilterMonth')  || {}).value || '');
   var status  = ((document.getElementById('pwbFilterStatus') || {}).value || '');
-  var filtered = _pwbAllData.filter(function(r) {
+
+  // Base filter (month + search) — KPIs always reflect the full picture for the period, ignoring status
+  var baseFiltered = _pwbAllData.filter(function(r) {
     if (search && r.jlid.toLowerCase().indexOf(search) === -1 && (r.learnerName||'').toLowerCase().indexOf(search) === -1) return false;
     if (month  && r.entryMonth !== month)  return false;
-    if (status && r.status     !== status) return false;
+    return true;
+  });
+  _updatePWBKpis(baseFiltered);
+
+  var filtered = baseFiltered.filter(function(r) {
+    if (status && r.status !== status) return false;
     return true;
   });
   var cntEl = document.getElementById('pwbResultCount');
