@@ -41,7 +41,8 @@ function fetchHubspotByJlid(jlid) {
     'parent_email', 'parent_name', 'phone_number_deal_',
     'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date',
     'current_subscription_taken_classes', 'learner_health', 'learner_health_reason_code',
-    'country', 'learning_kit_cost'
+    'country', 'learning_kit_cost',
+    'current_subscription___total_classes_offered', 'current_subscription_taken_classes_till_date'
   ];
 
   const requestBody = {
@@ -185,7 +186,9 @@ function fetchHubspotByJlid(jlid) {
         moduleStartDate:         contactProperties.module_start_date || '',
         totalClassesJourney:     contactProperties.total_classes_committed_through_learner_s_journey || '',
         country:                 contactProperties.country || '',
-        learningKitCost:         parseFloat(contactProperties.learning_kit_cost) || 0
+        learningKitCost:         parseFloat(contactProperties.learning_kit_cost) || 0,
+        currentSubscriptionTotalClassesOffered: contactProperties.current_subscription___total_classes_offered || '',
+        currentSubscriptionTakenClassesTillDate: contactProperties.current_subscription_taken_classes_till_date || ''
       };
       
       var _cachedResult = { success: true, data: data };

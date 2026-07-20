@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-20] — Remaining Classes Now From Live HubSpot Data (V7.49)
+
+### Fetch Remaining — HubSpot Subscription Data as Primary Source (`HubSpotService.js`, `LearnerProgressionService.js`)
+- `getRemainingClassesForJlid()` now reads **"Current Subscription - Total Classes Offered"** minus **"Current Subscription Taken Classes Till Date"** directly off the deal — accurate to the current subscription, not dependent on the Athena PRMS/CPRS sheet being freshly uploaded
+- Falls back to the PRMS/CPRS-derived estimate only if those HubSpot properties are blank on the deal
+- Fetch Remaining status text now shows which source was used ("from HubSpot subscription data" vs "from PRMS/CPRS estimate")
+
+---
+
 ## [2026-07-20] — Total-Class Split, Remaining Classes, Booking Cancellation (V7.48)
 
 ### "No. of Sessions" → "Total Classes to Book/Reserve" — Even Split (`ReserveSlot.js`)

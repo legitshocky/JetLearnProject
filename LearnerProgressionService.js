@@ -573,22 +573,50 @@ function _buildHealthMap(jlids) {
 // MAIN: getLearnerProgressions()
 // Called by the Course Planner dashboard page.
 // ─────────────────────────────────────────────────────────────────────
-// Lightweight per-JLID lookup for "remaining classes" — reuses the cached
-// getLearnerProgressions() batch (10-min TTL) so repeat lookups are cheap.
-// Returns { success, classesLeft, classesDone, classFrequency, currentCourse } or { success:false }.
+// Remaining classes for a JLID — prefers live HubSpot deal properties
+// ("Current Subscription - Total Classes Offered" minus "...Taken Classes Till Date",
+// falling back to "...Taken Classes" if Till Date isn't set), since those are
+// updated directly off the current subscription and don't depend on the
+// Athena PRMS/CPRS sheet being freshly uploaded.
+// Falls back to the PRMS/CPRS-derived estimate (getLearnerProgressions) only
+// if the HubSpot deal doesn't have those properties populated.
+// Returns { success, classesLeft, classesDone, classFrequency, currentCourse, source }.
 function getRemainingClassesForJlid(jlid) {
   try {
     if (!jlid) return { success: false, message: 'No JLID provided.' };
+
+    try {
+      var hs = fetchHubspotByJlid(jlid);
+      if (hs && hs.success && hs.data) {
+        var offered = parseFloat(hs.data.currentSubscriptionTotalClassesOffered);
+        var takenTillDate = parseFloat(hs.data.currentSubscriptionTakenClassesTillDate);
+        var taken = !isNaN(takenTillDate) ? takenTillDate : parseFloat(hs.data.currentSubscriptionTakenClasses);
+        if (!isNaN(offered) && !isNaN(taken)) {
+          return {
+            success:       true,
+            classesLeft:   Math.max(0, offered - taken),
+            classesDone:   taken,
+            currentCourse: hs.data.currentCourse || '',
+            source:        'hubspot'
+          };
+        }
+      }
+    } catch(hsErr) {
+      Logger.log('[LP] getRemainingClassesForJlid HubSpot lookup failed, falling back: ' + hsErr.message);
+    }
+
+    // Fallback — PRMS/CPRS-derived estimate (cached batch, 10-min TTL)
     var data = getLearnerProgressions(false);
     var match = (data.learners || []).find(function(l) { return l.jlid === jlid; });
-    if (!match) return { success: false, message: 'No PRMS/CPRS record found for ' + jlid + '.' };
+    if (!match) return { success: false, message: 'No remaining-class data found for ' + jlid + ' (checked HubSpot and PRMS/CPRS).' };
     return {
       success:        true,
       classesLeft:    match.classesLeft,
       classesDone:    match.classesDone,
       classFrequency: match.classFrequency,
       currentCourse:  match.currentCourse,
-      prmStaleDays:   match.prmStaleDays
+      prmStaleDays:   match.prmStaleDays,
+      source:         'prms_cprs'
     };
   } catch(e) {
     Logger.log('[LP] getRemainingClassesForJlid error: ' + e.message);

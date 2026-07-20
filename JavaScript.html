@@ -12371,6 +12371,12 @@ function _personaReserveSlot(teacherName) {
  * "No. of Sessions" fields now represent the TOTAL classes to book, split
  * evenly across however many weekly session rows are configured.
  */
+function _remainingClassesStatusText(res) {
+  var srcLabel = res.source === 'hubspot' ? 'HubSpot subscription data' : 'PRMS/CPRS estimate';
+  return '✓ ' + res.classesLeft + ' classes remaining (' + res.classesDone + ' taken so far'
+    + (res.currentCourse ? ', ' + res.currentCourse : '') + ') — from ' + srcLabel + '.';
+}
+
 function _splitPreviewText(total, dayLabels) {
   if (!total || !dayLabels.length) return '';
   var base = Math.floor(total / dayLabels.length);
@@ -12430,7 +12436,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         var n = document.getElementById('bookClassesNumEvents');
         if (n) n.value = res.classesLeft;
-        if (statusEl) { statusEl.textContent = '✓ ' + res.classesLeft + ' classes remaining (' + res.classesDone + ' done so far, ' + (res.currentCourse || 'current course') + ').'; statusEl.style.color = '#16a34a'; }
+        if (statusEl) { statusEl.textContent = _remainingClassesStatusText(res); statusEl.style.color = '#16a34a'; }
         _updateBookClassesSplitPreview();
       })
       .withFailureHandler(function(err) {
@@ -12456,7 +12462,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         var n = document.getElementById('pReserveNumEvents');
         if (n) n.value = res.classesLeft;
-        if (statusEl) { statusEl.textContent = '✓ ' + res.classesLeft + ' classes remaining (' + res.classesDone + ' done so far, ' + (res.currentCourse || 'current course') + ').'; statusEl.style.color = '#16a34a'; }
+        if (statusEl) { statusEl.textContent = _remainingClassesStatusText(res); statusEl.style.color = '#16a34a'; }
         _updatePReserveSplitPreview();
       })
       .withFailureHandler(function(err) {
