@@ -9140,21 +9140,13 @@ function fetchMigrationSpecificData() {
                         migTzEl.value = parentTz;
                         if (!migTzEl.value) { migTzEl.appendChild(new Option(parentTz, parentTz, true, true)); }
                     }
-                    // Auto-fill booking timezone: map learner's GMT label to IANA
-                    if (parentTz) {
-                      var _ianaMatch = null;
-                      // Try direct IANA match first (if stored as IANA already)
-                      if (globalBookingTimezones.find(function(t){ return t.id === parentTz; })) {
-                        _ianaMatch = parentTz;
-                      } else {
-                        // Map from GMT label via TIMEZONE_IANA_MAP keys
-                        var _norm = String(parentTz).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m){ return 'GMT'+s+(h.length<2?'0'+h:h)+':'+m; }).trim();
-                        for (var _k in (typeof TIMEZONE_IANA_MAP !== 'undefined' ? TIMEZONE_IANA_MAP : {})) {
-                          var _kn = String(_k).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m){ return 'GMT'+s+(h.length<2?'0'+h:h)+':'+m; }).trim();
-                          if (_kn === _norm) { _ianaMatch = TIMEZONE_IANA_MAP[_k]; break; }
-                        }
-                      }
-                      if (_ianaMatch) _setBookingTzByIana(_ianaMatch);
+                    // Auto-fill booking timezone — server already resolved the best IANA zone
+                    // (explicit deal timezone if set, else a country-based fallback, e.g.
+                    // Sri Lanka → Asia/Colombo) via _resolveIanaFromTimezoneOrCountry().
+                    if (data.suggestedIana) {
+                      _setBookingTzByIana(data.suggestedIana);
+                    } else if (parentTz && globalBookingTimezones.find(function(t){ return t.id === parentTz; })) {
+                      _setBookingTzByIana(parentTz);
                     }
 
                     // 2. Populate Dropdowns
@@ -10571,6 +10563,18 @@ function handleSmartFetchAction() {
                     if (tDrop.value === '' && d.currentTeacher) {
                         const opt = new Option(d.currentTeacher, d.currentTeacher, true, true);
                         tDrop.appendChild(opt);
+                    }
+                }
+
+                // ── Reserve Slot timezone — auto-select from server-resolved IANA
+                // (explicit deal timezone, or country fallback e.g. Sri Lanka → Asia/Colombo) ──
+                if (d.suggestedIana) {
+                    const tzSel = document.getElementById('pReserveTimezone');
+                    if (tzSel) {
+                        var hasOpt = Array.from(tzSel.options).some(o => o.value === d.suggestedIana);
+                        if (!hasOpt) tzSel.appendChild(new Option(d.suggestedIana, d.suggestedIana));
+                        tzSel.value = d.suggestedIana;
+                        tzSel.dispatchEvent(new Event('change'));
                     }
                 }
 
@@ -12084,6 +12088,7 @@ function renderPersonaCards() {
       + '<button onclick="openTeacherProfileModal(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;font-size:0.75rem;color:#475569;cursor:pointer;font-weight:500;" onmouseover="this.style.background=\'#ede9fe\';this.style.color=\'#5b21b6\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#475569\'">View Profile \u2192<\/button>'
       + '<button onclick="_personaRegisterMatchLog(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#fff;border:1.5px solid #6366f1;border-radius:8px;font-size:0.75rem;color:#4f46e5;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#eef2ff\'" onmouseout="this.style.background=\'#fff\'">\ud83d\udcdd Register Log<\/button>'
       + (window._calendarBookingAllowed ? '<button onclick="_personaReserveSlot(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#fff;border:1.5px solid #16a34a;border-radius:8px;font-size:0.75rem;color:#15803d;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'#fff\'">\ud83d\udcc5 Reserve Slot<\/button>' : '')
+      + (_personaCtxMode !== 'Onboarding' ? '<button onclick="_personaSendToMigrationForm(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#fff;border:1.5px solid #0891b2;border-radius:8px;font-size:0.75rem;color:#0e7490;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#ecfeff\'" onmouseout="this.style.background=\'#fff\'" title="Pre-fill Migration form with this match \u2014 no ticket required">\u2192 Migration Form<\/button>' : '')
       + '<button onclick="_personaMigrateToTeacher(\'' + escapeHtml(t.teacherName||'') + '\')" style="flex:1;padding:5px;background:#4f46e5;border:none;border-radius:8px;font-size:0.75rem;color:#fff;cursor:pointer;font-weight:600;" onmouseover="this.style.background=\'#3730a3\'" onmouseout="this.style.background=\'#4f46e5\'">' + (_personaCtxMode === 'Onboarding' ? 'Onboard' : 'Migrate \u2192') + '<\/button>'
       + '<\/div>'
       + '<\/div>';
@@ -12226,6 +12231,84 @@ function _personaMigrateToTeacher(teacherName) {
  * Called when user clicks "Register Log" on a persona card.
  * Writes a "Teacher Match Found" audit entry without performing any assignment/navigation.
  */
+/**
+ * Called when user clicks "→ Send to Migration Form" on a persona card.
+ * Carries the TIC persona search's own inputs (matched teacher, course,
+ * timezone, requested slots, total sessions) straight into the Migration
+ * form — no HubSpot migration ticket required (unlike the "Migrate →" button,
+ * which needs an existing open ticket to patch new_teacher onto).
+ */
+function _personaSendToMigrationForm(teacherName) {
+  var jlid        = _personaCtxJlid    || '';
+  var learnerName = _personaCtxLearner || '';
+
+  if (!teacherName) return;
+  if (!jlid || jlid.length < 5) {
+    showToast('error', 'No Learner Loaded', 'Use Smart Context Fetch to load a learner first.');
+    return;
+  }
+
+  var courseName = (document.getElementById('pInpCourse') && document.getElementById('pInpCourse').value) || '';
+  var tzEl        = document.getElementById('pReserveTimezone');
+  var timeZone    = (tzEl && tzEl.value) ? tzEl.value : '';
+  var numEl       = document.getElementById('pReserveNumEvents');
+  var numEvents   = (numEl && parseInt(numEl.value)) > 0 ? parseInt(numEl.value) : 12;
+  var slots       = (_personaCtxRequestedSlots || []).slice();
+
+  switchPage('communicationPage');
+  setTimeout(function() {
+    if (typeof switchCommunicationTab === 'function') switchCommunicationTab('migration');
+
+    if (jlidInput) jlidInput.value = jlid;
+    if (learnerInput && learnerName) learnerInput.value = learnerName;
+
+    if (newTeacherSelect) {
+      addOptionIfNotExists(newTeacherSelect, teacherName);
+      newTeacherSelect.value = teacherName;
+      newTeacherSelect.dispatchEvent(new Event('change'));
+    }
+    if (_personaCtxOldTeacher && oldTeacherSelect) {
+      addOptionIfNotExists(oldTeacherSelect, _personaCtxOldTeacher);
+      oldTeacherSelect.value = _personaCtxOldTeacher;
+    }
+    if (migrationCourseSelect && courseName) {
+      addOptionIfNotExists(migrationCourseSelect, courseName);
+      migrationCourseSelect.value = courseName;
+    }
+    if (timeZone) _setBookingTzByIana(timeZone);
+
+    // Class Schedule — convert each requested slot's specific date → weekday,
+    // and its "4:00 PM - 5:00 PM" range → start time, into a session row.
+    if (classSessionsContainer && slots.length) {
+      classSessionsContainer.innerHTML = '';
+      var DOW = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      slots.forEach(function(s, idx) {
+        if (!s.date || !s.slot) return;
+        var d = new Date(s.date + 'T00:00:00');
+        if (isNaN(d.getTime())) return;
+        var dayName = DOW[d.getDay()];
+        var startTime = s.slot.split(' - ')[0].trim();
+        var t12 = startTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!t12) return;
+
+        var grp = createClassSessionGroup(idx === 0, 'migration');
+        classSessionsContainer.appendChild(grp);
+        var dayOpt = Array.from(grp.querySelector('.class-day-select').options).find(function(o) { return o.value.toLowerCase() === dayName.toLowerCase(); });
+        if (dayOpt) grp.querySelector('.class-day-select').value = dayOpt.value;
+        grp.querySelector('.class-hour-select').value = String(parseInt(t12[1])).padStart(2, '0');
+        grp.querySelector('.class-minute-select').value = t12[2];
+        grp.querySelector('.class-meridiem-select').value = t12[3].toUpperCase();
+        _updateSessionGroupCET(grp, 'migration');
+      });
+    }
+
+    var numEventsEl = document.getElementById('bookClassesNumEvents');
+    if (numEventsEl) { numEventsEl.value = numEvents; _updateBookClassesSplitPreview(); }
+
+    showToast('success', 'Sent to Migration Form', 'Teacher, course, timezone, and schedule pre-filled. Review and click "Book Classes with New Teacher" to finalize.');
+  }, 300);
+}
+
 function _personaRegisterMatchLog(teacherName) {
   var jlid        = _personaCtxJlid    || '';
   var learnerName = _personaCtxLearner || '';

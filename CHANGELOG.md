@@ -2,6 +2,24 @@
 
 ---
 
+## [2026-07-20] — Kit HubSpot Escalation, TIC→Migration Handoff, Country Timezone Fallback (V7.51)
+
+### Kit Escalation Now Updates HubSpot Status (`KitTrackingService.js`)
+- The 2nd-reminder escalation pass already sent an email and created a HubSpot task, but never updated the kit's HubSpot status enum — it just sat there
+- Now patches the kit status property to "Escalated to CLS" (VR Headset, Microbit, Makey Makey — Arduino's property has no such option, so it's skipped for that kit)
+
+### TIC → Migration Form Handoff (`JavaScript.html`)
+- New "→ Migration Form" button on persona match cards — pre-fills the Migration form (teacher, course, timezone, weekly class schedule converted from the requested slot dates, total sessions) directly from the TIC search inputs, no HubSpot migration ticket required
+- Complements the existing "Migrate →" button, which only works when an open migration ticket already exists
+
+### Booking Timezone — Fixed & Country Fallback (`Code.js`, `HubSpotService.js`, `JavaScript.html`)
+- Found and fixed a dead code path: the client-side GMT-label→IANA matching in `fetchMigrationSpecificData` referenced `TIMEZONE_IANA_MAP`, a variable that only ever existed server-side — the lookup silently did nothing
+- Timezone resolution moved server-side (`_resolveIanaFromTimezoneOrCountry`) and now returns a ready-to-use IANA zone directly
+- New country → IANA fallback map (~50 common markets) — when a deal has no explicit timezone set, the learner's HubSpot `country` property is used instead (e.g. Sri Lanka → Asia/Colombo)
+- Applied to both the Migration form's auto-fetch and TIC's Reserve Slot timezone dropdown
+
+---
+
 ## [2026-07-20] — Reserve Slot Cleanup on Booking Confirm (V7.50)
 
 ### Auto-Detect Existing Reserve Slot When Finalizing a Booking (`JavaScript.html`, `ReserveSlot.js`)

@@ -376,6 +376,91 @@ var TIMEZONE_IANA_MAP = {
   '(GMT+13:00) Samoa': 'Pacific/Apia'
 };
 
+// Country name (from HubSpot's `country` deal property, lowercase) → IANA timezone.
+// Used ONLY as a fallback when the deal/ticket has no explicit timezone set — a best
+// guess so the booking timezone isn't left blank, not a substitute for the real value.
+// Large multi-zone countries (US, Canada, Russia, Australia) map to their most common
+// JetLearn market zone; prefer an explicit timezone over this whenever one is available.
+var COUNTRY_IANA_MAP = {
+  'india': 'Asia/Kolkata',
+  'sri lanka': 'Asia/Colombo',
+  'pakistan': 'Asia/Karachi',
+  'bangladesh': 'Asia/Dhaka',
+  'nepal': 'Asia/Kathmandu',
+  'uae': 'Asia/Dubai', 'united arab emirates': 'Asia/Dubai',
+  'saudi arabia': 'Asia/Riyadh',
+  'qatar': 'Asia/Qatar',
+  'kuwait': 'Asia/Kuwait',
+  'bahrain': 'Asia/Bahrain',
+  'oman': 'Asia/Muscat',
+  'singapore': 'Asia/Singapore',
+  'malaysia': 'Asia/Kuala_Lumpur',
+  'indonesia': 'Asia/Jakarta',
+  'philippines': 'Asia/Manila',
+  'thailand': 'Asia/Bangkok',
+  'vietnam': 'Asia/Ho_Chi_Minh',
+  'hong kong': 'Asia/Hong_Kong',
+  'china': 'Asia/Shanghai',
+  'japan': 'Asia/Tokyo',
+  'south korea': 'Asia/Seoul',
+  'taiwan': 'Asia/Taipei',
+  'united kingdom': 'Europe/London', 'uk': 'Europe/London',
+  'ireland': 'Europe/Dublin',
+  'germany': 'Europe/Berlin',
+  'france': 'Europe/Paris',
+  'spain': 'Europe/Madrid',
+  'italy': 'Europe/Rome',
+  'netherlands': 'Europe/Amsterdam',
+  'belgium': 'Europe/Brussels',
+  'switzerland': 'Europe/Zurich',
+  'austria': 'Europe/Vienna',
+  'sweden': 'Europe/Stockholm',
+  'norway': 'Europe/Oslo',
+  'denmark': 'Europe/Copenhagen',
+  'finland': 'Europe/Helsinki',
+  'poland': 'Europe/Warsaw',
+  'portugal': 'Europe/Lisbon',
+  'turkey': 'Europe/Istanbul',
+  'greece': 'Europe/Athens',
+  'russia': 'Europe/Moscow',
+  'egypt': 'Africa/Cairo',
+  'nigeria': 'Africa/Lagos',
+  'kenya': 'Africa/Nairobi',
+  'south africa': 'Africa/Johannesburg',
+  'united states': 'America/New_York', 'usa': 'America/New_York', 'us': 'America/New_York',
+  'canada': 'America/Toronto',
+  'mexico': 'America/Mexico_City',
+  'brazil': 'America/Sao_Paulo',
+  'argentina': 'America/Argentina/Buenos_Aires',
+  'chile': 'America/Santiago',
+  'colombia': 'America/Bogota',
+  'peru': 'America/Lima',
+  'australia': 'Australia/Sydney',
+  'new zealand': 'Pacific/Auckland'
+};
+
+// Resolves a best-guess IANA timezone for a deal, preferring an explicit GMT-label
+// timezone (via TIMEZONE_IANA_MAP) over a country-based fallback (via COUNTRY_IANA_MAP).
+// Returns '' if neither can be resolved.
+function _resolveIanaFromTimezoneOrCountry(gmtLabel, country) {
+  if (gmtLabel) {
+    var norm = String(gmtLabel).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m) {
+      return 'GMT' + s + (h.length < 2 ? '0' + h : h) + ':' + m;
+    }).trim();
+    for (var key in TIMEZONE_IANA_MAP) {
+      var keyNorm = String(key).replace(/GMT\s*([+-])\s*(\d{1,2}):(\d{2})/, function(_, s, h, m) {
+        return 'GMT' + s + (h.length < 2 ? '0' + h : h) + ':' + m;
+      }).trim();
+      if (keyNorm === norm) return TIMEZONE_IANA_MAP[key];
+    }
+  }
+  if (country) {
+    var c = String(country).toLowerCase().trim();
+    if (COUNTRY_IANA_MAP[c]) return COUNTRY_IANA_MAP[c];
+  }
+  return '';
+}
+
 function getCommunicationPageData() {
   Logger.log('getCommunicationPageData called');
   try {
@@ -614,7 +699,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.50";
+const APP_VERSION = "7.51";
 
 function getAppVersion() {
   return APP_VERSION;

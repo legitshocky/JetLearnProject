@@ -394,6 +394,16 @@ function fetchMigrationHybridData(jlid) {
     finalData.source = "Deal Only";
   }
 
+  // Resolve a booking-ready IANA timezone — explicit deal timezone label preferred,
+  // falls back to a country-based guess (e.g. Sri Lanka → Asia/Colombo) if the deal
+  // has no timezone set at all.
+  try {
+    finalData.suggestedIana = _resolveIanaFromTimezoneOrCountry(finalData.timezone, finalData.country);
+  } catch(tzErr) {
+    Logger.log('[fetchMigrationHybridData] suggestedIana resolution failed: ' + tzErr.message);
+    finalData.suggestedIana = '';
+  }
+
   return { success: true, data: finalData };
 }
 
@@ -3712,6 +3722,13 @@ function fetchPersonaSmartData(jlid) {
     contextData.futureCourse1 = getCourseLabel(props.future_course_1) || "";
     contextData.futureCourse2 = getCourseLabel(props.future_course_2) || "";
     contextData.futureCourse3 = getCourseLabel(props.future_course_3) || "";
+  }
+
+  // Best-guess IANA timezone — explicit deal timezone preferred, country fallback otherwise
+  try {
+    contextData.suggestedIana = _resolveIanaFromTimezoneOrCountry(d.timezone, d.country);
+  } catch(tzErr) {
+    contextData.suggestedIana = '';
   }
 
   return {

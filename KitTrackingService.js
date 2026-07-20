@@ -1029,6 +1029,24 @@ function sendKitFollowUps() {
         _createKitEscalationTask(dealId, { jlid: jlid, learnerName: learnerName, kitName: kitName, courseName: courseName, clsManagerEmail: mgrs.clsEmail });
       }
 
+      // Update HubSpot kit status enum to "Escalated to CLS" (VR/Microbit/Makey Makey only —
+      // Arduino's status property has no such option, so it's skipped for that kit).
+      if (dealId) {
+        try {
+          var escKitProp = _kitPropertyForType(kitName);
+          if (escKitProp && escKitProp !== 'arduino_kit_status') {
+            var escToken = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+            var escProps = {}; escProps[escKitProp] = 'Escalated to CLS';
+            monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+              method: 'PATCH',
+              headers: { 'Authorization': 'Bearer ' + escToken, 'Content-Type': 'application/json' },
+              payload: JSON.stringify({ properties: escProps }),
+              muteHttpExceptions: true
+            });
+          }
+        } catch(escErr) { Logger.log('[KitTracking] escalation HS status patch error: ' + escErr.message); }
+      }
+
       // Mark escalated in sheet
       sheet.getRange(sheetRow, KIT_COL.ESCALATED).setValue('TRUE');
       sheet.getRange(sheetRow, KIT_COL.ESCALATED_AT).setValue(new Date());
