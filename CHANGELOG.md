@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-20] — Reserve Slot Cleanup on Booking Confirm (V7.50)
+
+### Auto-Detect Existing Reserve Slot When Finalizing a Booking (`JavaScript.html`, `ReserveSlot.js`)
+- When clicking "Book Classes with New Teacher" in Migration, the confirm popup now checks the Class Booking Log for an active Reserve Slot (from a TIC persona match) on this JLID
+- If found, shows a checked-by-default checkbox: "Delete reserved slot with [Teacher] (...) so it isn't double-booked"
+- On confirm, the new booking is created first; only after it succeeds does it delete the old reserved slot's calendar events (master + teacher calendar) — a booking failure never touches the existing reservation
+- Saves the extra manual trip to Manage Bookings when a Reserve Slot gets converted into a real booking with the same (or a different) teacher
+
+---
+
 ## [2026-07-20] — Remaining Classes Now From Live HubSpot Data (V7.49)
 
 ### Fetch Remaining — HubSpot Subscription Data as Primary Source (`HubSpotService.js`, `LearnerProgressionService.js`)
