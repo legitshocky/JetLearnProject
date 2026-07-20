@@ -2,6 +2,26 @@
 
 ---
 
+## [2026-07-20] — Total-Class Split, Remaining Classes, Booking Cancellation (V7.48)
+
+### "No. of Sessions" → "Total Classes to Book/Reserve" — Even Split (`ReserveSlot.js`)
+- Previously the number entered booked THAT MANY occurrences of EVERY weekly session (e.g. 12 entered with Mon+Thu selected booked 24 classes total, not 12)
+- Now the number is the TOTAL classes to book, split evenly across all configured weekly sessions/slots (remainder goes to the earliest ones) — e.g. 24 total with Mon+Thu → 12 + 12
+- Applies to both Migration "Book Classes with New Teacher" and TIC "Reserve Slot" (which previously only ever booked the first slot row even when multiple were added — now books all of them)
+- A live split preview shows the breakdown as you type (e.g. "12 × Monday + 12 × Thursday = 24 total")
+- Removed the max="52" cap on both inputs
+
+### Fetch Remaining Classes (`LearnerProgressionService.js`, `Index.html`, `JavaScript.html`)
+- New "Fetch Remaining" button next to the sessions field in both Migration and TIC — pulls the live remaining-class count from PRMS/CPRS data (same calculation used by the Course Planner) and pre-fills the field
+- New `getRemainingClassesForJlid(jlid)` reuses the existing 10-min cached progression batch, so repeat lookups are cheap
+
+### Manage / Cancel Bookings (`ReserveSlot.js`, `Index.html`, `JavaScript.html`)
+- New "Manage / Cancel Bookings" button (Migration + TIC) opens a modal listing this learner's bookings from the Class Booking Log, each with a Cancel button
+- Cancelling deletes the actual calendar event series (master class calendar + teacher's calendar) via the Calendar API and marks the row Cancelled — for when a booking should have been removed after a migration/roadmap change but wasn't
+- Booking log now stores the master + teacher calendar event IDs per booking (JSON) to make this possible; **bookings made before this update won't have stored event IDs**, so cancelling those will mark the row Cancelled without being able to auto-delete the calendar events (delete manually from the calendar in that case)
+
+---
+
 ## [2026-07-19] — Kit HubSpot Fix, PWB AI Brain, Booking Fixes (V7.47)
 
 ### Kit Entry — HubSpot Update Fix (`KitTrackingService.js`)

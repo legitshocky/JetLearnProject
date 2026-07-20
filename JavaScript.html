@@ -12296,8 +12296,9 @@ function _personaRegisterMatchLog(teacherName) {
 
 /**
  * Called when user clicks "📅 Reserve Slot" on a persona card.
- * Books the first requested slot as a 12-week weekly recurring event on the
- * class-schedule calendar (hello@jet-learn.com) + teacher's calendar, inviting the teacher.
+ * Books all requested slot rows as recurring events on the class-schedule
+ * calendar (hello@jet-learn.com) + teacher's calendar, inviting the teacher.
+ * "Total Classes to Reserve" is split evenly across however many slot rows exist.
  */
 function _personaReserveSlot(teacherName) {
   var jlid        = _personaCtxJlid    || '';
@@ -12315,7 +12316,6 @@ function _personaReserveSlot(teacherName) {
 
   var t = (personaResults || []).find(function(r) { return r.teacherName === teacherName; }) || {};
   var courseName = (document.getElementById('pInpCourse') && document.getElementById('pInpCourse').value) || '';
-  var slot = _personaCtxRequestedSlots[0];
 
   var tzEl       = document.getElementById('pReserveTimezone');
   var timeZone   = (tzEl && tzEl.value) ? tzEl.value : 'Europe/Berlin';
@@ -12324,12 +12324,17 @@ function _personaReserveSlot(teacherName) {
   var numEvents  = (numEl && parseInt(numEl.value)) > 0 ? parseInt(numEl.value) : 12;
   var extraEmails = Array.from(document.querySelectorAll('input[name="pReserveEmailTarget"]:checked')).map(function(cb) { return cb.value; }).filter(Boolean);
 
+  var slotsDesc = _personaCtxRequestedSlots.map(function(s) { return escapeHtml(s.date) + ' ' + escapeHtml(s.slot); }).join(', ');
+  var splitDesc = _splitPreviewText(numEvents, _personaCtxRequestedSlots.map(function(s) { return s.date; }));
+
   showConfirm(
     'Reserve Slot',
-    'Reserve <strong>' + escapeHtml(slot.date) + ', ' + escapeHtml(slot.slot) + ' (' + escapeHtml(tzLabel) + ')<\/strong> weekly for ' + numEvents + ' sessions with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+    'Reserve <strong>' + slotsDesc + ' (' + escapeHtml(tzLabel) + ')<\/strong> with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br>'
+      + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
+      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
     function(confirmed) {
       if (!confirmed) return;
-      showLoading('Reserving slot (' + numEvents + ' sessions)…');
+      showLoading('Reserving slots (' + numEvents + ' total classes)…');
       google.script.run
         .withSuccessHandler(function(res) {
           hideLoading();
@@ -12337,7 +12342,7 @@ function _personaReserveSlot(teacherName) {
             showToast('error', 'Reservation Failed', res ? res.message : 'Unknown error');
             return;
           }
-          showToast('success', 'Slot Reserved', res.occurrences + ' weekly sessions booked with ' + teacherName);
+          showToast('success', 'Slots Reserved', res.occurrences + ' total classes booked with ' + teacherName);
         })
         .withFailureHandler(function(err) {
           hideLoading();
@@ -12357,6 +12362,197 @@ function _personaReserveSlot(teacherName) {
           numEvents,
           extraEmails
         );
+    }
+  );
+}
+
+/**
+ * Fetch remaining classes from PRMS/CPRS and split-preview — Migration + TIC.
+ * "No. of Sessions" fields now represent the TOTAL classes to book, split
+ * evenly across however many weekly session rows are configured.
+ */
+function _splitPreviewText(total, dayLabels) {
+  if (!total || !dayLabels.length) return '';
+  var base = Math.floor(total / dayLabels.length);
+  var remainder = total % dayLabels.length;
+  var parts = dayLabels.map(function(d, i) { return (base + (i < remainder ? 1 : 0)) + ' × ' + d; });
+  return '= ' + parts.join('  +  ') + '  (' + total + ' total)';
+}
+
+function _updateBookClassesSplitPreview() {
+  var el = document.getElementById('bookClassesSplitPreview');
+  if (!el) return;
+  var numEl = document.getElementById('bookClassesNumEvents');
+  var total = numEl ? parseInt(numEl.value) || 0 : 0;
+  var days = Array.from(document.querySelectorAll('#classSessionsContainer .class-session-group')).map(function(g) {
+    var d = g.querySelector('.class-day-select');
+    return d && d.value ? d.value : null;
+  }).filter(Boolean);
+  el.textContent = _splitPreviewText(total, days);
+}
+
+function _updatePReserveSplitPreview() {
+  var el = document.getElementById('pReserveSplitPreview');
+  if (!el) return;
+  var numEl = document.getElementById('pReserveNumEvents');
+  var total = numEl ? parseInt(numEl.value) || 0 : 0;
+  var dates = Array.from(document.querySelectorAll('#personaSlotsContainer .slot-row')).map(function(r) {
+    var d = r.querySelector('.p-slot-date');
+    return d && d.value ? d.value : null;
+  }).filter(Boolean);
+  el.textContent = _splitPreviewText(total, dates);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var numEl = document.getElementById('bookClassesNumEvents');
+  if (numEl) numEl.addEventListener('input', _updateBookClassesSplitPreview);
+  var sessContainer = document.getElementById('classSessionsContainer');
+  if (sessContainer) sessContainer.addEventListener('change', _updateBookClassesSplitPreview);
+
+  var pNumEl = document.getElementById('pReserveNumEvents');
+  if (pNumEl) pNumEl.addEventListener('input', _updatePReserveSplitPreview);
+  var slotsContainer = document.getElementById('personaSlotsContainer');
+  if (slotsContainer) slotsContainer.addEventListener('change', _updatePReserveSplitPreview);
+
+  var fetchBtn = document.getElementById('fetchRemainingClassesBtn');
+  if (fetchBtn) fetchBtn.addEventListener('click', function() {
+    var jlid = (document.getElementById('jlid') || {}).value || '';
+    var statusEl = document.getElementById('bookClassesRemainingStatus');
+    if (!jlid) { if (statusEl) { statusEl.textContent = 'Load a learner (JLID) first.'; statusEl.style.color = '#dc2626'; } return; }
+    fetchBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Fetching…'; statusEl.style.color = '#64748b'; }
+    google.script.run
+      .withSuccessHandler(function(res) {
+        fetchBtn.disabled = false;
+        if (!res || !res.success) {
+          if (statusEl) { statusEl.textContent = (res && res.message) || 'Could not fetch remaining classes.'; statusEl.style.color = '#dc2626'; }
+          return;
+        }
+        var n = document.getElementById('bookClassesNumEvents');
+        if (n) n.value = res.classesLeft;
+        if (statusEl) { statusEl.textContent = '✓ ' + res.classesLeft + ' classes remaining (' + res.classesDone + ' done so far, ' + (res.currentCourse || 'current course') + ').'; statusEl.style.color = '#16a34a'; }
+        _updateBookClassesSplitPreview();
+      })
+      .withFailureHandler(function(err) {
+        fetchBtn.disabled = false;
+        if (statusEl) { statusEl.textContent = (err && err.message) || String(err); statusEl.style.color = '#dc2626'; }
+      })
+      .getRemainingClassesForJlid(jlid);
+  });
+
+  var pFetchBtn = document.getElementById('pReserveFetchRemainingBtn');
+  if (pFetchBtn) pFetchBtn.addEventListener('click', function() {
+    var jlid = _personaCtxJlid || '';
+    var statusEl = document.getElementById('pReserveRemainingStatus');
+    if (!jlid) { if (statusEl) { statusEl.textContent = 'Use Smart Context Fetch to load a learner first.'; statusEl.style.color = '#dc2626'; } return; }
+    pFetchBtn.disabled = true;
+    if (statusEl) { statusEl.textContent = 'Fetching…'; statusEl.style.color = '#64748b'; }
+    google.script.run
+      .withSuccessHandler(function(res) {
+        pFetchBtn.disabled = false;
+        if (!res || !res.success) {
+          if (statusEl) { statusEl.textContent = (res && res.message) || 'Could not fetch remaining classes.'; statusEl.style.color = '#dc2626'; }
+          return;
+        }
+        var n = document.getElementById('pReserveNumEvents');
+        if (n) n.value = res.classesLeft;
+        if (statusEl) { statusEl.textContent = '✓ ' + res.classesLeft + ' classes remaining (' + res.classesDone + ' done so far, ' + (res.currentCourse || 'current course') + ').'; statusEl.style.color = '#16a34a'; }
+        _updatePReserveSplitPreview();
+      })
+      .withFailureHandler(function(err) {
+        pFetchBtn.disabled = false;
+        if (statusEl) { statusEl.textContent = (err && err.message) || String(err); statusEl.style.color = '#dc2626'; }
+      })
+      .getRemainingClassesForJlid(jlid);
+  });
+});
+
+/**
+ * Manage / Cancel Bookings modal — lists active calendar bookings for a JLID
+ * (from the Class Booking Log) and lets the operator cancel any that were
+ * never manually deleted from the calendar (e.g. after a migration/roadmap change).
+ */
+function openManageBookingsModal(jlid) {
+  var modal = document.getElementById('manageBookingsModal');
+  var body  = document.getElementById('manageBookingsBody');
+  var title = document.getElementById('manageBookingsJlid');
+  if (!modal || !body) return;
+  if (!jlid) { showToast('error', 'No Learner Loaded', 'Load a learner (JLID) first.'); return; }
+
+  title.textContent = jlid;
+  body.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        body.innerHTML = '<div style="text-align:center;padding:2rem;color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load bookings.') + '</div>';
+        return;
+      }
+      if (!res.rows || !res.rows.length) {
+        body.innerHTML = '<div style="text-align:center;padding:2rem;color:#94a3b8;">No bookings found for this learner in the Class Booking Log.</div>';
+        return;
+      }
+      body.innerHTML = res.rows.map(function(r) {
+        var isCancelled = r.status === 'Cancelled';
+        return '<div style="border:1px solid ' + (isCancelled ? '#e2e8f0' : '#fecaca') + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;background:' + (isCancelled ? '#f8fafc' : '#fef2f2') + ';">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'
+          + '<div>'
+          + '<div style="font-weight:600;font-size:0.85rem;color:#1e293b;">' + escapeHtml(r.teacherName) + ' — ' + escapeHtml(r.courseName || 'N/A') + '</div>'
+          + '<div style="font-size:0.75rem;color:#64748b;margin-top:2px;">' + escapeHtml(r.sessions) + '</div>'
+          + '<div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;">Booked ' + escapeHtml(r.timestamp) + ' by ' + escapeHtml(r.performedBy || '—') + ' · Start ' + escapeHtml(r.startDate) + ' · ' + escapeHtml(r.timezone || '') + '</div>'
+          + '</div>'
+          + (isCancelled
+              ? '<span style="font-size:0.72rem;color:#94a3b8;font-weight:600;white-space:nowrap;">✓ Cancelled</span>'
+              : '<button onclick="_cancelBookingRow(' + r.rowIndex + ', this)" style="background:#dc2626;border:none;border-radius:6px;padding:5px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-times"></i> Cancel</button>')
+          + '</div>'
+          + '</div>';
+      }).join('');
+    })
+    .withFailureHandler(function(err) {
+      body.innerHTML = '<div style="text-align:center;padding:2rem;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</div>';
+    })
+    .getBookingLogForJlid(jlid);
+}
+
+function closeManageBookingsModal() {
+  var modal = document.getElementById('manageBookingsModal');
+  if (modal) modal.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function _cancelBookingRow(rowIndex, btn) {
+  showConfirm(
+    'Cancel Booking',
+    'This will delete the booked calendar event(s) for this learner from the class calendar and the teacher\'s calendar (if present). This cannot be undone. Continue?',
+    function(confirmed) {
+      if (!confirmed) return;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (!res || !res.success) {
+            showToast('error', 'Cancel Failed', (res && res.message) || 'Unknown error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+            return;
+          }
+          showToast('success', 'Booking Cancelled', res.deleted + ' calendar event(s) removed.');
+          var card = btn.closest('div[style*="border-radius:10px"]');
+          if (card) {
+            card.style.borderColor = '#e2e8f0';
+            card.style.background = '#f8fafc';
+            var actionsRow = btn.parentElement;
+            btn.outerHTML = '<span style="font-size:0.72rem;color:#94a3b8;font-weight:600;white-space:nowrap;">✓ Cancelled</span>';
+          }
+        })
+        .withFailureHandler(function(err) {
+          showToast('error', 'Cancel Failed', (err && err.message) || String(err));
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        })
+        .cancelBookedClasses(rowIndex);
     }
   );
 }
@@ -12445,12 +12641,15 @@ document.addEventListener('DOMContentLoaded', function() {
       .checkBookingConflicts(teacherName, classSessions, startDate, gmtTzLabel);
 
     function _showBookingConfirm(warnHtml) {
+    var splitDesc = _splitPreviewText(numEvents, classSessions.map(function(s) { return s.day; }));
     showConfirm(
       'Book Classes with New Teacher',
-      'Book ' + classSessions.length + ' weekly session(s) x ' + numEvents + ' weeks with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br><span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + warnHtml,
+      'Book <strong>' + numEvents + ' total classes<\/strong> across ' + classSessions.length + ' weekly session(s) with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br>'
+        + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
+        + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + warnHtml,
       function(confirmed) {
         if (!confirmed) return;
-        showLoading('Booking classes (' + numEvents + ' weeks)…');
+        showLoading('Booking ' + numEvents + ' total classes…');
         google.script.run
           .withSuccessHandler(function(res) {
             hideLoading();
@@ -12459,8 +12658,8 @@ document.addEventListener('DOMContentLoaded', function() {
               if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Unknown error') + '<\/span>';
               return;
             }
-            showToast('success', 'Classes Booked', res.booked.length + ' session(s) x ' + res.occurrences + ' weeks booked with ' + teacherName);
-            if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a;">Booked ' + res.booked.length + ' session(s) x ' + res.occurrences + ' weeks.<\/span>';
+            showToast('success', 'Classes Booked', res.occurrences + ' total classes booked across ' + res.booked.length + ' session(s) with ' + teacherName);
+            if (statusEl) statusEl.innerHTML = '<span style="color:#16a34a;">Booked ' + res.occurrences + ' total classes across ' + res.booked.length + ' session(s).<\/span>';
           })
           .withFailureHandler(function(err) {
             hideLoading();

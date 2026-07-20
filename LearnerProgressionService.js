@@ -573,6 +573,29 @@ function _buildHealthMap(jlids) {
 // MAIN: getLearnerProgressions()
 // Called by the Course Planner dashboard page.
 // ─────────────────────────────────────────────────────────────────────
+// Lightweight per-JLID lookup for "remaining classes" — reuses the cached
+// getLearnerProgressions() batch (10-min TTL) so repeat lookups are cheap.
+// Returns { success, classesLeft, classesDone, classFrequency, currentCourse } or { success:false }.
+function getRemainingClassesForJlid(jlid) {
+  try {
+    if (!jlid) return { success: false, message: 'No JLID provided.' };
+    var data = getLearnerProgressions(false);
+    var match = (data.learners || []).find(function(l) { return l.jlid === jlid; });
+    if (!match) return { success: false, message: 'No PRMS/CPRS record found for ' + jlid + '.' };
+    return {
+      success:        true,
+      classesLeft:    match.classesLeft,
+      classesDone:    match.classesDone,
+      classFrequency: match.classFrequency,
+      currentCourse:  match.currentCourse,
+      prmStaleDays:   match.prmStaleDays
+    };
+  } catch(e) {
+    Logger.log('[LP] getRemainingClassesForJlid error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function getLearnerProgressions(forceRefresh) {
   try {
     Logger.log('[LP] getLearnerProgressions start (forceRefresh=' + !!forceRefresh + ')');

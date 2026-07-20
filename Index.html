@@ -581,12 +581,18 @@
                       <input type="hidden" id="bookingTimezone">
                     </div>
                     <div style="flex:0 0 auto;display:flex;align-items:center;gap:8px;">
-                      <label style="font-size:0.8em;display:flex;align-items:center;gap:4px;">No. of Sessions: <input type="number" id="bookClassesNumEvents" class="form-control" value="12" min="1" max="52" style="width:70px;"></label>
+                      <label style="font-size:0.8em;display:flex;align-items:center;gap:4px;">Total Classes to Book: <input type="number" id="bookClassesNumEvents" class="form-control" value="12" min="1" style="width:70px;"></label>
+                      <button type="button" class="btn btn-outline" id="fetchRemainingClassesBtn" style="font-size:0.75rem;padding:5px 9px;" title="Fetch remaining classes from PRMS/CPRS"><i class="fas fa-sync-alt"></i> Fetch Remaining</button>
                     </div>
                     <div style="flex:0 0 auto;">
                       <button type="button" class="btn btn-outline" id="bookClassesWithNewTeacherBtn" style="font-size:0.82rem;"><i class="fas fa-calendar-plus"></i> Book Classes with New Teacher</button>
                     </div>
+                    <div style="flex:0 0 auto;">
+                      <button type="button" class="btn btn-outline" onclick="openManageBookingsModal((document.getElementById('jlid')||{}).value)" style="font-size:0.82rem;color:#dc2626;border-color:#fecaca;"><i class="fas fa-trash-alt"></i> Manage / Cancel Bookings</button>
+                    </div>
                   </div>
+                  <div id="bookClassesRemainingStatus" style="font-size:0.75rem;color:#64748b;margin-top:4px;"></div>
+                  <div id="bookClassesSplitPreview" style="font-size:0.75rem;color:#6366f1;margin-top:2px;"></div>
                   <div style="margin-top:12px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                       <label class="form-label" style="font-size:0.78em;color:var(--text-light);margin:0;">Event Notes / Description</label>
@@ -4420,8 +4426,14 @@
           <small class="form-text-muted" style="font-size:0.72rem;">The slot time above is treated as local time in this zone (e.g. 4 PM UK = 4 PM London, not 4 PM CET).</small>
         </div>
         <div class="form-group">
-          <label class="form-label">No. of Sessions to Reserve</label>
-          <input type="number" id="pReserveNumEvents" class="form-control" value="12" min="1" max="52">
+          <label class="form-label">Total Classes to Reserve</label>
+          <input type="number" id="pReserveNumEvents" class="form-control" value="12" min="1">
+          <div style="display:flex;gap:6px;margin-top:5px;">
+            <button type="button" class="btn btn-outline" id="pReserveFetchRemainingBtn" style="font-size:0.72rem;padding:4px 8px;" title="Fetch remaining classes from PRMS/CPRS"><i class="fas fa-sync-alt"></i> Fetch Remaining</button>
+            <button type="button" class="btn btn-outline" onclick="openManageBookingsModal(_personaCtxJlid)" style="font-size:0.72rem;padding:4px 8px;color:#dc2626;border-color:#fecaca;" title="View / cancel this learner's bookings"><i class="fas fa-trash-alt"></i> Manage Bookings</button>
+          </div>
+          <div id="pReserveRemainingStatus" style="font-size:0.72rem;color:#64748b;margin-top:3px;"></div>
+          <div id="pReserveSplitPreview" style="font-size:0.72rem;color:#6366f1;margin-top:2px;"></div>
         </div>
       </div>
 
@@ -4989,6 +5001,19 @@
       </button>
     </div>
     <div id="docArticleContent"></div>
+  </div>
+</div>
+
+<!-- Manage / Cancel Bookings Modal — used from Migration + TIC -->
+<div class="modal-overlay" id="manageBookingsModal" onclick="if(event.target===this)closeManageBookingsModal()" style="display:none;z-index:9999;">
+  <div class="modal" style="max-width:720px;width:95%;max-height:85vh;overflow-y:auto;border-radius:18px;padding:0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.5rem;border-bottom:1.5px solid #e2e8f0;position:sticky;top:0;background:#fff;z-index:1;border-radius:18px 18px 0 0;">
+      <h3 style="margin:0;font-size:1rem;font-weight:700;color:#1e293b;">Manage Bookings — <span id="manageBookingsJlid">—</span></h3>
+      <button onclick="closeManageBookingsModal()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">×</button>
+    </div>
+    <div id="manageBookingsBody" style="padding:1.5rem;">
+      <div style="text-align:center;padding:2rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+    </div>
   </div>
 </div>
 

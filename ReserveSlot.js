@@ -229,6 +229,18 @@ function _parse12hTime(timeStr) {
 // classSessions: [{ day: 'Monday', time: '5:00 PM' }, ...]
 // Returns { success, message, booked: [{day, time, start, end}], occurrences }
 // ─────────────────────────────────────────────────────────────────────────────
+// Splits `total` occurrences evenly across `parts` weekly sessions.
+// Remainder (if not evenly divisible) goes to the earliest sessions first.
+// e.g. _splitEvenly(24, 2) = [12, 12]; _splitEvenly(25, 2) = [13, 12]
+function _splitEvenly(total, parts) {
+  if (parts <= 0) return [];
+  var base = Math.floor(total / parts);
+  var remainder = total % parts;
+  var out = [];
+  for (var i = 0; i < parts; i++) out.push(base + (i < remainder ? 1 : 0));
+  return out;
+}
+
 var _JETGUIDE_EMAILS = {
   'Abhishek Nayak':  'abhishek.nayak@jet-learn.com',
   'Anamika Parmar':  'anamika.parmar@jet-learn.com',
@@ -236,17 +248,30 @@ var _JETGUIDE_EMAILS = {
   'Satyam Mehra':    'satyam.mehra@jet-learn.com'
 };
 
-function _logBooking(jlid, learnerName, teacherName, courseName, booked, numEvents, startDate, gmtTimezoneLabel, performedBy, classLink, title) {
+// Columns: A Timestamp, B JLID, C Learner, D Teacher, E Course, F Sessions, G Weeks(total),
+// H Start Date, I Timezone, J Performed By, K Class Link, L Event Title,
+// M Master Event IDs (JSON [{eventId,calendarId,day,time}]), N Teacher Event IDs (same shape), O Status
+var CLASS_BOOKING_LOG_COLS = ['Timestamp','JLID','Learner','Teacher','Course','Sessions','Weeks','Start Date','Timezone','Performed By','Class Link','Event Title','Master Event IDs','Teacher Event IDs','Status'];
+
+function _getClassBookingLogSheet() {
+  var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
+  var sheet = ss.getSheetByName('Class Booking Log');
+  if (!sheet) {
+    sheet = ss.insertSheet('Class Booking Log');
+    sheet.appendRow(CLASS_BOOKING_LOG_COLS);
+    sheet.getRange(1, 1, 1, CLASS_BOOKING_LOG_COLS.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < CLASS_BOOKING_LOG_COLS.length) {
+    // Upgrade older sheets missing the newer tracking columns
+    sheet.getRange(1, 1, 1, CLASS_BOOKING_LOG_COLS.length).setValues([CLASS_BOOKING_LOG_COLS]);
+  }
+  return sheet;
+}
+
+function _logBooking(jlid, learnerName, teacherName, courseName, booked, numEvents, startDate, gmtTimezoneLabel, performedBy, classLink, title, masterEventIds, teacherEventIds) {
   try {
-    var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
-    var sheet = ss.getSheetByName('Class Booking Log');
-    if (!sheet) {
-      sheet = ss.insertSheet('Class Booking Log');
-      sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Teacher', 'Course', 'Sessions', 'Weeks', 'Start Date', 'Timezone', 'Performed By', 'Class Link', 'Event Title']);
-      sheet.getRange(1, 1, 1, 12).setFontWeight('bold');
-      sheet.setFrozenRows(1);
-    }
-    var sessionStr = booked.map(function(b) { return b.day + ' ' + b.time; }).join(', ');
+    var sheet = _getClassBookingLogSheet();
+    var sessionStr = booked.map(function(b) { return b.day + ' ' + b.time + (b.count ? ' (x' + b.count + ')' : ''); }).join(', ');
     sheet.appendRow([
       new Date(),
       jlid || '',
@@ -259,7 +284,10 @@ function _logBooking(jlid, learnerName, teacherName, courseName, booked, numEven
       gmtTimezoneLabel || '',
       performedBy || '',
       classLink || '',
-      title || ''
+      title || '',
+      JSON.stringify(masterEventIds || []),
+      JSON.stringify(teacherEventIds || []),
+      'Active'
     ]);
   } catch(e) {
     Logger.log('[_logBooking] Failed to write booking log: ' + e.message);
@@ -276,7 +304,11 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     var masterCal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
     if (!masterCal) return { success: false, message: 'Class schedule calendar not accessible.' };
 
-    var NUM_EVENTS = (numEvents > 0) ? numEvents : 12;
+    // numEvents is now the TOTAL number of classes to book across all weekly
+    // sessions — split evenly (remainder to earliest sessions) rather than
+    // booking that many occurrences of EVERY session.
+    var TOTAL_EVENTS = (numEvents > 0) ? numEvents : 12;
+    var perSessionCounts = _splitEvenly(TOTAL_EVENTS, classSessions.length);
     var courseType = _courseTypeLabel(courseName, jlid);
     var title = (learnerName || 'Learner') + ' (' + (jlid || 'N/A') + ') : Jetlearn ' + courseType + ' Lesson'
       + (info.teacherId ? (' (' + info.teacherId + ')') : '');
@@ -304,11 +336,16 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     var attendees = guests.map(function(g) { return { email: g }; });
 
     var booked = [];
-    var _sessIndex = 0;
-    classSessions.forEach(function(sess) {
+    var masterEventIds = [];
+    var teacherEventIds = [];
+    var actualTotal = 0;
+    classSessions.forEach(function(sess, sessIdx) {
       var dayIdx = _DAY_INDEX[sess.day];
       var t = _parse12hTime(sess.time);
       if (dayIdx === undefined || !t) return;
+
+      var sessCount = perSessionCounts[sessIdx] || 0;
+      if (sessCount <= 0) return;
 
       var diff = (dayIdx - startBase.getUTCDay() + 7) % 7;
       var occDate = new Date(startBase.getTime() + diff * 24 * 60 * 60 * 1000);
@@ -327,7 +364,7 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
         summary: title,
         start:   { dateTime: startLocal, timeZone: iana },
         end:     { dateTime: endLocal,   timeZone: iana },
-        recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + NUM_EVENTS],
+        recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + sessCount],
         attendees: attendees,
         guestsCanSeeOtherGuests: false,
         guestsCanInviteOthers: false,
@@ -350,8 +387,9 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
       var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
       if (created && created.id) {
         _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
+        masterEventIds.push({ eventId: created.id, calendarId: CONFIG.CLASS_SCHEDULE_CALENDAR_ID, day: sess.day, time: sess.time });
         // Patch first occurrence of first session only with "Migration : <title>"
-        if (_sessIndex === 0) {
+        if (sessIdx === 0) {
           try {
             var instances = Calendar.Events.instances(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id, { maxResults: 1 });
             if (instances && instances.items && instances.items.length) {
@@ -363,7 +401,6 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
           }
         }
       }
-      _sessIndex++;
 
       if (info.calendarId && info.calendarId !== CONFIG.CLASS_SCHEDULE_CALENDAR_ID) {
         try {
@@ -371,26 +408,30 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
             summary: title,
             start:   { dateTime: startLocal, timeZone: iana },
             end:     { dateTime: endLocal,   timeZone: iana },
-            recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + NUM_EVENTS],
+            recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + sessCount],
             sendUpdates: 'none'
           };
           if (descParts.length) teacherBody.description = descParts.join('\n\n');
           if (classLink) teacherBody.location = classLink;
-          Calendar.Events.insert(teacherBody, info.calendarId);
+          var teacherCreated = Calendar.Events.insert(teacherBody, info.calendarId);
+          if (teacherCreated && teacherCreated.id) {
+            teacherEventIds.push({ eventId: teacherCreated.id, calendarId: info.calendarId, day: sess.day, time: sess.time });
+          }
         } catch(te) {
           Logger.log('[bookClassesWithNewTeacher] Could not write to teacher calendar: ' + te.message);
         }
       }
 
-      booked.push({ day: sess.day, time: sess.time, start: startLocal, end: endLocal, timezone: iana });
+      actualTotal += sessCount;
+      booked.push({ day: sess.day, time: sess.time, start: startLocal, end: endLocal, timezone: iana, count: sessCount });
     });
 
     if (!booked.length) return { success: false, message: 'No valid sessions could be parsed.' };
 
-    Logger.log('[bookClassesWithNewTeacher] Booked ' + booked.length + ' session(s) x' + NUM_EVENTS + ' weeks for ' + (learnerName || jlid) + ' with ' + teacherName);
-    _logBooking(jlid, learnerName, teacherName, courseName, booked, NUM_EVENTS, startDate, gmtTimezoneLabel, performedBy, classLink, title);
+    Logger.log('[bookClassesWithNewTeacher] Booked ' + booked.length + ' session(s), ' + actualTotal + ' total classes for ' + (learnerName || jlid) + ' with ' + teacherName);
+    _logBooking(jlid, learnerName, teacherName, courseName, booked, actualTotal, startDate, gmtTimezoneLabel, performedBy, classLink, title, masterEventIds, teacherEventIds);
 
-    return { success: true, title: title, booked: booked, occurrences: NUM_EVENTS };
+    return { success: true, title: title, booked: booked, occurrences: actualTotal };
   } catch(e) {
     Logger.log('[bookClassesWithNewTeacher] Error: ' + e.message);
     return { success: false, message: e.message };
@@ -415,15 +456,10 @@ function reserveCalendarSlot(jlid, learnerName, teacherName, teacherCalendarId, 
     if (!teacherName) return { success: false, message: 'Teacher name required.' };
     if (!requestedSlots || !requestedSlots.length) return { success: false, message: 'No requested slot to reserve.' };
 
-    var slot = requestedSlots[0];
-    if (!slot || !slot.date || !slot.slot) return { success: false, message: 'Invalid slot data.' };
+    var validSlots = requestedSlots.filter(function(s) { return s && s.date && s.slot; });
+    if (!validSlots.length) return { success: false, message: 'Invalid slot data.' };
 
-    var range = _slotStringToUtcMs(slot.date, slot.slot, timeZone || 'Europe/Berlin');
-    if (!range) return { success: false, message: 'Could not parse slot time: ' + slot.slot };
-
-    var startMs = range[0], endMs = range[1];
-    var startDt = new Date(startMs), endDt = new Date(endMs);
-
+    var tz = timeZone || 'Europe/Berlin';
     var courseType = _courseTypeLabel(courseName, jlid);
     var title = 'Reserved : ' + (learnerName || 'Learner') + ' (' + (jlid || 'N/A') + ') : Jetlearn ' + courseType + ' Lesson'
       + (teacherId ? (' (' + teacherId + ')') : '');
@@ -438,43 +474,170 @@ function reserveCalendarSlot(jlid, learnerName, teacherName, teacherCalendarId, 
     var guests = [];
     if (teacherEmail) guests.push(teacherEmail);
     (extraEmails || []).forEach(function(e) { if (e && guests.indexOf(e) === -1) guests.push(e); });
+    var attendees = guests.map(function(g) { return { email: g }; });
 
     var masterCal = CalendarApp.getCalendarById(CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
     if (!masterCal) return { success: false, message: 'Class schedule calendar not accessible.' };
 
-    var NUM_EVENTS = (numEvents > 0) ? numEvents : 12;
-    var recurrence = CalendarApp.newRecurrence().addWeeklyRule().times(NUM_EVENTS);
+    // numEvents is the TOTAL classes to reserve — split evenly across all requested
+    // weekly slots (remainder to earliest slots), same behavior as migration booking.
+    var TOTAL_EVENTS = (numEvents > 0) ? numEvents : 12;
+    var perSlotCounts = _splitEvenly(TOTAL_EVENTS, validSlots.length);
 
-    var series = masterCal.createEventSeries(title, startDt, endDt, recurrence, {
-      description: desc,
-      guests: guests.join(','),
-      sendInvites: true
+    var booked = [];
+    var masterEventIds = [];
+    var teacherEventIds = [];
+    var actualTotal = 0;
+    var firstStart = null, firstEnd = null;
+
+    validSlots.forEach(function(slot, idx) {
+      var slotCount = perSlotCounts[idx] || 0;
+      if (slotCount <= 0) return;
+
+      var range = _slotStringToUtcMs(slot.date, slot.slot, tz);
+      if (!range) { Logger.log('[reserveCalendarSlot] Could not parse slot: ' + slot.slot); return; }
+      var startDt = new Date(range[0]), endDt = new Date(range[1]);
+      if (!firstStart) { firstStart = startDt; firstEnd = endDt; }
+
+      var eventBody = {
+        summary: title,
+        start:   { dateTime: startDt.toISOString() },
+        end:     { dateTime: endDt.toISOString() },
+        recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + slotCount],
+        attendees: attendees,
+        description: desc,
+        guestsCanSeeOtherGuests: false,
+        guestsCanInviteOthers: false,
+        sendUpdates: 'all'
+      };
+
+      var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
+      if (created && created.id) {
+        _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
+        masterEventIds.push({ eventId: created.id, calendarId: CONFIG.CLASS_SCHEDULE_CALENDAR_ID, date: slot.date, time: slot.slot });
+      }
+
+      // Best-effort: also place series on teacher's own calendar if accessible and distinct
+      if (teacherCalendarId && teacherCalendarId !== CONFIG.CLASS_SCHEDULE_CALENDAR_ID) {
+        try {
+          var teacherBody = {
+            summary: title,
+            start:   { dateTime: startDt.toISOString() },
+            end:     { dateTime: endDt.toISOString() },
+            recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + slotCount],
+            description: desc,
+            sendUpdates: 'none'
+          };
+          var teacherCreated = Calendar.Events.insert(teacherBody, teacherCalendarId);
+          if (teacherCreated && teacherCreated.id) {
+            teacherEventIds.push({ eventId: teacherCreated.id, calendarId: teacherCalendarId, date: slot.date, time: slot.slot });
+          }
+        } catch(te) {
+          Logger.log('[reserveCalendarSlot] Could not write to teacher calendar: ' + te.message);
+        }
+      }
+
+      actualTotal += slotCount;
+      booked.push({ date: slot.date, time: slot.slot, count: slotCount });
     });
 
-    // Best-effort: also place series on teacher's own calendar if accessible and distinct
-    if (teacherCalendarId && teacherCalendarId !== CONFIG.CLASS_SCHEDULE_CALENDAR_ID) {
-      try {
-        var teacherCal = CalendarApp.getCalendarById(teacherCalendarId);
-        if (teacherCal) {
-          teacherCal.createEventSeries(title, startDt, endDt, CalendarApp.newRecurrence().addWeeklyRule().times(NUM_EVENTS), { description: desc });
-        }
-      } catch(te) {
-        Logger.log('[reserveCalendarSlot] Could not write to teacher calendar: ' + te.message);
-      }
-    }
+    if (!booked.length) return { success: false, message: 'No valid slots could be booked.' };
 
-    Logger.log('[reserveCalendarSlot] Booked ' + title + ' x' + NUM_EVENTS + ' weekly @ ' + startDt.toISOString() + ' - ' + endDt.toISOString());
+    Logger.log('[reserveCalendarSlot] Booked ' + booked.length + ' slot(s), ' + actualTotal + ' total classes for ' + (learnerName || jlid) + ' with ' + teacherName);
+    _logBooking(jlid, learnerName, teacherName, courseName,
+      booked.map(function(b) { return { day: b.date, time: b.time, count: b.count }; }),
+      actualTotal, Utilities.formatDate(firstStart, tz, 'yyyy-MM-dd'), tz, performedBy, '', title, masterEventIds, teacherEventIds);
 
     return {
       success: true,
       title: title,
-      start: startDt.toISOString(),
-      end: endDt.toISOString(),
-      occurrences: NUM_EVENTS,
-      eventSeriesId: series.getId ? series.getId() : ''
+      start: firstStart ? firstStart.toISOString() : '',
+      end: firstEnd ? firstEnd.toISOString() : '',
+      occurrences: actualTotal,
+      booked: booked
     };
   } catch(e) {
     Logger.log('[reserveCalendarSlot] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// Returns Active bookings from the Class Booking Log for a JLID, most recent first.
+// Each row includes rowIndex so the UI can pass it straight to cancelBookedClasses.
+function getBookingLogForJlid(jlid) {
+  try {
+    if (!jlid) return { success: false, message: 'JLID required.' };
+    var sheet = _getClassBookingLogSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, rows: [] };
+
+    var data = sheet.getRange(2, 1, lastRow - 1, CLASS_BOOKING_LOG_COLS.length).getValues();
+    var jlidUpper = String(jlid).toUpperCase().trim();
+    var rows = [];
+    data.forEach(function(r, idx) {
+      if (String(r[1] || '').toUpperCase().trim() !== jlidUpper) return;
+      var status = String(r[14] || 'Active').trim();
+      rows.push({
+        rowIndex:    idx + 2,
+        timestamp:   r[0] instanceof Date ? Utilities.formatDate(r[0], Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm') : String(r[0] || ''),
+        jlid:        String(r[1] || ''),
+        learnerName: String(r[2] || ''),
+        teacherName: String(r[3] || ''),
+        courseName:  String(r[4] || ''),
+        sessions:    String(r[5] || ''),
+        weeks:       r[6],
+        startDate:   String(r[7] || ''),
+        timezone:    String(r[8] || ''),
+        performedBy: String(r[9] || ''),
+        eventTitle:  String(r[11] || ''),
+        status:      status
+      });
+    });
+    rows.sort(function(a, b) { return b.rowIndex - a.rowIndex; }); // most recent first
+    return { success: true, rows: rows };
+  } catch(e) {
+    Logger.log('[getBookingLogForJlid] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// Deletes every calendar event series (master + teacher calendar) recorded for
+// a Class Booking Log row, then marks the row "Cancelled". Best-effort — a
+// missing/already-deleted event doesn't fail the whole operation.
+function cancelBookedClasses(rowIndex) {
+  try {
+    if (!rowIndex) return { success: false, message: 'No rowIndex provided.' };
+    var sheet = _getClassBookingLogSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, CLASS_BOOKING_LOG_COLS.length).getValues()[0];
+    if (!row || !row[1]) return { success: false, message: 'Booking log row not found.' };
+
+    var status = String(row[14] || '').trim();
+    if (status === 'Cancelled') return { success: false, message: 'This booking was already cancelled.' };
+
+    var masterEventIds = [];
+    var teacherEventIds = [];
+    try { masterEventIds = JSON.parse(row[12] || '[]'); } catch(e) {}
+    try { teacherEventIds = JSON.parse(row[13] || '[]'); } catch(e) {}
+
+    var deleted = 0, failed = 0;
+    masterEventIds.concat(teacherEventIds).forEach(function(ev) {
+      if (!ev || !ev.eventId || !ev.calendarId) return;
+      try {
+        Calendar.Events.remove(ev.calendarId, ev.eventId);
+        deleted++;
+      } catch(re) {
+        // Already deleted / not found is fine — anything else counts as a real failure
+        if (String(re.message || '').indexOf('404') === -1 && String(re.message || '').toLowerCase().indexOf('not found') === -1) failed++;
+        Logger.log('[cancelBookedClasses] remove failed for ' + ev.eventId + ': ' + re.message);
+      }
+    });
+
+    sheet.getRange(rowIndex, 15).setValue('Cancelled'); // col O = Status
+    Logger.log('[cancelBookedClasses] row=' + rowIndex + ' deleted=' + deleted + ' failed=' + failed);
+
+    return { success: true, deleted: deleted, failed: failed };
+  } catch(e) {
+    Logger.log('[cancelBookedClasses] Error: ' + e.message);
     return { success: false, message: e.message };
   }
 }
