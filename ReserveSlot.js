@@ -459,6 +459,15 @@ function reserveCalendarSlot(jlid, learnerName, teacherName, teacherCalendarId, 
     var validSlots = requestedSlots.filter(function(s) { return s && s.date && s.slot; });
     if (!validSlots.length) return { success: false, message: 'Invalid slot data.' };
 
+    // Caller may omit calendar info (e.g. direct reserve — any learner/teacher, no
+    // persona search result to pull it from) — resolve it here in that case.
+    if (!teacherCalendarId && !teacherEmail && !teacherId) {
+      var lookedUp = _lookupTeacherCalendarInfo(teacherName);
+      teacherCalendarId = lookedUp.calendarId;
+      teacherEmail      = lookedUp.email;
+      teacherId         = lookedUp.teacherId;
+    }
+
     var tz = timeZone || 'Europe/Berlin';
     var courseType = _courseTypeLabel(courseName, jlid);
     var title = 'Reserved : ' + (learnerName || 'Learner') + ' (' + (jlid || 'N/A') + ') : Jetlearn ' + courseType + ' Lesson'

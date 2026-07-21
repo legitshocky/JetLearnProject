@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-20] — Direct Reserve: Any Learner, Any Teacher, Multi-Day (V7.52)
+
+### Direct Reserve Slot (`Index.html`, `JavaScript.html`, `ReserveSlot.js`)
+- New "Or Reserve Directly — Any Teacher" section on the Teacher Persona page — skip Smart Slot Match entirely, pick any teacher from a dropdown, and reserve for the currently loaded learner
+- Reuses the existing multi-day slot rows ("Add Session Row"), timezone, and Total Classes to Reserve fields — already supports multiple different days per reservation (the earlier even-split fix applies here too)
+- `reserveCalendarSlot()` now resolves the teacher's calendar ID/email/HubSpot ID by name server-side when the caller doesn't supply them, so this path doesn't need a persona search result to work
+
+---
+
 ## [2026-07-20] — Kit HubSpot Escalation, TIC→Migration Handoff, Country Timezone Fallback (V7.51)
 
 ### Kit Escalation Now Updates HubSpot Status (`KitTrackingService.js`)

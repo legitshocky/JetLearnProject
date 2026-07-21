@@ -1356,6 +1356,7 @@ function switchPage(pageId, context = null) {
                 // Populate Dropdowns
                 populateSelect(oldTeacherSelect, globalTeachers, true, "Select old teacher");
                 populateSelect(newTeacherSelect, globalTeachers, false, "Select new teacher");
+                populateSelect(document.getElementById('pDirectTeacherSelect'), globalTeachers, false, "Select teacher");
                 populateSelect(migrationCourseSelect, globalCourses, false, "Select course");
                 populateSelect(clsManagerSelect, globalClsManagers, false, "Select CLS");
                 populateSelect(jetGuideSelect, globalJetGuides, false, "Select JetGuide");
@@ -12448,6 +12449,100 @@ function _personaReserveSlot(teacherName) {
     }
   );
 }
+
+/**
+ * Reads the current slot rows straight from #personaSlotsContainer's DOM —
+ * used by direct-reserve, which skips Smart Slot Match entirely so
+ * _personaCtxRequestedSlots (only set by a search submit) may be stale/empty.
+ */
+function _readPersonaSlotRowsFromDom() {
+  return Array.from(document.querySelectorAll('#personaSlotsContainer .slot-row')).map(function(row) {
+    var d = row.querySelector('.p-slot-date');
+    var t = row.querySelector('.p-slot-time');
+    return { date: d ? d.value : '', slot: t ? t.value : '' };
+  }).filter(function(s) { return s.date && s.slot; });
+}
+
+/**
+ * "Reserve Slot (Any Teacher)" — Direct Reserve. Skips Smart Slot Match; lets
+ * the operator pick any teacher directly and reserve the configured slots
+ * (dates, timezone, total sessions) for the currently loaded learner.
+ * Calendar info is resolved server-side by teacher name (no persona search result needed).
+ */
+function _personaReserveSlotDirect() {
+  var jlid        = _personaCtxJlid    || '';
+  var learnerName = _personaCtxLearner || '';
+  var teacherSel  = document.getElementById('pDirectTeacherSelect');
+  var teacherName = teacherSel ? teacherSel.value : '';
+
+  if (!jlid || jlid.length < 5) {
+    showToast('error', 'No Learner Loaded', 'Use Smart Context Fetch to load a learner first.');
+    return;
+  }
+  if (!teacherName) {
+    showToast('error', 'No Teacher Selected', 'Select a teacher first.');
+    return;
+  }
+  var slots = _readPersonaSlotRowsFromDom();
+  if (!slots.length) {
+    showToast('error', 'No Slot Selected', 'Add at least one date + time slot above.');
+    return;
+  }
+
+  var courseName = (document.getElementById('pInpCourse') && document.getElementById('pInpCourse').value) || '';
+  var tzEl       = document.getElementById('pReserveTimezone');
+  var timeZone   = (tzEl && tzEl.value) ? tzEl.value : 'Europe/Berlin';
+  var tzLabel    = (tzEl && tzEl.options[tzEl.selectedIndex]) ? tzEl.options[tzEl.selectedIndex].text : timeZone;
+  var numEl      = document.getElementById('pReserveNumEvents');
+  var numEvents  = (numEl && parseInt(numEl.value)) > 0 ? parseInt(numEl.value) : 12;
+  var extraEmails = Array.from(document.querySelectorAll('input[name="pReserveEmailTarget"]:checked')).map(function(cb) { return cb.value; }).filter(Boolean);
+
+  var slotsDesc = slots.map(function(s) { return escapeHtml(s.date) + ' ' + escapeHtml(s.slot); }).join(', ');
+  var splitDesc = _splitPreviewText(numEvents, slots.map(function(s) { return s.date; }));
+
+  showConfirm(
+    'Reserve Slot',
+    'Reserve <strong>' + slotsDesc + ' (' + escapeHtml(tzLabel) + ')<\/strong> with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br>'
+      + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
+      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+    function(confirmed) {
+      if (!confirmed) return;
+      showLoading('Reserving slots (' + numEvents + ' total classes)…');
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (!res || !res.success) {
+            showToast('error', 'Reservation Failed', res ? res.message : 'Unknown error');
+            return;
+          }
+          showToast('success', 'Slots Reserved', res.occurrences + ' total classes booked with ' + teacherName);
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          showError(err);
+        })
+        .reserveCalendarSlot(
+          jlid,
+          learnerName,
+          teacherName,
+          '', // teacherCalendarId — resolved server-side by name
+          '', // teacherEmail — resolved server-side by name
+          slots,
+          courseName,
+          currentUser ? currentUser.username : '',
+          '', // teacherId — resolved server-side by name
+          timeZone,
+          numEvents,
+          extraEmails
+        );
+    }
+  );
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var dbtn = document.getElementById('pDirectReserveBtn');
+  if (dbtn) dbtn.addEventListener('click', _personaReserveSlotDirect);
+});
 
 /**
  * Fetch remaining classes from PRMS/CPRS and split-preview — Migration + TIC.
