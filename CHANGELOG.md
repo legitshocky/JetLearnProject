@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-20] — Searchable Teacher/Course Dropdowns on Teacher Persona (V7.54)
+
+### Type-Ahead Search for Name & Course Fields (`JavaScript.html`)
+- Current Teacher, Direct Reserve teacher, and all four course fields (Current/Future 1/2/3) on the Teacher Persona page now use the same searchable dropdown widget as Migration/Onboarding — type to filter instead of scrolling a long plain `<select>`
+- Reuses the existing `makeSearchableSelect` widget, which already syncs automatically when these fields are populated by Smart Context Fetch or Direct Reserve's lazy teacher load — no other code needed to change
+
+---
+
 ## [2026-07-20] — Direct Reserve Fixes: Timezone Error, Teacher Dropdown (V7.53)
 
 ### Fixed "Missing time zone definition for start time" (`ReserveSlot.js`)

@@ -12545,6 +12545,20 @@ function _personaReserveSlotDirect() {
 document.addEventListener('DOMContentLoaded', function() {
   var dbtn = document.getElementById('pDirectReserveBtn');
   if (dbtn) dbtn.addEventListener('click', _personaReserveSlotDirect);
+
+  // Searchable name/course dropdowns on the Teacher Persona page — same
+  // widget used elsewhere (New Teacher, Migration Course, etc.)
+  [
+    { id: 'pCurrentTeacherDropdown', ph: '🔍 Search teacher...', provider: function(){ return globalTeachers || []; } },
+    { id: 'pDirectTeacherSelect',    ph: '🔍 Search teacher...', provider: function(){ return globalTeachers || []; } },
+    { id: 'pInpCourse',              ph: '🔍 Search course...',  provider: function(){ return globalCourses  || []; } },
+    { id: 'pInpFuture1',             ph: '🔍 Search course...',  provider: function(){ return globalCourses  || []; } },
+    { id: 'pInpFuture2',             ph: '🔍 Search course...',  provider: function(){ return globalCourses  || []; } },
+    { id: 'pInpFuture3',             ph: '🔍 Search course...',  provider: function(){ return globalCourses  || []; } }
+  ].forEach(function(cfg) {
+    var el = document.getElementById(cfg.id);
+    if (el) makeSearchableSelect(el, cfg.ph, cfg.provider);
+  });
 });
 
 /**
