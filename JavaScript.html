@@ -1282,7 +1282,7 @@ function switchPage(pageId, context = null) {
         emailActivitiesPage: loadEmailActivitiesPage,
         aiPmPage: function() { if (typeof loadAIPMPage === 'function') loadAIPMPage(); },
         profilePage: loadProfilePage,
-        onboardingTrackerPage: loadOnboardingTracker,
+        onboardingTrackerPage: loadLearnerOpsPage,
         learnerMigrationPage:  loadLearnerMigrationPage,
         coursePlanner:         loadCoursePlannerPage,
         coursePlannerPage:     loadCoursePlannerPage,
@@ -11737,195 +11737,178 @@ function applySlotTeacher(name) {
 }
 
 
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-// TEACHER ONBOARDING TRACKER
-// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ════════════════════════════════════════════════════════════════════════════
+// LEARNER OPS — learner-lifecycle visibility: new onboarding, migration
+// activity, pause & retention (formerly Teacher Onboarding Tracker page).
+// ════════════════════════════════════════════════════════════════════════════
 
-function loadOnboardingTracker() {
-    const grid = document.getElementById('onboardingTrackerGrid');
-    if (grid) grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:3rem;color:var(--text-muted);">'
-        + '<i class="fas fa-spinner fa-spin" style="font-size:2rem;display:block;margin-bottom:1rem;"><\/i>Loading...<\/div>';
+var _lopsCurrentTab = 'lopsOnboarding';
+var _lopsMigrationData = [];
 
-    google.script.run
-        .withSuccessHandler(_renderOnboardingTracker)
-        .withFailureHandler(err => showToast('error', 'Onboarding Tracker', err.message || err))
-        .getOnboardingTrackerData();
-
-    // Populate modal dropdowns
-    _populateOnboardingModalDropdowns();
+function loadLearnerOpsPage() {
+  _lopsLoadOnboarding();
+  _lopsLoadMigration();
+  _lopsLoadPause();
 }
 
-function _renderOnboardingTracker(data) {
-    const grid = document.getElementById('onboardingTrackerGrid');
-    if (!grid) return;
+function switchLopsTab(tabId) {
+  _lopsCurrentTab = tabId;
+  document.querySelectorAll('.lops-tab-content').forEach(function(el) { el.style.display = 'none'; });
+  var target = document.getElementById(tabId);
+  if (target) target.style.display = 'block';
 
-    const records = (data && data.success) ? (data.records || []) : [];
+  var tabMap = { lopsOnboarding: 'lopsTabOnboarding', lopsMigration: 'lopsTabMigration', lopsPause: 'lopsTabPause' };
+  Object.keys(tabMap).forEach(function(contentId) {
+    var btnEl = document.getElementById(tabMap[contentId]);
+    if (!btnEl) return;
+    var isActive = contentId === tabId;
+    btnEl.style.background  = isActive ? '#fff'    : 'transparent';
+    btnEl.style.color       = isActive ? '#1e293b' : '#64748b';
+    btnEl.style.boxShadow   = isActive ? '0 1px 4px rgba(0,0,0,0.08)' : 'none';
+  });
+}
 
-    // KPIs
-    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    setKpi('obKpiTotal',      records.length);
-    setKpi('obKpiFirstClass', records.filter(r => r.firstClassDone === 'Yes').length);
-    setKpi('obKpiFirstAudit', records.filter(r => r.firstAuditDone === 'Yes').length);
-    setKpi('obKpi30Day',      records.filter(r => r.reviewDone     === 'Yes').length);
+// ── Tab 1: New Learner Onboarding ──────────────────────────────────────────
+function _lopsLoadOnboarding() {
+  var tbody = document.getElementById('lopsObTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
 
-    if (records.length === 0) {
-        grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:4rem;color:var(--text-muted);">'
-            + '<i class="fas fa-user-plus" style="font-size:3rem;opacity:.3;display:block;margin-bottom:1rem;"><\/i>'
-            + 'No teachers in onboarding yet. Click <strong>Add Teacher<\/strong> to get started.'
-            + '<\/div>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Failed to load.') + '</td></tr>';
         return;
-    }
+      }
+      var rows = res.rows || [];
+      var setKpi = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      setKpi('lopsObTotal',     rows.length);
+      setKpi('lopsObPaid',      rows.filter(function(r) { return r.stage === 'closedwon' || r.stage === '208827055'; }).length);
+      setKpi('lopsObOnboarded', rows.filter(function(r) { return r.stage === '88556899'; }).length);
+      setKpi('lopsObWati',      rows.filter(function(r) { return r.watiSent; }).length);
+      setKpi('lopsObNoWati',    rows.filter(function(r) { return !r.watiSent; }).length);
 
-    grid.innerHTML = records.map(r => _buildOnboardingCard(r)).join('');
+      if (!tbody) return;
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners onboarded in the last ' + res.days + ' days.</td></tr>'; return; }
+
+      tbody.innerHTML = rows.map(function(r) {
+        return '<tr style="border-bottom:1px solid #f1f5f9;">'
+          + '<td style="padding:9px 14px;"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learnerName) + '</div><div style="font-size:0.72rem;color:#94a3b8;">' + escapeHtml(r.jlid) + '</div></td>'
+          + '<td style="padding:9px 14px;color:#374151;">' + escapeHtml(r.teacher || '—') + '</td>'
+          + '<td style="padding:9px 14px;color:#374151;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.course || '') + '">' + escapeHtml(r.course || '—') + '</td>'
+          + '<td style="padding:9px 14px;"><span style="background:#eef2ff;color:#4338ca;border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">' + escapeHtml(r.stageLabel || '—') + '</span></td>'
+          + '<td style="padding:9px 14px;">' + (r.watiSent ? '<span style="color:#16a34a;"><i class="fas fa-check"></i></span>' : '<span style="color:#dc2626;"><i class="fas fa-times"></i></span>') + '</td>'
+          + '<td style="padding:9px 14px;">' + (r.docLinked ? '<span style="color:#16a34a;"><i class="fas fa-check"></i></span>' : '<span style="color:#94a3b8;">—</span>') + '</td>'
+          + '<td style="padding:9px 14px;color:#64748b;">' + escapeHtml(r.paymentDate || '—') + '</td>'
+        + '</tr>';
+      }).join('');
+    })
+    .withFailureHandler(function(err) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
+    })
+    .getLearnerOpsOnboardingFeed(30);
 }
 
-function _buildOnboardingCard(r) {
-    const steps = [
-        { key: 'trainingPct',    label: 'Course Training',    done: r.trainingPct >= 100, pct: r.trainingPct, isProgress: true },
-        { key: 'firstClassDone', label: 'First Class Logged', done: r.firstClassDone === 'Yes' },
-        { key: 'firstAuditDone', label: 'First Audit Done',   done: r.firstAuditDone === 'Yes' },
-        { key: 'reviewDone',     label: '30-Day Review',      done: r.reviewDone === 'Yes' }
-    ];
-    const doneCount = steps.filter(s => s.done).length;
-    const overallPct = Math.round((doneCount / steps.length) * 100);
-    const barColor = overallPct === 100 ? '#10b981' : overallPct >= 50 ? '#6366f1' : '#f59e0b';
+// ── Tab 2: Migration Activity ──────────────────────────────────────────────
+function _lopsLoadMigration() {
+  var tbody = document.getElementById('lopsMigTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
 
-    const stepsHtml = steps.map(s => {
-        if (s.isProgress) {
-            return "<div style=\"margin-bottom:8px;\">\r\n                <div style=\"display:flex;justify-content:space-between;margin-bottom:4px;\">\r\n                    <span style=\"font-size:0.75rem;color:#475569;\">" + (s.label) + "<\/span>\r\n                    <span style=\"font-size:0.75rem;font-weight:700;color:#6366f1;\">" + (s.pct) + "%<\/span>\r\n                <\/div>\r\n                <div style=\"background:#e2e8f0;border-radius:99px;height:6px;\">\r\n                    <div style=\"background:#6366f1;height:6px;border-radius:99px;width:" + (Math.min(s.pct,100)) + "%;transition:width .5s;\"><\/div>\r\n                <\/div>\r\n                     <div style=\"display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;\">" + (_buildTrainingPctButtons(r.id, s.pct)) + "\r\n                <\/div>\r\n            <\/div>";
-        }
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;">'
-            + '<span style="font-size:0.78rem;color:#475569;">' + s.label + '<\/span>'
-            + '<button type="button"'
-            + ' onclick="toggleOnboardingStep(\'' + r.id + '\',\'' + s.key + '\',\'' + (s.done ? 'No' : 'Yes') + '\',this)"'
-            + ' style="font-size:0.7rem;padding:3px 12px;border-radius:99px;'
-            + 'border:1px solid ' + (s.done ? '#86efac' : '#e2e8f0') + ';'
-            + 'background:' + (s.done ? '#dcfce7' : '#f8fafc') + ';'
-            + 'color:' + (s.done ? '#15803d' : '#94a3b8') + ';cursor:pointer;font-weight:600;">'
-            + (s.done ? '<i class="fas fa-check" style="margin-right:3px;"><\/i>Done' : 'Mark Done')
-            + '<\/button>'
-            + '<\/div>';
-                
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Failed to load.') + '</td></tr>';
+        return;
+      }
+      var cutoff = Date.now() - 30 * 86400000;
+      var rows = (res.tickets || []).filter(function(t) { return t.createdDate && new Date(t.createdDate).getTime() >= cutoff; });
+      _lopsMigrationData = rows;
+
+      var completed = rows.filter(function(t) { return t.stage === '128913753'; }).length;
+      var stuck = rows.filter(function(t) { return t.stage !== '128913753' && t.daysInStage >= 7; }).length;
+      var setKpi = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      setKpi('lopsMigTotal',     rows.length);
+      setKpi('lopsMigCompleted', completed);
+      setKpi('lopsMigPending',   rows.length - completed);
+      setKpi('lopsMigStuck',     stuck);
+
+      if (!tbody) return;
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;">No migration activity in the last 30 days.</td></tr>'; return; }
+
+      tbody.innerHTML = rows.map(function(t) {
+        var isStuck = t.stage !== '128913753' && t.daysInStage >= 7;
+        return '<tr style="border-bottom:1px solid #f1f5f9;' + (isStuck ? 'background:#fef2f2;' : '') + '">'
+          + '<td style="padding:9px 14px;"><a href="' + escapeHtml(t.hubspotLink) + '" target="_blank" style="font-weight:600;color:#1e293b;text-decoration:none;">' + escapeHtml(t.learnerName) + '</a><div style="font-size:0.72rem;color:#94a3b8;">' + escapeHtml(t.jlid) + '</div></td>'
+          + '<td style="padding:9px 14px;color:#374151;white-space:nowrap;">' + escapeHtml(t.fromTeacher) + ' → ' + escapeHtml(t.toTeacher) + '</td>'
+          + '<td style="padding:9px 14px;color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(t.course || '') + '">' + escapeHtml(t.course || '—') + '</td>'
+          + '<td style="padding:9px 14px;color:#374151;">' + escapeHtml(t.reason || '—') + '</td>'
+          + '<td style="padding:9px 14px;"><span style="background:' + (t.stage === '128913753' ? '#dcfce7' : '#fef3c7') + ';color:' + (t.stage === '128913753' ? '#15803d' : '#b45309') + ';border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">' + escapeHtml(t.stageLabel) + '</span></td>'
+          + '<td style="padding:9px 14px;font-weight:600;color:' + (isStuck ? '#dc2626' : '#374151') + ';">' + t.daysInStage + 'd' + (isStuck ? ' 🚨' : '') + '</td>'
+          + '<td style="padding:9px 14px;color:#64748b;">' + escapeHtml(t.createdDate) + '</td>'
+        + '</tr>';
+      }).join('');
+    })
+    .withFailureHandler(function(err) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
+    })
+    .getMigrationRegistry();
+}
+
+// ── Tab 3: Pause & Retention ────────────────────────────────────────────────
+function _lopsLoadPause() {
+  var tbody = document.getElementById('lopsPauseTableBody');
+  var stripEl = document.getElementById('lopsPauseStageStrip');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Failed to load.') + '</td></tr>';
+        return;
+      }
+      var rows = res.rows || [];
+      var stats = res.stats || {};
+      var labels = res.stageLabels || {};
+
+      // Stage strip cards
+      var stageColors = { '50954839': '#dc2626', '57285418': '#f59e0b', '59107960': '#0891b2', '57285419': '#64748b', '176052268': '#16a34a' };
+      var stageOrder = ['50954839', '57285418', '59107960', '176052268', '57285419'];
+      if (stripEl) {
+        stripEl.innerHTML = stageOrder.map(function(id) {
+          var c = stageColors[id] || '#6366f1';
+          return '<div class="main-metric-card"><h3 class="main-metric-title" style="font-size:0.68rem;">' + escapeHtml(labels[id] || id) + '</h3><p class="main-metric-value" style="color:' + c + ';">' + (stats[id] || 0) + '</p></div>';
         }).join('');
+      }
 
-    const daysIn = r.joinDate ? Math.floor((Date.now() - new Date(r.joinDate).getTime()) / 86400000) : '?';
+      var atRisk = rows.filter(function(r) { return (r.stage === '50954839' || r.stage === '57285418') && r.daysInStage != null && r.daysInStage >= 3; }).length;
+      var badge = document.getElementById('lopsPauseBadge');
+      if (badge) {
+        if (atRisk > 0) { badge.textContent = atRisk; badge.style.display = 'inline'; }
+        else badge.style.display = 'none';
+      }
 
-    return "<div style=\"background:#fff;border-radius:16px;border:1.5px solid #e2e8f0;padding:1.25rem;display:flex;flex-direction:column;gap:8px;\">\r\n        <div style=\"display:flex;align-items:flex-start;justify-content:space-between;gap:8px;\">\r\n            <div>\r\n                <div style=\"font-weight:700;font-size:0.95rem;color:#0f172a;\">" + (escapeHtml(r.teacherName)) + "<\/div>\r\n                <div style=\"font-size:0.72rem;color:#64748b;margin-top:2px;\">\r\n                    " + (escapeHtml(r.tpManager || '\u2014')) + " \\u00B7 Joined " + (escapeHtml(r.joinDate || '\u2014')) + " \\u00B7 Day " + (daysIn) + "\r\n                <\/div>\r\n            <\/div>\r\n            <span style=\"font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:99px;background:" + (overallPct===100?'#dcfce7':'rgba(99,102,241,0.1)') + ";color:" + (overallPct===100?'#15803d':'#6366f1') + ";white-space:nowrap;\">" + (overallPct) + "%<\/span>\r\n        <\/div>\r\n        <div style=\"background:#e2e8f0;border-radius:99px;height:5px;margin-bottom:4px;\">\r\n            <div style=\"background:" + (barColor) + ";height:5px;border-radius:99px;width:" + (overallPct) + "%;transition:width .5s;\"><\/div>\r\n        <\/div>\r\n        " + (stepsHtml) + "\r\n        <div style=\"margin-top:4px;\">\r\n            <input type=\"text\" placeholder=\"Add note...\" value=\"" + (escapeHtml(r.notes || '')) + "\"\r\n                onblur=\"updateOnboardingField('" + (r.id) + "','notes',this.value,this)\"\r\n                style=\"width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.78rem;box-sizing:border-box;color:#374151;\">\r\n        <\/div>\r\n    <\/div>";
+      if (!tbody) return;
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners currently in pause/retention stages.</td></tr>'; return; }
+
+      // Sort: longest-stuck "Urge on Pause" first (most urgent)
+      rows.sort(function(a, b) { return (b.daysInStage || 0) - (a.daysInStage || 0); });
+
+      tbody.innerHTML = rows.map(function(r) {
+        var isUrgent = (r.stage === '50954839' || r.stage === '57285418') && r.daysInStage != null && r.daysInStage >= 3;
+        var c = stageColors[r.stage] || '#6366f1';
+        return '<tr style="border-bottom:1px solid #f1f5f9;' + (isUrgent ? 'background:#fef2f2;' : '') + '">'
+          + '<td style="padding:9px 14px;"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learnerName) + '</div><div style="font-size:0.72rem;color:#94a3b8;">' + escapeHtml(r.jlid) + '</div></td>'
+          + '<td style="padding:9px 14px;color:#374151;">' + escapeHtml(r.teacher || '—') + '</td>'
+          + '<td style="padding:9px 14px;"><span style="background:' + c + '1a;color:' + c + ';border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">' + escapeHtml(r.stageLabel) + '</span></td>'
+          + '<td style="padding:9px 14px;font-weight:600;color:' + (isUrgent ? '#dc2626' : '#374151') + ';">' + (r.daysInStage != null ? r.daysInStage + 'd' : '—') + (isUrgent ? ' 🚨' : '') + '</td>'
+          + '<td style="padding:9px 14px;color:#64748b;">' + escapeHtml((r.amount ? r.amount + ' ' + r.currency : '—')) + '</td>'
+        + '</tr>';
+      }).join('');
+    })
+    .withFailureHandler(function(err) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
+    })
+    .getLearnerOpsPauseRetention();
 }
-function _buildTrainingPctButtons(recordId, currentPct) {
-  var html = '';
-  var vals = [25, 50, 75, 100];
-  for (var i = 0; i < vals.length; i++) {
-    var v = vals[i];
-    var bg    = currentPct >= v ? '#6366f1' : '#fff';
-    var color = currentPct >= v ? '#fff' : '#6b7280';
-    html += '<button type="button"'
-      + ' onclick="updateOnboardingField(\'' + recordId + '\',\'trainingPct\',' + v + ',this)"'
-      + ' style="font-size:0.65rem;padding:2px 8px;border-radius:99px;border:1px solid #e2e8f0;'
-      + 'background:' + bg + ';color:' + color + ';cursor:pointer;">' + v + '%<\/button>';
-  }
-  return html;
-}
-
-function toggleOnboardingStep(id, field, newVal, btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
-    google.script.run
-        .withSuccessHandler(() => loadOnboardingTracker())
-        .withFailureHandler(err => { btn.disabled = false; showToast('error', 'Update Failed', err.message || err); })
-        .updateOnboardingRecord(id, field, newVal);
-}
-
-function updateOnboardingField(id, field, value, el) {
-    if (el) el.disabled = true;
-    google.script.run
-        .withSuccessHandler(() => {
-            if (el) el.disabled = false;
-            loadOnboardingTracker();
-        })
-        .withFailureHandler(err => {
-            if (el) el.disabled = false;
-            showToast('error', 'Update Failed', err.message || err);
-        })
-        .updateOnboardingRecord(id, field, value);
-}
-
-function openAddOnboardingModal() {
-    _populateOnboardingModalDropdowns();
-    document.getElementById('addOnboardingModal').classList.add('active');
-}
-
-function _populateOnboardingModalDropdowns() {
-    // Teachers
-    const tSel = document.getElementById('obTeacherSelect');
-    if (tSel && allTeacherDetailsCache.length > 0) {
-        const existing = tSel.querySelectorAll('option:not([disabled])');
-        if (!existing.length) {
-            allTeacherDetailsCache.forEach(t => {
-                const o = document.createElement('option');
-                o.value = t.name || t;
-                o.textContent = t.name || t;
-                tSel.appendChild(o);
-            });
-        }
-    }
-    // TP Managers
-    const mSel = document.getElementById('obTpManager');
-    if (mSel && window.globalTpManagers && window.globalTpManagers.length) {
-        if (!mSel.querySelectorAll('option:not([disabled])').length) {
-            window.globalTpManagers.forEach(m => {
-                const o = document.createElement('option');
-                o.value = m; o.textContent = m;
-                mSel.appendChild(o);
-            });
-        }
-    }
-    // Courses
-    const cSel = document.getElementById('obCourse');
-    if (cSel) {
-        const courseSrc = document.getElementById('migrationCourse');
-        if (courseSrc && !cSel.querySelectorAll('option:not([disabled])').length) {
-            [...courseSrc.options].forEach(opt => {
-                if (!opt.disabled && opt.value) {
-                    const o = document.createElement('option');
-                    o.value = opt.value; o.textContent = opt.text;
-                    cSel.appendChild(o);
-                }
-            });
-        }
-    }
-}
-
-// Submit new onboarding record
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('addOnboardingForm');
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const data = {
-                teacherName:   document.getElementById('obTeacherSelect').value,
-                joinDate:      document.getElementById('obJoinDate').value,
-                tpManager:     document.getElementById('obTpManager').value,
-                primaryCourse: document.getElementById('obCourse').value
-            };
-            if (!data.teacherName || !data.joinDate) {
-                showToast('error', 'Validation', 'Teacher name and join date are required.');
-                return;
-            }
-            showLoading('Adding teacher to tracker...');
-            google.script.run
-                .withSuccessHandler(() => {
-                    hideLoading();
-                    document.getElementById('addOnboardingModal').classList.remove('active');
-                    form.reset();
-                    showToast('success', 'Added', data.teacherName + ' added to onboarding tracker.');
-                    loadOnboardingTracker();
-                })
-                .withFailureHandler(err => { hideLoading(); showToast('error', 'Error', err.message || err); })
-                .addOnboardingRecord(data);
-        });
-    }
-});
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // PERSONA CARD GRID (3-per-row, grade badges, pagination)

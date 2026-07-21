@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-07-20] — Learner Ops Page: Onboarding, Migration, Pause & Retention (V7.56)
+
+### Repurposed "Teacher Onboarding Tracker" → "Learner Ops" (`Index.html`, `JavaScript.html`, new `LearnerOpsService.js`)
+- The old page tracked new-teacher milestones and had never been used (0 teachers, ever) — replaced entirely with a three-tab learner-lifecycle visibility page, sidebar entry renamed "Learner Ops"
+- **New Learner Onboarding** — every deal whose payment-trigger date falls in the last 30 days, any stage, showing teacher/course/current stage/welcome-sent/doc-linked/payment date. KPIs: total, payment received, onboarded, welcome sent, missing welcome
+- **Migration Activity** — last 30 days of migration tickets (reusing the existing `getMigrationRegistry()`), with from→to teacher, reason, stage, days-in-stage (flagged red at 7+ days stuck), created date
+- **Pause & Retention** — live view of the AI-Coding Pipeline's pause stages (15.1 Urge on Pause → 15.2 WIP → 15.3 Pause Save → 13. Retained & Save, or 15.4 Pause Follow-up if not saved), with exact HubSpot stage IDs, per-stage counts, and days-in-current-stage per learner (flagged red at 3+ days in 15.1/15.2 — the stages needing active retention work)
+- Old dead teacher-onboarding UI code (cards, add-teacher modal, milestone toggles) removed entirely — nothing referenced it outside this page
+
+---
+
 ## [2026-07-20] — Operations Onboarding Checklist Upgrades (V7.55)
 
 ### No Longer Requires Visiting New Communication First (`JavaScript.html`)
