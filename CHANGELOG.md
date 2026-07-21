@@ -2,6 +2,19 @@
 
 ---
 
+## [2026-07-20] — Learner Ops: Both AI-Coding and Maths Pipelines (V7.57)
+
+### Dynamic Pipeline-Stage Resolution (`LearnerOpsService.js`)
+- Pause & Retention previously only covered the AI-Coding Pipeline's hardcoded stage IDs — Maths Pipeline has its own separate stage IDs for the equivalent steps (confirmed via HubSpot: e.g. Maths "15.1 Urge on Pause" = `208671578`, vs AI-Coding's `50954839`)
+- Replaced the hand-maintained ID list with a live fetch from HubSpot's canonical `/crm/v3/pipelines/deals` endpoint (cached 30 min), auto-matching pause-flow stages (13., 15.1–15.4) by label across **every** pipeline — no more manually tracking IDs per pipeline, and Maths is now fully covered
+- New `clearLearnerOpsPipelineCache()` utility to force a re-fetch if HubSpot pipeline stages ever change
+
+### Subject Column — Coding vs Maths (`Index.html`, `JavaScript.html`)
+- Both the New Learner Onboarding and Pause & Retention tables now show a Subject badge per row
+- Pause & Retention's stage-count cards combine both pipelines' equivalent stages into one number per step (e.g. "15.1 Urge on Pause" count = AI-Coding + Maths combined) so the summary reads as one retention pipeline, while the table still shows which subject each learner is in
+
+---
+
 ## [2026-07-20] — Learner Ops Page: Onboarding, Migration, Pause & Retention (V7.56)
 
 ### Repurposed "Teacher Onboarding Tracker" → "Learner Ops" (`Index.html`, `JavaScript.html`, new `LearnerOpsService.js`)

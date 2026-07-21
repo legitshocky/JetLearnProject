@@ -11771,28 +11771,30 @@ function switchLopsTab(tabId) {
 // ── Tab 1: New Learner Onboarding ──────────────────────────────────────────
 function _lopsLoadOnboarding() {
   var tbody = document.getElementById('lopsObTableBody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Loading…</td></tr>';
 
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res || !res.success) {
-        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Failed to load.') + '</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Failed to load.') + '</td></tr>';
         return;
       }
       var rows = res.rows || [];
       var setKpi = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
       setKpi('lopsObTotal',     rows.length);
       setKpi('lopsObPaid',      rows.filter(function(r) { return r.stage === 'closedwon' || r.stage === '208827055'; }).length);
-      setKpi('lopsObOnboarded', rows.filter(function(r) { return r.stage === '88556899'; }).length);
+      setKpi('lopsObOnboarded', rows.filter(function(r) { return r.stage === '88556899' || r.stage === '208827058'; }).length);
       setKpi('lopsObWati',      rows.filter(function(r) { return r.watiSent; }).length);
       setKpi('lopsObNoWati',    rows.filter(function(r) { return !r.watiSent; }).length);
 
       if (!tbody) return;
-      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners onboarded in the last ' + res.days + ' days.</td></tr>'; return; }
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners onboarded in the last ' + res.days + ' days.</td></tr>'; return; }
 
       tbody.innerHTML = rows.map(function(r) {
+        var subjColor = r.subject === 'Maths' ? '#0ea5e9' : '#6366f1';
         return '<tr style="border-bottom:1px solid #f1f5f9;">'
           + '<td style="padding:9px 14px;"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learnerName) + '</div><div style="font-size:0.72rem;color:#94a3b8;">' + escapeHtml(r.jlid) + '</div></td>'
+          + '<td style="padding:9px 14px;"><span style="background:' + subjColor + '1a;color:' + subjColor + ';border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;">' + escapeHtml(r.subject || '—') + '</span></td>'
           + '<td style="padding:9px 14px;color:#374151;">' + escapeHtml(r.teacher || '—') + '</td>'
           + '<td style="padding:9px 14px;color:#374151;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(r.course || '') + '">' + escapeHtml(r.course || '—') + '</td>'
           + '<td style="padding:9px 14px;"><span style="background:#eef2ff;color:#4338ca;border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">' + escapeHtml(r.stageLabel || '—') + '</span></td>'
@@ -11803,7 +11805,7 @@ function _lopsLoadOnboarding() {
       }).join('');
     })
     .withFailureHandler(function(err) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
     })
     .getLearnerOpsOnboardingFeed(30);
 }
@@ -11866,20 +11868,31 @@ function _lopsLoadPause() {
         return;
       }
       var rows = res.rows || [];
-      var stats = res.stats || {};
       var labels = res.stageLabels || {};
+      var pauseStageIds = res.pauseStageIds || [];
 
-      // Stage strip cards
-      var stageColors = { '50954839': '#dc2626', '57285418': '#f59e0b', '59107960': '#0891b2', '57285419': '#64748b', '176052268': '#16a34a' };
-      var stageOrder = ['50954839', '57285418', '59107960', '176052268', '57285419'];
+      // Group stage IDs from BOTH pipelines by their conceptual step (13 / 15.1 / 15.2 / 15.3 / 15.4)
+      // so Coding + Maths counts combine into one card per step.
+      var groupOrder = ['15.1', '15.2', '15.3', '13.', '15.4'];
+      var groupLabel = { '15.1': '15.1 Urge on Pause', '15.2': '15.2 Urge on Pause (WIP)', '15.3': '15.3 Pause Save (WIP)', '13.': '13. Retained & Save', '15.4': '15.4 Pause Follow-up' };
+      var groupColor = { '15.1': '#dc2626', '15.2': '#f59e0b', '15.3': '#0891b2', '13.': '#16a34a', '15.4': '#64748b' };
+      function _stageGroup(stageId) {
+        var lbl = labels[stageId] || '';
+        for (var i = 0; i < groupOrder.length; i++) { if (lbl.indexOf(groupOrder[i]) === 0) return groupOrder[i]; }
+        return null;
+      }
+      var groupCounts = {};
+      groupOrder.forEach(function(g) { groupCounts[g] = 0; });
+      rows.forEach(function(r) { var g = _stageGroup(r.stage); if (g) groupCounts[g]++; });
+
       if (stripEl) {
-        stripEl.innerHTML = stageOrder.map(function(id) {
-          var c = stageColors[id] || '#6366f1';
-          return '<div class="main-metric-card"><h3 class="main-metric-title" style="font-size:0.68rem;">' + escapeHtml(labels[id] || id) + '</h3><p class="main-metric-value" style="color:' + c + ';">' + (stats[id] || 0) + '</p></div>';
+        stripEl.innerHTML = groupOrder.map(function(g) {
+          var c = groupColor[g] || '#6366f1';
+          return '<div class="main-metric-card"><h3 class="main-metric-title" style="font-size:0.68rem;">' + escapeHtml(groupLabel[g]) + '</h3><p class="main-metric-value" style="color:' + c + ';">' + groupCounts[g] + '</p></div>';
         }).join('');
       }
 
-      var atRisk = rows.filter(function(r) { return (r.stage === '50954839' || r.stage === '57285418') && r.daysInStage != null && r.daysInStage >= 3; }).length;
+      var atRisk = rows.filter(function(r) { var g = _stageGroup(r.stage); return (g === '15.1' || g === '15.2') && r.daysInStage != null && r.daysInStage >= 3; }).length;
       var badge = document.getElementById('lopsPauseBadge');
       if (badge) {
         if (atRisk > 0) { badge.textContent = atRisk; badge.style.display = 'inline'; }
@@ -11887,16 +11900,19 @@ function _lopsLoadPause() {
       }
 
       if (!tbody) return;
-      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners currently in pause/retention stages.</td></tr>'; return; }
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="padding:2.5rem;text-align:center;color:#94a3b8;">No learners currently in pause/retention stages.</td></tr>'; return; }
 
       // Sort: longest-stuck "Urge on Pause" first (most urgent)
       rows.sort(function(a, b) { return (b.daysInStage || 0) - (a.daysInStage || 0); });
 
       tbody.innerHTML = rows.map(function(r) {
-        var isUrgent = (r.stage === '50954839' || r.stage === '57285418') && r.daysInStage != null && r.daysInStage >= 3;
-        var c = stageColors[r.stage] || '#6366f1';
+        var g = _stageGroup(r.stage);
+        var isUrgent = (g === '15.1' || g === '15.2') && r.daysInStage != null && r.daysInStage >= 3;
+        var c = groupColor[g] || '#6366f1';
+        var subjColor = r.subject === 'Maths' ? '#0ea5e9' : '#6366f1';
         return '<tr style="border-bottom:1px solid #f1f5f9;' + (isUrgent ? 'background:#fef2f2;' : '') + '">'
           + '<td style="padding:9px 14px;"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learnerName) + '</div><div style="font-size:0.72rem;color:#94a3b8;">' + escapeHtml(r.jlid) + '</div></td>'
+          + '<td style="padding:9px 14px;"><span style="background:' + subjColor + '1a;color:' + subjColor + ';border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;">' + escapeHtml(r.subject || '—') + '</span></td>'
           + '<td style="padding:9px 14px;color:#374151;">' + escapeHtml(r.teacher || '—') + '</td>'
           + '<td style="padding:9px 14px;"><span style="background:' + c + '1a;color:' + c + ';border-radius:20px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;">' + escapeHtml(r.stageLabel) + '</span></td>'
           + '<td style="padding:9px 14px;font-weight:600;color:' + (isUrgent ? '#dc2626' : '#374151') + ';">' + (r.daysInStage != null ? r.daysInStage + 'd' : '—') + (isUrgent ? ' 🚨' : '') + '</td>'
@@ -11905,7 +11921,7 @@ function _lopsLoadPause() {
       }).join('');
     })
     .withFailureHandler(function(err) {
-      if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
     })
     .getLearnerOpsPauseRetention();
 }
