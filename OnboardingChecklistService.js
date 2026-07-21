@@ -283,6 +283,36 @@ function getPaymentReceivedDeals() {
   }
 }
 
+// ── Public: fetch info from the deal's sales/onboarding note to pre-fill
+// the checklist card — operator reviews and corrects before running ──────
+// Returns { success, data: { teacherName, course, classesOffered, timezone,
+//           amountReceived, paymentType }, noteFound }
+function fetchOnboardingInfoFromNotes(dealId) {
+  try {
+    if (!dealId) return { success: false, message: 'Deal ID required.' };
+    var noteText = fetchLatestSalesNoteForDeal(dealId);
+    if (!noteText) return { success: true, noteFound: false, data: {} };
+
+    var parsed = parseSalesNote(noteText);
+    var data = {};
+
+    if (parsed.courseEnrolled) data.course = parsed.courseEnrolled;
+    if (parsed.teacherPreference) data.teacherName = parsed.teacherPreference;
+    if (parsed.committedClasses) data.classesOffered = String(parsed.committedClasses);
+    if (parsed.timeZone) data.timezone = parsed.timeZone;
+    if (parsed.totalDealAmount != null) data.amountReceived = String(parsed.totalDealAmount);
+    if (parsed.paymentType) {
+      var ptLow = String(parsed.paymentType).toLowerCase();
+      data.paymentType = (ptLow.indexOf('token') > -1 || ptLow.indexOf('partial') > -1 || ptLow.indexOf('install') > -1) ? 'token' : 'full';
+    }
+
+    return { success: true, noteFound: true, data: data };
+  } catch(e) {
+    Logger.log('[OBC] fetchOnboardingInfoFromNotes ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── Public: run full onboarding checklist for one deal ────
 // extraData = { classesOffered: '4', classTimings: 'Monday 10:00 AM' }
 // Returns { success, watiSent, chatLinkUpdated, noteSent, practiceDocUrl, errors[] }

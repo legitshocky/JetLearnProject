@@ -16812,6 +16812,31 @@ function loadOnboardingChecklist() {
   if (emptyEl) { emptyEl.style.display = 'none';  }
   if (gridEl)  { gridEl.style.display  = 'none';  }
 
+  // Ensure globalTeachers/globalCourses are populated before rendering cards —
+  // this page doesn't require visiting New Communication first anymore.
+  var needsTeachers = !globalTeachers || !globalTeachers.length;
+  var needsCourses  = !globalCourses  || !globalCourses.length;
+  if (needsTeachers || needsCourses) {
+    google.script.run
+      .withSuccessHandler(function(data) {
+        if (data && data.success) {
+          if (needsTeachers) globalTeachers = data.teachers || [];
+          if (needsCourses)  globalCourses  = data.courses  || [];
+        }
+        _loadOnboardingChecklistDeals();
+      })
+      .withFailureHandler(function() { _loadOnboardingChecklistDeals(); })
+      .getCommunicationPageData();
+  } else {
+    _loadOnboardingChecklistDeals();
+  }
+}
+
+function _loadOnboardingChecklistDeals() {
+  var loadEl  = document.getElementById('opsObLoadingState');
+  var emptyEl = document.getElementById('opsObEmptyState');
+  var gridEl  = document.getElementById('opsObGrid');
+
   google.script.run
     .withSuccessHandler(function(res) {
       if (loadEl) loadEl.style.display = 'none';
@@ -16838,14 +16863,23 @@ function loadOnboardingChecklist() {
           var did = d.dealId;
           var tSel = document.getElementById('obcTeacher_' + did);
           var cSel = document.getElementById('obcCourse_'  + did);
+          var zSel = document.getElementById('obcTz_'      + did);
           if (tSel) {
             if (globalTeachers && globalTeachers.length) populateSelect(tSel, globalTeachers, false, 'Select teacher');
+            if (tSel.dataset.current) tSel.value = tSel.dataset.current;
             makeSearchableSelect(tSel, 'Search teacher...', function(){ return globalTeachers || []; });
           }
           if (cSel) {
             if (globalCourses && globalCourses.length) populateSelect(cSel, globalCourses, false, 'Select course');
+            if (cSel.dataset.current) cSel.value = cSel.dataset.current;
             makeSearchableSelect(cSel, 'Search course...', function(){ return globalCourses || []; });
           }
+          if (zSel) makeSearchableSelect(zSel, 'Search location or code...');
+
+          // Seed schedule rows from existing class_timings (e.g. "Monday 10:00 AM, Wednesday 06:00 PM")
+          var pairs = _obcParseClassTimings(d.classTimings);
+          if (!pairs.length) pairs = [{ day: '', time: '' }];
+          pairs.forEach(function(pr) { _obcAddScheduleRow(did, pr.day, pr.time); });
         });
       }
     })
@@ -16854,6 +16888,78 @@ function loadOnboardingChecklist() {
       showToast('error', 'Onboarding Checklist', err && err.message ? err.message : String(err));
     })
     .getPaymentReceivedDeals();
+}
+
+// Timezone codes with location-rich labels so a searchable select can match
+// by typing a city/country instead of needing to know the abbreviation.
+var OBC_TZ_LOCATIONS = [
+  { code: 'UKT',  label: 'UKT — United Kingdom, Ireland (London, Dublin)' },
+  { code: 'IST',  label: 'IST — India (Delhi, Mumbai, Bangalore)' },
+  { code: 'PKT',  label: 'PKT — Pakistan (Karachi, Lahore, Islamabad)' },
+  { code: 'BST',  label: 'BST — Bangladesh (Dhaka)' },
+  { code: 'SLST', label: 'SLST — Sri Lanka (Colombo)' },
+  { code: 'NPT',  label: 'NPT — Nepal (Kathmandu)' },
+  { code: 'CET',  label: 'CET — Central Europe (Berlin, Paris, Rome, Madrid, Amsterdam)' },
+  { code: 'EET',  label: 'EET — Eastern Europe (Athens, Cairo, Bucharest)' },
+  { code: 'GST',  label: 'GST — Gulf / UAE (Dubai, Abu Dhabi, Muscat)' },
+  { code: 'AST',  label: 'AST — Saudi Arabia, Kuwait, Qatar, Bahrain (Riyadh)' },
+  { code: 'SGT',  label: 'SGT — Singapore, Malaysia (Kuala Lumpur)' },
+  { code: 'HKT',  label: 'HKT — Hong Kong, China (Beijing), Taiwan' },
+  { code: 'JST',  label: 'JST — Japan (Tokyo, Osaka)' },
+  { code: 'ICT',  label: 'ICT — Thailand, Vietnam (Bangkok, Ho Chi Minh)' },
+  { code: 'WIB',  label: 'WIB — Indonesia (Jakarta)' },
+  { code: 'PHT',  label: 'PHT — Philippines (Manila)' },
+  { code: 'AEST', label: 'AEST — Australia East (Sydney, Melbourne, Brisbane)' },
+  { code: 'ACST', label: 'ACST — Australia Central (Adelaide, Darwin)' },
+  { code: 'EST',  label: 'EST — US/Canada Eastern (New York, Toronto)' },
+  { code: 'CST',  label: 'CST — US Central (Chicago); also Mexico' },
+  { code: 'MST',  label: 'MST — US Mountain (Denver, Phoenix)' },
+  { code: 'PST',  label: 'PST — US/Canada Pacific (Los Angeles, Vancouver)' },
+  { code: 'AKST', label: 'AKST — Alaska' },
+  { code: 'HST',  label: 'HST — Hawaii' },
+  { code: 'BRT',  label: 'BRT — Brazil (Sao Paulo)' },
+  { code: 'ART',  label: 'ART — Argentina (Buenos Aires)' },
+  { code: 'NZST', label: 'NZST — New Zealand (Auckland, Wellington)' },
+  { code: 'EAT',  label: 'EAT — East Africa (Nairobi, Kenya)' },
+  { code: 'SAST', label: 'SAST — South Africa (Johannesburg, Cape Town)' },
+  { code: 'WAT',  label: 'WAT — West Africa (Lagos, Nigeria)' },
+  { code: 'TRT',  label: 'TRT — Turkey (Istanbul)' }
+];
+
+function _obcBuildScheduleRow(did, day, time, removable) {
+  var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  var dayOpts = '<option value="">Day<\/option>';
+  days.forEach(function(dName) { dayOpts += '<option value="' + dName + '"' + (dName === day ? ' selected' : '') + '>' + dName + '<\/option>'; });
+  return '<div class="obc-sched-row" style="display:flex;gap:6px;margin-bottom:4px;">'
+    + '<select class="form-control form-select obc-sched-day" style="font-size:0.82rem;padding:5px 8px;flex:1;">' + dayOpts + '<\/select>'
+    + '<input type="time" class="form-control obc-sched-time" style="font-size:0.82rem;padding:5px 8px;flex:1;" value="' + escapeHtml(time || '') + '">'
+    + (removable ? '<button type="button" onclick="this.closest(\'.obc-sched-row\').remove()" style="background:none;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:0 10px;cursor:pointer;font-size:0.8rem;">×<\/button>' : '<span style="width:34px;flex-shrink:0;"><\/span>')
+  + '<\/div>';
+}
+
+// Parses "Monday 10:00 AM, Wednesday 06:00 PM" (or a single "Monday 10:00 AM")
+// into [{day, time}] with time in 24h HH:MM for the <input type="time"> fields.
+function _obcParseClassTimings(str) {
+  if (!str) return [];
+  return String(str).split(',').map(function(part) {
+    var m = part.trim().match(/(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)?\s*(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!m) return null;
+    var day = m[1] || '';
+    var h = parseInt(m[2], 10), min = m[3];
+    if (m[4]) {
+      var ap = m[4].toUpperCase();
+      if (ap === 'PM' && h !== 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
+    }
+    return { day: day, time: String(h).padStart(2,'0') + ':' + min };
+  }).filter(Boolean);
+}
+
+function _obcAddScheduleRow(did, day, time) {
+  var container = document.getElementById('obcSchedule_' + did);
+  if (!container) return;
+  var isFirst = container.children.length === 0;
+  container.insertAdjacentHTML('beforeend', _obcBuildScheduleRow(did, day, time, !isFirst));
 }
 
 function _obcRenderCard(d) {
@@ -16870,18 +16976,11 @@ function _obcRenderCard(d) {
 
   var amtDisplay = d.amount ? (d.amount + ' ' + d.currency) : '—';
 
-  // Day options
-  var days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  var dayOpts = '<option value="">Day<\/option>';
-  days.forEach(function(day) { dayOpts += '<option value="' + day + '">' + day + '<\/option>'; });
-
-  // Timezone options
-  var tzList = ['UKT','IST','PKT','CET','EET','GST','AST','SGT','HKT','JST',
-                'AEST','ACST','EST','CST','MST','PST','AKST','HST','NZST','EAT','SAST','BST','SLST'];
-  var tzOpts = '<option value="">Select TZ<\/option>';
-  tzList.forEach(function(tz) {
-    var sel = (d.timezone === tz) ? ' selected' : '';
-    tzOpts += '<option value="' + tz + '"' + sel + '>' + tz + '<\/option>';
+  // Timezone options — location-rich labels so it's searchable by city/country
+  var tzOpts = '<option value="" disabled selected>Select timezone or type a location...<\/option>';
+  OBC_TZ_LOCATIONS.forEach(function(tzo) {
+    var sel = (d.timezone === tzo.code) ? ' selected' : '';
+    tzOpts += '<option value="' + tzo.code + '"' + sel + '>' + escapeHtml(tzo.label) + '<\/option>';
   });
 
   return '<div class="card" style="padding:1.25rem;border:1px solid #e2e8f0;border-radius:12px;">'
@@ -16906,7 +17005,13 @@ function _obcRenderCard(d) {
     + '<\/div>'
 
     // Status chips
-    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.9rem;">' + watiChip + pdChip + '<\/div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.6rem;">' + watiChip + pdChip + '<\/div>'
+
+    // Fetch from Notes
+    + '<button type="button" class="btn btn-outline btn-sm" id="obcNotesBtn_' + did + '" onclick="obcFetchFromNotes(\'' + did + '\')" style="width:100%;margin-bottom:0.9rem;font-size:0.78rem;color:#6366f1;border-color:#c7d2fe;">'
+      + '<i class="fas fa-file-alt"></i> Fetch from Notes <span style="color:#94a3b8;font-weight:400;">(review before running)<\/span>'
+    + '<\/button>'
+    + '<div id="obcNotesStatus_' + did + '" style="font-size:0.72rem;margin-bottom:0.6rem;display:none;"><\/div>'
 
     // ── Editable fields ───────────────────────────────────────
     // Payment Received + Token / Full
@@ -16933,14 +17038,11 @@ function _obcRenderCard(d) {
       + '<select id="obcCourse_' + did + '" class="form-control form-select" data-current="' + escapeHtml(d.course || '') + '" style="font-size:0.82rem;padding:5px 8px;width:100%;"><\/select>'
     + '<\/div>'
 
-    // Timezone
+    // Timezone — searchable by location (city/country), no need to know the abbreviation
     + '<div style="margin-bottom:0.6rem;">'
-      + '<label style="font-size:0.73rem;color:#64748b;display:block;margin-bottom:3px;">Time Zone<\/label>'
-      + '<div style="display:flex;gap:6px;">'
-        + '<select id="obcTz_' + did + '" class="form-control form-select" style="font-size:0.82rem;padding:5px 8px;flex:1;">' + tzOpts + '<\/select>'
-        + '<input type="text" id="obcTzCustom_' + did + '" class="form-control" style="font-size:0.82rem;padding:5px 8px;flex:1;" placeholder="Custom (e.g. NZST)" value="">'
-      + '<\/div>'
-      + '<div style="font-size:0.7rem;color:#94a3b8;margin-top:2px;">Custom overrides dropdown if filled<\/div>'
+      + '<label style="font-size:0.73rem;color:#64748b;display:block;margin-bottom:3px;">Time Zone <span style="font-weight:400;color:#94a3b8;">— type a city/country</span><\/label>'
+      + '<select id="obcTz_' + did + '" class="form-control form-select" style="font-size:0.82rem;padding:5px 8px;width:100%;">' + tzOpts + '<\/select>'
+      + '<input type="text" id="obcTzCustom_' + did + '" class="form-control" style="font-size:0.78rem;padding:4px 8px;width:100%;margin-top:4px;" placeholder="Or type a custom code (e.g. NZST)" value="">'
     + '<\/div>'
 
     // Classes Offered
@@ -16949,13 +17051,11 @@ function _obcRenderCard(d) {
       + '<input type="number" id="obcClasses_' + did + '" class="form-control" style="font-size:0.82rem;padding:5px 8px;width:100%;" placeholder="e.g. 96" value="' + escapeHtml(String(d.classesOffered || '')) + '" min="1">'
     + '<\/div>'
 
-    // Class Day & Time
+    // Class Day & Time — multiple classes/week supported
     + '<div style="margin-bottom:0.9rem;">'
-      + '<label style="font-size:0.73rem;color:#64748b;display:block;margin-bottom:3px;">Class Day &amp; Time<\/label>'
-      + '<div style="display:flex;gap:6px;">'
-        + '<select id="obcDay_' + did + '" class="form-control form-select" style="font-size:0.82rem;padding:5px 8px;flex:1;">' + dayOpts + '<\/select>'
-        + '<input type="time" id="obcTime_' + did + '" class="form-control" style="font-size:0.82rem;padding:5px 8px;flex:1;">'
-      + '<\/div>'
+      + '<label style="font-size:0.73rem;color:#64748b;display:block;margin-bottom:3px;">Class Day &amp; Time <span style="font-weight:400;color:#94a3b8;">— add a row per class/week<\/span><\/label>'
+      + '<div id="obcSchedule_' + did + '"><\/div>'
+      + '<button type="button" onclick="_obcAddScheduleRow(\'' + did + '\')" style="background:none;border:1px dashed #cbd5e1;border-radius:6px;padding:4px 10px;font-size:0.75rem;color:#6366f1;cursor:pointer;margin-top:2px;"><i class="fas fa-plus"></i> Add another class day<\/button>'
     + '<\/div>'
 
     // Run button
@@ -16965,6 +17065,64 @@ function _obcRenderCard(d) {
   + '<\/div>';
 }
 
+// Pulls teacher/course/classes/timezone/payment info parsed from the deal's
+// HubSpot sales/onboarding note and pre-fills the card fields — nothing is
+// submitted automatically, operator reviews and corrects before clicking Run.
+function obcFetchFromNotes(dealId) {
+  var btn = document.getElementById('obcNotesBtn_' + dealId);
+  var statusEl = document.getElementById('obcNotesStatus_' + dealId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching from notes…'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-alt"></i> Fetch from Notes <span style="color:#94a3b8;font-weight:400;">(review before running)</span>'; }
+      if (!res || !res.success) {
+        if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = '#dc2626'; statusEl.textContent = (res && res.message) || 'Could not fetch notes.'; }
+        return;
+      }
+      if (!res.noteFound || !res.data || !Object.keys(res.data).length) {
+        if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = '#94a3b8'; statusEl.textContent = 'No usable info found in this deal\'s notes.'; }
+        return;
+      }
+      var d = res.data;
+      var filled = [];
+      if (d.teacherName) {
+        var tEl = document.getElementById('obcTeacher_' + dealId);
+        if (tEl) { tEl.value = d.teacherName; if (tEl.value !== d.teacherName) { var o = new Option(d.teacherName, d.teacherName); tEl.appendChild(o); tEl.value = d.teacherName; } filled.push('teacher'); }
+      }
+      if (d.course) {
+        var cEl = document.getElementById('obcCourse_' + dealId);
+        if (cEl) { cEl.value = d.course; if (cEl.value !== d.course) { var o2 = new Option(d.course, d.course); cEl.appendChild(o2); cEl.value = d.course; } filled.push('course'); }
+      }
+      if (d.classesOffered) {
+        var clEl = document.getElementById('obcClasses_' + dealId);
+        if (clEl) { clEl.value = d.classesOffered; filled.push('classes offered'); }
+      }
+      if (d.timezone) {
+        var tzcEl = document.getElementById('obcTzCustom_' + dealId);
+        if (tzcEl) { tzcEl.value = d.timezone; filled.push('timezone'); }
+      }
+      if (d.amountReceived) {
+        var arEl = document.getElementById('obcAmtRcv_' + dealId);
+        if (arEl) { arEl.value = d.amountReceived; filled.push('amount received'); }
+      }
+      if (d.paymentType) {
+        var ptEl = document.getElementById('obcPmtType_' + dealId);
+        if (ptEl) { ptEl.value = d.paymentType; filled.push('payment type'); }
+      }
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.color = filled.length ? '#16a34a' : '#94a3b8';
+        statusEl.textContent = filled.length ? ('✓ Filled from notes: ' + filled.join(', ') + ' — please verify.') : 'Note found but nothing extractable.';
+      }
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-alt"></i> Fetch from Notes <span style="color:#94a3b8;font-weight:400;">(review before running)</span>'; }
+      if (statusEl) { statusEl.style.display = 'block'; statusEl.style.color = '#dc2626'; statusEl.textContent = (err && err.message) || String(err); }
+    })
+    .fetchOnboardingInfoFromNotes(dealId);
+}
+
 function obcRunChecklist(dealId) {
   var btn = document.getElementById('obcRunBtn_' + dealId);
   var btnLabel = '<i class="fas fa-paper-plane" style="margin-right:6px;"><\/i>Send Welcome + Create Doc + Post Note';
@@ -16972,8 +17130,6 @@ function obcRunChecklist(dealId) {
 
   // Collect editable values from card inputs
   var classesEl  = document.getElementById('obcClasses_'  + dealId);
-  var dayEl      = document.getElementById('obcDay_'      + dealId);
-  var timeEl     = document.getElementById('obcTime_'     + dealId);
   var amtRcvEl   = document.getElementById('obcAmtRcv_'   + dealId);
   var pmtTypeEl  = document.getElementById('obcPmtType_'  + dealId);
   var teacherEl  = document.getElementById('obcTeacher_'  + dealId);
@@ -16990,24 +17146,22 @@ function obcRunChecklist(dealId) {
   var tzSelected      = tzEl       ? tzEl.value              : '';
   var timezone        = tzCustom || tzSelected || '';
 
-  var day   = dayEl  ? dayEl.value  : '';
-  var time  = timeEl ? timeEl.value : '';
-
-  // Build class timings string e.g. "Monday 10:00 AM"
-  var classTimings = '';
-  if (day && time) {
-    // Convert 24h time to 12h AM/PM
-    var timeParts = time.split(':');
-    var hh = parseInt(timeParts[0], 10);
-    var min = timeParts[1] || '00';
-    var ampm = hh >= 12 ? 'PM' : 'AM';
-    var hh12 = hh % 12 || 12;
-    classTimings = day + ' ' + String(hh12).padStart(2,'0') + ':' + min + ' ' + ampm;
-  } else if (day) {
-    classTimings = day;
-  } else if (time) {
-    classTimings = time;
-  }
+  // Build class timings string from every schedule row, e.g.
+  // "Monday 10:00 AM, Wednesday 06:00 PM" — supports multiple classes/week
+  var classTimings = Array.from(document.querySelectorAll('#obcSchedule_' + dealId + ' .obc-sched-row')).map(function(row) {
+    var day  = row.querySelector('.obc-sched-day').value;
+    var time = row.querySelector('.obc-sched-time').value;
+    if (!day && !time) return null;
+    if (day && time) {
+      var timeParts = time.split(':');
+      var hh = parseInt(timeParts[0], 10);
+      var min = timeParts[1] || '00';
+      var ampm = hh >= 12 ? 'PM' : 'AM';
+      var hh12 = hh % 12 || 12;
+      return day + ' ' + String(hh12).padStart(2,'0') + ':' + min + ' ' + ampm;
+    }
+    return day || time;
+  }).filter(Boolean).join(', ');
 
   var extraData = {};
   if (classesOffered) extraData.classesOffered = classesOffered;

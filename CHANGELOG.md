@@ -2,6 +2,28 @@
 
 ---
 
+## [2026-07-20] — Operations Onboarding Checklist Upgrades (V7.55)
+
+### No Longer Requires Visiting New Communication First (`JavaScript.html`)
+- The Onboarding Checklist (Operations → Onboarding tab) only populated its Teacher/Course dropdowns if `globalTeachers`/`globalCourses` were already loaded — which only happened after visiting New Communication
+- Now lazily backfills them itself before rendering cards, same fix pattern applied earlier to the Teacher Persona page
+- Also fixed a dead `data-current` attribute that was set but never applied — Teacher/Course fields now actually start pre-filled with the deal's current value
+
+### Fetch from Notes (`OnboardingChecklistService.js`, `JavaScript.html`)
+- New "Fetch from Notes" button per card — pulls teacher, course, classes offered, timezone, amount received, and payment type out of the deal's HubSpot sales/onboarding note (reusing the existing `parseSalesNote` parser) and pre-fills the fields
+- Nothing is written back automatically — operator reviews and corrects before clicking Run, per request
+
+### Multiple Classes Per Week (`JavaScript.html`)
+- Class Day & Time is now a repeatable row ("Add another class day") instead of a single pair — supports learners with 2+ classes/week
+- Existing `class_timings` values are parsed back into rows when a card loads; on Run, all rows are joined into one comma-separated string (e.g. "Monday 10:00 AM, Wednesday 06:00 PM") — no backend changes needed since the note text already accepted free-form strings
+
+### Location-Searchable Timezone (`JavaScript.html`)
+- Timezone field is now a searchable dropdown — type a city or country (e.g. "Sri Lanka", "Colombo") instead of needing to know the abbreviation code
+- Expanded the code list from 23 to 31 zones (added Nepal, Thailand/Vietnam, Indonesia, Philippines, Brazil, Argentina, Nigeria, Turkey) with location names baked into each option's searchable label
+- Custom text override field kept alongside for anything not in the list
+
+---
+
 ## [2026-07-20] — Searchable Teacher/Course Dropdowns on Teacher Persona (V7.54)
 
 ### Type-Ahead Search for Name & Course Fields (`JavaScript.html`)
