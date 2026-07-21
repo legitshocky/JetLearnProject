@@ -10672,7 +10672,10 @@ function handleSmartFetchAction() {
         google.script.run
             .withSuccessHandler(data => {
                 if (data && data.success) {
-                    if (needsTeachers) globalTeachers = data.teachers  || [];
+                    if (needsTeachers) {
+                      globalTeachers = data.teachers || [];
+                      populateSelect(document.getElementById('pDirectTeacherSelect'), globalTeachers, false, 'Select teacher');
+                    }
                     if (needsCourses)  globalCourses  = data.courses   || [];
                     // Also backfill other globals so the rest of the app works too
                     if (!globalClsManagers || !globalClsManagers.length)  globalClsManagers  = data.clsManagers  || [];

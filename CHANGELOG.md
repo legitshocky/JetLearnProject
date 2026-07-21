@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-07-20] — Direct Reserve Fixes: Timezone Error, Teacher Dropdown (V7.53)
+
+### Fixed "Missing time zone definition for start time" (`ReserveSlot.js`)
+- `reserveCalendarSlot`'s `Calendar.Events.insert` calls used a bare UTC ISO string for `start`/`end` with no `timeZone` field — Google's API rejects that for recurring (weekly) events since it can't resolve DST across the recurrence without an explicit zone
+- Added `timeZone` to both the master and teacher calendar event bodies (master + teacher calendar), matching the pattern already used in `bookClassesWithNewTeacher`
+
+### Teacher Dropdown Now Populates Without Visiting New Communication (`JavaScript.html`)
+- The Direct Reserve teacher list was only wired into the loader that runs when opening New Communication — but the Persona page already lazily loads teachers/courses itself the first time "Fetch & Analyze" runs, and that path never populated the new dropdown
+- Now populates in both places — Direct Reserve works standalone on the Persona page
+
+---
+
 ## [2026-07-20] — Direct Reserve: Any Learner, Any Teacher, Multi-Day (V7.52)
 
 ### Direct Reserve Slot (`Index.html`, `JavaScript.html`, `ReserveSlot.js`)

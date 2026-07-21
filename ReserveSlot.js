@@ -510,8 +510,8 @@ function reserveCalendarSlot(jlid, learnerName, teacherName, teacherCalendarId, 
 
       var eventBody = {
         summary: title,
-        start:   { dateTime: startDt.toISOString() },
-        end:     { dateTime: endDt.toISOString() },
+        start:   { dateTime: startDt.toISOString(), timeZone: tz },
+        end:     { dateTime: endDt.toISOString(), timeZone: tz },
         recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + slotCount],
         attendees: attendees,
         description: desc,
@@ -531,8 +531,8 @@ function reserveCalendarSlot(jlid, learnerName, teacherName, teacherCalendarId, 
         try {
           var teacherBody = {
             summary: title,
-            start:   { dateTime: startDt.toISOString() },
-            end:     { dateTime: endDt.toISOString() },
+            start:   { dateTime: startDt.toISOString(), timeZone: tz },
+            end:     { dateTime: endDt.toISOString(), timeZone: tz },
             recurrence: ['RRULE:FREQ=WEEKLY;COUNT=' + slotCount],
             description: desc,
             sendUpdates: 'none'
