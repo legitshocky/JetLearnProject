@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-21] — WATI Template Rename, Updated Cancellation Policy (V7.58)
+
+### Onboarding WATI Template Renamed (`OnboardingChecklistService.js`)
+- `OBC_TEMPLATE` changed from `welcome_ob_u` to `onboarding_welcome_policy` — used by the Operations Onboarding checklist's "Send Welcome" step
+
+### Cancellation Policy Link Updated (`ParentOnboardingTemplate.html`)
+- Footer "Cancellation Policy" link in the parent onboarding welcome email now points to the new policy document
+
+---
+
 ## [2026-07-20] — Learner Ops: Both AI-Coding and Maths Pipelines (V7.57)
 
 ### Dynamic Pipeline-Stage Resolution (`LearnerOpsService.js`)

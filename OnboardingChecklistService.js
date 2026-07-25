@@ -6,7 +6,7 @@
 // ============================================================
 
 var OBC_STAGES   = ['closedwon', '208827055'];
-var OBC_TEMPLATE = 'welcome_ob_u';
+var OBC_TEMPLATE = 'onboarding_welcome_policy';
 
 // ── Subject from JLID suffix ──────────────────────────────
 function _obcSubject(jlid) {
