@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-07-21] — Public Per-Learner Address Confirmation Form (V7.59)
+
+### New Public Address Form — No Login Required (`Code.js`, new `AddressForm.html`, new `LearnerAddressFormService.js`)
+- New unique-link form: `<exec-url>?page=addressForm&jlid=JLxxxx` — opens a standalone page (no app login) showing the learner's name/JLID read-only, and lets the parent fill in only Email, Address, City, State/Region, Postal Code, Country
+- Existing HubSpot contact address/email (if any) pre-fills the fields so the parent reviews/corrects instead of retyping from scratch
+- On submit: patches the HubSpot contact's `email`/`address`/`city`/`state`/`zip`/`country` properties directly, and logs every submission to a new "Learner Address Submissions" sheet in the Audit spreadsheet for ops visibility
+- New "Copy Address Link" button next to the JLID field in Kit Tracking's Add Entry form — builds the link for the loaded JLID and copies it to clipboard, ready to paste into a WATI message or email
+- **Action needed**: confirm the web app deployment's "Who has access" is set to allow the parent (not signed into a JetLearn Google account) to open the link without a login prompt — this can't be verified from the deploy CLI, please test with a real JLID and check Apps Script deployment settings if it prompts for sign-in
+
+---
+
 ## [2026-07-21] — WATI Template Rename, Updated Cancellation Policy (V7.58)
 
 ### Onboarding WATI Template Renamed (`OnboardingChecklistService.js`)

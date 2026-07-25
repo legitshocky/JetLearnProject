@@ -110,6 +110,17 @@ function doGet(e) {
     return handleTrackingPixel(e.parameter.id);
   }
 
+  // --- Public Learner Address Form Route (no login required) ---
+  if (e && e.parameter && e.parameter.page === 'addressForm') {
+    var jlidParam = String(e.parameter.jlid || '').trim().toUpperCase();
+    var template = HtmlService.createTemplateFromFile('AddressForm');
+    template.jlid = jlidParam;
+    return template.evaluate()
+      .setTitle('JetLearn — Confirm Your Details')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   // --- Standard Page Serving Route ---
   // Reset Caches on new request
   if (typeof _sheetDataCache !== 'undefined') _sheetDataCache = {};
@@ -699,7 +710,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.58";
+const APP_VERSION = "7.59";
 
 function getAppVersion() {
   return APP_VERSION;

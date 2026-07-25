@@ -14254,6 +14254,30 @@ function _mapHsSubscriptionToKitOption(raw) {
   return null;
 }
 
+// Copies a unique, no-login address-confirmation link for the JLID in the
+// given input field — share it with the parent via WATI/email; they only
+// see their child's name confirmed and fill in the address fields.
+function copyAddressFormLink(inputId) {
+  var el = document.getElementById(inputId);
+  var jlid = el ? el.value.trim() : '';
+  if (!jlid) { showToast('error', 'No JLID', 'Enter a JLID first.'); return; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) { showToast('error', 'Could Not Build Link', (res && res.message) || 'Unknown error'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(res.url).then(function() {
+          showToast('success', 'Link Copied', 'Address form link copied — share it with the parent.');
+        }, function() {
+          prompt('Copy this link:', res.url);
+        });
+      } else {
+        prompt('Copy this link:', res.url);
+      }
+    })
+    .withFailureHandler(function(err) { showToast('error', 'Error', (err && err.message) || String(err)); })
+    .getAddressFormLink(jlid);
+}
+
 function ktFetchByJlid() {
   const jlid = ((document.getElementById('ktfJlid') || {}).value || '').trim();
   if (!jlid) return;
