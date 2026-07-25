@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-26] — Address Form: Matched Real JetLearn Branding (V7.63)
+
+### Redesigned to Match Actual Site (`AddressForm.html`)
+- Replaced the guessed dark-navy theme (from an inaccurate brand fetch) with the real JetLearn look, based on the actual referral/trial-class page screenshots: warm off-white background, yellow circular "JET learn" logo badge, bold headline with yellow highlighter-marker effect, purple pill CTA, stats row (learners count + Google rating)
+- Two-column layout: form on the left, a "what happens next" checklist panel on the right with soft gradient blob decoration
+
+---
+
 ## [2026-07-26] — Address Form: Fixed JLID Bug, Landing-Page Redesign (V7.62)
 
 ### Fixed: JLID Arriving With Embedded Quote Characters (`AddressForm.html`, `LearnerAddressFormService.js`)
