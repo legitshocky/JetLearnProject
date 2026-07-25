@@ -112,9 +112,11 @@ function doGet(e) {
 
   // --- Public Learner Address Form Route (no login required) ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
-    var jlidParam = String(e.parameter.jlid || '').trim().toUpperCase();
+    var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
+    var nameParam  = String(e.parameter.name || '').trim();
     var template = HtmlService.createTemplateFromFile('AddressForm');
     template.jlid = jlidParam;
+    template.name = nameParam;
     return template.evaluate()
       .setTitle('JetLearn — Confirm Your Details')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -710,7 +712,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.59";
+const APP_VERSION = "7.62";
 
 function getAppVersion() {
   return APP_VERSION;

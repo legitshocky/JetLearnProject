@@ -23,6 +23,14 @@ function _lafGetContactId(dealId, token) {
   }
 }
 
+// Run once from the Apps Script editor's function dropdown to create the
+// "Learner Address Submissions" sheet immediately, without waiting for a
+// real form submission.
+function setupLearnerAddressSheet() {
+  _lafGetLogSheet();
+  return 'Learner Address Submissions sheet ready.';
+}
+
 function _lafGetLogSheet() {
   var ss = SpreadsheetApp.openById(CONFIG.AUDIT_SHEET_ID);
   var sheet = ss.getSheetByName('Learner Address Submissions');
@@ -40,9 +48,13 @@ function _lafGetLogSheet() {
 // rather than retype everything from scratch.
 function getAddressFormContext(jlid) {
   try {
+    // Defensively strip stray quote characters — belt-and-braces in case a
+    // link ever gets copy-pasted with encoding artifacts around the JLID.
+    jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim();
     if (!jlid) return { success: false, message: 'Missing learner reference in this link.' };
+
     var hs = fetchHubspotByJlid(jlid);
-    if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner. Please contact JetLearn support.' };
+    if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner (' + jlid + '): ' + ((hs && hs.message) || 'no data returned') + '. Please contact JetLearn support.' };
 
     var d = hs.data;
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
@@ -80,7 +92,7 @@ function getAddressFormContext(jlid) {
 function submitLearnerAddressForm(payload) {
   try {
     payload = payload || {};
-    var jlid = String(payload.jlid || '').trim().toUpperCase();
+    var jlid = String(payload.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
     if (!jlid) return { success: false, message: 'Missing learner reference.' };
     if (!payload.email || !payload.address || !payload.city || !payload.state || !payload.postalCode || !payload.country) {
       return { success: false, message: 'Please fill in all required fields.' };
@@ -131,8 +143,9 @@ function submitLearnerAddressForm(payload) {
 
 // Builds the shareable unique-link URL for a JLID. Called from the app UI
 // (e.g. a "Copy Address Link" button) to generate the link to send the parent.
-function getAddressFormLink(jlid) {
+function getAddressFormLink(jlid, learnerName) {
   if (!jlid) return { success: false, message: 'JLID required.' };
-  var url = ScriptApp.getService().getUrl() + '?page=addressForm&jlid=' + encodeURIComponent(String(jlid).trim().toUpperCase());
+  var url = ScriptApp.getService().getUrl() + '?page=addressForm&r=' + encodeURIComponent(String(jlid).trim().toUpperCase());
+  if (learnerName) url += '&name=' + encodeURIComponent(String(learnerName).trim());
   return { success: true, url: url };
 }

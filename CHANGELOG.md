@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-07-26] — Address Form: Fixed JLID Bug, Landing-Page Redesign (V7.62)
+
+### Fixed: JLID Arriving With Embedded Quote Characters (`AddressForm.html`, `LearnerAddressFormService.js`)
+- The form's `<?= JSON.stringify(jlid) ?>` GAS template tag HTML-escapes its output — corrupting the quote characters from `JSON.stringify()` so the JLID landed in the JS variable wrapped in literal `"..."` characters, causing every HubSpot lookup to fail ("No learner found")
+- Fixed by switching to the raw/unescaped GAS tag `<?!= ... ?>` (the documented pattern for injecting JSON into inline scripts), plus defensive quote-stripping server-side as a backstop
+- Confirmed via char-code logging: the corrupted value had ASCII 34 (`"`) at both ends before the fix
+
+### Landing-Page Redesign (`AddressForm.html`)
+- Rebuilt to match JetLearn's actual site branding (checked live): dark navy hero with blue/purple gradient glow, bold "Let's get [Child]'s kit moving" headline auto-filled with the learner's first name, trust row (★4.8 · 12k+ learners · 60+ countries), white floating form card, rounded pill CTA button
+- Learner name now shown instantly from the link itself (new `name` URL param) while the server confirms + fetches existing HubSpot data in the background
+
+### Shorter Link Params (`Code.js`, `LearnerAddressFormService.js`, `JavaScript.html`)
+- Link shape changed from `?page=addressForm&jlid=X` to `?page=addressForm&r=X&name=Y` (old `jlid=` param still accepted for compatibility)
+- "Copy Address Link" now also passes the learner's name from the Kit Tracking form
+
+---
+
 ## [2026-07-21] — Public Per-Learner Address Confirmation Form (V7.59)
 
 ### New Public Address Form — No Login Required (`Code.js`, new `AddressForm.html`, new `LearnerAddressFormService.js`)
