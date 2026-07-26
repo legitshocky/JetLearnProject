@@ -2,6 +2,19 @@
 
 ---
 
+## [2026-07-26] — Multi-Contact Kit Address Requests + Certificate Emails (V7.77)
+
+### WhatsApp + email fired together, to every contact on the deal (`KitTrackingService.js`)
+- `requestKitDeliveryAddress()` now uses the already-existing `getPhoneNumbersForDeal(dealId)`/`getEmailsForDeal(dealId)` (HubSpotService.js) to reach **every** associated contact (both parents/guardians), not just the primary one — de-duped, primary contact first.
+- The branded reminder email now fires **at the same time** as the WhatsApp send (not just as a later no-reply nudge) — both channels go out together at Day 0.
+- `sendKitAddressReminderEmail()` (`EmailService.js`) now accepts either a single email or an array — sends one email to all valid, de-duped recipients via a comma-joined `to`. The nudge-stage email (`checkKitAddressNudges`) also now pulls all deal emails instead of just the primary contact's.
+
+### Certificates now email every contact on the deal (`CertificateService.js`)
+- New `_resolveAllCertEmails(jlid, fallbackEmail)` looks up the deal via `fetchHubspotByJlid` + `getEmailsForDeal`, merges with whatever email the UI passed in, de-dupes, and returns a comma-joined recipient list.
+- Wired into all three certificate send paths: `sendCourseCertificateEmail`, `resendCertificate`, `sendBulkCertificates` (which `resendFailedCertificates` already delegates to) — certificates now reach every parent/guardian contact on the deal, not just one email.
+
+---
+
 ## [2026-07-26] — Kit Tracking: Address Link Open/Submit Timeline (V7.76)
 
 ### Link-open + submission tracking (`Code.js`, `KitTrackingService.js`, `LearnerAddressFormService.js`)

@@ -1598,9 +1598,17 @@ function getKitAddressReminderEmailHTML(data) {
 // Sends the branded address-reminder email to a parent who hasn't replied to
 // the WhatsApp address-request link. Called from checkKitAddressNudges()
 // (KitTrackingService.js) at the email-nudge stage of the tiered cadence.
+// kitRow.parentEmail may be a single string OR an array of emails — sends to
+// every valid, de-duped address on the deal (both guardians, additional
+// emails, etc.) in one call via a comma-separated 'to' list.
 function sendKitAddressReminderEmail(kitRow) {
   try {
-    if (!kitRow || !kitRow.parentEmail || !isValidEmail(kitRow.parentEmail)) {
+    var rawEmails = kitRow && kitRow.parentEmail;
+    var emailList = (Array.isArray(rawEmails) ? rawEmails : [rawEmails])
+      .filter(function(e) { return e && isValidEmail(e); })
+      .filter(function(e, i, arr) { return arr.indexOf(e) === i; }); // de-dupe
+
+    if (emailList.length === 0) {
       Logger.log('[KitAddrReminder] No valid parent email for ' + (kitRow && kitRow.jlid));
       return { success: false, message: 'No valid parent email.' };
     }
@@ -1616,12 +1624,12 @@ function sendKitAddressReminderEmail(kitRow) {
     });
 
     var result = sendTrackedEmail({
-      to: kitRow.parentEmail,
+      to: emailList.join(','),
       subject: 'Quick favor — confirm ' + (kitRow.learnerName || 'your child') + "'s kit delivery address",
       htmlBody: htmlBody,
       jlid: kitRow.jlid
     });
-    Logger.log('[KitAddrReminder] Reminder email sent to ' + kitRow.parentEmail + ' for ' + kitRow.jlid);
+    Logger.log('[KitAddrReminder] Reminder email sent to ' + emailList.join(',') + ' for ' + kitRow.jlid);
     return { success: true, trackingId: result.trackingId };
   } catch(e) {
     Logger.log('[KitAddrReminder] sendKitAddressReminderEmail ERROR: ' + e.message);

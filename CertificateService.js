@@ -20,6 +20,30 @@
 var CERT_TEMPLATE_ID  = '1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI';
 var CERT_SAVE_FOLDER  = '1Eaub-wn5J7yMhYrHeQCiHKOXJEKR6vFX';
 
+// ── Resolve every contact email for a JLID's deal, not just the one passed
+// in from the UI — a deal can have multiple associated contacts (both
+// parents/guardians). Falls back to just the UI-supplied email if the
+// HubSpot lookup fails or finds nothing extra. Returns a comma-joined
+// string ready for GmailApp.sendEmail's 'to' param.
+function _resolveAllCertEmails(jlid, fallbackEmail) {
+  var emails = [];
+  if (fallbackEmail) emails.push(String(fallbackEmail).trim());
+  try {
+    if (jlid) {
+      var hs = fetchHubspotByJlid(jlid);
+      if (hs && hs.success && hs.data && hs.data.dealId) {
+        var res = getEmailsForDeal(hs.data.dealId);
+        if (res && res.all) emails = emails.concat(res.all);
+      }
+    }
+  } catch(e) {
+    Logger.log('[Cert] _resolveAllCertEmails lookup failed (using fallback only): ' + e.message);
+  }
+  var deduped = emails.filter(function(e) { return e && isValidEmail(e); })
+    .filter(function(e, i, arr) { return arr.indexOf(e) === i; });
+  return deduped.length ? deduped.join(',') : fallbackEmail;
+}
+
 // ── Course → slide index mapping ─────────────────────────────────────
 // Reads col A (Course Name) + col C (Tagging) from the Course Name sheet.
 // Tagging values: Foundation | Math | Advanced | Pro
@@ -482,8 +506,8 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
     + '</table>'
     + '</td></tr></table>';
 
-    // 3. Send
-    GmailApp.sendEmail(parentEmail, subject, '', {
+    // 3. Send — to every contact email on the deal, not just the one passed in
+    GmailApp.sendEmail(_resolveAllCertEmails(jlid, parentEmail), subject, '', {
       htmlBody   : htmlBody,
       attachments: [pdfBlob],
       name       : 'JetLearn',
@@ -580,7 +604,7 @@ function resendCertificate(jlid, learnerName, courseName, parentEmail, parentNam
 
     var year    = new Date().getFullYear();
     var subject = 'JetLearn - ' + learnerName + ' has completed ' + courseName + ' - Certificate Enclosed';
-    GmailApp.sendEmail(parentEmail, subject, '', {
+    GmailApp.sendEmail(_resolveAllCertEmails(jlid, parentEmail), subject, '', {
       htmlBody   : '<p>Dear ' + (parentName || 'Parent') + ',</p><p>Please find attached the certificate for <b>' + learnerName + '</b> completing <b>' + courseName + '</b>.</p><p>You can also view it online: <a href="' + (pdfBlob._driveUrl || '') + '">' + (pdfBlob._driveUrl ? 'View Certificate' : '') + '</a></p><p>Team JetLearn</p>',
       attachments: [pdfBlob],
       name       : 'JetLearn',
@@ -1108,8 +1132,8 @@ function sendBulkCertificates(data) {
     + '</table>'
     + '</td></tr></table>';
 
-    // ── Send ──────────────────────────────────────────────────────────────────
-    GmailApp.sendEmail(parentEmail, subject, '', {
+    // ── Send — to every contact email on the deal, not just the one passed in ──
+    GmailApp.sendEmail(_resolveAllCertEmails(jlid, parentEmail), subject, '', {
       htmlBody   : htmlBody,
       attachments: blobs,
       name       : 'JetLearn',

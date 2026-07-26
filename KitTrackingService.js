@@ -300,14 +300,56 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
     var parentName  = d.parentName  || '';
     var learnerName = d.learnerName || '';
 
-    if (!phone) return { success: false, message: 'No phone number for ' + jlid };
+    // Reach EVERY contact on the deal (both parents/guardians), not just the
+    // primary one — a deal can have multiple associated HubSpot contacts.
+    var allPhones = [];
+    var allEmails = [];
+    if (d.dealId) {
+      try {
+        var phoneRes = getPhoneNumbersForDeal(d.dealId);
+        allPhones = (phoneRes && phoneRes.all) ? phoneRes.all.map(function(p) { return _normalisePhone(p.replace(/\s*\(.*\)$/, '')); }) : [];
+      } catch(pe) { Logger.log('[KitTracking] getPhoneNumbersForDeal failed: ' + pe.message); }
+      try {
+        var emailRes = getEmailsForDeal(d.dealId);
+        allEmails = (emailRes && emailRes.all) ? emailRes.all : [];
+      } catch(ee) { Logger.log('[KitTracking] getEmailsForDeal failed: ' + ee.message); }
+    }
+    // De-dupe phones, always include the primary contact first
+    var phoneSet = {};
+    var phonesToMessage = [];
+    [phone].concat(allPhones).forEach(function(p) {
+      if (p && !phoneSet[p]) { phoneSet[p] = true; phonesToMessage.push(p); }
+    });
+
+    if (phonesToMessage.length === 0) return { success: false, message: 'No phone number for ' + jlid };
 
     // Always reconfirm address — parents move. Never assume existing address is current.
-    // Always send WATI regardless of what HubSpot contact address says.
-    var wRes = sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerName);
+    // Always send WATI regardless of what HubSpot contact address says. Send to
+    // every contact's number so no guardian is missed.
+    var wRes = null;
+    var anyWatiSent = false;
+    phonesToMessage.forEach(function(p) {
+      var res = sendKitAddressLinkWhatsApp(p, parentName, kitName, jlid, learnerName);
+      if (res && res.success) anyWatiSent = true;
+      if (!wRes) wRes = res; // keep first result for the error message below
+    });
 
-    if (!wRes || !wRes.success) {
+    if (!anyWatiSent) {
       return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
+    }
+
+    // Fire the branded email in parallel with the WhatsApp send — both
+    // channels go out together at request time, to every contact email found.
+    try {
+      var linkRes = getAddressFormLink(jlid, learnerName);
+      if (linkRes && linkRes.success && allEmails.length > 0) {
+        sendKitAddressReminderEmail({
+          jlid: jlid, learnerName: learnerName, kitName: kitName,
+          parentName: parentName, parentEmail: allEmails
+        });
+      }
+    } catch(emErr) {
+      Logger.log('[KitTracking] Parallel email send failed (non-fatal): ' + emErr.message);
     }
 
     // Cache pending request (TTL 8 hours) — for WATI free-text reply path
@@ -826,9 +868,13 @@ function checkKitAddressNudges() {
         try {
           var hs = jlid ? fetchHubspotByJlid(jlid) : null;
           if (hs && hs.success && hs.data) {
+            var emailsForDeal = hs.data.dealId ? getEmailsForDeal(hs.data.dealId) : null;
+            var recipients = (emailsForDeal && emailsForDeal.all && emailsForDeal.all.length)
+              ? emailsForDeal.all
+              : hs.data.parentEmail;
             sendKitAddressReminderEmail({
               jlid: jlid, learnerName: learnerName, kitName: kitName,
-              parentName: hs.data.parentName, parentEmail: hs.data.parentEmail
+              parentName: hs.data.parentName, parentEmail: recipients
             });
             emailsSent++;
           }
