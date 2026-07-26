@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-07-27] — Full Audit: Fix Reconfirm Feature Silently Broken by Dead HubSpot Fetch (V8.00)
+
+Did a full audit of the whole address/order pipeline after a string of reactive fixes — found one serious bug, fixed it, plus three smaller consistency gaps.
+
+### Critical: the yes/no reconfirm feature never actually worked (`KitTrackingService.js`)
+- `requestKitDeliveryAddress()`'s "does an address already exist?" check called `_fetchContactAddress()` — the HubSpot contact GET that's been permanently blank since the sensitive-scope discovery (V7.90/91). Since that always returned empty, `existingAddrStr` was always empty too, meaning the `kit_address_reconfirm` yes/no template could **never** actually trigger from a normal request — every request silently fell through to the plain link-ask instead.
+- Worse: if the reconfirm somehow did fire and a parent tapped "Yes, Same Address," `handleKitAddressReconfirmReply()` also called the same dead HubSpot fetch and would have written an **empty address** while marking `ADDR_STATUS = 'Received'` — silent data loss.
+- Fixed: the existing-address check now reads from our own sheet's `DELIVERY_ADDRESS` (which we already know is accurate) instead of HubSpot. The sheet's address is now preserved (not blanked) specifically when the reconfirm path is used, so "Yes" can just flip the status without needing to re-fetch or rewrite anything.
+
+### Timeline consistency (`KitTrackingService.js`)
+- Three older address-capture paths (`handleKitAddressReply`, `pollPendingKitAddresses`, `_handleKitAddressFormWebhook` — all still legitimately used for the "HubSpot Form" link option) never stamped `ADDR_SUBMITTED_AT`, so the row-detail timeline would show no "Submitted" time even though the address was correctly received via those paths. Now all four address-capture paths stamp it consistently.
+
+### Audit method
+- Full syntax check across every touched `.js`/`.html` file, cross-referenced every `KIT_COL` write against the derived status logic, traced every `_fetchContactAddress()` call site to confirm which are legitimately still needed (polling for the native HubSpot Form flow) vs. dead, and diffed JS `getElementById` targets against Index.html to catch ID mismatches (none found beyond expected dynamically-created modals).
+
+---
+
 ## [2026-07-27] — Fix Stale "Verify Address" Button (V7.99)
 
 ### Verify Address button stayed visible pointing at a now-blank address (`JavaScript.html`)

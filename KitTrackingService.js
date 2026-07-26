@@ -374,13 +374,10 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
       var parentName = (hs && hs.success && hs.data) ? hs.data.parentName : '';
 
       if (buttonText === 'Yes, Same Address') {
-        var addrStr = '';
-        if (hs && hs.success && hs.data && hs.data.dealId) {
-          var addr = _fetchContactAddress(hs.data.dealId);
-          addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
-            .filter(function(p) { return p && String(p).trim(); }).join(', ');
-        }
-        sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
+        // The address was never cleared for the reconfirm path (see
+        // requestKitDeliveryAddress) — it's still sitting right there in
+        // this row, exactly what was sent in the reconfirm message. No need
+        // to re-fetch or rewrite it — just flip the status.
         sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
         sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
         sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
@@ -491,18 +488,18 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
 
     if (phonesToMessage.length === 0) return { success: false, message: 'No phone number for ' + jlid };
 
-    // Check whether HubSpot already has an address on file. Never assume it's
-    // still current — parents move — so we still always message the parent.
-    // But if there IS an address, ask a quick yes/no reconfirm instead of
-    // making them retype everything from scratch; "No" falls through to the
-    // full address-link flow. If there's nothing on file yet, go straight to
-    // the address-link ask (nothing to reconfirm).
+    // Check whether an address is already on file — from OUR OWN sheet, not
+    // HubSpot (the HubSpot contact address fields are permanently blank here
+    // due to a portal scope restriction we can't get lifted — see CHANGELOG
+    // V7.90/91 — so _fetchContactAddress() would always return nothing and
+    // silently kill the reconfirm feature). Never assume it's still current
+    // — parents move — so we still always message the parent. But if there
+    // IS an address, ask a quick yes/no reconfirm instead of making them
+    // retype everything; "No" falls through to the full address-link flow.
     var existingAddrStr = '';
-    if (!useHsForm && d.dealId) {
+    if (!useHsForm && rowIndex > 0) {
       try {
-        var existingAddr = _fetchContactAddress(d.dealId);
-        existingAddrStr = [existingAddr.address, existingAddr.city, existingAddr.state, existingAddr.zip, existingAddr.country]
-          .filter(function(p) { return p && String(p).trim(); }).join(', ');
+        existingAddrStr = String(_getKitSheet().getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
       } catch(fae) { Logger.log('[KitTracking] existing-address lookup failed: ' + fae.message); }
     }
 
@@ -562,7 +559,10 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
       try {
         var sheet2 = _getKitSheet();
         sheet2.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
-        sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+        // Only blank the address when actually asking for a fresh one — the
+        // reconfirm path (existingAddrStr set) keeps it, since "Yes, Same
+        // Address" needs it still there to confirm against.
+        if (!existingAddrStr) sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
         sheet2.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone); // needed to match the WATI reply later
 
         // Stamp nudge-pipeline fields — only on the FIRST request, so a resend
@@ -619,6 +619,7 @@ function handleKitAddressReply(phone, addressText) {
     if (rowIndex > 0) {
       sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrText);
       sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+      sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
     } else {
       // Find row by JLID
       var lastRow = sheet.getLastRow();
@@ -628,6 +629,7 @@ function handleKitAddressReply(phone, addressText) {
           if (String(rows[i][KIT_COL.JLID - 1] || '').trim() === meta.jlid) {
             sheet.getRange(i + 2, KIT_COL.DELIVERY_ADDRESS).setValue(addrText);
             sheet.getRange(i + 2, KIT_COL.ADDR_STATUS).setValue('Received');
+            sheet.getRange(i + 2, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
             break;
           }
         }
@@ -707,6 +709,7 @@ function checkKitAddressReply(jlid, rowIndex, kitName) {
         var sheet = _getKitSheet();
         sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
         sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+        sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
       } catch(se) {
         Logger.log('[KitTracking] checkKitAddressReply: sheet update failed: ' + se.message);
       }
@@ -849,6 +852,7 @@ function pollPendingKitAddresses() {
             var sh = _getKitSheet();
             sh.getRange(entry.rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
             sh.getRange(entry.rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+            sh.getRange(entry.rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
           } catch(se) {}
         }
 
@@ -971,6 +975,7 @@ function _handleKitAddressFormWebhook(payload) {
       var sh = _getKitSheet();
       sh.getRange(matched.rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
       sh.getRange(matched.rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+      sh.getRange(matched.rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
     } catch(se) {}
   }
 
