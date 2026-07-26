@@ -6,6 +6,36 @@
 // Writes straight to HubSpot contact properties + a log sheet for ops.
 // ============================================================
 
+// ── DIAGNOSTIC — read-only. Shows exactly which contact(s) are associated
+// with a JLID's deal, which one the PATCH targets, and that contact's
+// CURRENT address properties (fresh from HubSpot, not cached). Run from the
+// Apps Script editor's function dropdown after temporarily setting the jlid
+// below, then check the log.
+function diagCheckAddressPatchTarget(jlid) {
+  jlid = jlid || 'JL39611449152C2';
+  var hs = fetchHubspotByJlid(jlid);
+  if (!hs || !hs.success || !hs.data) { Logger.log('[LAF Diag] HubSpot lookup failed: ' + (hs && hs.message)); return; }
+  var d = hs.data;
+  Logger.log('[LAF Diag] dealId=' + d.dealId + ' parentContact(deal prop)=' + d.parentContact + ' parentName(deal prop)=' + d.parentName + ' parentEmail(deal prop)=' + d.parentEmail);
+
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+
+  // Show ALL associated contacts (not just the first one _lafGetContactId picks)
+  var assocResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + d.dealId + '/associations/contacts', {
+    method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  Logger.log('[LAF Diag] associations HTTP ' + assocResp.getResponseCode() + ': ' + assocResp.getContentText());
+
+  var contactId = _lafGetContactId(d.dealId, token);
+  Logger.log('[LAF Diag] _lafGetContactId resolved to: ' + (contactId || '(none)'));
+  if (!contactId) return;
+
+  var contactResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId + '?properties=email,address,city,state,zip,country,firstname,lastname', {
+    method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  Logger.log('[LAF Diag] contact ' + contactId + ' current properties HTTP ' + contactResp.getResponseCode() + ': ' + contactResp.getContentText());
+}
+
 // Resolves the HubSpot contact ID associated with a deal (first match).
 function _lafGetContactId(dealId, token) {
   try {
@@ -107,7 +137,7 @@ function submitLearnerAddressForm(payload) {
 
     if (contactId) {
       try {
-        monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId, {
+        var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId, {
           method: 'PATCH',
           headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
           payload: JSON.stringify({ properties: {
@@ -120,6 +150,12 @@ function submitLearnerAddressForm(payload) {
           }}),
           muteHttpExceptions: true
         });
+        var patchCode = patchResp.getResponseCode();
+        if (patchCode < 200 || patchCode >= 300) {
+          Logger.log('[LAF] HubSpot contact PATCH REJECTED (contactId=' + contactId + ', HTTP ' + patchCode + '): ' + patchResp.getContentText());
+        } else {
+          Logger.log('[LAF] HubSpot contact PATCH OK (contactId=' + contactId + ', HTTP ' + patchCode + ')');
+        }
       } catch(pe) {
         Logger.log('[LAF] HubSpot contact PATCH failed (non-fatal): ' + pe.message);
       }
@@ -168,8 +204,8 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
 
     // Same confirmation WATI the internal flow sends — parent gets a
     // consistent experience regardless of which channel they used.
+    var phone = _normalisePhone((hsData && hsData.parentContact) || '');
     try {
-      var phone = _normalisePhone((hsData && hsData.parentContact) || '');
       if (phone) {
         var kitName = String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || '').trim();
         sendWatiMessage(phone, 'kit_address_received_confirmation', [
@@ -179,6 +215,16 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
       }
     } catch(we) {
       Logger.log('[LAF] bridge confirmation WATI failed (non-fatal): ' + we.message);
+    }
+
+    // Clear the pending-request cache/queue — otherwise fetchKitLearnerDetails
+    // keeps showing "waiting for parent" in the Add Kit Entry modal even
+    // though the address has already come in via this channel.
+    try {
+      if (phone) CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + phone);
+      _kitAddrQueueRemove(jlid);
+    } catch(ce) {
+      Logger.log('[LAF] bridge cache/queue cleanup failed (non-fatal): ' + ce.message);
     }
 
     Logger.log('[LAF] Bridged address to Kit Tracking row ' + rowIndex + ' for ' + jlid);

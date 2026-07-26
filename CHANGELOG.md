@@ -2,6 +2,20 @@
 
 ---
 
+## [2026-07-26] — Kit Address Form: Fixes + Instant Submit (V7.85–V7.86)
+
+### Fixed: stale "waiting for parent" state after a real submission (`LearnerAddressFormService.js`)
+- `_bridgeAddressToKitTracking()` never cleared the `KIT_ADDR_REQ_<phone>` pending-request cache/queue after a successful public-form submission — so `fetchKitLearnerDetails()` kept reporting "waiting for parent" in the Add Kit Entry modal even after the address had already come in. Now clears both on a successful bridge.
+
+### Fixed: silent HubSpot contact PATCH failures (`LearnerAddressFormService.js`)
+- The contact-property PATCH in `submitLearnerAddressForm()` used `muteHttpExceptions: true` but never checked the response code — a rejected write (bad property, permissions, etc.) would fail completely silently with no log at all. Now logs the HTTP status and response body on both success and failure.
+- Added read-only diagnostic `diagCheckAddressPatchTarget(jlid)` — shows every contact associated with a deal, which one the PATCH actually targets, and that contact's live HubSpot properties, to debug cases where the write doesn't appear to take effect.
+
+### Instant submit — no more waiting on the network (`AddressForm.html`, `firebase-hosting/public/kit/index.html`)
+- Both the parent-facing address form and its legacy GAS-hosted twin now show the "Thank you" success screen the instant client-side field validation passes, instead of waiting on the full backend chain (HubSpot lookup → contact PATCH → Kit Tracking bridge → WATI confirmation) to finish first. The backend call still fires and completes in the background; failures are logged to the console for ops rather than shown to the parent, since by that point they've already been told it worked and the JLID was already confirmed valid when the page loaded.
+
+---
+
 ## [2026-07-26] — Kit Tracking: Fix Address-First Rows Invisible in Table (V7.84)
 
 ### Fixed: bare address-first rows never appeared in the dashboard (`KitTrackingService.js`)
