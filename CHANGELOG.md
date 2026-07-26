@@ -2,6 +2,19 @@
 
 ---
 
+## [2026-07-26] — Address Form: Branded Short Links, Real Logo, Faster Load (V7.71–V7.72)
+
+### Branded Short Links (`LearnerAddressFormService.js`)
+- `getAddressFormLink()` now returns `https://jetlearn-kit-links.web.app/kit/{JLID}` — a real WhatsApp-safe short link on JetLearn's own Firebase Hosting site (under the existing `gen-lang-client-0051643037` project, as a separate hosting site so it doesn't touch the other app already using that project)
+- Firebase Hosting 302-redirects `/kit/:jlid` straight to the live GAS exec URL (`firebase-hosting/firebase.json`) — no server code, no external shortener API call per link, replaces the earlier is.gd dependency
+
+### Real Logo + Faster Load (`AddressForm.html`)
+- Replaced the CSS-simulated yellow "JET learn" badge with the actual JetLearn logo image (already hosted at `cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/Logo.png`, same asset used in `ParentOnboardingTemplate.html`)
+- Wrapped the form in an elevated white panel card, refined input/stat-card/spacing polish
+- Removed the `window.load` wait (was blocking on fonts/Font Awesome CDN) — script now runs immediately on parse so the form appears instantly instead of flashing a loading spinner first
+
+---
+
 ## [2026-07-26] — Address Form: Matched Real JetLearn Branding (V7.63)
 
 ### Redesigned to Match Actual Site (`AddressForm.html`)

@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "target": "kitlinks",
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*"],
+    "redirects": [
+      {
+        "source": "/kit/:jlid",
+        "destination": "https://script.google.com/macros/s/AKfycbzYXnVGNxTclM0Z6qrCuNUwkHDxRZzGqgfsf55tmGegZ_vxUhaL08T3k0MXnz2cM0hVOA/exec?page=addressForm&r=:jlid",
+        "type": 302
+      }
+    ]
+  }
+}

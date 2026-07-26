@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "gen-lang-client-0051643037"
+  },
+  "targets": {
+    "gen-lang-client-0051643037": {
+      "hosting": {
+        "kitlinks": [
+          "jetlearn-kit-links"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

@@ -32,3 +32,4 @@ npm-debug.log*
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 logs/
+firebase-hosting/.firebase/

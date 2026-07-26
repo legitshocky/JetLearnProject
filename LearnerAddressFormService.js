@@ -145,7 +145,14 @@ function submitLearnerAddressForm(payload) {
 // (e.g. a "Copy Address Link" button) to generate the link to send the parent.
 function getAddressFormLink(jlid, learnerName) {
   if (!jlid) return { success: false, message: 'JLID required.' };
-  var url = ScriptApp.getService().getUrl() + '?page=addressForm&r=' + encodeURIComponent(String(jlid).trim().toUpperCase());
-  if (learnerName) url += '&name=' + encodeURIComponent(String(learnerName).trim());
-  return { success: true, url: url };
+
+  var cleanJlid = String(jlid).trim().toUpperCase();
+  var longUrl = ScriptApp.getService().getUrl() + '?page=addressForm&r=' + encodeURIComponent(cleanJlid);
+  if (learnerName) longUrl += '&name=' + encodeURIComponent(String(learnerName).trim());
+
+  // Branded short link — Firebase Hosting (jetlearn-kit-links.web.app) 302-redirects
+  // /kit/:jlid straight to the GAS exec URL, so this is safe to share on WhatsApp.
+  var shortUrl = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(cleanJlid);
+
+  return { success: true, url: shortUrl, longUrl: longUrl };
 }
