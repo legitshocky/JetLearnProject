@@ -150,9 +150,12 @@ function getAddressFormLink(jlid, learnerName) {
   var longUrl = ScriptApp.getService().getUrl() + '?page=addressForm&r=' + encodeURIComponent(cleanJlid);
   if (learnerName) longUrl += '&name=' + encodeURIComponent(String(learnerName).trim());
 
-  // Branded short link — Firebase Hosting (jetlearn-kit-links.web.app) 302-redirects
-  // /kit/:jlid straight to the GAS exec URL, so this is safe to share on WhatsApp.
+  // Branded short link — a real static page hosted on Firebase Hosting
+  // (jetlearn-kit-links.web.app), not a redirect. The page fetch()es learner
+  // data from the GAS backend as a JSON API, so this URL stays in the address
+  // bar the whole time. Safe to paste directly into WhatsApp.
   var shortUrl = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(cleanJlid);
+  if (learnerName) shortUrl += '?name=' + encodeURIComponent(String(learnerName).trim());
 
   return { success: true, url: shortUrl, longUrl: longUrl };
 }

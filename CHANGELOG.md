@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-26] — Address Form: Fully Self-Hosted Page, Not a Redirect (V7.73–V7.74)
+
+### Real Static Page Instead of a Redirect (`firebase-hosting/public/kit/index.html`, `Code.js`, `LearnerAddressFormService.js`)
+- `jetlearn-kit-links.web.app/kit/{JLID}` now serves the **actual page** directly from Firebase Hosting — no 302 to `script.google.com`, so the address bar never changes
+- The static page fetches learner data and submits the form via plain `fetch()` calls against a small JSON API on the GAS backend, instead of `google.script.run` (which only works when Apps Script itself serves the HTML)
+- Added `doGet` branch `?api=addressFormContext&jlid=...` (GET, returns JSON, relies on Apps Script's default `Access-Control-Allow-Origin: *` for cross-origin reads) and `doPost` branch `?api=addressFormSubmit` (form-urlencoded body so the browser treats it as a "simple request" and skips CORS preflight, which Apps Script can't answer)
+- `firebase-hosting/firebase.json` switched from a `redirects` rule to a `rewrites` rule (`/kit/** → /kit/index.html`) so Firebase serves the file in place rather than forwarding
+
+---
+
 ## [2026-07-26] — Address Form: Branded Short Links, Real Logo, Faster Load (V7.71–V7.72)
 
 ### Branded Short Links (`LearnerAddressFormService.js`)

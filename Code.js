@@ -110,6 +110,15 @@ function doGet(e) {
     return handleTrackingPixel(e.parameter.id);
   }
 
+  // --- Public JSON API for the statically-hosted Address Form (Firebase) ---
+  // Lets the page served from jetlearn-kit-links.web.app fetch() learner data
+  // cross-origin. Apps Script web apps allow cross-origin GET by default.
+  if (e && e.parameter && e.parameter.api === 'addressFormContext') {
+    var apiJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
+    var ctx = getAddressFormContext(apiJlid);
+    return ContentService.createTextOutput(JSON.stringify(ctx)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // --- Public Learner Address Form Route (no login required) ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
     var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
@@ -712,7 +721,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.72";
+const APP_VERSION = "7.74";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -870,6 +879,22 @@ function setupAppDataSpreadsheet() {
 // ─────────────────────────────────────────────────────────────────────
 function doPost(e) {
   try {
+    // ── Public Address Form submit (statically-hosted page on Firebase) ──────
+    // Sent as application/x-www-form-urlencoded (a "simple request") so the
+    // browser skips CORS preflight, which Apps Script web apps can't answer.
+    if (e && e.parameter && e.parameter.api === 'addressFormSubmit') {
+      var submitRes = submitLearnerAddressForm({
+        jlid: e.parameter.jlid,
+        email: e.parameter.email,
+        address: e.parameter.address,
+        city: e.parameter.city,
+        state: e.parameter.state,
+        postalCode: e.parameter.postalCode,
+        country: e.parameter.country
+      });
+      return ContentService.createTextOutput(JSON.stringify(submitRes)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── HubSpot form webhook (kit address form submission) ───────────────────
     // Fires instantly when parent submits the Kit Address Form in HubSpot.
     // Payload has: { portalId, formId, submittedAt, data: [{name,value},...] }
