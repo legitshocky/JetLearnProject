@@ -4002,6 +4002,13 @@
               <span id="ktfAddressStatus" style="font-size:0.74rem;color:#64748b;"></span>
             </div>
             <textarea id="ktfDeliveryAddress" class="form-control" rows="2" style="font-size:0.82rem;resize:vertical;" placeholder="Street, City, Postcode, Country"></textarea>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+              <label style="font-size:0.72rem;color:#64748b;font-weight:600;margin:0;">Send Link Via:</label>
+              <select id="ktfLinkOption" class="form-control form-select" style="width:auto;height:28px;padding:2px 6px;font-size:0.74rem;">
+                <option value="page">My Page (jetlearn-kit-links.web.app)</option>
+                <option value="hs">HubSpot Form</option>
+              </select>
+            </div>
             <div style="display:flex;gap:8px;margin-top:8px;">
               <button type="button" id="ktfRequestAddrBtn" onclick="ktRequestAddress()" class="btn btn-sm" style="display:none;background:#25D366;color:#fff;border:none;font-size:0.76rem;">
                 <i class="fab fa-whatsapp"></i> Request via WhatsApp

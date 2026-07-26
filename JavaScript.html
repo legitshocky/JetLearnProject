@@ -14505,13 +14505,15 @@ function copyAddressFormLink(inputId, nameInputId) {
   if (!jlid) { showToast('error', 'No JLID', 'Enter a JLID first.'); return; }
   var nameEl = nameInputId ? document.getElementById(nameInputId) : null;
   var learnerName = nameEl ? nameEl.value.trim() : '';
+  var linkOptEl = document.getElementById('ktfLinkOption');
+  var useHsForm = linkOptEl && linkOptEl.value === 'hs';
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res || !res.success) { showToast('error', 'Could Not Build Link', (res && res.message) || 'Unknown error'); return; }
-      _showLinkModal(res.url, 'Address Confirmation Link');
+      _showLinkModal(res.url, useHsForm ? 'HubSpot Form Link' : 'Address Confirmation Link');
     })
     .withFailureHandler(function(err) { showToast('error', 'Error', (err && err.message) || String(err)); })
-    .getAddressFormLink(jlid, learnerName);
+    .getAddressFormLink(jlid, learnerName, useHsForm);
 }
 
 // Shows a link in a small modal with a Copy button. Clipboard writes must
@@ -14695,6 +14697,8 @@ function ktRequestAddress() {
   var kitName = kitEl ? kitEl.value.trim() : '';
   if (!jlid) { showToast('warning', 'Address Request', 'Enter and fetch JLID first'); return; }
   if (!kitName) { showToast('warning', 'Address Request', 'Select kit type first'); return; }
+  var linkOptEl = document.getElementById('ktfLinkOption');
+  var useHsForm = linkOptEl && linkOptEl.value === 'hs';
 
   var btn = document.getElementById('ktfRequestAddrBtn');
   if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…'; btn.disabled = true; }
@@ -14727,7 +14731,7 @@ function ktRequestAddress() {
       if (btn) { btn.innerHTML = '<i class="fas fa-whatsapp"><\/i> Request via WhatsApp'; btn.disabled = false; }
       showToast('error', 'Address Request Failed', err.message || String(err));
     })
-    .requestKitDeliveryAddress(jlid, kitName, 0);
+    .requestKitDeliveryAddress(jlid, kitName, 0, useHsForm);
 }
 
 // ── Verify Address — sends the yes/no reconfirm using the address already

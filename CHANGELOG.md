@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-27] — Kit Tracking: Choice of Link (My Page vs HubSpot Form) (V7.97)
+
+### New "Send Link Via" selector (`Index.html`, `JavaScript.html`, `KitTrackingService.js`, `LearnerAddressFormService.js`)
+- New dropdown in the Add Kit Entry address section — **My Page** (`jetlearn-kit-links.web.app`, default) or **HubSpot Form** (the older native `share.hsforms.com` link) — applies to both "Request via WhatsApp" and "Copy Address Link."
+- `getAddressFormLink(jlid, learnerName, useHsForm)` returns the HubSpot form's static share URL when `useHsForm` is true, reusing the same already-approved `kit_address_request_link` WATI template either way (just swaps which URL fills `{{3}}`).
+- `requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm)`: when the HubSpot Form option is chosen, always sends the plain link-ask and skips the yes/no reconfirm (that flow's tied specifically to our own page's experience).
+
+---
+
 ## [2026-07-27] — Kit Tracking: Fix Legacy-Row Bug, Copy Link, Verify Address (V7.95–V7.96)
 
 ### Critical fix: legacy rows wrongly flooding the Asking Address tab (`KitTrackingService.js`)

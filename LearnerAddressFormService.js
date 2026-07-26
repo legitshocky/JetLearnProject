@@ -378,8 +378,15 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
 
 // Builds the shareable unique-link URL for a JLID. Called from the app UI
 // (e.g. a "Copy Address Link" button) to generate the link to send the parent.
-function getAddressFormLink(jlid, learnerName) {
+// useHsForm=true returns the older native HubSpot "Kit Address Form" share
+// link instead of our own page — offered as a manual choice (some ops prefer
+// the familiar HubSpot-hosted experience) via the "Send Link Via" selector.
+function getAddressFormLink(jlid, learnerName, useHsForm) {
   if (!jlid) return { success: false, message: 'JLID required.' };
+
+  if (useHsForm) {
+    return { success: true, url: LAF_KIT_ADDR_FORM_SHARE, longUrl: LAF_KIT_ADDR_FORM_SHARE };
+  }
 
   var cleanJlid = String(jlid).trim().toUpperCase();
   var longUrl = ScriptApp.getService().getUrl() + '?page=addressForm&r=' + encodeURIComponent(cleanJlid);

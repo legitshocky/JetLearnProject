@@ -262,9 +262,9 @@ function _kitComputeNudgeTier(moduleStartDateStr) {
 // getAddressFormLink() (LearnerAddressFormService.js). Falls back to the older
 // free-text 'migration_address_template' if the new 'kit_address_request_link'
 // WATI template hasn't been approved yet in the WATI dashboard.
-function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerName) {
+function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerName, useHsForm) {
   try {
-    var linkRes = getAddressFormLink(jlid, learnerName);
+    var linkRes = getAddressFormLink(jlid, learnerName, useHsForm);
     var link = (linkRes && linkRes.success) ? linkRes.url : '';
     if (link) {
       var wRes = sendWatiMessage(phone, 'kit_address_request_link', [
@@ -443,8 +443,12 @@ function _createBareKitRow(jlid, learnerName, kitName) {
 // otherwise creates a minimal row so the pipeline (Address column, timeline,
 // nudges) starts tracking immediately — order details get filled in later
 // via "Mark Order Placed".
+// useHsForm: if true, always sends the older native HubSpot "Kit Address
+// Form" share link (manual choice via the "Send Link Via" selector) instead
+// of our own page, and skips the yes/no reconfirm (that's specific to our
+// own page's flow) — just a straight link ask either way.
 // Returns { success, addressSource, address, phone, needsWati, watiSent, rowIndex }
-function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
+function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
   try {
     if (!jlid || !kitName) return { success: false, message: 'JLID and kit name required' };
 
@@ -494,7 +498,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
     // full address-link flow. If there's nothing on file yet, go straight to
     // the address-link ask (nothing to reconfirm).
     var existingAddrStr = '';
-    if (d.dealId) {
+    if (!useHsForm && d.dealId) {
       try {
         var existingAddr = _fetchContactAddress(d.dealId);
         existingAddrStr = [existingAddr.address, existingAddr.city, existingAddr.state, existingAddr.zip, existingAddr.country]
@@ -507,7 +511,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
     phonesToMessage.forEach(function(p) {
       var res = existingAddrStr
         ? sendKitAddressReconfirmWhatsApp(p, parentName, kitName, existingAddrStr)
-        : sendKitAddressLinkWhatsApp(p, parentName, kitName, jlid, learnerName);
+        : sendKitAddressLinkWhatsApp(p, parentName, kitName, jlid, learnerName, useHsForm);
       if (res && res.success) anyWatiSent = true;
       if (!wRes) wRes = res; // keep first result for the error message below
     });
