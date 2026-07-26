@@ -199,6 +199,36 @@ function _updateHubSpotContactAddress(dealId, addressText) {
 // ── Find the open (non-refunded, non-delivered) Kit Tracking row for a JLID ──
 // Shared by the address-bridge and link-open tracking. Returns the sheet
 // rowIndex, or 0 if there's no clean single match (none / ambiguous).
+// ── DIAGNOSTIC — read-only. Lists every Kit Tracking row for a JLID with its
+// SR_NO, sheet row number, and the fields that decide "open" vs "closed", so
+// you can see exactly which duplicate rows are causing an ambiguous bridge
+// match before deleting/editing anything. Run from the Apps Script editor's
+// function dropdown, check the log.
+function diagListKitRowsForJlid(jlid) {
+  jlid = String(jlid || 'JL39611449152C2').trim().toUpperCase();
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[KitDiag] Sheet has no data rows.'); return; }
+
+  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var found = 0;
+  raw.forEach(function(r, idx) {
+    if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) return;
+    found++;
+    var sheetRow = idx + 2;
+    var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
+    var deliveryDate = r[KIT_COL.DELIVERY_DATE - 1];
+    var isDelivered = !!deliveryDate;
+    var isOpen = !isRefunded && !isDelivered;
+    Logger.log('[KitDiag] sheetRow=' + sheetRow + ' srNo=' + r[KIT_COL.SR_NO - 1]
+      + ' kit=' + r[KIT_COL.KIT - 1] + ' addrStatus=' + r[KIT_COL.ADDR_STATUS - 1]
+      + ' orderPlaced=' + r[KIT_COL.ORDER_PLACED - 1] + ' deliveryDate=' + deliveryDate
+      + ' refunded=' + r[KIT_COL.REFUNDED - 1]
+      + ' → ' + (isOpen ? 'OPEN (counts toward ambiguity)' : 'closed (ignored)'));
+  });
+  Logger.log('[KitDiag] Total rows for ' + jlid + ': ' + found);
+}
+
 function _findOpenKitRowByJlid(jlid) {
   var sheet = _getKitSheet();
   var lastRow = sheet.getLastRow();
@@ -291,10 +321,14 @@ function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerNam
 // instead of retyping everything. "No" falls through to the full link flow
 // (see handleKitAddressReconfirmReply below).
 function sendKitAddressReconfirmWhatsApp(phone, parentName, kitName, existingAddress) {
-  return sendWatiMessage(phone, 'kit_address_reconfirm', [
+  // v2 template uses NAMED placeholders ({{Parent}}, {{kit_name}}, {{address}})
+  // instead of numbered ({{1}}/{{2}}/{{3}}) — the param `name` here must match
+  // the placeholder name exactly (case-sensitive), unlike numbered templates
+  // where WATI maps by array order regardless of the name label.
+  return sendWatiMessage(phone, 'kit_address_reconfirm_v2', [
     { name: 'Parent',   value: parentName      },
-    { name: 'Kit_name', value: kitName         },
-    { name: 'Address',  value: existingAddress }
+    { name: 'kit_name', value: kitName         },
+    { name: 'address',  value: existingAddress }
   ]);
 }
 

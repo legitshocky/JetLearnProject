@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-27] — Switch to kit_address_reconfirm_v2 (V8.05)
+
+### Root cause found and fixed (`KitTrackingService.js`, WATI dashboard)
+- `kit_address_reconfirm` was silently broken — modified after initial approval (unlike its sibling templates, which were never edited post-creation and worked fine), likely a WATI/Meta approval-sync mismatch specific to post-approval edits.
+- Fixed by recreating the template fresh as `kit_address_reconfirm_v2` (distinct name, avoids any stale-record collision) with **named** placeholders (`{{Parent}}`, `{{kit_name}}`, `{{address}}`) instead of numbered ones.
+- `sendKitAddressReconfirmWhatsApp()` updated to send `kit_address_reconfirm_v2` with parameter names matching the new placeholders exactly (case-sensitive: `kit_name`/`address` lowercase) — named-variable templates require this, unlike numbered templates where WATI maps by array position regardless of the `name` label.
+
+---
+
 ## [2026-07-27] — Fix Multi-Contact Reply Matching (V8.01)
 
 ### A reply from any guardian on the deal now matches back correctly (`KitTrackingService.js`)
