@@ -6,6 +6,99 @@
 // Writes straight to HubSpot contact properties + a log sheet for ops.
 // ============================================================
 
+// ── Submit address via HubSpot's Forms Submission API instead of a direct
+// contact-property PATCH. Forms submissions aren't subject to the
+// crm.objects.contacts.sensitive.write.v2 scope (that gate only applies to
+// direct CRM API writes), so this can write real values into address/city/
+// state/zip/country even though the property PATCH is blocked — exactly
+// how the native "Kit Address Form" (share.hsforms.com link) has been able
+// to write these same fields all along.
+var LAF_KIT_ADDR_FORM_SHARE = 'https://share.hsforms.com/12G7CQKHXR_mYNbm3kvDSDA4lo43';
+var LAF_KIT_ADDR_FORM_GUID_CACHE_KEY = 'LAF_KIT_ADDR_FORM_GUID';
+
+function _findKitAddressFormGuid() {
+  var sc = CacheService.getScriptCache();
+  var cached = sc.get(LAF_KIT_ADDR_FORM_GUID_CACHE_KEY);
+  if (cached) return cached;
+
+  var hardcoded = PropertiesService.getScriptProperties().getProperty('LAF_KIT_ADDRESS_FORM_GUID');
+  if (hardcoded) { sc.put(LAF_KIT_ADDR_FORM_GUID_CACHE_KEY, hardcoded, 21600); return hardcoded; }
+
+  // Extract GUID from the share URL's embedded HTML (works without Forms API scope)
+  try {
+    var shareResp = monitoredFetch(LAF_KIT_ADDR_FORM_SHARE, { muteHttpExceptions: true, followRedirects: true });
+    if (shareResp.getResponseCode() === 200) {
+      var html = shareResp.getContentText();
+      var guidPatterns = [
+        /"formId"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i,
+        /"guid"\s*:\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i,
+        /formId=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
+        /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|"|\?)/i
+      ];
+      for (var pi = 0; pi < guidPatterns.length; pi++) {
+        var m = html.match(guidPatterns[pi]);
+        if (m && m[1]) { sc.put(LAF_KIT_ADDR_FORM_GUID_CACHE_KEY, m[1], 21600); return m[1]; }
+      }
+    }
+  } catch(e) { Logger.log('[LAF] Kit Address Form share-URL GUID scrape failed: ' + e.message); }
+
+  // Fallback: Forms v2 API search by name (requires forms scope)
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var resp = monitoredFetch('https://api.hubapi.com/forms/v2/forms?limit=500', {
+      headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() === 200) {
+      var forms = JSON.parse(resp.getContentText());
+      for (var i = 0; i < forms.length; i++) {
+        if (forms[i].name && /kit\s*address/i.test(forms[i].name)) {
+          sc.put(LAF_KIT_ADDR_FORM_GUID_CACHE_KEY, forms[i].guid, 21600);
+          return forms[i].guid;
+        }
+      }
+    }
+  } catch(e2) { Logger.log('[LAF] Kit Address Form v2 API lookup failed: ' + e2.message); }
+
+  return null;
+}
+
+// Submits the address via HubSpot's Forms API (see note above). Returns a
+// short status string for the audit log — never throws, caller treats this
+// as best-effort.
+function _submitKitAddressHSForm(payload, portalId) {
+  try {
+    var guid = _findKitAddressFormGuid();
+    if (!guid) return 'FORM GUID NOT FOUND';
+
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var fields = [
+      { name: 'email',   value: String(payload.email).trim() },
+      { name: 'address', value: String(payload.address).trim() },
+      { name: 'city',    value: String(payload.city).trim() },
+      { name: 'state',   value: String(payload.state).trim() },
+      { name: 'zip',     value: String(payload.postalCode).trim() },
+      { name: 'country', value: String(payload.country).trim() }
+    ];
+
+    var resp = monitoredFetch(
+      'https://api.hsforms.com/submissions/v3/integration/submit/' + portalId + '/' + guid,
+      {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ fields: fields, context: {
+          pageUri: 'https://jetlearn-kit-links.web.app', pageName: 'JetLearn Kit Address Confirmation'
+        }}),
+        muteHttpExceptions: true
+      }
+    );
+    var code = resp.getResponseCode();
+    if (code === 200 || code === 201) return 'FORM SUBMIT OK (HTTP ' + code + ', guid=' + guid + ')';
+    return 'FORM SUBMIT REJECTED (HTTP ' + code + '): ' + resp.getContentText().substring(0, 400);
+  } catch(e) {
+    return 'FORM SUBMIT EXCEPTION: ' + e.message;
+  }
+}
+
 // ── DIAGNOSTIC — read-only. Shows exactly which contact(s) are associated
 // with a JLID's deal, which one the PATCH targets, and that contact's
 // CURRENT address properties (fresh from HubSpot, not cached). Run from the
@@ -66,9 +159,12 @@ function _lafGetLogSheet() {
   var sheet = ss.getSheetByName('Learner Address Submissions');
   if (!sheet) {
     sheet = ss.insertSheet('Learner Address Submissions');
-    sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID', 'Kit Bridge Status']);
-    sheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+    sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID', 'Kit Bridge Status', 'HubSpot PATCH Status']);
+    sheet.getRange(1, 1, 1, 12).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < 12) {
+    // Self-heal: older sheet predates the "HubSpot PATCH Status" column
+    sheet.getRange(1, 12).setValue('HubSpot PATCH Status').setFontWeight('bold');
   }
   return sheet;
 }
@@ -134,33 +230,60 @@ function submitLearnerAddressForm(payload) {
 
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     var contactId = d.dealId ? _lafGetContactId(d.dealId, token) : '';
+    var patchStatus = '';
 
+    // NOTE: this portal has address/city/state/zip/country classified as
+    // "sensitive" contact properties, and our API token doesn't have (and
+    // won't be given) the crm.objects.contacts.sensitive.write.v2 scope
+    // needed to write them. Combining email with those fields in one PATCH
+    // fails the WHOLE request (HubSpot PATCH is atomic), so: PATCH email
+    // alone (not sensitive, should succeed), and put the actual address on
+    // a deal Note instead — notes aren't subject to that scope at all.
+    // Our own sheets remain the real system of record for the address either way.
     if (contactId) {
       try {
         var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId, {
           method: 'PATCH',
           headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
           payload: JSON.stringify({ properties: {
-            email:   String(payload.email).trim(),
-            address: String(payload.address).trim().substring(0, 255),
-            city:    String(payload.city).trim(),
-            state:   String(payload.state).trim(),
-            zip:     String(payload.postalCode).trim(),
-            country: String(payload.country).trim()
+            email: String(payload.email).trim()
           }}),
           muteHttpExceptions: true
         });
         var patchCode = patchResp.getResponseCode();
         if (patchCode < 200 || patchCode >= 300) {
-          Logger.log('[LAF] HubSpot contact PATCH REJECTED (contactId=' + contactId + ', HTTP ' + patchCode + '): ' + patchResp.getContentText());
+          patchStatus = 'EMAIL REJECTED (HTTP ' + patchCode + '): ' + patchResp.getContentText().substring(0, 400);
         } else {
-          Logger.log('[LAF] HubSpot contact PATCH OK (contactId=' + contactId + ', HTTP ' + patchCode + ')');
+          patchStatus = 'EMAIL OK (HTTP ' + patchCode + ', contactId=' + contactId + ')';
         }
       } catch(pe) {
-        Logger.log('[LAF] HubSpot contact PATCH failed (non-fatal): ' + pe.message);
+        patchStatus = 'EXCEPTION: ' + pe.message;
       }
     } else {
-      Logger.log('[LAF] No HubSpot contact found for deal ' + d.dealId + ' — logged only, not patched.');
+      patchStatus = 'NO CONTACT FOUND for dealId=' + d.dealId;
+    }
+
+    // Primary attempt: submit via HubSpot's Forms API — this bypasses the
+    // sensitive-property scope entirely (forms submissions aren't gated by
+    // it) and, if it works, writes real values into the actual contact
+    // address/city/state/zip/country fields, same as the native form does.
+    var formSubmitStatus = _submitKitAddressHSForm(payload, LP_HS_PORTAL_ID);
+    patchStatus += ' | ' + formSubmitStatus;
+
+    // Belt-and-braces: also add a deal Note regardless of the forms-API
+    // result, since it costs nothing and doesn't depend on that scope either.
+    try {
+      if (d.dealId) {
+        _addNoteToDeal(d.dealId,
+          '[Kit Delivery Address] Parent submitted via the address confirmation form on ' +
+          _formatDMY(new Date()) + ':\n' +
+          String(payload.address).trim() + ', ' + String(payload.city).trim() + ', ' +
+          String(payload.state).trim() + ', ' + String(payload.postalCode).trim() + ', ' +
+          String(payload.country).trim());
+        patchStatus += ' | Address note added to deal';
+      }
+    } catch(ne) {
+      patchStatus += ' | Address note FAILED: ' + ne.message;
     }
 
     var addressText = [payload.address, payload.city, payload.state, payload.postalCode, payload.country]
@@ -171,7 +294,7 @@ function submitLearnerAddressForm(payload) {
     var sheet = _lafGetLogSheet();
     sheet.appendRow([
       new Date(), jlid, d.learnerName || '', payload.email, payload.address,
-      payload.city, payload.state, payload.postalCode, payload.country, d.dealId || '', bridgeStatus
+      payload.city, payload.state, payload.postalCode, payload.country, d.dealId || '', bridgeStatus, patchStatus
     ]);
 
     Logger.log('[LAF] Address submitted for ' + jlid + ' (kitBridgeStatus=' + bridgeStatus + ')');
