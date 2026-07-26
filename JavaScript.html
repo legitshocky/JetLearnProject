@@ -14708,10 +14708,16 @@ function ktRequestAddress() {
       if (btn) { btn.innerHTML = '<i class="fas fa-whatsapp"><\/i> Request via WhatsApp'; btn.disabled = false; }
       var addrStatus  = document.getElementById('ktfAddressStatus');
       var addrCheckBtn = document.getElementById('ktfCheckAddrBtn');
+      var addrVerifyBtn = document.getElementById('ktfVerifyAddrBtn');
       if (!r || !r.success) {
         showToast('error', 'Address Request Failed', (r && r.message) || 'Unknown error');
         return;
       }
+      // A fresh request always clears any previously-displayed address (the
+      // sheet's DELIVERY_ADDRESS gets blanked server-side too, since it's
+      // about to be reconfirmed) — hide Verify Address so it doesn't point
+      // at a now-blank address.
+      if (addrVerifyBtn) addrVerifyBtn.style.display = 'none';
       if (r.addressSource === 'hubspot') {
         // Address found on HubSpot — fill it in
         var addrInput = document.getElementById('ktfDeliveryAddress');
@@ -14721,6 +14727,8 @@ function ktRequestAddress() {
         showToast('success', 'Address Found', 'HubSpot address loaded');
       } else {
         // WATI request sent
+        var addrInput2 = document.getElementById('ktfDeliveryAddress');
+        if (addrInput2) addrInput2.value = '';
         if (addrStatus) addrStatus.innerHTML = '<span style="color:#d97706;font-size:0.75rem;">⏳ Address requested via WhatsApp — waiting for parent reply<\/span>';
         if (btn) btn.style.display = 'none';
         if (addrCheckBtn) addrCheckBtn.style.display = 'inline-flex';

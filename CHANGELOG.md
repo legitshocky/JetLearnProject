@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-27] — Fix Stale "Verify Address" Button (V7.99)
+
+### Verify Address button stayed visible pointing at a now-blank address (`JavaScript.html`)
+- `requestKitDeliveryAddress()` clears the sheet's `DELIVERY_ADDRESS` when a fresh request goes out (since it's about to be reconfirmed), but `ktRequestAddress()`'s success handler never hid the "Verify Address" button — so clicking it afterward failed with "No address on file," even though the textarea still showed the old (now-stale) address client-side. Now hides the button and clears the textarea display in that same success handler, so the UI matches what's actually in the sheet.
+
+---
+
 ## [2026-07-27] — Fix kit_address_request_link WATI Rejection (V7.98)
 
 ### Removed `?name=...` query param from the WhatsApp-sent link (`LearnerAddressFormService.js`)
