@@ -1931,14 +1931,18 @@ function getKitTrackingData() {
 
       if (!learnerName && !kit) return; // blank row
 
-      // Parse order date — skip rows before Jan 2026
+      // Parse order date — skip rows before Jan 2026. EXCEPTION: address-first
+      // rows (created via _createBareKitRow, no order placed yet) have no
+      // order date at all — never filter those out, or they'd be invisible
+      // in the dashboard with no way to ever reach "Mark Order Placed".
       var orderDate = null;
       if (orderRaw instanceof Date) {
         orderDate = orderRaw;
       } else if (orderRaw) {
         orderDate = _parseDMY(String(orderRaw));
       }
-      if (!orderDate || orderDate < cutoff) return;
+      var isAddressFirstRow = !orderRaw && addrStatus && !orderPlaced;
+      if (!isAddressFirstRow && (!orderDate || orderDate < cutoff)) return;
 
       // Build orderMonth label e.g. �April 2026� � always from parsed orderDate (never col H formula)
       var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

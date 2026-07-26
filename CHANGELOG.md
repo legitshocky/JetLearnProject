@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Fix Address-First Rows Invisible in Table (V7.84)
+
+### Fixed: bare address-first rows never appeared in the dashboard (`KitTrackingService.js`)
+- `_createBareKitRow()` (V7.79) creates a row with no `DATE_OF_ORDER`, but `getKitTrackingData()` silently skips any row without a valid, parseable order date (`if (!orderDate || orderDate < cutoff) return;`) — so address-first rows were being fetched from the sheet but then filtered out of every response, making them permanently invisible in the UI (no "Mark Order Placed" button ever appeared, no way to tell the request even worked).
+- Added an exception: rows with `ADDR_STATUS` set, no order date, and no order placed yet are never filtered out, regardless of order date.
+- Note: these rows have no `orderMonth` (nothing to derive it from until an order is placed), so they only show under the **"All Months"** filter, not a specific month — expected, since they aren't tied to an order month yet.
+
+---
+
 ## [2026-07-26] — Kit Tracking: Yes/No Address Reconfirm (V7.80)
 
 ### Quick-reply reconfirm instead of always re-asking from scratch (`KitTrackingService.js`, `Code.js`)
