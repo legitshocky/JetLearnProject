@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Always-Visible Address Column (V7.78)
+
+### New "Address" table column (`Index.html`, `JavaScript.html`)
+- Previously, address progress (`addr_received_pending_order`) only appeared in the `Status` column, and only when a row wasn't already Delivered/Awaiting/Overdue — so most rows showed nothing about their address state at all.
+- Added a dedicated **Address** column between Parent Response and Status, visible on every row regardless of delivery status: Not asked / Requested / Received / Verified / From HubSpot, plus "Order placed" and "👁 opened N×" sub-lines when relevant.
+- Added `addr_received_pending_order` to the Status filter dropdown.
+
+---
+
 ## [2026-07-26] — Multi-Contact Kit Address Requests + Certificate Emails (V7.77)
 
 ### WhatsApp + email fired together, to every contact on the deal (`KitTrackingService.js`)

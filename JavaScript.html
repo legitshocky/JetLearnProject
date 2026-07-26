@@ -13741,7 +13741,7 @@ let _kitTrackingData = [];
 function loadKitTrackingPage() {
   const tbody = document.getElementById('ktTableBody');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="11" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"><\/i>Loading kit tracking data…<\/td><\/tr>';
+  tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"><\/i>Loading kit tracking data…<\/td><\/tr>';
 
   // Reset KPIs
   ['ktKpiTotal','ktKpiDelivered','ktKpiAwaiting','ktKpiNotReceived','ktKpiOverdue','ktKpiEscalated'].forEach(id => {
@@ -13754,7 +13754,7 @@ function loadKitTrackingPage() {
   google.script.run
     .withSuccessHandler(function(result) {
       if (!result || !result.success) {
-        tbody.innerHTML = '<tr><td colspan="11" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml((result && result.message) || 'Failed to load kit data.') + '<\/td><\/tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml((result && result.message) || 'Failed to load kit data.') + '<\/td><\/tr>';
         return;
       }
       _kitTrackingData = result.rows || [];
@@ -13811,7 +13811,7 @@ function loadKitTrackingPage() {
       if (_ktCurrentTab === 'pivot') renderKitPivot();
     })
     .withFailureHandler(function(err) {
-      tbody.innerHTML = '<tr><td colspan="11" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
     })
     .getKitTrackingData();
 }
@@ -13910,7 +13910,7 @@ function renderKitTrackingTable(filterArg) {
   if (countEl) countEl.textContent = filtered.length + ' of ' + baseFiltered.length + (filterMonth ? ' in ' + filterMonth : ' kits');
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-box-open" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"><\/i>No kits match filters.<\/td><\/tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-box-open" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"><\/i>No kits match filters.<\/td><\/tr>';
     return;
   }
 
@@ -13956,6 +13956,24 @@ function renderKitTrackingTable(filterArg) {
       ? '<span style="font-size:0.78rem;font-weight:500;color:' + respColor + ';">' + escapeHtml(row.response) + '<\/span>'
       : '<span style="color:#94a3b8;font-size:0.75rem;">—<\/span>';
 
+    // Address column — always visible, independent of overall kit Status
+    const addrConfig = {
+      Requested: { label: 'Requested', color: '#d97706', bg: '#fffbeb' },
+      Received:  { label: 'Received',  color: '#0d9488', bg: '#f0fdfa' },
+      Verified:  { label: 'Verified',  color: '#16a34a', bg: '#f0fdf4' },
+      HubSpot:   { label: 'From HubSpot', color: '#6366f1', bg: '#eef2ff' }
+    };
+    const ac = addrConfig[row.addrStatus];
+    let addrCell = ac
+      ? '<span style="font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">Not asked<\/span>';
+    if (row.addrStatus === 'Received' && row.orderPlaced) {
+      addrCell += '<span style="display:block;font-size:0.66rem;color:#94a3b8;margin-top:2px;">Order placed<\/span>';
+    }
+    if (row.linkOpenCount) {
+      addrCell += '<span style="display:block;font-size:0.66rem;color:#94a3b8;margin-top:2px;">👁 opened ' + row.linkOpenCount + '×<\/span>';
+    }
+
     // Details expand row
     const detailRowId = 'ktDetail_' + row.rowIndex;
     var detailInner = '';
@@ -13985,7 +14003,7 @@ function renderKitTrackingTable(filterArg) {
     }
 
     const detailHtml = '<tr id="' + detailRowId + '" style="display:none;background:#f8fafc;">'
-      + '<td colspan="11" style="padding:10px 18px 14px;">'
+      + '<td colspan="12" style="padding:10px 18px 14px;">'
       + '<div style="display:flex;gap:2rem;flex-wrap:wrap;font-size:0.78rem;color:#475569;">' + detailInner + '<\/div>'
       + timelineHtml
       + '<\/td><\/tr>';
@@ -14007,6 +14025,7 @@ function renderKitTrackingTable(filterArg) {
       + '<td style="padding:10px 14px;color:#64748b;white-space:nowrap;">' + (escapeHtml(row.timeTaken) || '—') + '<\/td>'
       + '<td style="padding:10px 14px;">' + fupCell + '<\/td>'
       + '<td style="padding:10px 14px;">' + responseCell + '<\/td>'
+      + '<td style="padding:10px 14px;">' + addrCell + '<\/td>'
       + '<td style="padding:10px 14px;">' + statusBadge + '<\/td>'
       + '<td style="padding:10px 14px;" onclick="event.stopPropagation()">' + actionBtn + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'

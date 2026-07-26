@@ -3397,6 +3397,7 @@
           <option value="overdue">🚨 Overdue (No FUP)</option>
           <option value="pending">📭 Follow-up Not Sent</option>
           <option value="escalated">🔴 Escalated (2nd Reminder)</option>
+          <option value="addr_received_pending_order">📬 Address Received</option>
         </select>
         <select id="ktFilterKit" class="form-control form-select" style="flex:0 1 160px;min-width:130px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitTrackingTable()">
           <option value="">All Kits</option>
@@ -3421,13 +3422,14 @@
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Time Taken</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Follow-up</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Parent Response</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Address</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Status</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Actions</th>
               <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">HS Deal</th>
             </tr>
           </thead>
           <tbody id="ktTableBody">
-            <tr><td colspan="11" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>
+            <tr><td colspan="12" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>
           </tbody>
         </table>
       </div>
