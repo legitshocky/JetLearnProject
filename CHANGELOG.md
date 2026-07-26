@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-26] — Kit Address Form: Confirmed Scope Ceiling, Simplified to Note-Only (V7.90–V7.91)
+
+### Confirmed: no direct-write path to HubSpot is available with the current token
+- `diagFindKitAddressForm()` showed both Forms APIs are also blocked — v2 needs `forms-access`/`form-submissions`/`forms-read`, v3 needs `forms` — neither granted. Combined with the earlier-confirmed sensitive-property block (which also covers plain `email`, not just address), every direct-write path to HubSpot (property PATCH, Forms API submission) is closed off with this token, and none of the missing scopes are obtainable.
+
+### Simplified `submitLearnerAddressForm()` to the one thing that actually works (`LearnerAddressFormService.js`)
+- Removed the doomed email-PATCH and Forms-API-submission attempts (both always fail — no point spending API calls confirming that every time). The address is now recorded as a HubSpot deal **Note** only (via `_addNoteToDeal`, unaffected by either scope restriction) — visible directly on the deal in HubSpot. The Kit Tracking sheet remains the actual system of record, as it already was.
+
+---
+
 ## [2026-07-26] — Kit Address Form: Submit via HubSpot Forms API (V7.89)
 
 ### Bypass the sensitive-property scope via a real Forms submission (`LearnerAddressFormService.js`)

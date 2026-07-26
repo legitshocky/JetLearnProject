@@ -42,9 +42,10 @@ function _findKitAddressFormGuid() {
     }
   } catch(e) { Logger.log('[LAF] Kit Address Form share-URL GUID scrape failed: ' + e.message); }
 
-  // Fallback: Forms v2 API search by name (requires forms scope)
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+
+  // Fallback 1: legacy Forms v2 API search by name
   try {
-    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     var resp = monitoredFetch('https://api.hubapi.com/forms/v2/forms?limit=500', {
       headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
     });
@@ -59,7 +60,58 @@ function _findKitAddressFormGuid() {
     }
   } catch(e2) { Logger.log('[LAF] Kit Address Form v2 API lookup failed: ' + e2.message); }
 
+  // Fallback 2: modern Marketing Forms v3 API (many portals only expose forms here now)
+  try {
+    var resp3 = monitoredFetch('https://api.hubapi.com/marketing/v3/forms/?limit=100', {
+      headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+    });
+    if (resp3.getResponseCode() === 200) {
+      var data3 = JSON.parse(resp3.getContentText());
+      var results3 = data3.results || [];
+      for (var j = 0; j < results3.length; j++) {
+        if (results3[j].name && /kit\s*address/i.test(results3[j].name)) {
+          sc.put(LAF_KIT_ADDR_FORM_GUID_CACHE_KEY, results3[j].id, 21600);
+          return results3[j].id;
+        }
+      }
+    }
+  } catch(e3) { Logger.log('[LAF] Kit Address Form v3 API lookup failed: ' + e3.message); }
+
   return null;
+}
+
+// ── DIAGNOSTIC — read-only. Shows exactly what each Forms API returns, so we
+// can see whether it's a scope/permission issue or just a naming mismatch.
+// Run from the Apps Script editor's function dropdown, check the log.
+function diagFindKitAddressForm() {
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+
+  Logger.log('[FormDiag] --- Forms v2 API ---');
+  var resp2 = monitoredFetch('https://api.hubapi.com/forms/v2/forms?limit=500', {
+    headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  Logger.log('[FormDiag] v2 HTTP ' + resp2.getResponseCode());
+  if (resp2.getResponseCode() === 200) {
+    var forms2 = JSON.parse(resp2.getContentText());
+    Logger.log('[FormDiag] v2 total forms: ' + forms2.length);
+    Logger.log('[FormDiag] v2 names: ' + forms2.map(function(f) { return f.name; }).join(' | '));
+  } else {
+    Logger.log('[FormDiag] v2 body: ' + resp2.getContentText().substring(0, 500));
+  }
+
+  Logger.log('[FormDiag] --- Marketing Forms v3 API ---');
+  var resp3 = monitoredFetch('https://api.hubapi.com/marketing/v3/forms/?limit=100', {
+    headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  Logger.log('[FormDiag] v3 HTTP ' + resp3.getResponseCode());
+  if (resp3.getResponseCode() === 200) {
+    var data3 = JSON.parse(resp3.getContentText());
+    var results3 = data3.results || [];
+    Logger.log('[FormDiag] v3 total forms: ' + results3.length);
+    Logger.log('[FormDiag] v3 names: ' + results3.map(function(f) { return f.name + ' (' + f.id + ')'; }).join(' | '));
+  } else {
+    Logger.log('[FormDiag] v3 body: ' + resp3.getContentText().substring(0, 500));
+  }
 }
 
 // Submits the address via HubSpot's Forms API (see note above). Returns a
@@ -228,50 +280,16 @@ function submitLearnerAddressForm(payload) {
     if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner. Please contact JetLearn support.' };
     var d = hs.data;
 
-    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    var contactId = d.dealId ? _lafGetContactId(d.dealId, token) : '';
     var patchStatus = '';
 
-    // NOTE: this portal has address/city/state/zip/country classified as
-    // "sensitive" contact properties, and our API token doesn't have (and
-    // won't be given) the crm.objects.contacts.sensitive.write.v2 scope
-    // needed to write them. Combining email with those fields in one PATCH
-    // fails the WHOLE request (HubSpot PATCH is atomic), so: PATCH email
-    // alone (not sensitive, should succeed), and put the actual address on
-    // a deal Note instead — notes aren't subject to that scope at all.
-    // Our own sheets remain the real system of record for the address either way.
-    if (contactId) {
-      try {
-        var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/contacts/' + contactId, {
-          method: 'PATCH',
-          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-          payload: JSON.stringify({ properties: {
-            email: String(payload.email).trim()
-          }}),
-          muteHttpExceptions: true
-        });
-        var patchCode = patchResp.getResponseCode();
-        if (patchCode < 200 || patchCode >= 300) {
-          patchStatus = 'EMAIL REJECTED (HTTP ' + patchCode + '): ' + patchResp.getContentText().substring(0, 400);
-        } else {
-          patchStatus = 'EMAIL OK (HTTP ' + patchCode + ', contactId=' + contactId + ')';
-        }
-      } catch(pe) {
-        patchStatus = 'EXCEPTION: ' + pe.message;
-      }
-    } else {
-      patchStatus = 'NO CONTACT FOUND for dealId=' + d.dealId;
-    }
-
-    // Primary attempt: submit via HubSpot's Forms API — this bypasses the
-    // sensitive-property scope entirely (forms submissions aren't gated by
-    // it) and, if it works, writes real values into the actual contact
-    // address/city/state/zip/country fields, same as the native form does.
-    var formSubmitStatus = _submitKitAddressHSForm(payload, LP_HS_PORTAL_ID);
-    patchStatus += ' | ' + formSubmitStatus;
-
-    // Belt-and-braces: also add a deal Note regardless of the forms-API
-    // result, since it costs nothing and doesn't depend on that scope either.
+    // NOTE: confirmed via diagnostics — this token has NO scopes for direct
+    // contact-property writes (even plain `email` is blocked as a "sensitive"
+    // property: HTTP 403), and no `forms`/`forms-access` scope either, so the
+    // Forms Submission API bypass is blocked too. Every direct-write path to
+    // HubSpot is closed off with the current token, and that isn't going to
+    // change. The only thing that reliably works is a deal Note (notes aren't
+    // gated by either scope) — so that's the whole strategy now: record the
+    // address as a Note, and treat our own sheets as the real system of record.
     try {
       if (d.dealId) {
         _addNoteToDeal(d.dealId,
