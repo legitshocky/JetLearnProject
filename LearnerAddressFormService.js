@@ -396,8 +396,13 @@ function getAddressFormLink(jlid, learnerName, useHsForm) {
   // (jetlearn-kit-links.web.app), not a redirect. The page fetch()es learner
   // data from the GAS backend as a JSON API, so this URL stays in the address
   // bar the whole time. Safe to paste directly into WhatsApp.
+  // NOTE: deliberately NOT appending ?name=... here — WhatsApp template
+  // parameters are picky about certain characters/patterns, and a query
+  // string with percent-encoded spaces got this exact template rejected by
+  // WATI ("cannot have typos or blank text"). The name is purely a cosmetic
+  // instant-display hint before the page's own API call resolves; the page
+  // works perfectly without it, so it's not worth risking template rejection.
   var shortUrl = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(cleanJlid);
-  if (learnerName) shortUrl += '?name=' + encodeURIComponent(String(learnerName).trim());
 
   return { success: true, url: shortUrl, longUrl: longUrl };
 }

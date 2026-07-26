@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-27] — Fix kit_address_request_link WATI Rejection (V7.98)
+
+### Removed `?name=...` query param from the WhatsApp-sent link (`LearnerAddressFormService.js`)
+- Live test showed `kit_address_request_link` getting rejected by WATI ("cannot have typos or blank text") whenever the link included `?name=Ahaan%20Padia%20Test%20Deal` — the fallback (`migration_address_template`, which has the old `share.hsforms.com` link hardcoded directly in its static body, unrelated to the new link-choice feature) then fired instead.
+- `getAddressFormLink()` no longer appends the `?name=` query string to the short link — it was a purely cosmetic instant-display hint (the page's own API call resolves the real name a moment later regardless) and isn't worth risking template rejection over.
+
+---
+
 ## [2026-07-27] — Kit Tracking: Choice of Link (My Page vs HubSpot Form) (V7.97)
 
 ### New "Send Link Via" selector (`Index.html`, `JavaScript.html`, `KitTrackingService.js`, `LearnerAddressFormService.js`)
