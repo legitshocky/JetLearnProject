@@ -13967,9 +13967,27 @@ function renderKitTrackingTable(filterArg) {
     if (row.subscription) detailInner += '<span><b style="color:#94a3b8;">Subscription<\/b><br>' + escapeHtml(row.subscription) + '<\/span>';
     if (row.roadmap)      detailInner += '<span><b style="color:#94a3b8;">Roadmap<\/b><br>' + escapeHtml(row.roadmap) + '<\/span>';
     if (row.sentBy)       detailInner += '<span><b style="color:#94a3b8;">Sent By<\/b><br>' + escapeHtml(row.sentBy) + '<\/span>';
+
+    // Address link timeline — requested / opened / submitted
+    var timelineHtml = '';
+    if (row.addrRequestedAt || row.linkOpenCount) {
+      var steps = [];
+      steps.push('<span style="display:flex;flex-direction:column;">'
+        + '<b style="color:#94a3b8;font-size:0.7rem;">🔗 Link Sent<\/b>'
+        + '<span>' + (escapeHtml(row.addrRequestedAt) || '—') + '<\/span><\/span>');
+      steps.push('<span style="display:flex;flex-direction:column;">'
+        + '<b style="color:#94a3b8;font-size:0.7rem;">👁 Opened<\/b>'
+        + '<span>' + (row.linkOpenCount ? row.linkOpenCount + '× · first ' + escapeHtml(row.linkFirstOpenedAt) + (row.linkOpenCount > 1 ? ' · last ' + escapeHtml(row.linkLastOpenedAt) : '') : 'Not yet opened') + '<\/span><\/span>');
+      steps.push('<span style="display:flex;flex-direction:column;">'
+        + '<b style="color:#94a3b8;font-size:0.7rem;">✅ Submitted<\/b>'
+        + '<span>' + (escapeHtml(row.addrSubmittedAt) || 'Not yet submitted') + '<\/span><\/span>');
+      timelineHtml = '<div style="width:100%;margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;display:flex;gap:2.5rem;flex-wrap:wrap;font-size:0.78rem;color:#475569;">' + steps.join('') + '<\/div>';
+    }
+
     const detailHtml = '<tr id="' + detailRowId + '" style="display:none;background:#f8fafc;">'
       + '<td colspan="11" style="padding:10px 18px 14px;">'
       + '<div style="display:flex;gap:2rem;flex-wrap:wrap;font-size:0.78rem;color:#475569;">' + detailInner + '<\/div>'
+      + timelineHtml
       + '<\/td><\/tr>';
 
     const rowBg = row.status === 'escalated' ? '#fff5f5' : (i % 2 === 0 ? '#fff' : '#fafbfc');

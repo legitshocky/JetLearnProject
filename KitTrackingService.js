@@ -61,13 +61,18 @@ var KIT_COL = {
   ORDER_PLACED_AT:    34,
   ORDER_STORE:        35,
   ORDER_TRACKING_NO:  36,
-  ORDER_TRACKING_URL: 37
+  ORDER_TRACKING_URL: 37,
+  // Link-open / submission timeline columns (appended — AL..AO)
+  LINK_OPEN_COUNT:      38,  // Number of times the public address page was loaded
+  LINK_FIRST_OPENED_AT: 39,  // Timestamp of first open
+  LINK_LAST_OPENED_AT:  40,  // Timestamp of most recent open
+  ADDR_SUBMITTED_AT:    41   // Timestamp the parent actually submitted the form
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
 // KIT_COL.REFUNDED) for any full-row range read, since REFUNDED is no
 // longer the last column.
-var KIT_LAST_COL = KIT_COL.ORDER_TRACKING_URL;
+var KIT_LAST_COL = KIT_COL.ADDR_SUBMITTED_AT;
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
 // Fetch current learning_kit_cost directly from deal GET — bypasses search cache
@@ -188,6 +193,50 @@ function _updateHubSpotContactAddress(dealId, addressText) {
     Logger.log('[KitTracking] HubSpot contact address updated for contactId=' + contactId);
   } catch(e) {
     Logger.log('[KitTracking] _updateHubSpotContactAddress error: ' + e.message);
+  }
+}
+
+// ── Find the open (non-refunded, non-delivered) Kit Tracking row for a JLID ──
+// Shared by the address-bridge and link-open tracking. Returns the sheet
+// rowIndex, or 0 if there's no clean single match (none / ambiguous).
+function _findOpenKitRowByJlid(jlid) {
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+
+  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var candidates = [];
+  raw.forEach(function(r, idx) {
+    if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) return;
+    var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
+    var isDelivered = !!r[KIT_COL.DELIVERY_DATE - 1];
+    if (isRefunded || isDelivered) return;
+    candidates.push(idx + 2);
+  });
+  return candidates.length === 1 ? candidates[0] : 0;
+}
+
+// ── Record that the public address page was opened (called from the JSON
+// API's addressFormContext branch, every time the page loads/reloads) ────────
+// Best-effort and silent — link-open tracking must never affect what the
+// parent sees on the page.
+function recordKitAddressLinkOpen(jlid) {
+  try {
+    if (!jlid) return;
+    var rowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase());
+    if (!rowIndex) return;
+
+    var sheet = _getKitSheet();
+    var count = sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT).getValue();
+    count = (typeof count === 'number' && count > 0) ? count + 1 : 1;
+    sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT).setValue(count);
+
+    var firstOpened = sheet.getRange(rowIndex, KIT_COL.LINK_FIRST_OPENED_AT).getValue();
+    var now = new Date();
+    if (!firstOpened) sheet.getRange(rowIndex, KIT_COL.LINK_FIRST_OPENED_AT).setValue(now);
+    sheet.getRange(rowIndex, KIT_COL.LINK_LAST_OPENED_AT).setValue(now);
+  } catch(e) {
+    Logger.log('[KitTracking] recordKitAddressLinkOpen error: ' + e.message);
   }
 }
 
@@ -891,6 +940,17 @@ function _formatDMY(date) {
   var m = date.getMonth() + 1;
   var y = date.getFullYear();
   return (d < 10 ? '0' + d : d) + '/' + (m < 10 ? '0' + m : m) + '/' + y;
+}
+
+// ── Format a sheet cell (Date or string) as "DD/MM/YYYY, HH:MM" for timeline display ──
+function _kitFormatDateTime(val) {
+  if (!val) return '';
+  var d = (val instanceof Date) ? val : new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  var dd = d.getDate(), mm = d.getMonth() + 1, yyyy = d.getFullYear();
+  var hh = d.getHours(), min = d.getMinutes();
+  return (dd < 10 ? '0' + dd : dd) + '/' + (mm < 10 ? '0' + mm : mm) + '/' + yyyy + ', ' +
+    (hh < 10 ? '0' + hh : hh) + ':' + (min < 10 ? '0' + min : min);
 }
 
 // ── Normalise phone → digits only, no leading + ───────────────────────────────
@@ -1782,6 +1842,12 @@ function getKitTrackingData() {
         addrStatus:    addrStatus,
         orderPlaced:   orderPlaced,
         needsCall:     needsCall,
+        // Address timeline — requested / opened / submitted
+        addrRequestedAt:   _kitFormatDateTime(r[KIT_COL.ADDR_REQUESTED_AT - 1]),
+        linkOpenCount:     r[KIT_COL.LINK_OPEN_COUNT - 1] || 0,
+        linkFirstOpenedAt: _kitFormatDateTime(r[KIT_COL.LINK_FIRST_OPENED_AT - 1]),
+        linkLastOpenedAt:  _kitFormatDateTime(r[KIT_COL.LINK_LAST_OPENED_AT - 1]),
+        addrSubmittedAt:   _kitFormatDateTime(r[KIT_COL.ADDR_SUBMITTED_AT - 1]),
         // Extra detail fields
         country:      String(r[3]  || '').trim(),   // D: Country
         price:        String(r[4]  || '').trim(),   // E: Price EUR

@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Address Link Open/Submit Timeline (V7.76)
+
+### Link-open + submission tracking (`Code.js`, `KitTrackingService.js`, `LearnerAddressFormService.js`)
+- New columns on the Kits sheet: `LINK_OPEN_COUNT`, `LINK_FIRST_OPENED_AT`, `LINK_LAST_OPENED_AT`, `ADDR_SUBMITTED_AT`.
+- `doGet`'s `?api=addressFormContext` branch (hit every time the public Firebase page loads/reloads) now calls new `recordKitAddressLinkOpen(jlid)` — best-effort, silent, never affects what the parent sees.
+- `_bridgeAddressToKitTracking` now stamps `ADDR_SUBMITTED_AT` alongside the existing `ADDR_STATUS`/`DELIVERY_ADDRESS` writes; both it and the open-tracker share a new `_findOpenKitRowByJlid(jlid)` helper (replacing duplicated row-matching logic).
+- Row detail expansion in Kit Tracking (`JavaScript.html`) now shows a timeline: 🔗 Link Sent → 👁 Opened (count + first/last time) → ✅ Submitted, so you can see exactly where a parent is in the process.
+
+---
+
 ## [2026-07-26] — Kit Tracking: End-to-End Address → Order → Delivery Pipeline (V7.75)
 
 ### Bridged the public address form into Kit Tracking (`LearnerAddressFormService.js`, `KitTrackingService.js`)

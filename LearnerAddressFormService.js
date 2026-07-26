@@ -155,26 +155,16 @@ function submitLearnerAddressForm(payload) {
 function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
   try {
     var sheet = _getKitSheet();
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return 'no_kit_sheet_rows';
+    if (sheet.getLastRow() < 2) return 'no_kit_sheet_rows';
 
-    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
-    var candidates = [];
-    raw.forEach(function(r, idx) {
-      if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) return;
-      var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
-      var isDelivered = !!r[KIT_COL.DELIVERY_DATE - 1];
-      if (isRefunded || isDelivered) return;
-      candidates.push(idx + 2); // 1-based sheet row
-    });
+    var rowIndex = _findOpenKitRowByJlid(jlid);
+    if (!rowIndex) return 'no_kit_row_found_or_ambiguous';
 
-    if (candidates.length === 0) return 'no_kit_row_found';
-    if (candidates.length > 1) return 'ambiguous_multiple_rows';
-
-    var rowIndex = candidates[0];
+    var now = new Date();
     sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addressText);
     sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
-    sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
+    sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(now);
+    sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(now);
 
     // Same confirmation WATI the internal flow sends — parent gets a
     // consistent experience regardless of which channel they used.

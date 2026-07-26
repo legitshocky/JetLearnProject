@@ -115,6 +115,7 @@ function doGet(e) {
   // cross-origin. Apps Script web apps allow cross-origin GET by default.
   if (e && e.parameter && e.parameter.api === 'addressFormContext') {
     var apiJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
+    try { recordKitAddressLinkOpen(apiJlid); } catch(oe) { Logger.log('[doGet] recordKitAddressLinkOpen failed: ' + oe.message); }
     var ctx = getAddressFormContext(apiJlid);
     return ContentService.createTextOutput(JSON.stringify(ctx)).setMimeType(ContentService.MimeType.JSON);
   }
@@ -721,7 +722,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.75";
+const APP_VERSION = "7.76";
 
 function getAppVersion() {
   return APP_VERSION;
