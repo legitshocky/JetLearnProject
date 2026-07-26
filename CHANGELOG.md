@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Yes/No Address Reconfirm (V7.80)
+
+### Quick-reply reconfirm instead of always re-asking from scratch (`KitTrackingService.js`, `Code.js`)
+- `requestKitDeliveryAddress()` now checks HubSpot for an existing address before messaging. If one exists, sends the new `kit_address_reconfirm` quick-reply template (buttons: "Yes, Same Address" / "No, Need To Update") instead of the plain address-link ask — still always messages the parent to reconfirm (never auto-trusts a stale address), just faster when nothing's changed.
+- New `handleKitAddressReconfirmReply(waId, buttonText)` handles the tap: "Yes" flips `ADDR_STATUS` to `Received` immediately using the address already on file (unlocking "Mark Order Placed"); "No" sends the normal `kit_address_request_link` short link to collect a fresh one.
+- Routed via a new `KIT_ADDR_RECONFIRM_BTNS` exact-match list in `doPost`'s WATI webhook handling (`Code.js`), checked *before* the fuzzy free-text matcher — otherwise "Yes"/"No" would get misread as delivery-confirmation replies ("yes" is in the fuzzy "Kit Received" word list).
+- **Manual step required**: new WATI template `kit_address_reconfirm` needs creating + approval in the WATI dashboard, with buttons labeled exactly `Yes, Same Address` and `No, Need To Update` (must match verbatim — the code routes on exact button text).
+
+---
+
 ## [2026-07-26] — Kit Tracking: Address Request Works Before a Kit Row Exists (V7.79)
 
 ### Fixed: requesting an address before placing an order silently skipped all tracking (`KitTrackingService.js`)

@@ -285,6 +285,75 @@ function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerNam
   ]);
 }
 
+// ── Send the yes/no address-reconfirm quick-reply template ───────────────────
+// Used instead of the plain address-link ask when HubSpot already has an
+// address on file — lets the parent confirm it's still correct with one tap
+// instead of retyping everything. "No" falls through to the full link flow
+// (see handleKitAddressReconfirmReply below).
+function sendKitAddressReconfirmWhatsApp(phone, parentName, kitName, existingAddress) {
+  return sendWatiMessage(phone, 'kit_address_reconfirm', [
+    { name: 'Parent',   value: parentName      },
+    { name: 'Kit_name', value: kitName         },
+    { name: 'Address',  value: existingAddress }
+  ]);
+}
+
+// ── Handle the reply to the yes/no address-reconfirm template ────────────────
+// Called from doPost's WATI webhook routing (Code.js) when the parent taps
+// "Yes, Same Address" or "No, Need To Update". Matches by phone against rows
+// still ADDR_STATUS='Requested' (mirrors handleKitReply's matching pattern).
+function handleKitAddressReconfirmReply(waId, buttonText) {
+  try {
+    var normPhone = _normalisePhone(waId);
+    if (!normPhone) return;
+
+    var sheet = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+
+    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    raw.forEach(function(row, idx) {
+      var rowIndex     = idx + 2;
+      var addrStatus   = String(row[KIT_COL.ADDR_STATUS - 1]   || '').trim();
+      var phoneOnRow   = _normalisePhone(String(row[KIT_COL.PHONE_SENT_TO - 1] || ''));
+      if (addrStatus !== 'Requested' || !phoneOnRow || phoneOnRow !== normPhone) return;
+
+      var jlid        = String(row[KIT_COL.JLID - 1]         || '').trim();
+      var kitName     = String(row[KIT_COL.KIT - 1]           || '').trim();
+      var learnerName = String(row[KIT_COL.LEARNER_NAME - 1]  || '').trim();
+      var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+      var parentName = (hs && hs.success && hs.data) ? hs.data.parentName : '';
+
+      if (buttonText === 'Yes, Same Address') {
+        var addrStr = '';
+        if (hs && hs.success && hs.data && hs.data.dealId) {
+          var addr = _fetchContactAddress(hs.data.dealId);
+          addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
+            .filter(function(p) { return p && String(p).trim(); }).join(', ');
+        }
+        sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
+        sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
+        sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
+        try {
+          sendWatiMessage(normPhone, 'kit_address_received_confirmation', [
+            { name: '1', value: parentName }, { name: '2', value: kitName }
+          ]);
+        } catch(we) { Logger.log('[KitTracking] reconfirm-yes confirmation send failed: ' + we.message); }
+        Logger.log('[KitTracking] Address reconfirmed (same) row=' + rowIndex + ' jlid=' + jlid);
+
+      } else if (buttonText === 'No, Need To Update') {
+        try {
+          sendKitAddressLinkWhatsApp(normPhone, parentName, kitName, jlid, learnerName);
+        } catch(we2) { Logger.log('[KitTracking] reconfirm-no link send failed: ' + we2.message); }
+        Logger.log('[KitTracking] Address reconfirm=No, sent fresh link row=' + rowIndex + ' jlid=' + jlid);
+      }
+    });
+  } catch(e) {
+    Logger.log('[KitTracking] handleKitAddressReconfirmReply ERROR: ' + e.message);
+  }
+}
+
 // ── Create a minimal Kit Tracking row (Learner + Kit + JLID only, no order
 // details yet) — used so an address request can start the whole pipeline
 // (Address column, timeline, nudges) BEFORE an order has actually been
@@ -369,13 +438,27 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
 
     if (phonesToMessage.length === 0) return { success: false, message: 'No phone number for ' + jlid };
 
-    // Always reconfirm address — parents move. Never assume existing address is current.
-    // Always send WATI regardless of what HubSpot contact address says. Send to
-    // every contact's number so no guardian is missed.
+    // Check whether HubSpot already has an address on file. Never assume it's
+    // still current — parents move — so we still always message the parent.
+    // But if there IS an address, ask a quick yes/no reconfirm instead of
+    // making them retype everything from scratch; "No" falls through to the
+    // full address-link flow. If there's nothing on file yet, go straight to
+    // the address-link ask (nothing to reconfirm).
+    var existingAddrStr = '';
+    if (d.dealId) {
+      try {
+        var existingAddr = _fetchContactAddress(d.dealId);
+        existingAddrStr = [existingAddr.address, existingAddr.city, existingAddr.state, existingAddr.zip, existingAddr.country]
+          .filter(function(p) { return p && String(p).trim(); }).join(', ');
+      } catch(fae) { Logger.log('[KitTracking] existing-address lookup failed: ' + fae.message); }
+    }
+
     var wRes = null;
     var anyWatiSent = false;
     phonesToMessage.forEach(function(p) {
-      var res = sendKitAddressLinkWhatsApp(p, parentName, kitName, jlid, learnerName);
+      var res = existingAddrStr
+        ? sendKitAddressReconfirmWhatsApp(p, parentName, kitName, existingAddrStr)
+        : sendKitAddressLinkWhatsApp(p, parentName, kitName, jlid, learnerName);
       if (res && res.success) anyWatiSent = true;
       if (!wRes) wRes = res; // keep first result for the error message below
     });
@@ -427,6 +510,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
         var sheet2 = _getKitSheet();
         sheet2.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
         sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+        sheet2.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone); // needed to match the WATI reply later
 
         // Stamp nudge-pipeline fields — only on the FIRST request, so a resend
         // doesn't reset the Day-0 anchor or re-freeze the urgency tier.

@@ -722,7 +722,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "7.79";
+const APP_VERSION = "7.80";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -930,10 +930,11 @@ function doPost(e) {
         if ((watiPayload.eventType === 'message' || watiPayload.eventType === 'conversation_started') && watiPayload.waId) {
           var rawText = (watiPayload.text || '').trim();
           var KIT_BTNS = ['Kit Received', 'Not Received yet', 'Need To check'];
+          var KIT_ADDR_RECONFIRM_BTNS = ['Yes, Same Address', 'No, Need To Update'];
           var btnText  = rawText;
 
           // ── Exact button match first ─────────────────────────────────────────
-          if (KIT_BTNS.indexOf(btnText) === -1 && rawText) {
+          if (KIT_BTNS.indexOf(btnText) === -1 && KIT_ADDR_RECONFIRM_BTNS.indexOf(btnText) === -1 && rawText) {
             // ── Fuzzy / predictive matching ──────────────────────────────────
             var lower = rawText.toLowerCase();
 
@@ -1051,6 +1052,14 @@ function doPost(e) {
               Logger.log('[doPost] Kit trigger failed, processing inline: ' + te.message);
               handleKitReply(watiPayload.waId, btnText);
             }
+          }
+
+          // Kit address reconfirm handler ('Yes, Same Address' / 'No, Need To Update')
+          if (KIT_ADDR_RECONFIRM_BTNS.indexOf(btnText) > -1) {
+            Logger.log('[doPost] WATI address reconfirm reply: ' + btnText + ' from ' + watiPayload.waId);
+            try {
+              handleKitAddressReconfirmReply(watiPayload.waId, btnText);
+            } catch(are) { Logger.log('[doPost] handleKitAddressReconfirmReply error: ' + are.message); }
           }
           return ContentService.createTextOutput('ok');
         }
