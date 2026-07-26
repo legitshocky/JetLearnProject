@@ -1,4 +1,58 @@
 /**
+ * DEBUG: Direct, isolated test of the 3 kit-address WATI templates against a
+ * NEW phone number — bypasses Kit Tracking sheet / HubSpot entirely, so if
+ * these fail too, it conclusively rules out our sheet/row logic and points
+ * at WATI/Meta account or template-approval state instead.
+ * Run from the Apps Script editor's function dropdown, check the log.
+ */
+function debugTestKitTemplatesNewNumber() {
+  var PHONE = "7506871403"; // no + symbol
+
+  Logger.log('🚀 Testing kit templates against ' + PHONE + ' (isolated — no sheet/HubSpot involved)');
+
+  var tests = [
+    {
+      name: 'kit_address_request_link',
+      params: [
+        { name: 'Parent',   value: 'TestParent' },
+        { name: 'Kit_name', value: 'Microbit' },
+        { name: 'Link',     value: 'https://jetlearn-kit-links.web.app/kit/JLTESTONLY' }
+      ]
+    },
+    {
+      name: 'kit_address_reconfirm_v2',
+      params: [
+        { name: 'Parent',   value: 'TestParent' },
+        { name: 'kit_name', value: 'Microbit' },
+        { name: 'address',  value: '123 Test Street, Test City, Test State, 000000, Test Country' }
+      ]
+    },
+    {
+      name: 'kit_order_placed_notice',
+      params: [
+        { name: 'Parent',   value: 'TestParent' },
+        { name: 'Kit_name', value: 'Microbit' },
+        { name: 'ETA',      value: '01-08-2026' }
+      ]
+    }
+  ];
+
+  tests.forEach(function(t) {
+    Logger.log('\n--- Testing: ' + t.name + ' ---');
+    Logger.log('Params: ' + JSON.stringify(t.params));
+    try {
+      var res = sendWatiMessage(PHONE, t.name, t.params);
+      Logger.log(res && res.success ? '✅ SUCCESS: ' + JSON.stringify(res.result) : '❌ FAILED (no exception, but not success): ' + JSON.stringify(res));
+    } catch(e) {
+      Logger.log('🚨 REJECTED/CRASHED: ' + e.message);
+    }
+    Utilities.sleep(1500);
+  });
+
+  Logger.log('\n✅ Done. Check ' + PHONE + '\'s WhatsApp for whichever ones actually sent.');
+}
+
+/**
  * DEBUG: Tests ONLY the 3 fixed templates.
  */
 function debugTestSpecificTemplates() {

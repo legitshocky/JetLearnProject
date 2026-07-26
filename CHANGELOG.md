@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-27] — Real Root Cause Found: Param Name Must Match Template Variable Type (V8.07)
+
+### The actual cause of every WATI rejection this session (`KitTrackingService.js`)
+- Isolated testing (`Dummy.js` → `debugTestKitTemplatesNewNumber`) against a fresh phone number showed `kit_address_reconfirm_v2` (named placeholders) succeeded while `kit_address_request_link` and `kit_order_placed_notice` (numbered placeholders, `{{1}}`/`{{2}}`/`{{3}}`) still failed — even sent in isolation, with no sheet/HubSpot involved.
+- Root cause: **WATI requires the parameter `name` field to match however the template defines its variables** — literal `"1"`/`"2"`/`"3"` for numbered-placeholder templates, or the exact variable name for named-placeholder templates. Our code was sending descriptive labels (`Parent`/`Kit_name`/`Link`) for both, which only happens to work for named templates. `kit_address_request_link` and `kit_order_placed_notice` use numbered placeholders, so their descriptive labels were silently rejected the entire time — explaining every "cannot have typos or blank text" error this session, across every template that used numbered placeholders (including the original, since-replaced `kit_address_reconfirm`).
+- Fixed both `sendKitAddressLinkWhatsApp()` and the `kit_order_placed_notice` send in `markKitOrderPlaced()` to use `"1"`/`"2"`/`"3"` as the parameter names — no template recreation needed for these two, just the send-side fix.
+- `kit_address_received_confirmation` (used elsewhere, unaffected) already used `1`/`2` correctly, which is why that one always worked.
+
+---
+
 ## [2026-07-27] — Switch to kit_address_reconfirm_v2 (V8.05)
 
 ### Root cause found and fixed (`KitTrackingService.js`, WATI dashboard)

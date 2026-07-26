@@ -297,10 +297,15 @@ function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerNam
     var linkRes = getAddressFormLink(jlid, learnerName, useHsForm);
     var link = (linkRes && linkRes.success) ? linkRes.url : '';
     if (link) {
+      // This template uses NUMBERED placeholders ({{1}}/{{2}}/{{3}}), so the
+      // param `name` must literally be "1"/"2"/"3" — WATI's own paramName
+      // convention for numbered templates, not a descriptive label. Named
+      // labels here caused a silent rejection ("cannot have typos or blank
+      // text") despite looking correct.
       var wRes = sendWatiMessage(phone, 'kit_address_request_link', [
-        { name: 'Parent',   value: parentName },
-        { name: 'Kit_name', value: kitName    },
-        { name: 'Link',     value: link       }
+        { name: '1', value: parentName },
+        { name: '2', value: kitName    },
+        { name: '3', value: link       }
       ]);
       if (wRes && wRes.success) return wRes;
       Logger.log('[KitTracking] kit_address_request_link send failed, falling back to migration_address_template: ' + (wRes && wRes.error));
@@ -2985,10 +2990,12 @@ function markKitOrderPlaced(rowIndex, payload) {
       if (hs && hs.success && hs.data) {
         var phone = _normalisePhone(hs.data.parentContact || '');
         if (phone) {
+          // Numbered-placeholder template — name must be "1"/"2"/"3", not a
+          // descriptive label (see sendKitAddressLinkWhatsApp for why).
           sendWatiMessage(phone, 'kit_order_placed_notice', [
-            { name: 'Parent',   value: hs.data.parentName || '' },
-            { name: 'Kit_name', value: kitName },
-            { name: 'ETA',      value: payload.eta || '' }
+            { name: '1', value: hs.data.parentName || '' },
+            { name: '2', value: kitName },
+            { name: '3', value: payload.eta || '' }
           ]);
         }
       }
