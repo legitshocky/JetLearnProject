@@ -526,24 +526,12 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
       } catch(se2) {}
     }
 
-    // Update HubSpot kit status → "Asked for address" (best-effort)
-    try {
-      var kitPropForAddr = _kitPropertyForType(kitName);
-      if (kitPropForAddr && d.dealId) {
-        var hsToken = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-        var addrHsProps = {};
-        addrHsProps[kitPropForAddr] = 'Asked for address';
-        monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + d.dealId, {
-          method: 'PATCH',
-          headers: { 'Authorization': 'Bearer ' + hsToken, 'Content-Type': 'application/json' },
-          payload: JSON.stringify({ properties: addrHsProps }),
-          muteHttpExceptions: true
-        });
-        Logger.log('[KitTracking] HubSpot kit status → "Asked for address" for ' + jlid);
-      }
-    } catch(hsAddrErr) {
-      Logger.log('[KitTracking] HS "Asked for address" update failed (non-fatal): ' + hsAddrErr.message);
-    }
+    // NOTE: previously PATCHed the deal's kit-status property to "Asked for
+    // address" here. Removed — that property change re-triggers a legacy
+    // external automation (native "Kit Address Form", hsforms.com link) that
+    // predates this pipeline and isn't ours to control. We now own the whole
+    // address-request flow through our own WATI templates, so this step just
+    // caused a confusing duplicate message with the old wording/link.
 
     Logger.log('[KitTracking] Address request sent via WATI for ' + jlid + ' phone=' + phone);
     return { success: true, addressSource: 'wati_requested',
@@ -2079,15 +2067,33 @@ function fetchKitLearnerDetails(jlid) {
     if (!hs || !hs.success) return { success: false, message: (hs && hs.message) || 'Learner not found for JLID: ' + jlid };
     var d = hs.data;
 
-    // Fetch delivery address from HubSpot contact
-    var addrObj  = d.dealId ? _fetchContactAddress(d.dealId) : {};
-    var addrStr  = [addrObj.address, addrObj.city, addrObj.state, addrObj.zip, addrObj.country]
-      .filter(function(p) { return p && String(p).trim(); }).join(', ');
-    var hasAddr  = !!(addrStr);
+    // Check our own Kit Tracking sheet FIRST — HubSpot contact address writes
+    // are permanently blocked by a portal scope restriction (confirmed via
+    // diagnostics, see CHANGELOG V7.90/91), so the sheet is the real, fast,
+    // accurate source now. Only fall back to a HubSpot round-trip if the
+    // sheet has nothing (e.g. an address entered manually in HubSpot's own
+    // UI by an ops user, which doesn't go through our token's scopes).
+    var addrStr = '';
+    var sheetAddrStatus = '';
+    var kitRowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase());
+    if (kitRowIndex) {
+      var kitSheet = _getKitSheet();
+      addrStr = String(kitSheet.getRange(kitRowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
+      sheetAddrStatus = String(kitSheet.getRange(kitRowIndex, KIT_COL.ADDR_STATUS).getValue() || '').trim();
+    }
+    if (!addrStr && d.dealId) {
+      var addrObj = _fetchContactAddress(d.dealId);
+      addrStr = [addrObj.address, addrObj.city, addrObj.state, addrObj.zip, addrObj.country]
+        .filter(function(p) { return p && String(p).trim(); }).join(', ');
+    }
+    var hasAddr = !!addrStr;
 
-    // Check if address request already pending in cache
-    var phone        = _normalisePhone(d.parentContact || '');
-    var addrPending  = phone ? !!(CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone)) : false;
+    // Check if address request already pending — sheet status takes priority
+    // over the cache, since it reflects the real Received/Requested state.
+    var phone       = _normalisePhone(d.parentContact || '');
+    var addrPending = sheetAddrStatus
+      ? (sheetAddrStatus === 'Requested')
+      : (phone ? !!(CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone)) : false);
 
     // >1 subscription line item on the deal = renewed learner
     var lineItemCount = d.dealId ? _countDealLineItems(d.dealId) : 0;

@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Check Sheet Not HubSpot, Stop Legacy Trigger (V7.92)
+
+### Check the Kit Tracking sheet before HubSpot for address data (`KitTrackingService.js`)
+- `fetchKitLearnerDetails()` (backs the "Fetch" button in Add Kit Entry) now checks the Kit Tracking sheet's `DELIVERY_ADDRESS`/`ADDR_STATUS` first — instant, no HTTP round-trip — since HubSpot's contact address fields are permanently unreachable via this token (confirmed V7.90/91). Falls back to a HubSpot contact GET only if the sheet has nothing (covers an address entered manually in HubSpot's own UI, which doesn't go through our token's scopes). `addressPending` now also prefers the sheet's real `ADDR_STATUS` over the older cache-based guess.
+
+### Stopped triggering the legacy hsforms.com automation (`KitTrackingService.js`)
+- `requestKitDeliveryAddress()` no longer PATCHes the deal's kit-status property to `"Asked for address"` — that property change was re-triggering a pre-existing external automation (the native "Kit Address Form", `share.hsforms.com` link) that predates this whole pipeline and produced a confusing duplicate message with old wording. We now own the entire address-request flow through our own WATI templates, so this step was redundant and actively conflicting.
+
+---
+
 ## [2026-07-26] — Kit Address Form: Confirmed Scope Ceiling, Simplified to Note-Only (V7.90–V7.91)
 
 ### Confirmed: no direct-write path to HubSpot is available with the current token
