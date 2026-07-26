@@ -13807,8 +13807,16 @@ function loadKitTrackingPage() {
       }
 
       renderKitTrackingTable();
-      // Re-render pivot if it's the active tab
+      // Keep the Asking Address badge fresh regardless of which tab is active
+      const allAskingNow = (result.rows || []).filter(function(r) { return r.addrStatus && !r.orderPlaced; });
+      const aaBadgeEl = document.getElementById('ktAskAddrBadge');
+      if (aaBadgeEl) {
+        if (allAskingNow.length > 0) { aaBadgeEl.textContent = allAskingNow.length; aaBadgeEl.style.display = 'inline-flex'; }
+        else aaBadgeEl.style.display = 'none';
+      }
+      // Re-render whichever secondary tab is active
       if (_ktCurrentTab === 'pivot') renderKitPivot();
+      if (_ktCurrentTab === 'askaddr') renderKitAskingAddressTable();
     })
     .withFailureHandler(function(err) {
       tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;"><i class="fas fa-exclamation-circle"><\/i> ' + escapeHtml(err.message || String(err)) + '<\/td><\/tr>';
@@ -13845,6 +13853,10 @@ function renderKitTrackingTable(filterArg) {
 
   // Base filter (month + kit + search) — used for KPI recalc
   let baseFiltered = _kitTrackingData.filter(function(row) {
+    // Rows still in the address-request pipeline (not yet order-placed) live
+    // in the "Asking Address" tab instead, so JetLearn Sends only shows kits
+    // that have actually moved to being ordered.
+    if (row.addrStatus && !row.orderPlaced) return false;
     if (filterMonth && row.orderMonth !== filterMonth) return false;
     if (filterKit && row.kit.indexOf(filterKit) === -1) return false;
     if (search && !row.learnerName.toLowerCase().includes(search) && !row.jlid.toLowerCase().includes(search)) return false;
@@ -14032,6 +14044,98 @@ function renderKitTrackingTable(filterArg) {
       +   (row.jlid ? '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>' : '')
       + '<\/td>'
       + '<\/tr>' + detailHtml;
+  }).join('');
+}
+
+// ── Asking Address tab — rows still in the address-request pipeline,
+// not yet order-placed. Separate view from JetLearn Sends so it's clear
+// how many kits are still waiting on an address vs actually ordered.
+function renderKitAskingAddressTable() {
+  const tbody = document.getElementById('ktAskAddrTableBody');
+  if (!tbody) return;
+
+  const filterStage = (document.getElementById('ktAaFilterStage') || {}).value || '';
+  const search       = ((document.getElementById('ktAaSearch') || {}).value || '').toLowerCase().trim();
+
+  const rows = (_kitTrackingData || []).filter(function(row) {
+    if (!row.addrStatus || row.orderPlaced) return false; // moved on already
+    if (search && !row.learnerName.toLowerCase().includes(search) && !row.jlid.toLowerCase().includes(search)) return false;
+    if (filterStage === 'requested' && row.addrStatus !== 'Requested') return false;
+    if (filterStage === 'received'  && row.addrStatus !== 'Received') return false;
+    if (filterStage === 'needsCall' && !row.needsCall) return false;
+    return true;
+  });
+
+  const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const allAsking = (_kitTrackingData || []).filter(function(r) { return r.addrStatus && !r.orderPlaced; });
+  setKpi('ktAaKpiTotal',     allAsking.length);
+  setKpi('ktAaKpiAwaiting',  allAsking.filter(function(r) { return r.addrStatus === 'Requested'; }).length);
+  setKpi('ktAaKpiReceived',  allAsking.filter(function(r) { return r.addrStatus === 'Received'; }).length);
+  setKpi('ktAaKpiNeedsCall', allAsking.filter(function(r) { return r.needsCall; }).length);
+
+  const badge = document.getElementById('ktAskAddrBadge');
+  if (badge) {
+    if (allAsking.length > 0) { badge.textContent = allAsking.length; badge.style.display = 'inline-flex'; }
+    else badge.style.display = 'none';
+  }
+
+  const countEl = document.getElementById('ktAaResultCount');
+  if (countEl) countEl.textContent = rows.length + ' of ' + allAsking.length;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-map-marker-alt" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"><\/i>Nothing waiting on an address.<\/td><\/tr>';
+    return;
+  }
+
+  const addrConfig = {
+    Requested: { label: '⏳ Requested', color: '#d97706', bg: '#fffbeb' },
+    Received:  { label: '📬 Received',  color: '#0d9488', bg: '#f0fdfa' },
+    Verified:  { label: '✅ Verified',  color: '#16a34a', bg: '#f0fdf4' }
+  };
+  const stageLabels = {
+    '': '—',
+    'whatsapp_sent':   '📤 WhatsApp sent',
+    'email_sent':      '📧 Email nudge sent',
+    'call_nudge_sent': '📞 Call needed'
+  };
+
+  tbody.innerHTML = rows.map(function(row, i) {
+    const ac = addrConfig[row.addrStatus] || { label: row.addrStatus, color: '#64748b', bg: '#f1f5f9' };
+    const addrBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>';
+
+    const stageLabel = stageLabels[row.nudgeStage || ''] || row.nudgeStage;
+    const stageBadge = row.needsCall
+      ? '<span style="color:#dc2626;font-weight:700;font-size:0.75rem;"><i class="fas fa-phone"><\/i> Call parent<\/span>'
+      : '<span style="font-size:0.78rem;color:#475569;">' + escapeHtml(stageLabel) + '<\/span>';
+
+    const openedCell = row.linkOpenCount
+      ? '<span style="font-size:0.78rem;color:#1e293b;">👁 ' + row.linkOpenCount + '×<\/span><span style="display:block;font-size:0.66rem;color:#94a3b8;">' + escapeHtml(row.linkFirstOpenedAt || '') + '<\/span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">Not opened<\/span>';
+
+    var ktChatPhone = (row.phone || '').replace(/\D/g, '');
+    const msgBtn = ktChatPhone
+      ? '<button onclick="event.stopPropagation();pwbOpenChat(\'' + ktChatPhone + '\', this)" style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-right:4px;" title="Open WATI chat"><i class="fab fa-whatsapp"><\/i><\/button>'
+      : '';
+    const orderBtn = row.addrStatus === 'Received'
+      ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
+      : '<span style="font-size:0.72rem;color:#94a3b8;">Waiting on parent<\/span>';
+
+    const rowBg = row.needsCall ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#fafbfc');
+    const rowBorder = row.needsCall ? 'border-bottom:1px solid #fecaca;border-left:3px solid #dc2626;' : 'border-bottom:1px solid #f1f5f9;';
+
+    return '<tr style="background:' + rowBg + ';' + rowBorder + '">'
+      + '<td style="padding:10px 14px;color:#94a3b8;font-size:0.78rem;">' + (row.srNo || i + 1) + '<\/td>'
+      + '<td style="padding:10px 14px;font-weight:500;color:#1e293b;">' + escapeHtml(row.learnerName) + (row.jlid ? '<span style="font-size:0.68rem;color:#94a3b8;display:block;margin-top:1px;font-family:monospace;">' + escapeHtml(row.jlid) + '<\/span>' : '') + '<\/td>'
+      + '<td style="padding:10px 14px;color:#475569;">' + (escapeHtml(row.kit) || '—') + '<\/td>'
+      + '<td style="padding:10px 14px;">' + addrBadge + '<\/td>'
+      + '<td style="padding:10px 14px;">' + stageBadge + '<\/td>'
+      + '<td style="padding:10px 14px;">' + openedCell + '<\/td>'
+      + '<td style="padding:10px 14px;font-size:0.76rem;color:#64748b;white-space:nowrap;">' + (escapeHtml(row.addrRequestedAt) || '—') + '<\/td>'
+      + '<td style="padding:10px 14px;white-space:nowrap;" onclick="event.stopPropagation()">' + msgBtn + orderBtn + '<\/td>'
+      + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
+      +   (row.jlid ? '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>' : '')
+      + '<\/td>'
+      + '<\/tr>';
   }).join('');
 }
 
@@ -14716,24 +14820,33 @@ var _ktCurrentTab = 'jl';
 var _pwbAllData   = [];
 function ktSwitchTab(tab) {
   _ktCurrentTab = tab;
-  const jlBtn     = document.getElementById('ktTabJL');
-  const pwbBtn    = document.getElementById('ktTabPWB');
-  const pivotBtn  = document.getElementById('ktTabPivot');
-  const jlView    = document.getElementById('ktViewJL');
-  const pwbView   = document.getElementById('ktViewPWB');
-  const pivotView = document.getElementById('ktViewPivot');
-  const jlKpi     = document.getElementById('ktKpiJL');
-  const pwbKpi    = document.getElementById('ktKpiPWB');
+  const jlBtn      = document.getElementById('ktTabJL');
+  const aaBtn      = document.getElementById('ktTabAskAddr');
+  const pwbBtn     = document.getElementById('ktTabPWB');
+  const pivotBtn   = document.getElementById('ktTabPivot');
+  const jlView     = document.getElementById('ktViewJL');
+  const aaView     = document.getElementById('ktViewAskAddr');
+  const pwbView    = document.getElementById('ktViewPWB');
+  const pivotView  = document.getElementById('ktViewPivot');
+  const jlKpi      = document.getElementById('ktKpiJL');
+  const aaKpi      = document.getElementById('ktKpiAskAddr');
+  const pwbKpi     = document.getElementById('ktKpiPWB');
   const activeStyle  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
   const inactiveStyle= 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
-  [jlBtn,pwbBtn,pivotBtn].forEach(function(b){if(b)b.style.cssText=inactiveStyle;});
-  [jlView,pwbView,pivotView].forEach(function(v){if(v)v.style.display='none';});
+  [jlBtn,aaBtn,pwbBtn,pivotBtn].forEach(function(b){if(b)b.style.cssText=inactiveStyle;});
+  [jlView,aaView,pwbView,pivotView].forEach(function(v){if(v)v.style.display='none';});
   if(jlKpi)  jlKpi.style.display  = 'none';
+  if(aaKpi)  aaKpi.style.display  = 'none';
   if(pwbKpi) pwbKpi.style.display = 'none';
   if (tab === 'jl') {
     if(jlBtn)    jlBtn.style.cssText   = activeStyle;
     if(jlView)   jlView.style.display  = '';
     if(jlKpi)    jlKpi.style.display   = '';
+  } else if (tab === 'askaddr') {
+    if(aaBtn)    aaBtn.style.cssText   = activeStyle;
+    if(aaView)   aaView.style.display  = '';
+    if(aaKpi)    aaKpi.style.display   = '';
+    renderKitAskingAddressTable();
   } else if (tab === 'pwb') {
     if(pwbBtn)   pwbBtn.style.cssText  = activeStyle;
     if(pwbView)  pwbView.style.display = '';

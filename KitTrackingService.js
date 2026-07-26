@@ -2010,6 +2010,8 @@ function getKitTrackingData() {
         addrStatus:    addrStatus,
         orderPlaced:   orderPlaced,
         needsCall:     needsCall,
+        nudgeStage:    nudgeStage,
+        nudgeTier:     String(r[KIT_COL.NUDGE_TIER - 1] || '').trim(),
         // Address timeline — requested / opened / submitted
         addrRequestedAt:   _kitFormatDateTime(r[KIT_COL.ADDR_REQUESTED_AT - 1]),
         linkOpenCount:     r[KIT_COL.LINK_OPEN_COUNT - 1] || 0,
@@ -2043,7 +2045,9 @@ function getKitTrackingData() {
       escalated:   rows.filter(function(r) { return r.status === 'escalated'; }).length,
       refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length,
       addressReceivedPendingOrder: rows.filter(function(r) { return r.status === 'addr_received_pending_order'; }).length,
-      needsCall:   rows.filter(function(r) { return r.needsCall; }).length
+      needsCall:   rows.filter(function(r) { return r.needsCall; }).length,
+      addressAwaitingReply: rows.filter(function(r) { return r.addrStatus === 'Requested' && !r.orderPlaced; }).length,
+      askingAddressTotal: rows.filter(function(r) { return r.addrStatus && !r.orderPlaced; }).length
     };
 
     Logger.log('[KitTracking] getKitTrackingData: ' + rows.length + ' rows, stats=' + JSON.stringify(stats));

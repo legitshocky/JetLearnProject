@@ -3278,6 +3278,10 @@
       <button id="ktTabJL" onclick="ktSwitchTab('jl')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;">
         <i class="fas fa-truck" style="margin-right:5px;color:#f59e0b;"></i>JetLearn Sends
       </button>
+      <button id="ktTabAskAddr" onclick="ktSwitchTab('askaddr')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;">
+        <i class="fas fa-map-marker-alt" style="margin-right:5px;color:#0d9488;"></i>Asking Address
+        <span id="ktAskAddrBadge" class="badge" style="display:none;background:#0d9488;color:#fff;margin-left:4px;">0</span>
+      </button>
       <button id="ktTabPWB" onclick="ktSwitchTab('pwb')" class="btn btn-sm" style="border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;">
         <i class="fas fa-shopping-cart" style="margin-right:5px;color:#8b5cf6;"></i>Parent Will Buy
       </button>
@@ -3322,6 +3326,30 @@
         <div class="kpi-label">⏱ Avg Time to Deliver</div>
         <div class="kpi-value" id="ktKpiAvgDeliverDays" style="color:#0891b2;">—</div>
         <div class="kpi-sub">order → delivery, avg days</div>
+      </div>
+    </div>
+
+    <!-- KPI Strip — Asking Address -->
+    <div id="ktKpiAskAddr" class="kpi-grid-v2" style="margin-bottom:1.5rem;display:none;">
+      <div class="kpi-card-v2">
+        <div class="kpi-label">Total Asking Address</div>
+        <div class="kpi-value" id="ktAaKpiTotal">—</div>
+        <div class="kpi-sub">not yet order-placed</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #d97706;">
+        <div class="kpi-label">⏳ Awaiting Reply</div>
+        <div class="kpi-value" id="ktAaKpiAwaiting" style="color:#d97706;">—</div>
+        <div class="kpi-sub">requested, no reply yet</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #0d9488;">
+        <div class="kpi-label">📬 Address Received</div>
+        <div class="kpi-value" id="ktAaKpiReceived" style="color:#0d9488;">—</div>
+        <div class="kpi-sub">ready to order</div>
+      </div>
+      <div class="kpi-card-v2" style="border-left:4px solid #dc2626;">
+        <div class="kpi-label">📞 Needs Your Call</div>
+        <div class="kpi-value" id="ktAaKpiNeedsCall" style="color:#dc2626;">—</div>
+        <div class="kpi-sub">no reply after nudges</div>
       </div>
     </div>
 
@@ -3430,6 +3458,42 @@
           </thead>
           <tbody id="ktTableBody">
             <tr><td colspan="12" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading kit tracking data…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Asking Address Table — rows still in the address-request pipeline,
+         not yet order-placed. Separate from JetLearn Sends so it's clear
+         how many are still waiting on an address vs ready/already ordered. -->
+    <div id="ktViewAskAddr" style="display:none;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
+        <select id="ktAaFilterStage" class="form-control form-select" style="flex:0 1 190px;min-width:160px;height:36px;padding:4px 8px;font-size:0.8rem;" onchange="renderKitAskingAddressTable()">
+          <option value="">All Stages</option>
+          <option value="requested">⏳ Requested — awaiting reply</option>
+          <option value="received">📬 Received — ready to order</option>
+          <option value="needsCall">📞 Needs your call</option>
+        </select>
+        <input type="text" id="ktAaSearch" class="form-control" placeholder="Search learner or JLID…" style="flex:1 1 180px;min-width:150px;height:36px;padding:4px 10px;font-size:0.8rem;" oninput="renderKitAskingAddressTable()">
+        <span id="ktAaResultCount" style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;"></span>
+      </div>
+      <div style="overflow-x:auto;border-radius:12px;border:1px solid #e2e8f0;background:#fff;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead>
+            <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">#</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Learner</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Kit</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Address Status</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Follow-up Stage</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Link Opened</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Requested</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">Actions</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:600;color:#64748b;white-space:nowrap;">HS Deal</th>
+            </tr>
+          </thead>
+          <tbody id="ktAskAddrTableBody">
+            <tr><td colspan="9" style="padding:3rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading…</td></tr>
           </tbody>
         </table>
       </div>

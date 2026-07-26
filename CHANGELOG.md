@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: New "Asking Address" Sub-Tab (V7.93–V7.94)
+
+### Separate tab for the address-request pipeline (`Index.html`, `JavaScript.html`)
+- New **"Asking Address"** tab (with a live sidebar-style badge count) sits alongside JetLearn Sends / Parent Will Buy / Pivot Report, showing only rows still waiting on an address — not yet order-placed. Own KPI strip (Total Asking, Awaiting Reply, Address Received, Needs Your Call), own filter bar (stage: Requested / Received / Needs Call, plus search), own table with Address Status, Follow-up Stage (WhatsApp sent / Email nudge sent / Call needed), Link Opened count+timestamp, Requested date, and inline "Mark Order Placed" once received.
+- **JetLearn Sends now excludes these rows** (`row.addrStatus && !row.orderPlaced`) — it only shows kits that have actually moved to being ordered, so the two tabs cleanly answer two different questions: "how many are we still waiting on an address for" vs "how many have we actually sent."
+- Backend: `getKitTrackingData()` now also returns `nudgeStage`/`nudgeTier` per row and `addressAwaitingReply`/`askingAddressTotal` in `stats`, needed to drive this tab.
+
+---
+
 ## [2026-07-26] — Kit Tracking: Check Sheet Not HubSpot, Stop Legacy Trigger (V7.92)
 
 ### Check the Kit Tracking sheet before HubSpot for address data (`KitTrackingService.js`)
