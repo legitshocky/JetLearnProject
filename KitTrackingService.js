@@ -322,13 +322,34 @@ function sendKitAddressVerifyRequest(jlid, rowIndex) {
     var phone = _normalisePhone(d.parentContact || '');
     if (!phone) return { success: false, message: 'No phone number for ' + jlid };
 
-    var wRes = sendKitAddressReconfirmWhatsApp(phone, d.parentName || '', String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || ''), existingAddress);
-    if (!wRes || !wRes.success) return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
+    // Reach every contact on the deal, same as the main address-request flow
+    var allPhones = [];
+    if (d.dealId) {
+      try {
+        var phoneRes = getPhoneNumbersForDeal(d.dealId);
+        allPhones = (phoneRes && phoneRes.all) ? phoneRes.all.map(function(p) { return _normalisePhone(p.replace(/\s*\(.*\)$/, '')); }) : [];
+      } catch(pe) { Logger.log('[KitTracking] getPhoneNumbersForDeal failed: ' + pe.message); }
+    }
+    var phoneSet = {};
+    var phonesToMessage = [];
+    [phone].concat(allPhones).forEach(function(p) {
+      if (p && !phoneSet[p]) { phoneSet[p] = true; phonesToMessage.push(p); }
+    });
+
+    var kitName = String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || '');
+    var anySent = false;
+    var wRes = null;
+    phonesToMessage.forEach(function(p) {
+      var res = sendKitAddressReconfirmWhatsApp(p, d.parentName || '', kitName, existingAddress);
+      if (res && res.success) anySent = true;
+      if (!wRes) wRes = res;
+    });
+    if (!anySent) return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
 
     // Set to Requested + stamp nudge fields so it's tracked like any other
     // address ask (shows in Asking Address tab, gets nudged if no reply).
     sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
-    sheet.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone);
+    sheet.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phonesToMessage.join(','));
     var alreadyRequestedAt = sheet.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).getValue();
     if (!alreadyRequestedAt) {
       var tier = _kitComputeNudgeTier(d.startingDate || d.moduleStartDate);
@@ -364,8 +385,13 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
     raw.forEach(function(row, idx) {
       var rowIndex     = idx + 2;
       var addrStatus   = String(row[KIT_COL.ADDR_STATUS - 1]   || '').trim();
-      var phoneOnRow   = _normalisePhone(String(row[KIT_COL.PHONE_SENT_TO - 1] || ''));
-      if (addrStatus !== 'Requested' || !phoneOnRow || phoneOnRow !== normPhone) return;
+      // PHONE_SENT_TO may hold multiple comma-joined numbers (every contact
+      // the request fanned out to) — split BEFORE normalising each one, since
+      // normalising the raw comma-joined string first would strip the comma
+      // and merge all numbers into one unmatchable blob.
+      var phonesOnRow = String(row[KIT_COL.PHONE_SENT_TO - 1] || '')
+        .split(',').map(function(p) { return _normalisePhone(p); }).filter(Boolean);
+      if (addrStatus !== 'Requested' || phonesOnRow.indexOf(normPhone) === -1) return;
 
       var jlid        = String(row[KIT_COL.JLID - 1]         || '').trim();
       var kitName     = String(row[KIT_COL.KIT - 1]           || '').trim();
@@ -563,7 +589,10 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
         // reconfirm path (existingAddrStr set) keeps it, since "Yes, Same
         // Address" needs it still there to confirm against.
         if (!existingAddrStr) sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
-        sheet2.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone); // needed to match the WATI reply later
+        // Store EVERY phone the reconfirm/link went to, comma-joined — not
+        // just the primary — so a reply from any guardian on the deal
+        // (not just the first) still matches back to this row.
+        sheet2.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phonesToMessage.join(','));
 
         // Stamp nudge-pipeline fields — only on the FIRST request, so a resend
         // doesn't reset the Day-0 anchor or re-freeze the urgency tier.

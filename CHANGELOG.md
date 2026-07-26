@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-27] — Fix Multi-Contact Reply Matching (V8.01)
+
+### A reply from any guardian on the deal now matches back correctly (`KitTrackingService.js`)
+- `requestKitDeliveryAddress()` fans the address ask out to every contact's phone, but `PHONE_SENT_TO` only ever stored one (the primary) — so a reply from a second guardian's number couldn't match anything and was silently ignored.
+- `PHONE_SENT_TO` now stores every phone the request/reconfirm went to, comma-joined. `handleKitAddressReconfirmReply()` splits and normalises each number individually before matching (normalising the raw comma-joined string first would have merged all numbers into one unmatchable blob — checked for this specifically).
+- `sendKitAddressVerifyRequest()` ("Verify Address" button) now also fans out to every contact on the deal, for the same reason and consistency with the main request flow.
+
+---
+
 ## [2026-07-27] — Full Audit: Fix Reconfirm Feature Silently Broken by Dead HubSpot Fetch (V8.00)
 
 Did a full audit of the whole address/order pipeline after a string of reactive fixes — found one serious bug, fixed it, plus three smaller consistency gaps.
