@@ -281,7 +281,11 @@
         <div class="menu-item" data-page="teachers"><i class="fas fa-chalkboard-teacher"></i><span>Teachers</span></div>
         <div class="menu-item" data-page="courses"><i class="fas fa-book"></i><span>Courses</span></div>
         <div class="menu-item" data-page="tasks"><i class="fas fa-check-square"></i><span>Tasks</span></div>
-        <div class="menu-item" data-page="kitTracking"><i class="fas fa-box-open"></i><span>Kit Tracking</span><span id="kitPendingBadge" class="badge" style="display:none;background:#f59e0b;color:#fff;">0</span></div>
+        <div class="menu-item" data-page="kitTracking"><i class="fas fa-box-open"></i><span>Kit Tracking</span>
+          <span id="kitPendingBadge" class="badge" style="display:none;background:#f59e0b;color:#fff;" title="Overdue / awaiting delivery reply">0</span>
+          <span id="kitAddrReceivedBadge" class="badge" style="display:none;background:#0d9488;color:#fff;margin-left:3px;" title="Address received — order pending">0</span>
+          <span id="kitNeedsCallBadge" class="badge" style="display:none;background:#dc2626;color:#fff;margin-left:3px;" title="No reply after nudges — call the parent">0</span>
+        </div>
 
         <div class="menu-item" data-page="operations"><i class="fas fa-bolt"></i><span>Operations</span><span id="opsPendingBadge" class="badge" style="display:none;background:#6366f1;color:#fff;">!</span></div>
 

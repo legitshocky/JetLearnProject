@@ -13793,6 +13793,18 @@ function loadKitTrackingPage() {
         if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline-flex'; }
         else badge.style.display = 'none';
       }
+      const addrBadge = document.getElementById('kitAddrReceivedBadge');
+      if (addrBadge) {
+        const n = s.addressReceivedPendingOrder || 0;
+        if (n > 0) { addrBadge.textContent = n; addrBadge.style.display = 'inline-flex'; }
+        else addrBadge.style.display = 'none';
+      }
+      const callBadge = document.getElementById('kitNeedsCallBadge');
+      if (callBadge) {
+        const n = s.needsCall || 0;
+        if (n > 0) { callBadge.textContent = n; callBadge.style.display = 'inline-flex'; }
+        else callBadge.style.display = 'none';
+      }
 
       renderKitTrackingTable();
       // Re-render pivot if it's the active tab
@@ -13827,7 +13839,8 @@ function renderKitTrackingTable(filterArg) {
     overdue:      { label: '🚨 Overdue',             color: '#6366f1', bg: '#eef2ff' },
     pending:      { label: '📭 Not Sent Yet',        color: '#94a3b8', bg: '#f8fafc' },
     escalated:    { label: '🔴 Escalated',           color: '#dc2626', bg: '#fef2f2' },
-    refunded:     { label: '↩ Refunded',             color: '#64748b', bg: '#f1f5f9' }
+    refunded:     { label: '↩ Refunded',             color: '#64748b', bg: '#f1f5f9' },
+    addr_received_pending_order: { label: '📬 Address Received', color: '#0d9488', bg: '#f0fdfa' }
   };
 
   // Base filter (month + kit + search) — used for KPI recalc
@@ -13903,7 +13916,8 @@ function renderKitTrackingTable(filterArg) {
 
   tbody.innerHTML = filtered.map(function(row, i) {
     const sc = statusConfig[row.status] || statusConfig.pending;
-    const statusBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + sc.color + ';background:' + sc.bg + ';border:1px solid ' + sc.color + '30;border-radius:20px;padding:2px 8px;">' + sc.label + '<\/span>';
+    const statusBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + sc.color + ';background:' + sc.bg + ';border:1px solid ' + sc.color + '30;border-radius:20px;padding:2px 8px;">' + sc.label + '<\/span>'
+      + (row.needsCall ? '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.7rem;font-weight:700;color:#dc2626;background:#fef2f2;border:1px solid #dc262630;border-radius:20px;padding:2px 8px;margin-left:4px;" title="No reply after nudges — call the parent"><i class="fas fa-phone"><\/i> Call Parent<\/span>' : '');
 
     // Action buttons
     let actionBtn = '';
@@ -13923,6 +13937,8 @@ function renderKitTrackingTable(filterArg) {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"><\/i> Re-send Urgent<\/button>' + msgBtn + editBtn + refundBtn;
     } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + editBtn + refundBtn;
+    } else if (row.status === 'addr_received_pending_order') {
+      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + msgBtn + editBtn + refundBtn;
     } else {
       actionBtn = msgBtn + editBtn + refundBtn;
     }
@@ -14184,6 +14200,91 @@ function ktSaveEdit() {
       showToast('error', 'Save Failed', err.message || String(err));
     })
     .updateKitRow({ rowIndex: rowIndex, jlid: jlid, deliveryDate: deliveryDate, response: response });
+}
+
+function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
+  let modal = document.getElementById('ktOrderPlacedModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktOrderPlacedModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">'
+      + '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-shopping-cart" style="color:#0d9488;margin-right:8px;"><\/i>Mark Order Placed<\/h3>'
+      + '<button onclick="ktCloseOrderPlaced()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<p id="ktOrderPlacedSubtitle" style="margin:0 0 18px;font-size:0.82rem;color:#64748b;"><\/p>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Order Date<\/label>'
+      + '<input id="ktOpOrderDate" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Expected Delivery (ETA)<\/label>'
+      + '<input id="ktOpEta" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Store<\/label>'
+      + '<input id="ktOpStore" type="text" placeholder="Amazon / Digikey / Other" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking Number (optional)<\/label>'
+      + '<input id="ktOpTrackingNo" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking URL (optional)<\/label>'
+      + '<input id="ktOpTrackingUrl" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;">'
+      + '<div style="display:flex;gap:10px;">'
+      + '<button onclick="ktCloseOrderPlaced()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      + '<button id="ktOpSaveBtn" onclick="ktSaveOrderPlaced()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-check"><\/i> Confirm Order Placed<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktOrderPlacedSubtitle').textContent = learnerName + (kitName ? ' — ' + kitName : '') + (jlid ? ' (' + jlid + ')' : '');
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('ktOpOrderDate').value = today;
+  document.getElementById('ktOpEta').value = '';
+  document.getElementById('ktOpStore').value = '';
+  document.getElementById('ktOpTrackingNo').value = '';
+  document.getElementById('ktOpTrackingUrl').value = '';
+  modal.style.display = 'flex';
+}
+
+function ktCloseOrderPlaced() {
+  const modal = document.getElementById('ktOrderPlacedModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function ktSaveOrderPlaced() {
+  const modal    = document.getElementById('ktOrderPlacedModal');
+  const rowIndex = parseInt(modal.dataset.rowIndex, 10);
+  const saveBtn  = document.getElementById('ktOpSaveBtn');
+
+  const toDMY = (iso) => { if (!iso) return ''; const p = iso.split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ''; };
+
+  const payload = {
+    orderDate:   toDMY((document.getElementById('ktOpOrderDate').value || '').trim()),
+    eta:         toDMY((document.getElementById('ktOpEta').value || '').trim()),
+    store:       (document.getElementById('ktOpStore').value || '').trim(),
+    trackingNo:  (document.getElementById('ktOpTrackingNo').value || '').trim(),
+    trackingUrl: (document.getElementById('ktOpTrackingUrl').value || '').trim()
+  };
+
+  const origHTML = saveBtn.innerHTML;
+  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Saving...';
+  saveBtn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      if (result && result.success) {
+        ktCloseOrderPlaced();
+        showToast('success', 'Order Placed', 'Parent has been notified via WhatsApp.');
+        loadKitTrackingPage();
+      } else {
+        showToast('error', 'Could Not Save', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      showToast('error', 'Could Not Save', err.message || String(err));
+    })
+    .markKitOrderPlaced(rowIndex, payload);
 }
 
 function openAddKitModal() {

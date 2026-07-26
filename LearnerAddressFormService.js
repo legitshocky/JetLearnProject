@@ -36,8 +36,8 @@ function _lafGetLogSheet() {
   var sheet = ss.getSheetByName('Learner Address Submissions');
   if (!sheet) {
     sheet = ss.insertSheet('Learner Address Submissions');
-    sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID']);
-    sheet.getRange(1, 1, 1, 10).setFontWeight('bold');
+    sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID', 'Kit Bridge Status']);
+    sheet.getRange(1, 1, 1, 11).setFontWeight('bold');
     sheet.setFrozenRows(1);
   }
   return sheet;
@@ -127,17 +127,75 @@ function submitLearnerAddressForm(payload) {
       Logger.log('[LAF] No HubSpot contact found for deal ' + d.dealId + ' — logged only, not patched.');
     }
 
+    var addressText = [payload.address, payload.city, payload.state, payload.postalCode, payload.country]
+      .filter(function(p) { return p && String(p).trim(); }).join(', ');
+
+    var bridgeStatus = _bridgeAddressToKitTracking(jlid, addressText, d);
+
     var sheet = _lafGetLogSheet();
     sheet.appendRow([
       new Date(), jlid, d.learnerName || '', payload.email, payload.address,
-      payload.city, payload.state, payload.postalCode, payload.country, d.dealId || ''
+      payload.city, payload.state, payload.postalCode, payload.country, d.dealId || '', bridgeStatus
     ]);
 
-    Logger.log('[LAF] Address submitted for ' + jlid);
+    Logger.log('[LAF] Address submitted for ' + jlid + ' (kitBridgeStatus=' + bridgeStatus + ')');
     return { success: true };
   } catch(e) {
     Logger.log('[LAF] submitLearnerAddressForm ERROR: ' + e.message);
     return { success: false, message: 'Something went wrong submitting your details. Please contact JetLearn support.' };
+  }
+}
+
+// Bridges a public-form address submission into the Kit Tracking sheet —
+// this is what actually advances the Kit Tracking pipeline (ADDR_STATUS
+// 'Requested' → 'Received') when a parent uses the new short link instead of
+// the older WATI free-text / HubSpot-form flow. Never blocks the caller —
+// any failure here is logged and swallowed so the parent still sees success.
+// Returns a short status string logged on the submission row for auditing.
+function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
+  try {
+    var sheet = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return 'no_kit_sheet_rows';
+
+    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var candidates = [];
+    raw.forEach(function(r, idx) {
+      if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) return;
+      var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
+      var isDelivered = !!r[KIT_COL.DELIVERY_DATE - 1];
+      if (isRefunded || isDelivered) return;
+      candidates.push(idx + 2); // 1-based sheet row
+    });
+
+    if (candidates.length === 0) return 'no_kit_row_found';
+    if (candidates.length > 1) return 'ambiguous_multiple_rows';
+
+    var rowIndex = candidates[0];
+    sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addressText);
+    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
+
+    // Same confirmation WATI the internal flow sends — parent gets a
+    // consistent experience regardless of which channel they used.
+    try {
+      var phone = _normalisePhone((hsData && hsData.parentContact) || '');
+      if (phone) {
+        var kitName = String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || '').trim();
+        sendWatiMessage(phone, 'kit_address_received_confirmation', [
+          { name: '1', value: (hsData && hsData.parentName) || '' },
+          { name: '2', value: kitName }
+        ]);
+      }
+    } catch(we) {
+      Logger.log('[LAF] bridge confirmation WATI failed (non-fatal): ' + we.message);
+    }
+
+    Logger.log('[LAF] Bridged address to Kit Tracking row ' + rowIndex + ' for ' + jlid);
+    return 'bridged';
+  } catch(e) {
+    Logger.log('[LAF] _bridgeAddressToKitTracking error: ' + e.message);
+    return 'bridge_error';
   }
 }
 

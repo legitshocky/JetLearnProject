@@ -2,6 +2,29 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: End-to-End Address → Order → Delivery Pipeline (V7.75)
+
+### Bridged the public address form into Kit Tracking (`LearnerAddressFormService.js`, `KitTrackingService.js`)
+- `submitLearnerAddressForm()` now calls new `_bridgeAddressToKitTracking(jlid, addressText, hsData)` — matches the learner's latest open (non-refunded, non-delivered) Kit Tracking row and flips `ADDR_STATUS` → `Received`, fills `DELIVERY_ADDRESS`, sends the existing `kit_address_received_confirmation` WATI regardless of which channel the parent used. Ambiguous/no-match cases are logged (`Kit Bridge Status` column on the submission log sheet) rather than guessed.
+- The short link (`jetlearn-kit-links.web.app/kit/{JLID}`) is now the real front door for address collection — submitting it drives the whole pipeline below.
+
+### Urgency-tiered nudges for silent address requests (`KitTrackingService.js`)
+- New columns on the Kits sheet: `ADDR_REQUESTED_AT`, `MODULE_START_DATE`, `NUDGE_TIER`, `NUDGE_STAGE`, `NUDGE_STAGE_AT`, `ORDER_PLACED(_AT)`, `ORDER_STORE`, `ORDER_TRACKING_NO/URL`.
+- `requestKitDeliveryAddress()` now sends via new `sendKitAddressLinkWhatsApp()` (new WATI template `kit_address_request_link` carrying the short link, falls back to `migration_address_template` until the new template is approved in the WATI dashboard) and stamps a frozen urgency tier from HubSpot `module_start_date`: **urgent** (≤7 days to course start) → email nudge same day, call-me nudge next day; **medium** (8–21 days) → email day 3, call-me day 7; **default** (>21 days / unknown) → email day 7, call-me day 14.
+- New daily trigger `checkKitAddressNudges()` (run `setupKitAddressNudgeTrigger()` once from the Apps Script editor) — timezone-safe day-math, idempotent via `NUDGE_STAGE` so re-runs never double-send. Email nudge uses a new branded template `KitAddressReminderTemplate.html` (`getKitAddressReminderEmailHTML`/`sendKitAddressReminderEmail` in `EmailService.js`). Call-me nudge emails `hello@jet-learn.com` to prompt a direct call to the parent.
+
+### "Mark Order Placed" action (manual purchase, in-app tracking)
+- New server function `markKitOrderPlaced(rowIndex, payload)` — writes `DATE_OF_ORDER`/`ETA` (existing columns, so `sendKitFollowUps()` needs no changes) plus the new order-placed audit trail, and sends a new WATI template `kit_order_placed_notice` ("your kit is on the way") to the parent.
+- New UI: "Mark Order Placed" button + modal on rows where the address is Received but the order isn't placed yet, in `Index.html`/`JavaScript.html`.
+
+### UI visibility
+- New status chip "📬 Address Received" (`addr_received_pending_order`) and a "📞 Call Parent" flag chip (`needsCall`).
+- Two new sidebar counters next to Kit Tracking: address-received-pending-order count (teal) and needs-your-call count (red).
+
+**Manual step required**: two new WATI templates (`kit_address_request_link`, `kit_order_placed_notice`) need to be created and approved in the WATI/Meta dashboard — code falls back to the older template until then. Also run `setupKitAddressNudgeTrigger()` once from the Apps Script editor.
+
+---
+
 ## [2026-07-26] — Address Form: Fully Self-Hosted Page, Not a Redirect (V7.73–V7.74)
 
 ### Real Static Page Instead of a Redirect (`firebase-hosting/public/kit/index.html`, `Code.js`, `LearnerAddressFormService.js`)

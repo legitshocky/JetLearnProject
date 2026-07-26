@@ -1589,6 +1589,46 @@ function getParentOnboardingEmailHTML(data) {
   return template.evaluate().getContent();
 }
 
+function getKitAddressReminderEmailHTML(data) {
+  const template = HtmlService.createTemplateFromFile('KitAddressReminderTemplate');
+  template.data = data;
+  return template.evaluate().getContent();
+}
+
+// Sends the branded address-reminder email to a parent who hasn't replied to
+// the WhatsApp address-request link. Called from checkKitAddressNudges()
+// (KitTrackingService.js) at the email-nudge stage of the tiered cadence.
+function sendKitAddressReminderEmail(kitRow) {
+  try {
+    if (!kitRow || !kitRow.parentEmail || !isValidEmail(kitRow.parentEmail)) {
+      Logger.log('[KitAddrReminder] No valid parent email for ' + (kitRow && kitRow.jlid));
+      return { success: false, message: 'No valid parent email.' };
+    }
+    var linkRes = getAddressFormLink(kitRow.jlid, kitRow.learnerName);
+    var addressLink = (linkRes && linkRes.success) ? linkRes.url : '';
+    if (!addressLink) return { success: false, message: 'Could not build address link.' };
+
+    var htmlBody = getKitAddressReminderEmailHTML({
+      parentName: kitRow.parentName,
+      learnerName: kitRow.learnerName,
+      kitName: kitRow.kitName,
+      addressLink: addressLink
+    });
+
+    var result = sendTrackedEmail({
+      to: kitRow.parentEmail,
+      subject: 'Quick favor — confirm ' + (kitRow.learnerName || 'your child') + "'s kit delivery address",
+      htmlBody: htmlBody,
+      jlid: kitRow.jlid
+    });
+    Logger.log('[KitAddrReminder] Reminder email sent to ' + kitRow.parentEmail + ' for ' + kitRow.jlid);
+    return { success: true, trackingId: result.trackingId };
+  } catch(e) {
+    Logger.log('[KitAddrReminder] sendKitAddressReminderEmail ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function getMinecraftInstallEmailHTML(data, comments) {
   const template = HtmlService.createTemplateFromFile('MinecraftInstallTemplate');
   template.data = data;

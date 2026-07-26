@@ -49,8 +49,25 @@ var KIT_COL = {
   ESCALATED:          25,
   ESCALATED_AT:       26,
   // Refunded flag — AA(27)
-  REFUNDED:           27
+  REFUNDED:           27,
+  // Address-nudge pipeline columns (appended — AB..AF)
+  ADDR_REQUESTED_AT:  28,  // Timestamp, set once on first address request (Day-0 anchor)
+  MODULE_START_DATE:  29,  // Snapshot of HubSpot module_start_date at request time
+  NUDGE_TIER:         30,  // urgent / medium / default — frozen at Day 0
+  NUDGE_STAGE:        31,  // '' / whatsapp_sent / email_sent / call_nudge_sent
+  NUDGE_STAGE_AT:     32,  // Timestamp of last nudge stage change
+  // Order-placement columns (appended — AG..AK)
+  ORDER_PLACED:       33,  // 'TRUE' / ''
+  ORDER_PLACED_AT:    34,
+  ORDER_STORE:        35,
+  ORDER_TRACKING_NO:  36,
+  ORDER_TRACKING_URL: 37
 };
+
+// Last column currently used by the Kit Tracking sheet — use this (not
+// KIT_COL.REFUNDED) for any full-row range read, since REFUNDED is no
+// longer the last column.
+var KIT_LAST_COL = KIT_COL.ORDER_TRACKING_URL;
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
 // Fetch current learning_kit_cost directly from deal GET — bypasses search cache
@@ -174,6 +191,51 @@ function _updateHubSpotContactAddress(dealId, addressText) {
   }
 }
 
+// ── Urgency tier from HubSpot module_start_date ──────────────────────────────
+// Frozen at Day 0 (address-request time) — drives the nudge cadence in
+// checkKitAddressNudges(). Falls back to 'default' when the start date is
+// missing or unparseable.
+function _kitComputeNudgeTier(moduleStartDateStr) {
+  if (!moduleStartDateStr) return 'default';
+  var startDate = (moduleStartDateStr instanceof Date) ? moduleStartDateStr : new Date(moduleStartDateStr);
+  if (isNaN(startDate.getTime())) return 'default';
+  startDate.setHours(0, 0, 0, 0);
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var daysToStart = Math.floor((startDate - today) / 86400000);
+  if (daysToStart <= 7) return 'urgent';
+  if (daysToStart <= 21) return 'medium';
+  return 'default';
+}
+
+// ── Send the WhatsApp address-request link ───────────────────────────────────
+// Uses the new branded short link (jetlearn-kit-links.web.app/kit/{JLID}) via
+// getAddressFormLink() (LearnerAddressFormService.js). Falls back to the older
+// free-text 'migration_address_template' if the new 'kit_address_request_link'
+// WATI template hasn't been approved yet in the WATI dashboard.
+function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerName) {
+  try {
+    var linkRes = getAddressFormLink(jlid, learnerName);
+    var link = (linkRes && linkRes.success) ? linkRes.url : '';
+    if (link) {
+      var wRes = sendWatiMessage(phone, 'kit_address_request_link', [
+        { name: 'Parent',   value: parentName },
+        { name: 'Kit_name', value: kitName    },
+        { name: 'Link',     value: link       }
+      ]);
+      if (wRes && wRes.success) return wRes;
+      Logger.log('[KitTracking] kit_address_request_link send failed, falling back to migration_address_template: ' + (wRes && wRes.error));
+    }
+  } catch(e) {
+    Logger.log('[KitTracking] sendKitAddressLinkWhatsApp error, falling back: ' + e.message);
+  }
+  // Fallback — template not yet approved or link build failed
+  return sendWatiMessage(phone, 'migration_address_template', [
+    { name: 'Parent',   value: parentName },
+    { name: 'Kit_type', value: kitName    }
+  ]);
+}
+
 // ── Request delivery address from parent via WATI ────────────────────────────
 // Call before placing a kit order when HubSpot address is blank.
 // Returns { success, addressSource, address, phone, needsWati, watiSent }
@@ -193,10 +255,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
 
     // Always reconfirm address — parents move. Never assume existing address is current.
     // Always send WATI regardless of what HubSpot contact address says.
-    var wRes = sendWatiMessage(phone, 'migration_address_template', [
-      { name: 'Parent',   value: parentName },
-      { name: 'Kit_type', value: kitName    }
-    ]);
+    var wRes = sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerName);
 
     if (!wRes || !wRes.success) {
       return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
@@ -231,6 +290,18 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
         var sheet2 = _getKitSheet();
         sheet2.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
         sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+
+        // Stamp nudge-pipeline fields — only on the FIRST request, so a resend
+        // doesn't reset the Day-0 anchor or re-freeze the urgency tier.
+        var alreadyRequestedAt = sheet2.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).getValue();
+        if (!alreadyRequestedAt) {
+          var tier = _kitComputeNudgeTier(d.startingDate || d.moduleStartDate);
+          sheet2.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).setValue(new Date());
+          sheet2.getRange(rowIndex, KIT_COL.MODULE_START_DATE).setValue(d.startingDate || '');
+          sheet2.getRange(rowIndex, KIT_COL.NUDGE_TIER).setValue(tier);
+          sheet2.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('whatsapp_sent');
+          sheet2.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
+        }
       } catch(se2) {}
     }
 
@@ -648,6 +719,121 @@ function _handleKitAddressFormWebhook(payload) {
   _kitAddrQueueRemove(matched.jlid);
 
   Logger.log('[KitAddrWebhook] Done. JLID=' + matched.jlid + ' address="' + addrStr + '" confirm=' + confirmSent);
+}
+
+// ── Truncate a Date to a "yyyy-MM-dd" day-boundary in the script's timezone ──
+// Used for nudge day-math so a trigger firing at 23:58 vs 00:02 never causes
+// an off-by-one-day miscount.
+function _kitDayKey(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+function _kitDaysBetween(earlier, later) {
+  var d1 = new Date(_kitDayKey(earlier) + 'T00:00:00');
+  var d2 = new Date(_kitDayKey(later) + 'T00:00:00');
+  return Math.round((d2 - d1) / 86400000);
+}
+
+// ── Nudge tier thresholds (days-since-request) ───────────────────────────────
+var KIT_NUDGE_THRESHOLDS = {
+  urgent:  { email: 0, call: 1  },
+  medium:  { email: 3, call: 7  },
+  default: { email: 7, call: 14 }
+};
+
+// ── Daily nudge check for address requests that got no reply ─────────────────
+// Advances NUDGE_STAGE: '' → whatsapp_sent → email_sent → call_nudge_sent.
+// Idempotent: only fires the NEXT stage once, guarded by NUDGE_STAGE itself
+// (not by re-deriving from date math), so re-runs never double-send.
+function checkKitAddressNudges() {
+  try {
+    var sheet = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) { Logger.log('[KitNudge] No data rows.'); return; }
+
+    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var today = new Date();
+    var emailsSent = 0, callNudgesSent = 0;
+
+    raw.forEach(function(r, idx) {
+      var rowIndex   = idx + 2;
+      var addrStatus = String(r[KIT_COL.ADDR_STATUS - 1] || '').trim();
+      var requestedAt = r[KIT_COL.ADDR_REQUESTED_AT - 1];
+      var stage      = String(r[KIT_COL.NUDGE_STAGE - 1] || '').trim();
+      var tier       = String(r[KIT_COL.NUDGE_TIER - 1]  || '').trim() || 'default';
+      var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
+
+      // Only rows still waiting on an address, with a Day-0 anchor stamped
+      if (isRefunded || addrStatus === 'Received' || !requestedAt || !stage) return;
+      if (stage === 'call_nudge_sent') return; // final stage already reached
+
+      var daysSince = _kitDaysBetween(requestedAt, today);
+      var thresholds = KIT_NUDGE_THRESHOLDS[tier] || KIT_NUDGE_THRESHOLDS.default;
+
+      var jlid = String(r[KIT_COL.JLID - 1] || '').trim();
+      var learnerName = String(r[KIT_COL.LEARNER_NAME - 1] || '').trim();
+      var kitName = String(r[KIT_COL.KIT - 1] || '').trim();
+
+      if (stage === 'whatsapp_sent' && daysSince >= thresholds.email) {
+        try {
+          var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+          if (hs && hs.success && hs.data) {
+            sendKitAddressReminderEmail({
+              jlid: jlid, learnerName: learnerName, kitName: kitName,
+              parentName: hs.data.parentName, parentEmail: hs.data.parentEmail
+            });
+            emailsSent++;
+          }
+        } catch(ee) {
+          Logger.log('[KitNudge] email nudge failed for ' + jlid + ': ' + ee.message);
+        }
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('email_sent');
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(today);
+        return;
+      }
+
+      if (stage === 'email_sent' && daysSince >= thresholds.call) {
+        try {
+          MailApp.sendEmail({
+            to: 'hello@jet-learn.com',
+            subject: 'Action needed: call parent — ' + (learnerName || jlid) + ' kit address',
+            htmlBody:
+              '<p>No response yet on the kit delivery-address request for the learner below ' +
+              '(' + daysSince + ' days since we asked). Please call the parent directly.</p>' +
+              '<table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">' +
+              '<tr><td style="padding:4px 16px 4px 0"><strong>JLID</strong></td><td>' + (jlid || '—') + '</td></tr>' +
+              '<tr><td style="padding:4px 16px 4px 0"><strong>Learner</strong></td><td>' + (learnerName || '—') + '</td></tr>' +
+              '<tr><td style="padding:4px 16px 4px 0"><strong>Kit</strong></td><td>' + (kitName || '—') + '</td></tr>' +
+              '<tr><td style="padding:4px 16px 4px 0"><strong>Urgency tier</strong></td><td>' + tier + '</td></tr>' +
+              '</table>' +
+              '<p>— JetLearn Operations Platform</p>',
+            name: (CONFIG.EMAIL && CONFIG.EMAIL.FROM_NAME) || 'JetLearn Ops',
+            from: (CONFIG.EMAIL && CONFIG.EMAIL.FROM) || undefined
+          });
+          callNudgesSent++;
+        } catch(ce) {
+          Logger.log('[KitNudge] call-me email failed for ' + jlid + ': ' + ce.message);
+        }
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('call_nudge_sent');
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(today);
+        return;
+      }
+    });
+
+    Logger.log('[KitNudge] checkKitAddressNudges done. emails=' + emailsSent + ' callNudges=' + callNudgesSent);
+  } catch(e) {
+    Logger.log('[KitNudge] checkKitAddressNudges ERROR: ' + e.message);
+  }
+}
+
+// Installs the daily address-nudge trigger (8 AM — before the 9 AM delivery
+// follow-up trigger). Run once from the editor.
+function setupKitAddressNudgeTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'checkKitAddressNudges') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('checkKitAddressNudges').timeBased().everyDays(1).atHour(8).create();
+  Logger.log('[KitTracking] Daily 8AM checkKitAddressNudges trigger created.');
+  return 'Daily 8AM address-nudge trigger installed.';
 }
 
 // ── Register 1-min address poll trigger (fallback) ────────────────────────────
@@ -1469,7 +1655,7 @@ function getKitTrackingData() {
     var today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_COL.REFUNDED).getValues();
+    var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
     var rows = [];
 
     var cutoff = new Date(2026, 0, 1); // Jan 1 2026 — ignore older rows
@@ -1503,6 +1689,9 @@ function getKitTrackingData() {
       var jlid          = String(r[KIT_COL.JLID - 1]            || '').trim();
       var followup2Sent = String(r[KIT_COL.FOLLOWUP2_SENT - 1]  || '').trim();
       var sentAt2       = r[KIT_COL.FOLLOWUP2_SENT_AT - 1];
+      var addrStatus    = String(r[KIT_COL.ADDR_STATUS - 1]     || '').trim();
+      var nudgeStage    = String(r[KIT_COL.NUDGE_STAGE - 1]     || '').trim();
+      var orderPlaced   = String(r[KIT_COL.ORDER_PLACED - 1]    || '').trim().toUpperCase() === 'TRUE';
 
       if (!learnerName && !kit) return; // blank row
 
@@ -1550,6 +1739,7 @@ function getKitTrackingData() {
 
       // Compute status — refunded wins over everything (no ETA/overdue tracking applies)
       var isRefunded = String(r[26] || '').trim().toUpperCase() === 'TRUE';
+      var needsCall = (nudgeStage === 'call_nudge_sent' && addrStatus !== 'Received');
       var status = 'pending';
       if (isRefunded) {
         status = 'refunded';
@@ -1566,6 +1756,9 @@ function getKitTrackingData() {
         status = 'awaiting';
       } else if (!fupSentBool && etaDate && etaDate <= today) {
         status = 'overdue';
+      } else if (addrStatus === 'Received' && !orderPlaced) {
+        // Parent confirmed address — ready for us to place the order
+        status = 'addr_received_pending_order';
       }
 
       rows.push({
@@ -1586,6 +1779,9 @@ function getKitTrackingData() {
         jlid:          jlid,
         status:        status,
         refunded:      isRefunded,
+        addrStatus:    addrStatus,
+        orderPlaced:   orderPlaced,
+        needsCall:     needsCall,
         // Extra detail fields
         country:      String(r[3]  || '').trim(),   // D: Country
         price:        String(r[4]  || '').trim(),   // E: Price EUR
@@ -1611,7 +1807,9 @@ function getKitTrackingData() {
       notReceived: rows.filter(function(r) { return r.status === 'not_received' || r.status === 'need_check'; }).length,
       overdue:     rows.filter(function(r) { return r.status === 'overdue'; }).length,
       escalated:   rows.filter(function(r) { return r.status === 'escalated'; }).length,
-      refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length
+      refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length,
+      addressReceivedPendingOrder: rows.filter(function(r) { return r.status === 'addr_received_pending_order'; }).length,
+      needsCall:   rows.filter(function(r) { return r.needsCall; }).length
     };
 
     Logger.log('[KitTracking] getKitTrackingData: ' + rows.length + ' rows, stats=' + JSON.stringify(stats));
@@ -2355,6 +2553,61 @@ function markKitAsRefunded(rowIndex) {
     return { success: true, price: price };
   } catch(e) {
     Logger.log('[KitTracking] markKitAsRefunded ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Mark a kit's order as placed (manual purchase happens outside the app) ──
+// Requires the address to already be Received. Writes the existing
+// DATE_OF_ORDER/ETA columns (so sendKitFollowUps() picks the row up
+// unmodified) plus the new ORDER_PLACED audit trail, then sends the parent
+// a "your kit is on the way" WhatsApp notice.
+// payload: { orderDate, eta, store, trackingNo, trackingUrl }
+function markKitOrderPlaced(rowIndex, payload) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  payload = payload || {};
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+
+    var addrStatus = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    if (addrStatus !== 'Received') {
+      return { success: false, message: 'Address must be Received before placing the order.' };
+    }
+
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
+    var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+
+    if (payload.orderDate) sheet.getRange(rowIndex, KIT_COL.DATE_OF_ORDER).setValue(payload.orderDate);
+    if (payload.eta) sheet.getRange(rowIndex, KIT_COL.ETA).setValue(payload.eta);
+    sheet.getRange(rowIndex, KIT_COL.ORDER_PLACED).setValue('TRUE');
+    sheet.getRange(rowIndex, KIT_COL.ORDER_PLACED_AT).setValue(new Date());
+    if (payload.store) sheet.getRange(rowIndex, KIT_COL.ORDER_STORE).setValue(payload.store);
+    if (payload.trackingNo) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_NO).setValue(payload.trackingNo);
+    if (payload.trackingUrl) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_URL).setValue(payload.trackingUrl);
+
+    // Notify the parent their kit is on the way (best-effort, non-fatal)
+    try {
+      var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+      if (hs && hs.success && hs.data) {
+        var phone = _normalisePhone(hs.data.parentContact || '');
+        if (phone) {
+          sendWatiMessage(phone, 'kit_order_placed_notice', [
+            { name: 'Parent',   value: hs.data.parentName || '' },
+            { name: 'Kit_name', value: kitName },
+            { name: 'ETA',      value: payload.eta || '' }
+          ]);
+        }
+      }
+    } catch(we) {
+      Logger.log('[KitTracking] markKitOrderPlaced WATI notice failed (non-fatal): ' + we.message);
+    }
+
+    Logger.log('[KitTracking] Order placed for row=' + rowIndex + ' jlid=' + jlid);
+    return { success: true };
+  } catch(e) {
+    Logger.log('[KitTracking] markKitOrderPlaced ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
 }
