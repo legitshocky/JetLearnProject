@@ -2,6 +2,23 @@
 
 ---
 
+## [2026-07-27] — Kit Tracking: Fix Legacy-Row Bug, Copy Link, Verify Address (V7.95–V7.96)
+
+### Critical fix: legacy rows wrongly flooding the Asking Address tab (`KitTrackingService.js`)
+- The "Asking Address" tab (V7.93) filtered on any non-blank `ADDR_STATUS` + no `ORDER_PLACED` — but old rows created via the legacy Add Kit Entry form set `ADDR_STATUS='Verified'` just from typing an address in at creation time, and never have `ORDER_PLACED` set (that column didn't exist yet). Every already-delivered/ordered legacy kit was getting misclassified as "still asking," and JetLearn Sends was hiding all of them, showing 0 for entire months.
+- New `inAddressPipeline` flag requires `ADDR_REQUESTED_AT` to actually be stamped (only happens via the new `requestKitDeliveryAddress()`/`sendKitAddressVerifyRequest()` pipeline) — legacy rows are correctly excluded regardless of their old `ADDR_STATUS` value.
+
+### Address-received date shown in Add Kit Entry (`KitTrackingService.js`, `JavaScript.html`)
+- `fetchKitLearnerDetails()` now returns `addressReceivedAt` (from `ADDR_SUBMITTED_AT`), shown under the "Previous address on file" warning so it's clear how stale it is.
+
+### Fixed "Copy Address Link" (`JavaScript.html`)
+- `navigator.clipboard.writeText()` was called inside the `google.script.run` async callback — by then the browser's user-gesture flag from the click had expired, so it silently fell back to a jarring native `prompt()`. Replaced with a small modal showing the link in a selectable field with its own "Copy" button — copying now happens on a fresh, direct click, which works reliably.
+
+### New "Verify Address" action (`KitTrackingService.js`, `Index.html`, `JavaScript.html`)
+- New `sendKitAddressVerifyRequest(jlid, rowIndex)` sends the yes/no `kit_address_reconfirm` template using the address **already on file in our own sheet** — no HubSpot round-trip (which is blocked anyway). Faster than a full new address request when you already trust the address on file and just want a quick parent confirmation. New "Verify Address" button appears in the Add Kit Entry modal whenever an address is already on file.
+
+---
+
 ## [2026-07-26] — Kit Tracking: New "Asking Address" Sub-Tab (V7.93–V7.94)
 
 ### Separate tab for the address-request pipeline (`Index.html`, `JavaScript.html`)

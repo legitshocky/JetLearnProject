@@ -13808,7 +13808,7 @@ function loadKitTrackingPage() {
 
       renderKitTrackingTable();
       // Keep the Asking Address badge fresh regardless of which tab is active
-      const allAskingNow = (result.rows || []).filter(function(r) { return r.addrStatus && !r.orderPlaced; });
+      const allAskingNow = (result.rows || []).filter(function(r) { return r.inAddressPipeline; });
       const aaBadgeEl = document.getElementById('ktAskAddrBadge');
       if (aaBadgeEl) {
         if (allAskingNow.length > 0) { aaBadgeEl.textContent = allAskingNow.length; aaBadgeEl.style.display = 'inline-flex'; }
@@ -13856,7 +13856,7 @@ function renderKitTrackingTable(filterArg) {
     // Rows still in the address-request pipeline (not yet order-placed) live
     // in the "Asking Address" tab instead, so JetLearn Sends only shows kits
     // that have actually moved to being ordered.
-    if (row.addrStatus && !row.orderPlaced) return false;
+    if (row.inAddressPipeline) return false;
     if (filterMonth && row.orderMonth !== filterMonth) return false;
     if (filterKit && row.kit.indexOf(filterKit) === -1) return false;
     if (search && !row.learnerName.toLowerCase().includes(search) && !row.jlid.toLowerCase().includes(search)) return false;
@@ -14058,7 +14058,7 @@ function renderKitAskingAddressTable() {
   const search       = ((document.getElementById('ktAaSearch') || {}).value || '').toLowerCase().trim();
 
   const rows = (_kitTrackingData || []).filter(function(row) {
-    if (!row.addrStatus || row.orderPlaced) return false; // moved on already
+    if (!row.inAddressPipeline) return false; // moved on already or a legacy row
     if (search && !row.learnerName.toLowerCase().includes(search) && !row.jlid.toLowerCase().includes(search)) return false;
     if (filterStage === 'requested' && row.addrStatus !== 'Requested') return false;
     if (filterStage === 'received'  && row.addrStatus !== 'Received') return false;
@@ -14067,7 +14067,7 @@ function renderKitAskingAddressTable() {
   });
 
   const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const allAsking = (_kitTrackingData || []).filter(function(r) { return r.addrStatus && !r.orderPlaced; });
+  const allAsking = (_kitTrackingData || []).filter(function(r) { return r.inAddressPipeline; });
   setKpi('ktAaKpiTotal',     allAsking.length);
   setKpi('ktAaKpiAwaiting',  allAsking.filter(function(r) { return r.addrStatus === 'Requested'; }).length);
   setKpi('ktAaKpiReceived',  allAsking.filter(function(r) { return r.addrStatus === 'Received'; }).length);
@@ -14508,18 +14508,65 @@ function copyAddressFormLink(inputId, nameInputId) {
   google.script.run
     .withSuccessHandler(function(res) {
       if (!res || !res.success) { showToast('error', 'Could Not Build Link', (res && res.message) || 'Unknown error'); return; }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(res.url).then(function() {
-          showToast('success', 'Link Copied', 'Address form link copied — share it with the parent.');
-        }, function() {
-          prompt('Copy this link:', res.url);
-        });
-      } else {
-        prompt('Copy this link:', res.url);
-      }
+      _showLinkModal(res.url, 'Address Confirmation Link');
     })
     .withFailureHandler(function(err) { showToast('error', 'Error', (err && err.message) || String(err)); })
     .getAddressFormLink(jlid, learnerName);
+}
+
+// Shows a link in a small modal with a Copy button. Clipboard writes must
+// happen on a fresh, direct click — doing it automatically inside a
+// google.script.run callback fails silently in most browsers because the
+// "user gesture" flag has already expired by the time the async server
+// round-trip finishes.
+function _showLinkModal(url, title) {
+  let modal = document.getElementById('linkShareModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'linkShareModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:24px 28px;width:460px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'
+      + '<h3 id="linkShareModalTitle" style="margin:0;font-size:1rem;font-weight:700;color:#1e293b;"><i class="fas fa-link" style="color:#6366f1;margin-right:8px;"><\/i>Link<\/h3>'
+      + '<button onclick="document.getElementById(\'linkShareModal\').style.display=\'none\'" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<input id="linkShareModalInput" type="text" readonly style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;font-family:monospace;margin-bottom:14px;background:#f8fafc;">'
+      + '<div style="display:flex;gap:10px;">'
+      + '<button onclick="document.getElementById(\'linkShareModal\').style.display=\'none\'" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Close<\/button>'
+      + '<button id="linkShareModalCopyBtn" onclick="_copyLinkModalInput()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#6366f1;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-copy"><\/i> Copy Link<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('linkShareModalTitle').innerHTML = '<i class="fas fa-link" style="color:#6366f1;margin-right:8px;"><\/i>' + escapeHtml(title || 'Link');
+  document.getElementById('linkShareModalInput').value = url;
+  modal.style.display = 'flex';
+  const inputEl = document.getElementById('linkShareModalInput');
+  inputEl.focus();
+  inputEl.select();
+}
+
+function _copyLinkModalInput() {
+  const inputEl = document.getElementById('linkShareModalInput');
+  const btn = document.getElementById('linkShareModalCopyBtn');
+  inputEl.focus();
+  inputEl.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch(e) { copied = false; }
+  if (copied) {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"><\/i> Copied!';
+    setTimeout(function() { btn.innerHTML = orig; }, 1500);
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(inputEl.value).then(function() {
+      btn.innerHTML = '<i class="fas fa-check"><\/i> Copied!';
+      setTimeout(function() { btn.innerHTML = '<i class="fas fa-copy"><\/i> Copy Link'; }, 1500);
+    }, function() {
+      showToast('warning', 'Copy Manually', 'Select the text above and press Ctrl+C / Cmd+C.');
+    });
+  } else {
+    showToast('warning', 'Copy Manually', 'Select the text above and press Ctrl+C / Cmd+C.');
+  }
 }
 
 function ktFetchByJlid() {
@@ -14576,9 +14623,11 @@ function ktFetchByJlid() {
       const addrStatus  = document.getElementById('ktfAddressStatus');
       const addrReqBtn  = document.getElementById('ktfRequestAddrBtn');
       const addrCheckBtn = document.getElementById('ktfCheckAddrBtn');
+      const addrVerifyBtn = document.getElementById('ktfVerifyAddrBtn');
       if (!addrSection) return; // guard: modal HTML may not be updated yet
 
       addrSection.style.display = 'block';
+      if (addrVerifyBtn) addrVerifyBtn.style.display = 'none';
 
       if (r.addressPending) {
         // WATI already sent this session — waiting for parent to submit form
@@ -14589,9 +14638,13 @@ function ktFetchByJlid() {
       } else if (r.hasAddress) {
         // Address exists but may be outdated — always reconfirm
         if (addrInput)  addrInput.value = r.deliveryAddress || '';
-        if (addrStatus) addrStatus.innerHTML = '<span style="color:#d97706;font-size:0.75rem;">⚠ Previous address on file — reconfirm with parent<\/span>';
+        const receivedNote = r.addressReceivedAt
+          ? '<span style="display:block;font-size:0.68rem;color:#94a3b8;margin-top:2px;">Received ' + escapeHtml(r.addressReceivedAt) + '<\/span>'
+          : '';
+        if (addrStatus) addrStatus.innerHTML = '<span style="color:#d97706;font-size:0.75rem;">⚠ Previous address on file — reconfirm with parent<\/span>' + receivedNote;
         if (addrReqBtn)  addrReqBtn.style.display  = 'inline-flex';
         if (addrCheckBtn) addrCheckBtn.style.display = 'none';
+        if (addrVerifyBtn) addrVerifyBtn.style.display = 'inline-flex';
       } else {
         // No address at all
         if (addrInput)  addrInput.value = '';
@@ -14675,6 +14728,38 @@ function ktRequestAddress() {
       showToast('error', 'Address Request Failed', err.message || String(err));
     })
     .requestKitDeliveryAddress(jlid, kitName, 0);
+}
+
+// ── Verify Address — sends the yes/no reconfirm using the address already
+// on file in our own sheet, instead of a full new address-request round-trip.
+function ktVerifyAddress() {
+  var jlid = ((document.getElementById('ktfJlid') || {}).value || '').trim();
+  if (!jlid) { showToast('warning', 'Verify Address', 'Enter and fetch JLID first'); return; }
+
+  var btn = document.getElementById('ktfVerifyAddrBtn');
+  if (btn) { btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…'; btn.disabled = true; }
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (btn) { btn.innerHTML = '<i class="fas fa-check-double"><\/i> Verify Address'; btn.disabled = false; }
+      if (!r || !r.success) {
+        showToast('error', 'Verify Address Failed', (r && r.message) || 'Unknown error');
+        return;
+      }
+      var addrStatus = document.getElementById('ktfAddressStatus');
+      var addrReqBtn = document.getElementById('ktfRequestAddrBtn');
+      var addrCheckBtn = document.getElementById('ktfCheckAddrBtn');
+      if (addrStatus) addrStatus.innerHTML = '<span style="color:#d97706;font-size:0.75rem;">⏳ Reconfirmation sent — waiting for parent<\/span>';
+      if (btn) btn.style.display = 'none';
+      if (addrReqBtn) addrReqBtn.style.display = 'none';
+      if (addrCheckBtn) addrCheckBtn.style.display = 'inline-flex';
+      showToast('success', 'Reconfirm Sent', 'Parent asked to confirm the address on file with a quick yes/no.');
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.innerHTML = '<i class="fas fa-check-double"><\/i> Verify Address'; btn.disabled = false; }
+      showToast('error', 'Verify Address Failed', err.message || String(err));
+    })
+    .sendKitAddressVerifyRequest(jlid, 0);
 }
 
 // ── Poll for address reply from parent ───────────────────────────────────────

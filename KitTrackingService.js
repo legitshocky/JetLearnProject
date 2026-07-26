@@ -298,6 +298,55 @@ function sendKitAddressReconfirmWhatsApp(phone, parentName, kitName, existingAdd
   ]);
 }
 
+// ── Manually trigger a yes/no reconfirm using the address ALREADY on file in
+// OUR OWN sheet (not a fresh HubSpot lookup — that's permanently blocked).
+// Called from the "Verify Address" button when an address already exists
+// for this kit (e.g. entered directly in the Add Kit Entry form, or via
+// Kit-1 already Verified) and you just want a quick parent yes/no rather
+// than starting a whole new address-request round-trip.
+function sendKitAddressVerifyRequest(jlid, rowIndex) {
+  try {
+    jlid = String(jlid || '').trim().toUpperCase();
+    if (!jlid) return { success: false, message: 'JLID required.' };
+
+    if (!rowIndex || rowIndex <= 0) rowIndex = _findOpenKitRowByJlid(jlid);
+    if (!rowIndex) return { success: false, message: 'No Kit Tracking row found for ' + jlid + '.' };
+
+    var sheet = _getKitSheet();
+    var existingAddress = String(sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
+    if (!existingAddress) return { success: false, message: 'No address on file for this kit yet — use "Request via WhatsApp" instead.' };
+
+    var hs = fetchHubspotByJlid(jlid);
+    if (!hs || !hs.success) return { success: false, message: 'HubSpot lookup failed for ' + jlid };
+    var d = hs.data;
+    var phone = _normalisePhone(d.parentContact || '');
+    if (!phone) return { success: false, message: 'No phone number for ' + jlid };
+
+    var wRes = sendKitAddressReconfirmWhatsApp(phone, d.parentName || '', String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || ''), existingAddress);
+    if (!wRes || !wRes.success) return { success: false, message: 'WATI send failed: ' + (wRes && wRes.error ? wRes.error : 'Unknown') };
+
+    // Set to Requested + stamp nudge fields so it's tracked like any other
+    // address ask (shows in Asking Address tab, gets nudged if no reply).
+    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
+    sheet.getRange(rowIndex, KIT_COL.PHONE_SENT_TO).setValue(phone);
+    var alreadyRequestedAt = sheet.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).getValue();
+    if (!alreadyRequestedAt) {
+      var tier = _kitComputeNudgeTier(d.startingDate || d.moduleStartDate);
+      sheet.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).setValue(new Date());
+      sheet.getRange(rowIndex, KIT_COL.MODULE_START_DATE).setValue(d.startingDate || '');
+      sheet.getRange(rowIndex, KIT_COL.NUDGE_TIER).setValue(tier);
+    }
+    sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('whatsapp_sent');
+    sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
+
+    Logger.log('[KitTracking] Verify-address reconfirm sent for ' + jlid);
+    return { success: true };
+  } catch(e) {
+    Logger.log('[KitTracking] sendKitAddressVerifyRequest ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── Handle the reply to the yes/no address-reconfirm template ────────────────
 // Called from doPost's WATI webhook routing (Code.js) when the parent taps
 // "Yes, Same Address" or "No, Need To Update". Matches by phone against rows
@@ -1968,6 +2017,17 @@ function getKitTrackingData() {
       // Compute status — refunded wins over everything (no ETA/overdue tracking applies)
       var isRefunded = String(r[26] || '').trim().toUpperCase() === 'TRUE';
       var needsCall = (nudgeStage === 'call_nudge_sent' && addrStatus !== 'Received');
+
+      // A row only belongs to the NEW address-request pipeline if it was
+      // actually stamped by requestKitDeliveryAddress() (ADDR_REQUESTED_AT
+      // set). Legacy rows created via the old Add Kit Entry form can have
+      // ADDR_STATUS='Verified' just because an address was typed in at
+      // creation time — that is NOT the same thing and must never be treated
+      // as "still asking" (it already has an order/delivery in most cases).
+      var addrRequestedAtRaw = r[KIT_COL.ADDR_REQUESTED_AT - 1];
+      var inAddressPipeline = !!addrRequestedAtRaw && !orderPlaced &&
+        (addrStatus === 'Requested' || addrStatus === 'Received');
+
       var status = 'pending';
       if (isRefunded) {
         status = 'refunded';
@@ -1984,8 +2044,8 @@ function getKitTrackingData() {
         status = 'awaiting';
       } else if (!fupSentBool && etaDate && etaDate <= today) {
         status = 'overdue';
-      } else if (addrStatus === 'Received' && !orderPlaced) {
-        // Parent confirmed address — ready for us to place the order
+      } else if (inAddressPipeline && addrStatus === 'Received') {
+        // Parent confirmed address via the NEW pipeline — ready to order
         status = 'addr_received_pending_order';
       }
 
@@ -2010,6 +2070,7 @@ function getKitTrackingData() {
         addrStatus:    addrStatus,
         orderPlaced:   orderPlaced,
         needsCall:     needsCall,
+        inAddressPipeline: inAddressPipeline,
         nudgeStage:    nudgeStage,
         nudgeTier:     String(r[KIT_COL.NUDGE_TIER - 1] || '').trim(),
         // Address timeline — requested / opened / submitted
@@ -2046,8 +2107,8 @@ function getKitTrackingData() {
       refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length,
       addressReceivedPendingOrder: rows.filter(function(r) { return r.status === 'addr_received_pending_order'; }).length,
       needsCall:   rows.filter(function(r) { return r.needsCall; }).length,
-      addressAwaitingReply: rows.filter(function(r) { return r.addrStatus === 'Requested' && !r.orderPlaced; }).length,
-      askingAddressTotal: rows.filter(function(r) { return r.addrStatus && !r.orderPlaced; }).length
+      addressAwaitingReply: rows.filter(function(r) { return r.inAddressPipeline && r.addrStatus === 'Requested'; }).length,
+      askingAddressTotal: rows.filter(function(r) { return r.inAddressPipeline; }).length
     };
 
     Logger.log('[KitTracking] getKitTrackingData: ' + rows.length + ' rows, stats=' + JSON.stringify(stats));
@@ -2079,11 +2140,13 @@ function fetchKitLearnerDetails(jlid) {
     // UI by an ops user, which doesn't go through our token's scopes).
     var addrStr = '';
     var sheetAddrStatus = '';
+    var addrReceivedAt = '';
     var kitRowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase());
     if (kitRowIndex) {
       var kitSheet = _getKitSheet();
       addrStr = String(kitSheet.getRange(kitRowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
       sheetAddrStatus = String(kitSheet.getRange(kitRowIndex, KIT_COL.ADDR_STATUS).getValue() || '').trim();
+      addrReceivedAt = _kitFormatDateTime(kitSheet.getRange(kitRowIndex, KIT_COL.ADDR_SUBMITTED_AT).getValue());
     }
     if (!addrStr && d.dealId) {
       var addrObj = _fetchContactAddress(d.dealId);
@@ -2116,6 +2179,7 @@ function fetchKitLearnerDetails(jlid) {
       deliveryAddress:  addrStr,       // existing address shown as reference only — always reconfirm
       hasAddress:       hasAddr,        // true = address exists but still needs reconfirmation
       addressPending:   addrPending,    // WATI already sent this session, awaiting new reply
+      addressReceivedAt: addrReceivedAt, // when this address was actually confirmed by the parent
       addressStale:     hasAddr         // always treat existing address as potentially stale
     };
   } catch (e) {
