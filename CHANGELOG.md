@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-26] — Kit Tracking: Address Request Works Before a Kit Row Exists (V7.79)
+
+### Fixed: requesting an address before placing an order silently skipped all tracking (`KitTrackingService.js`)
+- The "Request via WhatsApp" button in the Add Kit Entry modal calls `requestKitDeliveryAddress(jlid, kitName, 0)` — `rowIndex=0` because no row is saved yet. All of the new pipeline stamping (`ADDR_REQUESTED_AT`, `NUDGE_TIER`, `NUDGE_STAGE`) only ran when `rowIndex > 0`, so requesting an address before saving a full order entry sent the WhatsApp/email but left the Address column, timeline, and nudge system completely blind to it.
+- `requestKitDeliveryAddress()` now: reuses an existing open row for the JLID if one exists, otherwise calls new `_createBareKitRow(jlid, learnerName, kitName)` to create a minimal row (Learner + Kit + JLID only, no order details, no HubSpot kit-status change) — so address-first workflows now get full tracking from the very first click. Order/store details get filled in later via "Mark Order Placed", which already requires `ADDR_STATUS === 'Received'` first.
+
+---
+
 ## [2026-07-26] — Kit Tracking: Always-Visible Address Column (V7.78)
 
 ### New "Address" table column (`Index.html`, `JavaScript.html`)

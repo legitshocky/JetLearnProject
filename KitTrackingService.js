@@ -285,12 +285,54 @@ function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerNam
   ]);
 }
 
+// ── Create a minimal Kit Tracking row (Learner + Kit + JLID only, no order
+// details yet) — used so an address request can start the whole pipeline
+// (Address column, timeline, nudges) BEFORE an order has actually been
+// placed, matching the "address first, then order" workflow.
+function _createBareKitRow(jlid, learnerName, kitName) {
+  var sheet = _getKitSheet();
+  var sheetLastRow = sheet.getLastRow();
+
+  var lastDataRow = 1;
+  if (sheetLastRow >= 2) {
+    var colA = sheet.getRange(2, 1, sheetLastRow - 1, 1).getValues();
+    for (var i = colA.length - 1; i >= 0; i--) {
+      if (String(colA[i][0]).trim() !== '') { lastDataRow = i + 2; break; }
+    }
+  }
+
+  var lastSrNo = 0;
+  if (sheetLastRow >= 2) {
+    var srValues = sheet.getRange(2, KIT_COL.SR_NO, sheetLastRow - 1, 1).getValues();
+    srValues.forEach(function(r) {
+      var v = parseInt(r[0], 10);
+      if (!isNaN(v) && v > lastSrNo) lastSrNo = v;
+    });
+  }
+
+  var writeRow = lastDataRow + 1;
+  sheet.getRange(writeRow, KIT_COL.SR_NO).setValue(lastSrNo + 1);
+  sheet.getRange(writeRow, KIT_COL.LEARNER_NAME).setValue(learnerName || '');
+  sheet.getRange(writeRow, KIT_COL.KIT).setValue(kitName || '');
+  sheet.getRange(writeRow, KIT_COL.JLID).setValue(jlid || '');
+  Logger.log('[KitTracking] _createBareKitRow: created row ' + writeRow + ' for ' + jlid);
+  return writeRow;
+}
+
 // ── Request delivery address from parent via WATI ────────────────────────────
-// Call before placing a kit order when HubSpot address is blank.
-// Returns { success, addressSource, address, phone, needsWati, watiSent }
+// Call before placing a kit order when HubSpot address is blank. If no
+// rowIndex is given, reuses an existing open row for this JLID if one exists,
+// otherwise creates a minimal row so the pipeline (Address column, timeline,
+// nudges) starts tracking immediately — order details get filled in later
+// via "Mark Order Placed".
+// Returns { success, addressSource, address, phone, needsWati, watiSent, rowIndex }
 function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
   try {
     if (!jlid || !kitName) return { success: false, message: 'JLID and kit name required' };
+
+    if (!rowIndex || rowIndex <= 0) {
+      rowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase()) || 0;
+    }
 
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success) return { success: false, message: 'HubSpot lookup failed for ' + jlid };
@@ -299,6 +341,10 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
     var phone       = _normalisePhone(d.parentContact || '');
     var parentName  = d.parentName  || '';
     var learnerName = d.learnerName || '';
+
+    if (!rowIndex || rowIndex <= 0) {
+      rowIndex = _createBareKitRow(String(jlid).trim().toUpperCase(), learnerName, kitName);
+    }
 
     // Reach EVERY contact on the deal (both parents/guardians), not just the
     // primary one — a deal can have multiple associated HubSpot contacts.
@@ -417,7 +463,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex) {
 
     Logger.log('[KitTracking] Address request sent via WATI for ' + jlid + ' phone=' + phone);
     return { success: true, addressSource: 'wati_requested',
-             phone: phone, needsWati: true, watiSent: true };
+             phone: phone, needsWati: true, watiSent: true, rowIndex: rowIndex };
 
   } catch(e) {
     Logger.log('[KitTracking] requestKitDeliveryAddress ERROR: ' + e.message);
