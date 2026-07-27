@@ -4,11 +4,17 @@
  * Generates course completion certificates from a Google Slides template
  * and emails them as PDF attachments to the parent on CCTC migration.
  *
- * Template file: JetLearn - Certificate Tool
- * File ID: 1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI
+ * Template file: JetLearn - Certificate Tool (Canva)
+ * File ID: 1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk
  *   Slide 1 (index 0) → Foundation courses
  *   Slide 2 (index 1) → Maths courses
  *   Slide 3 (index 2) → Pro / Advanced courses
+ *
+ * Rebuilt on 2026-07-27 from Canva-designed backgrounds (hosted on
+ * jetlearn's GitHub Jet-learn-Images repo via jsDelivr) at their true
+ * 1536x1085.25pt (2048x1447px) aspect ratio — see rebuildCertTemplateAtCorrectSize()
+ * below for how this file was generated from the original template
+ * (1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI, kept as a fallback/history).
  *
  * Placeholders on each slide:
  *   {{learnerName}}  — learner's first name
@@ -17,8 +23,157 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-var CERT_TEMPLATE_ID  = '1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI';
+var CERT_TEMPLATE_ID  = '1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk';
 var CERT_SAVE_FOLDER  = '1Eaub-wn5J7yMhYrHeQCiHKOXJEKR6vFX';
+
+// ── ONE-TIME: swap the 3 certificate slides' hand-built background art for
+// the new Canva-designed backgrounds (hosted on GitHub via jsDelivr), and
+// resize the page to match their native aspect ratio so nothing gets
+// stretched or "boxed". Run once from the Apps Script editor's function
+// dropdown, then open the Slides file (you have edit access, this session's
+// browser doesn't) and eyeball each slide — {{year}} is the placeholder most
+// likely to need a small manual nudge, since its new position is carried
+// over proportionally from the OLD hand-drawn heading, not measured against
+// the new artwork's actual "OF ACHIEVEMENT-" text directly.
+function applyCanvaCertBackgrounds() {
+  var IMAGE_URLS = [
+    'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/1.png', // Slide 1 — Foundation
+    'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/2.png', // Slide 2 — Maths
+    'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/3.png'  // Slide 3 — Pro / Advanced
+  ];
+  var PT_PER_PX = 0.75; // 72pt / 96px — standard web-px-to-point conversion
+  var IMG_W_PX = 2048, IMG_H_PX = 1447; // native size of the uploaded PNGs
+  var TARGET_W = IMG_W_PX * PT_PER_PX;  // 1536pt
+  var TARGET_H = IMG_H_PX * PT_PER_PX;  // 1085.25pt
+  var PLACEHOLDER_KEYS = ['{{learnerName}}', '{{courseName}}', '{{year}}'];
+
+  var pres = SlidesApp.openById(CERT_TEMPLATE_ID);
+  var oldW = pres.getPageWidth();
+  var oldH = pres.getPageHeight();
+  var slides = pres.getSlides();
+
+  if (slides.length !== IMAGE_URLS.length) {
+    Logger.log('[CertSwap] Expected ' + IMAGE_URLS.length + ' slides, found ' + slides.length + ' — aborting, check the template before running again.');
+    return;
+  }
+
+  // Resize the page FIRST (before touching any element), so if setPageSize
+  // isn't supported/fails, we can detect that and fall back to fitting the
+  // new image into the OLD page size instead of leaving elements scaled for
+  // a resize that never actually happened.
+  try { pres.setPageSize(TARGET_W, TARGET_H); } catch(e) {
+    Logger.log('[CertSwap] setPageSize threw: ' + e.message);
+  }
+  var finalW = pres.getPageWidth();
+  var finalH = pres.getPageHeight();
+  var resized = Math.abs(finalW - TARGET_W) < 1 && Math.abs(finalH - TARGET_H) < 1;
+  if (!resized) {
+    Logger.log('[CertSwap] Page resize did not take (' + Math.round(finalW) + 'x' + Math.round(finalH) + ' pt) —'
+      + ' falling back to fitting the new artwork into the existing page size. If you want the exact ' + (TARGET_W/72).toFixed(2)
+      + 'in x ' + (TARGET_H/72).toFixed(2) + 'in canvas, resize manually via File > Page setup > Custom, then re-run this.');
+  }
+  var scaleX = finalW / oldW;
+  var scaleY = finalH / oldH;
+
+  slides.forEach(function(slide, idx) {
+    var kept = {};
+    slide.getPageElements().forEach(function(el) {
+      var matchedKey = null;
+      try {
+        if (el.getPageElementType() === SlidesApp.PageElementType.SHAPE) {
+          var txt = el.asShape().getText().asString();
+          PLACEHOLDER_KEYS.forEach(function(key) { if (txt.indexOf(key) !== -1) matchedKey = key; });
+        }
+      } catch(e) {}
+
+      if (matchedKey) {
+        kept[matchedKey] = { left: el.getLeft(), top: el.getTop(), width: el.getWidth(), height: el.getHeight(), element: el };
+      } else if (el.getPageElementType() === SlidesApp.PageElementType.GROUP) {
+        // Don't blindly delete groups — a placeholder could be nested inside
+        // one. Flag it and leave it alone rather than risk destroying it.
+        Logger.log('[CertSwap] Slide ' + (idx + 1) + ': found a GROUP element — left untouched, check manually for leftover old artwork.');
+      } else {
+        try { el.remove(); } catch(e2) { Logger.log('[CertSwap] Slide ' + (idx + 1) + ': could not remove an old element: ' + e2.message); }
+      }
+    });
+
+    var img = slide.insertImage(IMAGE_URLS[idx]);
+    img.setLeft(0).setTop(0).setWidth(finalW).setHeight(finalH);
+    img.sendToBack();
+
+    PLACEHOLDER_KEYS.forEach(function(key) {
+      var k = kept[key];
+      if (!k) {
+        Logger.log('[CertSwap] Slide ' + (idx + 1) + ': placeholder ' + key + ' not found — nothing to reposition, check manually.');
+        return;
+      }
+      k.element.setLeft(k.left * scaleX);
+      k.element.setTop(k.top * scaleY);
+      k.element.setWidth(k.width * scaleX);
+      k.element.setHeight(k.height * scaleY);
+    });
+
+    Logger.log('[CertSwap] Slide ' + (idx + 1) + ' done.');
+  });
+
+  Logger.log('[CertSwap] All slides processed. Open the Slides file and review each one — {{year}} is most likely to need a manual nudge.');
+}
+
+// ── ONE-TIME: Google Slides only lets you set page dimensions at creation
+// time — there's no API to resize an existing presentation. Since
+// applyCanvaCertBackgrounds() above had to fall back to stretching the new
+// 2048x1447 artwork into the OLD 792x612pt (11x8.5in Letter) page, this
+// creates a BRAND NEW presentation at the artwork's true 1536x1085.25pt
+// size, copies the 3 (already background-swapped) slides into it, and
+// rescales every element to fit — undistorted, true full-bleed. Requires
+// the Advanced Slides Service (enabled in appsscript.json). Run this AFTER
+// applyCanvaCertBackgrounds(). Does NOT touch CERT_TEMPLATE_ID — review the
+// new file first, then update that constant by hand once you're happy.
+function rebuildCertTemplateAtCorrectSize() {
+  var PT_PER_PX = 0.75;
+  var TARGET_W = 2048 * PT_PER_PX; // 1536pt
+  var TARGET_H = 1447 * PT_PER_PX; // 1085.25pt
+
+  var oldPres = SlidesApp.openById(CERT_TEMPLATE_ID);
+  var oldW = oldPres.getPageWidth();
+  var oldH = oldPres.getPageHeight();
+  var oldSlides = oldPres.getSlides();
+  if (oldSlides.length !== 3) {
+    Logger.log('[CertRebuild] Expected 3 slides in the source template, found ' + oldSlides.length + ' — aborting.');
+    return;
+  }
+
+  var created = Slides.Presentations.create({
+    title: 'JetLearn - Certificate Tool (Canva, ' + new Date().toISOString().slice(0, 10) + ')',
+    pageSize: {
+      width:  { magnitude: TARGET_W, unit: 'PT' },
+      height: { magnitude: TARGET_H, unit: 'PT' }
+    }
+  });
+  var newId = created.presentationId;
+  var newPres = SlidesApp.openById(newId);
+
+  var scaleX = TARGET_W / oldW;
+  var scaleY = TARGET_H / oldH;
+
+  oldSlides.forEach(function(oldSlide, idx) {
+    var newSlide = newPres.appendSlide(oldSlide);
+    newSlide.getPageElements().forEach(function(el) {
+      el.setLeft(el.getLeft() * scaleX);
+      el.setTop(el.getTop() * scaleY);
+      el.setWidth(el.getWidth() * scaleX);
+      el.setHeight(el.getHeight() * scaleY);
+    });
+    Logger.log('[CertRebuild] Slide ' + (idx + 1) + ' copied + rescaled.');
+  });
+
+  // The new presentation starts with one default blank slide before our 3
+  // get appended — it's still at index 0, remove it.
+  newPres.getSlides()[0].remove();
+
+  Logger.log('[CertRebuild] Done. New presentation: https://docs.google.com/presentation/d/' + newId + '/edit');
+  Logger.log('[CertRebuild] Review it, then update CERT_TEMPLATE_ID in CertificateService.js to: ' + newId);
+}
 
 // ── Resolve every contact email for a JLID's deal, not just the one passed
 // in from the UI — a deal can have multiple associated contacts (both

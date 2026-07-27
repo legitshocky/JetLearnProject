@@ -1,4 +1,42 @@
 /**
+ * DEBUG: Inspects the certificate template's actual page size and each
+ * slide's background/image dimensions vs the page bounds — the parent
+ * reported the exported certificate PDFs look "boxed" (a border/margin),
+ * which almost always means the background image doesn't fully cover the
+ * slide (page size ≠ image aspect ratio, or the image was inserted smaller
+ * than full-bleed). Run from the Apps Script editor's function dropdown,
+ * check the log — it reports page size in inches and, for every image on
+ * every slide, whether it exactly covers the page or leaves a gap.
+ */
+function diagCheckCertTemplateDimensions() {
+  var EMU_PER_INCH = 914400;
+  var pres = SlidesApp.openById(CERT_TEMPLATE_ID);
+  var pageW = pres.getPageWidth();
+  var pageH = pres.getPageHeight();
+  Logger.log('[CertDiag] Page size: ' + (pageW / EMU_PER_INCH).toFixed(3) + 'in x ' + (pageH / EMU_PER_INCH).toFixed(3) + 'in'
+    + ' (ratio ' + (pageW / pageH).toFixed(4) + ') — EMU: ' + pageW + ' x ' + pageH);
+
+  var slides = pres.getSlides();
+  slides.forEach(function(slide, idx) {
+    Logger.log('--- Slide ' + (idx + 1) + ' ---');
+    var images = slide.getImages();
+    if (!images.length) {
+      Logger.log('[CertDiag] No images on this slide (background may be a solid fill, or art is made of shapes/icons instead of one image).');
+      return;
+    }
+    images.forEach(function(img, i) {
+      var w = img.getWidth(), h = img.getHeight();
+      var left = img.getLeft(), top = img.getTop();
+      var coversFully = (Math.abs(left) < 1 && Math.abs(top) < 1 && Math.abs(w - pageW) < 1 && Math.abs(h - pageH) < 1);
+      Logger.log('[CertDiag] Image ' + i + ': left=' + left.toFixed(1) + ' top=' + top.toFixed(1)
+        + ' width=' + w.toFixed(1) + ' height=' + h.toFixed(1)
+        + ' (page=' + pageW.toFixed(1) + 'x' + pageH.toFixed(1) + ') → '
+        + (coversFully ? 'FULL BLEED (covers whole page)' : 'GAP — does NOT cover the full page, this is likely the "boxed" look'));
+    });
+  });
+}
+
+/**
  * DEBUG: Direct, isolated test of the 3 kit-address WATI templates against a
  * NEW phone number — bypasses Kit Tracking sheet / HubSpot entirely, so if
  * these fail too, it conclusively rules out our sheet/row logic and points
@@ -12,11 +50,11 @@ function debugTestKitTemplatesNewNumber() {
 
   var tests = [
     {
-      name: 'kit_address_request_link',
+      name: 'kit_address_request_link_v2',
       params: [
-        { name: 'Parent',   value: 'TestParent' },
-        { name: 'Kit_name', value: 'Microbit' },
-        { name: 'Link',     value: 'https://jetlearn-kit-links.web.app/kit/JLTESTONLY' }
+        { name: 'ParentName',   value: 'TestParent' },
+        { name: 'kit_name', value: 'Microbit' },
+        { name: 'address_link',     value: 'https://jetlearn-kit-links.web.app/kit/JLTESTONLY' }
       ]
     },
     {
@@ -28,11 +66,12 @@ function debugTestKitTemplatesNewNumber() {
       ]
     },
     {
-      name: 'kit_order_placed_notice',
+      name: 'kit_order_placed_notice_v2',
       params: [
-        { name: 'Parent',   value: 'TestParent' },
-        { name: 'Kit_name', value: 'Microbit' },
-        { name: 'ETA',      value: '01-08-2026' }
+        { name: 'ParentName',   value: 'TestParent' },
+        { name: 'kit_name', value: 'Microbit' },
+        { name: 'delivery_date',      value: '01-08-2026' },
+        { name: 'address',  value: '123 Test Street, Test City, Test State, 000000, Test Country' }
       ]
     }
   ];

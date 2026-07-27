@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-07-27] — Switch Certificate Template to New Canva Designs (V8.16–V8.17)
+
+### New certificate backgrounds sourced from Canva, hosted on GitHub (`CertificateService.js`)
+- The old template's 3 slides were hand-built from individual Slides shapes/icons on an 11x8.5in Letter page. New designs came from Canva (cloned, sample text stripped, exported as clean 2048x1447px PNGs, hosted at `github.com/legitshocky/Jet-learn-Images` via jsDelivr — same CDN pattern already used for the JetLearn logo).
+- `applyCanvaCertBackgrounds()` — one-time function: strips the old hand-built shapes/icons off each of the 3 slides (keeping only the `{{learnerName}}`/`{{courseName}}`/`{{year}}` text boxes), inserts the new images as full-bleed backgrounds.
+- **Discovered Slides has no API to resize an existing presentation's page dimensions** — only settable at creation time. So `applyCanvaCertBackgrounds()` alone left the new 2048x1447 (1.415 ratio) artwork stretched into the old 792x612pt (1.294 ratio) page.
+- `rebuildCertTemplateAtCorrectSize()` — creates a brand-new presentation at the artwork's true 1536x1085.25pt size (via the newly-enabled Advanced Slides Service, `appsscript.json`), copies the 3 background-swapped slides in, rescales every element — undistorted, true full-bleed.
+- `CERT_TEMPLATE_ID` now points at the new file (`1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk`); the original template ID is noted in the file header as fallback/history. No other code changed — `sendCourseCertificateEmail`/`sendBulkCertificates` were already agnostic to what's actually in the template file.
+
+---
+
 ## [2026-07-27] — Button-Variant Tracking Link Fallback (V8.15)
 
 ### `sendKitTrackingLinkWhatsApp()` now tries two templates (`KitTrackingService.js`)
