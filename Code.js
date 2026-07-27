@@ -120,6 +120,13 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify(ctx)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // --- Public JSON API for the statically-hosted Kit Tracking page (Firebase) ---
+  if (e && e.parameter && e.parameter.api === 'trackContext') {
+    var trackJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
+    var trackCtx = getKitTrackContext(trackJlid);
+    return ContentService.createTextOutput(JSON.stringify(trackCtx)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // --- Public Learner Address Form Route (no login required) ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
     var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
@@ -722,7 +729,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.08";
+const APP_VERSION = "8.10";
 
 function getAppVersion() {
   return APP_VERSION;

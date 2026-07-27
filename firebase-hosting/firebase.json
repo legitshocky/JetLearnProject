@@ -7,6 +7,10 @@
       {
         "source": "/kit/**",
         "destination": "/kit/index.html"
+      },
+      {
+        "source": "/track/**",
+        "destination": "/track/index.html"
       }
     ]
   }

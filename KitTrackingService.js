@@ -270,6 +270,63 @@ function recordKitAddressLinkOpen(jlid) {
   }
 }
 
+// ── Public parent-facing "Track My Kit" page context ─────────────────────────
+// Unlike _findOpenKitRowByJlid (which deliberately refuses ambiguous/closed
+// matches for the address flow), this picks the LATEST row for the JLID
+// regardless of status — a parent tracking a delivered kit still needs to see
+// it, and a re-ship/reorder should show the newest attempt, not an old one.
+// There's no live carrier API behind this (see chat) — it's a friendly
+// display of exactly what ops has entered in the sheet.
+function getKitTrackContext(jlid) {
+  try {
+    jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
+    if (!jlid) return { success: false, message: 'Missing learner reference in this link.' };
+
+    var sheet = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, message: 'No kit found for this link.' };
+
+    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var bestRow = -1;
+    for (var i = 0; i < raw.length; i++) {
+      if (String(raw[i][KIT_COL.JLID - 1] || '').trim().toUpperCase() === jlid) bestRow = i;
+    }
+    if (bestRow === -1) return { success: false, message: 'We could not find a kit for this link. Please contact JetLearn support.' };
+
+    var r = raw[bestRow];
+    var learnerName   = String(r[KIT_COL.LEARNER_NAME - 1]   || '').trim();
+    var kitName        = String(r[KIT_COL.KIT - 1]            || '').trim();
+    var addrStatus      = String(r[KIT_COL.ADDR_STATUS - 1]     || '').trim();
+    var orderPlaced      = String(r[KIT_COL.ORDER_PLACED - 1]     || '').trim().toUpperCase() === 'TRUE';
+    var deliveryDate       = r[KIT_COL.DELIVERY_DATE - 1];
+    var isRefunded           = String(r[KIT_COL.REFUNDED - 1]       || '').trim().toUpperCase() === 'TRUE';
+    var _fmt = function(v) { return v ? Utilities.formatDate(new Date(v), Session.getScriptTimeZone(), 'MMM d, yyyy') : ''; };
+
+    var stage = 'address_pending';
+    if (isRefunded) stage = 'refunded';
+    else if (deliveryDate) stage = 'delivered';
+    else if (orderPlaced) stage = 'order_placed';
+    else if (addrStatus === 'Received') stage = 'address_received';
+
+    return {
+      success: true,
+      jlid: jlid,
+      learnerName: learnerName,
+      kitName: kitName,
+      stage: stage,
+      orderDate: _fmt(r[KIT_COL.DATE_OF_ORDER - 1]),
+      eta: _fmt(r[KIT_COL.ETA - 1]),
+      deliveryDate: _fmt(deliveryDate),
+      trackingNo: String(r[KIT_COL.ORDER_TRACKING_NO - 1] || '').trim(),
+      trackingUrl: String(r[KIT_COL.ORDER_TRACKING_URL - 1] || '').trim(),
+      store: String(r[KIT_COL.ORDER_STORE - 1] || '').trim()
+    };
+  } catch(e) {
+    Logger.log('[KitTracking] getKitTrackContext ERROR: ' + e.message);
+    return { success: false, message: 'Something went wrong loading this page. Please contact JetLearn support.' };
+  }
+}
+
 // ── Urgency tier from HubSpot module_start_date ──────────────────────────────
 // Frozen at Day 0 (address-request time) — drives the nudge cadence in
 // checkKitAddressNudges(). Falls back to 'default' when the start date is
@@ -421,6 +478,8 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
     if (lastRow < 2) return;
 
     var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var matched = false;
+    var nearMisses = [];
     raw.forEach(function(row, idx) {
       var rowIndex     = idx + 2;
       var addrStatus   = String(row[KIT_COL.ADDR_STATUS - 1]   || '').trim();
@@ -430,7 +489,12 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
       // and merge all numbers into one unmatchable blob.
       var phonesOnRow = String(row[KIT_COL.PHONE_SENT_TO - 1] || '')
         .split(',').map(function(p) { return _normalisePhone(p); }).filter(Boolean);
-      if (addrStatus !== 'Requested' || phonesOnRow.indexOf(normPhone) === -1) return;
+      var phoneHit = phonesOnRow.indexOf(normPhone) > -1;
+      if (phoneHit && addrStatus !== 'Requested') {
+        nearMisses.push('row=' + rowIndex + ' jlid=' + (row[KIT_COL.JLID - 1] || '') + ' addrStatus="' + addrStatus + '"');
+      }
+      if (addrStatus !== 'Requested' || !phoneHit) return;
+      matched = true;
 
       var jlid        = String(row[KIT_COL.JLID - 1]         || '').trim();
       var kitName     = String(row[KIT_COL.KIT - 1]           || '').trim();
@@ -460,6 +524,11 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
         Logger.log('[KitTracking] Address reconfirm=No, sent fresh link row=' + rowIndex + ' jlid=' + jlid);
       }
     });
+    if (!matched) {
+      Logger.log('[KitTracking] handleKitAddressReconfirmReply: NO ROW MATCHED for waId=' + waId +
+        ' normPhone=' + normPhone + ' button="' + buttonText + '"' +
+        (nearMisses.length ? ' — near misses (phone matched, status wrong): ' + nearMisses.join('; ') : ' — no row had this phone in PHONE_SENT_TO at all'));
+    }
   } catch(e) {
     Logger.log('[KitTracking] handleKitAddressReconfirmReply ERROR: ' + e.message);
   }

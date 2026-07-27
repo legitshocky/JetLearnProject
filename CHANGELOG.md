@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-07-27] — Track My Kit Page + Reconfirm-Reply Diagnostics (V8.09–V8.10)
+
+### New parent-facing "Track My Kit" page (`firebase-hosting/public/track/`, `Code.js`, `KitTrackingService.js`)
+- Live at `jetlearn-kit-links.web.app/track/{JLID}` — no Amazon API involved (no public API exists for tracking an individual consumer order); instead shows a friendly timeline (Address requested → Confirmed → Ordered → Delivered) built from what's already in the Kits sheet, plus the tracking number/carrier link entered via "Mark Order Placed" when available.
+- New `getKitTrackContext(jlid)` picks the latest row for a JLID regardless of status (unlike the address flow's `_findOpenKitRowByJlid`, which deliberately refuses ambiguous/closed matches) — a delivered or refunded kit still needs to show correctly.
+- New `doGet` branch `?api=trackContext` serves this as JSON, same pattern as `addressFormContext`.
+
+### Diagnostics for the reconfirm "No" reply (`KitTrackingService.js`)
+- `handleKitAddressReconfirmReply()` previously failed silently if no row matched (wrong `ADDR_STATUS` or phone not in `PHONE_SENT_TO`) — now logs exactly why, including near-misses where the phone matched but the row had already moved off `Requested`.
+
+---
+
 ## [2026-07-27] — Fix kit_order_placed_notice_v2 Address Variable (V8.08)
 
 ### `address` param was wired to the wrong value (`KitTrackingService.js`)
