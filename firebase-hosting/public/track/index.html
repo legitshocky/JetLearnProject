@@ -79,6 +79,13 @@
     .tracking-row .val { font-size: 0.88rem; font-weight: 600; font-family: 'SF Mono', Consolas, monospace; }
     .tracking-row a { color: var(--purple); text-decoration: none; font-weight: 600; font-size: 0.84rem; }
 
+    .cta-btn {
+      display: inline-block; margin-top: 22px; padding: 12px 24px; font-size: 0.85rem; font-weight: 700;
+      color: #fff; background: var(--purple); border-radius: 99px; text-decoration: none;
+      box-shadow: 0 6px 20px rgba(124,58,237,0.28); transition: all 0.15s;
+    }
+    .cta-btn:hover { background: var(--purple-dark); transform: translateY(-1px); }
+
     .refund-banner {
       background: #fef2f2; border: 1.5px solid #fecaca; color: #b91c1c; border-radius: 10px;
       padding: 12px 16px; font-size: 0.85rem; margin-bottom: 20px;
@@ -130,6 +137,7 @@
         <h3 id="kitTitle">Kit</h3>
         <p class="muted" id="kitSub"></p>
         <ul class="timeline" id="timelineList"></ul>
+        <a href="#" id="addressCta" class="cta-btn" style="display:none;">Confirm my address →</a>
       </div>
 
       <div class="card" id="trackingCard" style="display:none;">
@@ -224,6 +232,14 @@
           }
 
           buildTimeline(res);
+
+          // Address not confirmed yet (or parent needs to fix it) — send them
+          // straight to the address form instead of leaving them stuck here.
+          if (res.stage === 'address_pending') {
+            var cta = document.getElementById('addressCta');
+            cta.href = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(res.jlid);
+            cta.style.display = 'inline-block';
+          }
 
           if (res.store || res.trackingNo) {
             document.getElementById('trackingCard').style.display = 'block';
