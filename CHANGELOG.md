@@ -2,6 +2,13 @@
 
 ---
 
+## [2026-07-27] — Button-Variant Tracking Link Fallback (V8.15)
+
+### `sendKitTrackingLinkWhatsApp()` now tries two templates (`KitTrackingService.js`)
+- Meta sometimes rejects a bare URL sitting in template body text but allows the same URL as a CTA button. Now tries `kit_tracking_link_v1` (body variable `{{track_link}}`) first; if that fails, falls back to `kit_tracking_link_btn_v1` (dynamic-URL button, `{{1}}` = JLID only, base URL fixed on the button in WATI). Only one needs to exist/be approved in WATI for tracking links to send — neither exists yet, both need manual creation + Meta approval.
+
+---
+
 ## [2026-07-27] — Track Button + Send Tracking Link, Email + WhatsApp (V8.14)
 
 ### Kits table: "Track" + "Send Tracking Link" buttons (`JavaScript.html`)

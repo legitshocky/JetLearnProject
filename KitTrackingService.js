@@ -358,16 +358,36 @@ function getKitTrackLink(jlid) {
 // logs the failure without throwing, matching every other WATI send in this
 // file (see chat history — approval always happens in the WATI dashboard,
 // never in code).
+// Tries the body-link template first (kit_tracking_link_v1 — full URL in a
+// {{track_link}} body variable). If that template doesn't exist/isn't
+// approved yet, falls back to the button variant (kit_tracking_link_btn_v1 —
+// a dynamic-URL CTA button whose Meta-imposed single {{1}} suffix carries
+// just the JLID, appended to a fixed base URL set on the button itself in
+// WATI). Meta sometimes rejects a bare URL sitting in body text but allows
+// the same URL as a proper button, so having both ready covers whichever
+// one clears approval — only one needs to actually exist in WATI for this
+// to work; the other attempt just fails and falls through harmlessly.
 function sendKitTrackingLinkWhatsApp(phone, parentName, kitName, jlid) {
   try {
-    return sendWatiMessage(phone, 'kit_tracking_link_v1', [
+    var bodyRes = sendWatiMessage(phone, 'kit_tracking_link_v1', [
       { name: 'ParentName',  value: parentName || '' },
       { name: 'kit_name',    value: kitName || '' },
       { name: 'track_link',  value: getKitTrackLink(jlid) }
     ]);
+    if (bodyRes && bodyRes.success) return bodyRes;
+    Logger.log('[KitTracking] kit_tracking_link_v1 send failed, trying button variant: ' + (bodyRes && bodyRes.message));
   } catch(e) {
-    Logger.log('[KitTracking] sendKitTrackingLinkWhatsApp error: ' + e.message);
-    return { success: false, message: e.message };
+    Logger.log('[KitTracking] kit_tracking_link_v1 error, trying button variant: ' + e.message);
+  }
+  try {
+    return sendWatiMessage(phone, 'kit_tracking_link_btn_v1', [
+      { name: 'ParentName', value: parentName || '' },
+      { name: 'kit_name',   value: kitName || '' },
+      { name: '1',          value: jlid || '' }
+    ]);
+  } catch(e2) {
+    Logger.log('[KitTracking] kit_tracking_link_btn_v1 error: ' + e2.message);
+    return { success: false, message: e2.message };
   }
 }
 
