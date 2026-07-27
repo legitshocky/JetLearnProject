@@ -1637,6 +1637,48 @@ function sendKitAddressReminderEmail(kitRow) {
   }
 }
 
+function getKitTrackingLinkEmailHTML(data) {
+  const template = HtmlService.createTemplateFromFile('KitTrackingLinkTemplate');
+  template.data = data;
+  return template.evaluate().getContent();
+}
+
+// Sends the branded "track your kit" email — same multi-recipient pattern as
+// sendKitAddressReminderEmail (kitRow.parentEmail may be a single string or
+// an array; sends one email to every valid, de-duped address).
+function sendKitTrackingLinkEmail(kitRow) {
+  try {
+    var rawEmails = kitRow && kitRow.parentEmail;
+    var emailList = (Array.isArray(rawEmails) ? rawEmails : [rawEmails])
+      .filter(function(e) { return e && isValidEmail(e); })
+      .filter(function(e, i, arr) { return arr.indexOf(e) === i; });
+
+    if (emailList.length === 0) {
+      Logger.log('[KitTrackLink] No valid parent email for ' + (kitRow && kitRow.jlid));
+      return { success: false, message: 'No valid parent email.' };
+    }
+
+    var htmlBody = getKitTrackingLinkEmailHTML({
+      parentName: kitRow.parentName,
+      learnerName: kitRow.learnerName,
+      kitName: kitRow.kitName,
+      trackLink: kitRow.trackLink
+    });
+
+    var result = sendTrackedEmail({
+      to: emailList.join(','),
+      subject: 'Track ' + (kitRow.learnerName || "your child") + "'s kit delivery",
+      htmlBody: htmlBody,
+      jlid: kitRow.jlid
+    });
+    Logger.log('[KitTrackLink] Tracking email sent to ' + emailList.join(',') + ' for ' + kitRow.jlid);
+    return { success: true, trackingId: result.trackingId };
+  } catch(e) {
+    Logger.log('[KitTrackLink] sendKitTrackingLinkEmail ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function getMinecraftInstallEmailHTML(data, comments) {
   const template = HtmlService.createTemplateFromFile('MinecraftInstallTemplate');
   template.data = data;

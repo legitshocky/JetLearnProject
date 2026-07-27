@@ -2,6 +2,21 @@
 
 ---
 
+## [2026-07-27] — Track Button + Send Tracking Link, Email + WhatsApp (V8.14)
+
+### Kits table: "Track" + "Send Tracking Link" buttons (`JavaScript.html`)
+- **Track** — opens `jetlearn-kit-links.web.app/track/{JLID}` in a new tab for any row with a JLID, any pipeline stage, so ops can preview exactly what the parent sees.
+- **Send Tracking Link** — visible once `ORDER_PLACED` is true; sends the tracking link on demand via both WhatsApp and email in one click (`ktSendTrackingLink()` → `sendKitTrackingLink(rowIndex)`).
+
+### New branded tracking email (`KitTrackingLinkTemplate.html`, `EmailService.js`)
+- `getKitTrackingLinkEmailHTML()` / `sendKitTrackingLinkEmail()` — same visual language and multi-recipient handling as the existing address-reminder email, subject `"Track {Learner}'s kit delivery"`.
+
+### New WhatsApp send (`KitTrackingService.js`)
+- `sendKitTrackingLinkWhatsApp()` sends template `kit_tracking_link_v1` (named params `ParentName`/`kit_name`/`track_link`) — **this template does not exist in WATI yet**; it needs to be created and Meta-approved in the WATI dashboard before this send will actually go through (same as every other template this project uses). Until then it fails silently, same as the rest of this file's WATI sends.
+- `sendKitTrackingLink(rowIndex)` ties it together: looks up the deal via `fetchHubspotByJlid`, sends WhatsApp to the primary contact and email to the primary address (fetchHubspotByJlid doesn't expose the same multi-contact fan-out `sendKitAddressVerifyRequest` uses), returns which channel(s) succeeded.
+
+---
+
 ## [2026-07-27] — Carrier Tracking URL Auto-Builder (V8.13)
 
 ### Mark Order Placed modal (`JavaScript.html`)

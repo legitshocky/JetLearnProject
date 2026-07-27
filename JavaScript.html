@@ -13943,16 +13943,28 @@ function renderKitTrackingTable(filterArg) {
         + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Open WATI chat">'
         + '<i class="fab fa-whatsapp" style="margin-right:3px;"><\/i>Chat<\/button>'
       : '';
+    // "Track" opens the public Track My Kit page in a new tab — available for
+    // any row with a JLID, regardless of pipeline stage, so ops can preview
+    // exactly what the parent sees. "Send Tracking Link" (WhatsApp + email)
+    // only makes sense once an order actually exists to track.
+    const trackBtn = row.jlid
+      ? '<a href="https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(row.jlid) + '" target="_blank" onclick="event.stopPropagation();" '
+        + 'style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;text-decoration:none;display:inline-block;" title="Open the parent-facing tracking page">'
+        + '<i class="fas fa-truck-fast"><\/i> Track<\/a>'
+      : '';
+    const sendTrackBtn = (row.jlid && row.orderPlaced)
+      ? '<button onclick="event.stopPropagation();ktSendTrackingLink(' + row.rowIndex + ', this)" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Send the tracking link via WhatsApp + email"><i class="fas fa-share"><\/i> Send Tracking Link<\/button>'
+      : '';
     if (row.status === 'overdue' || row.status === 'pending') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"><\/i> Send Follow-up<\/button>' + msgBtn + editBtn + refundBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#6366f1;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-paper-plane"><\/i> Send Follow-up<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'escalated') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"><\/i> Re-send Urgent<\/button>' + msgBtn + editBtn + refundBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-exclamation-circle"><\/i> Re-send Urgent<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
-      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + editBtn + refundBtn;
+      actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'addr_received_pending_order') {
-      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + msgBtn + editBtn + refundBtn;
+      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else {
-      actionBtn = msgBtn + editBtn + refundBtn;
+      actionBtn = msgBtn + trackBtn + sendTrackBtn + editBtn + refundBtn;
     }
 
     const jlidBadge = row.jlid
@@ -14458,6 +14470,30 @@ function ktSaveOrderPlaced() {
       showToast('error', 'Could Not Save', err.message || String(err));
     })
     .markKitOrderPlaced(rowIndex, payload);
+}
+
+function ktSendTrackingLink(rowIndex, btn) {
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      if (result && result.success) {
+        var via = [result.whatsappSent ? 'WhatsApp' : null, result.emailSent ? 'email' : null].filter(Boolean).join(' + ') || 'no channel';
+        showToast('success', 'Tracking Link Sent', 'Sent via ' + via + '.');
+      } else {
+        showToast('error', 'Could Not Send', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      showToast('error', 'Could Not Send', err.message || String(err));
+    })
+    .sendKitTrackingLink(rowIndex);
 }
 
 function openAddKitModal() {

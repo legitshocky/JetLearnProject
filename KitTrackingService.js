@@ -351,6 +351,73 @@ function getKitTrackLink(jlid) {
   return 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(jlid);
 }
 
+// Sends the "track your kit" link via WhatsApp. Uses template
+// 'kit_tracking_link_v1' (named params: ParentName / kit_name / track_link)
+// — NOT YET CREATED IN WATI. Create it there and get it Meta-approved before
+// this will actually send; until then sendWatiMessage will fail and this
+// logs the failure without throwing, matching every other WATI send in this
+// file (see chat history — approval always happens in the WATI dashboard,
+// never in code).
+function sendKitTrackingLinkWhatsApp(phone, parentName, kitName, jlid) {
+  try {
+    return sendWatiMessage(phone, 'kit_tracking_link_v1', [
+      { name: 'ParentName',  value: parentName || '' },
+      { name: 'kit_name',    value: kitName || '' },
+      { name: 'track_link',  value: getKitTrackLink(jlid) }
+    ]);
+  } catch(e) {
+    Logger.log('[KitTracking] sendKitTrackingLinkWhatsApp error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── "Send Tracking Link" action — WhatsApp + Email, on demand ────────────────
+// Called from the Kits table's "Send Tracking Link" button. fetchHubspotByJlid
+// only exposes a single parentContact/parentEmail (not the multi-contact fan-out
+// sendKitAddressVerifyRequest does via a separate HubSpot associations call),
+// so this reaches the primary contact only — same reach as the automatic
+// order-placed notice.
+function sendKitTrackingLink(rowIndex) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+    if (!jlid) return { success: false, message: 'This row has no JLID.' };
+
+    var hs = fetchHubspotByJlid(jlid);
+    if (!hs || !hs.success || !hs.data) return { success: false, message: 'Could not look up learner in HubSpot.' };
+    var d = hs.data;
+
+    var whatsappSent = false, emailSent = false;
+    var phone = _normalisePhone(d.parentContact || '');
+    if (phone) {
+      var waRes = sendKitTrackingLinkWhatsApp(phone, d.parentName, kitName, jlid);
+      whatsappSent = !!(waRes && waRes.success);
+    }
+
+    var emailRes = sendKitTrackingLinkEmail({
+      parentEmail: d.parentEmail,
+      parentName: d.parentName,
+      learnerName: d.learnerName,
+      kitName: kitName,
+      jlid: jlid,
+      trackLink: getKitTrackLink(jlid)
+    });
+    emailSent = !!(emailRes && emailRes.success);
+
+    Logger.log('[KitTracking] sendKitTrackingLink jlid=' + jlid + ' whatsappSent=' + whatsappSent + ' emailSent=' + emailSent);
+    if (!whatsappSent && !emailSent) {
+      return { success: false, message: 'Could not send via WhatsApp or email — check the WATI template is approved and the deal has a valid phone/email.' };
+    }
+    return { success: true, whatsappSent: whatsappSent, emailSent: emailSent };
+  } catch(e) {
+    Logger.log('[KitTracking] sendKitTrackingLink ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── Urgency tier from HubSpot module_start_date ──────────────────────────────
 // Frozen at Day 0 (address-request time) — drives the nudge cadence in
 // checkKitAddressNudges(). Falls back to 'default' when the start date is
