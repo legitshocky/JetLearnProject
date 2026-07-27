@@ -297,16 +297,25 @@ function getKitTrackContext(jlid) {
       if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) continue;
 
       learnerName = String(r[KIT_COL.LEARNER_NAME - 1] || '').trim() || learnerName;
-      var addrStatus   = String(r[KIT_COL.ADDR_STATUS - 1]  || '').trim();
-      var orderPlaced  = String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
-      var deliveryDate = r[KIT_COL.DELIVERY_DATE - 1];
-      var isRefunded   = String(r[KIT_COL.REFUNDED - 1]     || '').trim().toUpperCase() === 'TRUE';
+      var addrStatus     = String(r[KIT_COL.ADDR_STATUS - 1]     || '').trim();
+      // 'TRUE' via ORDER_PLACED covers rows created through Mark Order Placed;
+      // DATE_OF_ORDER falls back for older rows whose order predates that flag
+      // (order date was filled at Add Entry time, before this pipeline existed).
+      var orderPlaced    = String(r[KIT_COL.ORDER_PLACED - 1]    || '').trim().toUpperCase() === 'TRUE'
+                            || !!r[KIT_COL.DATE_OF_ORDER - 1];
+      var deliveryDate   = r[KIT_COL.DELIVERY_DATE - 1];
+      var isRefunded     = String(r[KIT_COL.REFUNDED - 1]        || '').trim().toUpperCase() === 'TRUE';
+      // Address is confirmed under any of: the current 'Received' status, the
+      // older 'Verified' status, or simply having a delivery address on file
+      // at all (belt-and-braces for legacy rows with an odd/blank status).
+      var addrConfirmed = addrStatus === 'Received' || addrStatus === 'Verified'
+                            || !!String(r[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim();
 
       var stage = 'address_pending';
       if (isRefunded) stage = 'refunded';
       else if (deliveryDate) stage = 'delivered';
       else if (orderPlaced) stage = 'order_placed';
-      else if (addrStatus === 'Received') stage = 'address_received';
+      else if (addrConfirmed) stage = 'address_received';
 
       kits.push({
         kitName: String(r[KIT_COL.KIT - 1] || '').trim(),
