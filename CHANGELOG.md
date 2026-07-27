@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-27] — Fix kit_order_placed_notice_v2 Address Variable (V8.08)
+
+### `address` param was wired to the wrong value (`KitTrackingService.js`)
+- `markKitOrderPlaced()`'s WhatsApp notice sent `payload.trackingUrl` (a tracking link, usually blank) as the `address` variable instead of the kit's actual delivery address.
+- Now reads `DELIVERY_ADDRESS` directly from the row and sends that — the parent's "your kit is on its way" message will now correctly show the real address it's shipping to.
+
+---
+
 ## [2026-07-27] — Real Root Cause Found: Param Name Must Match Template Variable Type (V8.07)
 
 ### The actual cause of every WATI rejection this session (`KitTrackingService.js`)

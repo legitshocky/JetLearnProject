@@ -302,10 +302,10 @@ function sendKitAddressLinkWhatsApp(phone, parentName, kitName, jlid, learnerNam
       // convention for numbered templates, not a descriptive label. Named
       // labels here caused a silent rejection ("cannot have typos or blank
       // text") despite looking correct.
-      var wRes = sendWatiMessage(phone, 'kit_address_request_link', [
-        { name: '1', value: parentName },
-        { name: '2', value: kitName    },
-        { name: '3', value: link       }
+      var wRes = sendWatiMessage(phone, 'kit_address_request_link_v2', [
+        { name: 'ParentName', value: parentName },
+        { name: 'kit_name', value: kitName    },
+        { name: 'address_link', value: link       }
       ]);
       if (wRes && wRes.success) return wRes;
       Logger.log('[KitTracking] kit_address_request_link send failed, falling back to migration_address_template: ' + (wRes && wRes.error));
@@ -2975,6 +2975,7 @@ function markKitOrderPlaced(rowIndex, payload) {
     var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
     var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
     var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+    var deliveryAddress = String(row[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim();
 
     if (payload.orderDate) sheet.getRange(rowIndex, KIT_COL.DATE_OF_ORDER).setValue(payload.orderDate);
     if (payload.eta) sheet.getRange(rowIndex, KIT_COL.ETA).setValue(payload.eta);
@@ -2990,12 +2991,14 @@ function markKitOrderPlaced(rowIndex, payload) {
       if (hs && hs.success && hs.data) {
         var phone = _normalisePhone(hs.data.parentContact || '');
         if (phone) {
-          // Numbered-placeholder template — name must be "1"/"2"/"3", not a
-          // descriptive label (see sendKitAddressLinkWhatsApp for why).
-          sendWatiMessage(phone, 'kit_order_placed_notice', [
-            { name: '1', value: hs.data.parentName || '' },
-            { name: '2', value: kitName },
-            { name: '3', value: payload.eta || '' }
+          // Named-placeholder template — param `name` must exactly match the
+          // template's variable names (ParentName/kit_name/delivery_date/
+          // address), not a description of the content.
+          sendWatiMessage(phone, 'kit_order_placed_notice_v2', [
+            { name: 'ParentName',    value: hs.data.parentName || '' },
+            { name: 'kit_name',      value: kitName },
+            { name: 'delivery_date', value: payload.eta || '' },
+            { name: 'address',       value: deliveryAddress }
           ]);
         }
       }
