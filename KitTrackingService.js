@@ -271,10 +271,11 @@ function recordKitAddressLinkOpen(jlid) {
 }
 
 // ── Public parent-facing "Track My Kit" page context ─────────────────────────
-// Unlike _findOpenKitRowByJlid (which deliberately refuses ambiguous/closed
-// matches for the address flow), this picks the LATEST row for the JLID
-// regardless of status — a parent tracking a delivered kit still needs to see
-// it, and a re-ship/reorder should show the newest attempt, not an old one.
+// Returns EVERY kit row for the JLID (order history — a learner can have
+// multiple kits purchased over time), newest first by sheet row order (rows
+// are appended chronologically). Unlike _findOpenKitRowByJlid (which
+// deliberately refuses ambiguous/closed matches for the address flow), this
+// intentionally shows all of them, including delivered/refunded ones.
 // There's no live carrier API behind this (see chat) — it's a friendly
 // display of exactly what ops has entered in the sheet.
 function getKitTrackContext(jlid) {
@@ -287,44 +288,58 @@ function getKitTrackContext(jlid) {
     if (lastRow < 2) return { success: false, message: 'No kit found for this link.' };
 
     var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
-    var bestRow = -1;
-    for (var i = 0; i < raw.length; i++) {
-      if (String(raw[i][KIT_COL.JLID - 1] || '').trim().toUpperCase() === jlid) bestRow = i;
-    }
-    if (bestRow === -1) return { success: false, message: 'We could not find a kit for this link. Please contact JetLearn support.' };
-
-    var r = raw[bestRow];
-    var learnerName   = String(r[KIT_COL.LEARNER_NAME - 1]   || '').trim();
-    var kitName        = String(r[KIT_COL.KIT - 1]            || '').trim();
-    var addrStatus      = String(r[KIT_COL.ADDR_STATUS - 1]     || '').trim();
-    var orderPlaced      = String(r[KIT_COL.ORDER_PLACED - 1]     || '').trim().toUpperCase() === 'TRUE';
-    var deliveryDate       = r[KIT_COL.DELIVERY_DATE - 1];
-    var isRefunded           = String(r[KIT_COL.REFUNDED - 1]       || '').trim().toUpperCase() === 'TRUE';
     var _fmt = function(v) { return v ? Utilities.formatDate(new Date(v), Session.getScriptTimeZone(), 'MMM d, yyyy') : ''; };
+    var learnerName = '';
+    var kits = [];
 
-    var stage = 'address_pending';
-    if (isRefunded) stage = 'refunded';
-    else if (deliveryDate) stage = 'delivered';
-    else if (orderPlaced) stage = 'order_placed';
-    else if (addrStatus === 'Received') stage = 'address_received';
+    for (var i = 0; i < raw.length; i++) {
+      var r = raw[i];
+      if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) continue;
+
+      learnerName = String(r[KIT_COL.LEARNER_NAME - 1] || '').trim() || learnerName;
+      var addrStatus   = String(r[KIT_COL.ADDR_STATUS - 1]  || '').trim();
+      var orderPlaced  = String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
+      var deliveryDate = r[KIT_COL.DELIVERY_DATE - 1];
+      var isRefunded   = String(r[KIT_COL.REFUNDED - 1]     || '').trim().toUpperCase() === 'TRUE';
+
+      var stage = 'address_pending';
+      if (isRefunded) stage = 'refunded';
+      else if (deliveryDate) stage = 'delivered';
+      else if (orderPlaced) stage = 'order_placed';
+      else if (addrStatus === 'Received') stage = 'address_received';
+
+      kits.push({
+        kitName: String(r[KIT_COL.KIT - 1] || '').trim(),
+        stage: stage,
+        orderDate: _fmt(r[KIT_COL.DATE_OF_ORDER - 1]),
+        eta: _fmt(r[KIT_COL.ETA - 1]),
+        deliveryDate: _fmt(deliveryDate),
+        trackingNo: String(r[KIT_COL.ORDER_TRACKING_NO - 1] || '').trim(),
+        trackingUrl: String(r[KIT_COL.ORDER_TRACKING_URL - 1] || '').trim(),
+        store: String(r[KIT_COL.ORDER_STORE - 1] || '').trim()
+      });
+    }
+
+    if (!kits.length) return { success: false, message: 'We could not find a kit for this link. Please contact JetLearn support.' };
+    kits.reverse(); // newest (highest sheet row) first
 
     return {
       success: true,
       jlid: jlid,
       learnerName: learnerName,
-      kitName: kitName,
-      stage: stage,
-      orderDate: _fmt(r[KIT_COL.DATE_OF_ORDER - 1]),
-      eta: _fmt(r[KIT_COL.ETA - 1]),
-      deliveryDate: _fmt(deliveryDate),
-      trackingNo: String(r[KIT_COL.ORDER_TRACKING_NO - 1] || '').trim(),
-      trackingUrl: String(r[KIT_COL.ORDER_TRACKING_URL - 1] || '').trim(),
-      store: String(r[KIT_COL.ORDER_STORE - 1] || '').trim()
+      kits: kits
     };
   } catch(e) {
     Logger.log('[KitTracking] getKitTrackContext ERROR: ' + e.message);
     return { success: false, message: 'Something went wrong loading this page. Please contact JetLearn support.' };
   }
+}
+
+// Short public URL for the Track My Kit page — sent to parents once the
+// order is placed so they actually have a way to reach it (see
+// markKitOrderPlaced below).
+function getKitTrackLink(jlid) {
+  return 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(jlid);
 }
 
 // ── Urgency tier from HubSpot module_start_date ──────────────────────────────
@@ -3062,12 +3077,16 @@ function markKitOrderPlaced(rowIndex, payload) {
         if (phone) {
           // Named-placeholder template — param `name` must exactly match the
           // template's variable names (ParentName/kit_name/delivery_date/
-          // address), not a description of the content.
+          // address), not a description of the content. The template has no
+          // dedicated variable for a tracking link, so it rides along inside
+          // `address` — this is the ONLY place a parent is ever given the
+          // Track My Kit link (jetlearn-kit-links.web.app/track/{JLID}); with
+          // no other send point, it must go out here or parents never get it.
           sendWatiMessage(phone, 'kit_order_placed_notice_v2', [
             { name: 'ParentName',    value: hs.data.parentName || '' },
             { name: 'kit_name',      value: kitName },
             { name: 'delivery_date', value: payload.eta || '' },
-            { name: 'address',       value: deliveryAddress }
+            { name: 'address',       value: deliveryAddress + '\n\nTrack your kit here: ' + getKitTrackLink(jlid) }
           ]);
         }
       }

@@ -91,6 +91,17 @@
       padding: 12px 16px; font-size: 0.85rem; margin-bottom: 20px;
     }
 
+    .history-title { font-size: 0.9rem; font-weight: 700; margin: 32px 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kit-badge {
+      display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      padding: 3px 10px; border-radius: 99px; margin-bottom: 10px;
+    }
+    .kit-badge.current { background: #ede9fe; color: var(--purple-dark); }
+    .kit-badge.delivered { background: #ecfdf5; color: #16a34a; }
+    .kit-badge.refunded { background: #fef2f2; color: #b91c1c; }
+    .kit-card.compact { padding: 20px 22px; }
+    .kit-card.compact .timeline li { padding-bottom: 16px; }
+
     .state-msg { text-align: center; padding: 60px 24px; }
     .state-msg .icon-wrap {
       width: 66px; height: 66px; border-radius: 50%; margin: 0 auto 18px;
@@ -129,28 +140,7 @@
       <h1 id="heroTitle">Tracking your kit</h1>
       <p class="sub" id="heroSub">Here's where things stand right now.</p>
 
-      <div id="refundBanner" class="refund-banner" style="display:none;">
-        This order was refunded, so it won't be shipped. Reach out if that doesn't look right.
-      </div>
-
-      <div class="card">
-        <h3 id="kitTitle">Kit</h3>
-        <p class="muted" id="kitSub"></p>
-        <ul class="timeline" id="timelineList"></ul>
-        <a href="#" id="addressCta" class="cta-btn" style="display:none;">Confirm my address →</a>
-      </div>
-
-      <div class="card" id="trackingCard" style="display:none;">
-        <h3>Shipping details</h3>
-        <p class="muted">What our team has on file for this delivery.</p>
-        <div class="tracking-row" id="rowStore" style="display:none;">
-          <span class="lbl">Ordered from</span><span class="val" id="valStore"></span>
-        </div>
-        <div class="tracking-row" id="rowTracking" style="display:none;">
-          <span class="lbl">Tracking No.</span>
-          <span><span class="val" id="valTrackingNo"></span> <a href="#" id="valTrackingLink" target="_blank" style="display:none;">Track →</a></span>
-        </div>
-      </div>
+      <div id="kitsContainer"></div>
     </div>
 
     <div id="errorState" class="state-msg error" style="display:none;">
@@ -182,19 +172,53 @@
       { key: 'delivered',        label: 'Delivered',          detailKey: 'deliveryDate' }
     ];
 
-    function buildTimeline(ctx) {
-      var stageIdx = STEPS.findIndex(function(s) { return s.key === ctx.stage; });
-      if (stageIdx === -1) stageIdx = 0; // refunded or unknown — show as just started
+    function esc(s) { return String(s || '').replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
+    function timelineHtml(kit) {
+      var stageIdx = STEPS.findIndex(function(s) { return s.key === kit.stage; });
+      if (stageIdx === -1) stageIdx = 0; // refunded or unknown — show as just started
       var html = '';
       STEPS.forEach(function(step, i) {
-        var cls = i < stageIdx ? 'done' : (i === stageIdx ? (ctx.stage === 'refunded' ? '' : 'active') : '');
+        var cls = i < stageIdx ? 'done' : (i === stageIdx ? (kit.stage === 'refunded' ? '' : 'active') : '');
         var icon = i < stageIdx ? '<i class="fas fa-check"></i>' : (i + 1);
-        var detail = step.detailKey && ctx[step.detailKey] ? ctx[step.detailKey] : (cls === 'active' && step.key === 'order_placed' && ctx.eta ? 'Expected ' + ctx.eta : '');
+        var detail = step.detailKey && kit[step.detailKey] ? kit[step.detailKey] : (cls === 'active' && step.key === 'order_placed' && kit.eta ? 'Expected ' + kit.eta : '');
         html += '<li class="' + cls + '"><div class="t-dot">' + icon + '</div>' +
-          '<div class="t-body"><b>' + step.label + '</b>' + (detail ? '<span>' + detail + '</span>' : '') + '</div></li>';
+          '<div class="t-body"><b>' + step.label + '</b>' + (detail ? '<span>' + esc(detail) + '</span>' : '') + '</div></li>';
       });
-      document.getElementById('timelineList').innerHTML = html;
+      return html;
+    }
+
+    function heroSubFor(kit) {
+      if (kit.stage === 'refunded') return 'This order was refunded.';
+      if (kit.stage === 'delivered') return 'Delivered on ' + (kit.deliveryDate || 'record') + '. Enjoy!';
+      if (kit.stage === 'order_placed') return kit.eta ? 'Expected around ' + kit.eta + '.' : 'Your kit is on its way.';
+      if (kit.stage === 'address_received') return 'Address confirmed — we’re getting your kit ready to ship.';
+      return 'We’re waiting on your delivery address to get this moving.';
+    }
+
+    function kitCardHtml(kit, jlid, isCurrent) {
+      var badgeCls = kit.stage === 'delivered' ? 'delivered' : (kit.stage === 'refunded' ? 'refunded' : 'current');
+      var badgeText = isCurrent ? 'Current' : (kit.stage === 'delivered' ? 'Delivered' : (kit.stage === 'refunded' ? 'Refunded' : 'Past order'));
+      var html = '<div class="card' + (isCurrent ? '' : ' compact') + '">';
+      html += '<span class="kit-badge ' + badgeCls + '">' + esc(badgeText) + '</span>';
+      html += '<h3>' + esc(kit.kitName || 'Kit') + '</h3>';
+      if (kit.stage === 'refunded') {
+        html += '<div class="refund-banner">This order was refunded, so it won’t be shipped. Reach out if that doesn’t look right.</div>';
+      }
+      html += '<ul class="timeline">' + timelineHtml(kit) + '</ul>';
+      if (isCurrent && kit.stage === 'address_pending') {
+        html += '<a href="https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(jlid) + '" class="cta-btn">Confirm my address →</a>';
+      }
+      if (kit.store || kit.trackingNo) {
+        html += '<div class="tracking-row"' + (kit.store ? '' : ' style="display:none;"') + '>' +
+          '<span class="lbl">Ordered from</span><span class="val">' + esc(kit.store) + '</span></div>';
+        if (kit.trackingNo) {
+          html += '<div class="tracking-row"><span class="lbl">Tracking No.</span><span><span class="val">' + esc(kit.trackingNo) + '</span>' +
+            (kit.trackingUrl ? ' <a href="' + esc(kit.trackingUrl) + '" target="_blank">Track →</a>' : '') + '</span></div>';
+        }
+      }
+      html += '</div>';
+      return html;
     }
 
     (function() {
@@ -206,7 +230,7 @@
       fetch(GAS_URL + '?api=trackContext&jlid=' + encodeURIComponent(JLID))
         .then(function(r) { return r.json(); })
         .then(function(res) {
-          if (!res || !res.success) {
+          if (!res || !res.success || !res.kits || !res.kits.length) {
             document.getElementById('errorMsg').textContent = (res && res.message) || 'This kit could not be found.';
             showState('errorState');
             return;
@@ -215,48 +239,17 @@
           document.getElementById('chipAv').textContent = first.charAt(0).toUpperCase();
           document.getElementById('dispLearnerName').textContent = res.learnerName || '—';
           document.getElementById('dispJlid').textContent = res.jlid || '';
+
+          var current = res.kits[0];
           document.getElementById('heroTitle').textContent = first + '’s kit is on the way';
-          document.getElementById('kitTitle').textContent = res.kitName || 'Kit';
+          document.getElementById('heroSub').textContent = heroSubFor(current);
 
-          if (res.stage === 'refunded') {
-            document.getElementById('refundBanner').style.display = 'block';
-            document.getElementById('heroSub').textContent = 'This order was refunded.';
-          } else if (res.stage === 'delivered') {
-            document.getElementById('heroSub').textContent = 'Delivered on ' + (res.deliveryDate || 'record') + '. Enjoy!';
-          } else if (res.stage === 'order_placed') {
-            document.getElementById('heroSub').textContent = res.eta ? 'Expected around ' + res.eta + '.' : 'Your kit is on its way.';
-          } else if (res.stage === 'address_received') {
-            document.getElementById('heroSub').textContent = 'Address confirmed — we’re getting your kit ready to ship.';
-          } else {
-            document.getElementById('heroSub').textContent = 'We’re waiting on your delivery address to get this moving.';
+          var html = kitCardHtml(current, res.jlid, true);
+          if (res.kits.length > 1) {
+            html += '<div class="history-title">Order history — ' + (res.kits.length - 1) + ' earlier kit' + (res.kits.length - 1 > 1 ? 's' : '') + '</div>';
+            for (var i = 1; i < res.kits.length; i++) html += kitCardHtml(res.kits[i], res.jlid, false);
           }
-
-          buildTimeline(res);
-
-          // Address not confirmed yet (or parent needs to fix it) — send them
-          // straight to the address form instead of leaving them stuck here.
-          if (res.stage === 'address_pending') {
-            var cta = document.getElementById('addressCta');
-            cta.href = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(res.jlid);
-            cta.style.display = 'inline-block';
-          }
-
-          if (res.store || res.trackingNo) {
-            document.getElementById('trackingCard').style.display = 'block';
-            if (res.store) {
-              document.getElementById('rowStore').style.display = 'flex';
-              document.getElementById('valStore').textContent = res.store;
-            }
-            if (res.trackingNo) {
-              document.getElementById('rowTracking').style.display = 'flex';
-              document.getElementById('valTrackingNo').textContent = res.trackingNo;
-              if (res.trackingUrl) {
-                var link = document.getElementById('valTrackingLink');
-                link.href = res.trackingUrl;
-                link.style.display = 'inline';
-              }
-            }
-          }
+          document.getElementById('kitsContainer').innerHTML = html;
 
           showState('trackState');
         })

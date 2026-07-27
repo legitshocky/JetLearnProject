@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-27] — Order History + Actually Send the Track Link (V8.11)
+
+### `getKitTrackContext()` now returns every kit for a JLID, not just the latest (`KitTrackingService.js`)
+- Returns a `kits[]` array (newest first) instead of a single kit — a learner with multiple kit purchases now sees all of them, each with its own timeline. The "Track My Kit" page renders the current one expanded and older ones as a compact "Order history" list below it.
+
+### The tracking link was never sent to parents anywhere — now it rides along in the order-placed WhatsApp (`KitTrackingService.js`, `markKitOrderPlaced()`)
+- Nothing previously gave a parent the `jetlearn-kit-links.web.app/track/{JLID}` URL. The `kit_order_placed_notice_v2` template has no spare variable for a link, so it's appended to the existing `address` variable's value (`getKitTrackLink(jlid)`) — no new WATI template/approval needed.
+
+---
+
 ## [2026-07-27] — Track My Kit Page + Reconfirm-Reply Diagnostics (V8.09–V8.10)
 
 ### New parent-facing "Track My Kit" page (`firebase-hosting/public/track/`, `Code.js`, `KitTrackingService.js`)
