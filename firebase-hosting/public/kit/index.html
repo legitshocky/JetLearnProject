@@ -282,6 +282,7 @@
       <div class="icon-wrap"><i class="fas fa-check"></i></div>
       <h2>Thank you!</h2>
       <p>Your details have been received and updated. Our team will be in touch if anything else is needed.</p>
+      <a id="successTrackLink" href="#" class="submit-btn" style="margin-top:22px;text-decoration:none;">Track my kit →</a>
     </div>
 
     <div class="leads-section">
@@ -458,6 +459,7 @@
       // the parent to wait on. The actual HubSpot/sheet write happens in
       // the background; failures are logged for ops, not shown here, since
       // by this point the parent has already seen "Thank you".
+      document.getElementById('successTrackLink').href = 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(JLID);
       showState('successState');
 
       fetch(GAS_URL, { method: 'POST', body: body })
