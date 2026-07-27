@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-07-27] — Carrier Tracking URL Auto-Builder (V8.13)
+
+### Mark Order Placed modal (`JavaScript.html`)
+- Amazon has no public API/URL for tracking an individual consumer order (SP-API is seller-side only, and scraping a personal Amazon account would mean handling credentials — off the table). Once Amazon hands off to an actual carrier, though, most of those DO have real public tracking pages.
+- Added a **Carrier** dropdown (Blue Dart, Delhivery, DTDC, Ecom Express, XpressBees, FedEx, DHL, UPS, India Post, or manual/Other) next to Tracking Number — picking a carrier + typing the number auto-fills the Tracking URL field (`ktUpdateTrackingUrl()`), still editable by hand. This is what finally makes the "Track →" link on the parent-facing Track My Kit page actually work in practice, instead of sitting dark for lack of a URL.
+
+---
+
 ## [2026-07-27] — Order History + Actually Send the Track Link (V8.11)
 
 ### `getKitTrackContext()` now returns every kit for a JLID, not just the latest (`KitTrackingService.js`)

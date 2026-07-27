@@ -14343,6 +14343,33 @@ function ktSaveEdit() {
     .updateKitRow({ rowIndex: rowIndex, jlid: jlid, deliveryDate: deliveryDate, response: response });
 }
 
+// Carrier tracking URL templates — {n} is replaced with the tracking number.
+// Amazon itself has no public per-order tracking URL for a buyer account, so
+// it's deliberately not listed here; once Amazon hands off to one of these
+// carriers, this builds a real, working live-status link.
+const KT_CARRIERS = {
+  '':            { label: 'Select carrier (optional)', url: '' },
+  bluedart:      { label: 'Blue Dart',    url: 'https://www.bluedart.com/tracking?trackFor=0&trackNo={n}' },
+  delhivery:     { label: 'Delhivery',    url: 'https://www.delhivery.com/track-v2/package/{n}' },
+  dtdc:          { label: 'DTDC',         url: 'https://www.dtdc.in/track.asp?strCnno={n}' },
+  ecomexpress:   { label: 'Ecom Express', url: 'https://ecomexpress.in/tracking/?awb_field={n}' },
+  xpressbees:    { label: 'XpressBees',   url: 'https://www.xpressbees.com/track?awbNo={n}' },
+  fedex:         { label: 'FedEx',        url: 'https://www.fedex.com/fedextrack/?trknbr={n}' },
+  dhl:           { label: 'DHL',          url: 'https://www.dhl.com/in-en/home/tracking/tracking-express.html?submit=1&tracking-id={n}' },
+  ups:           { label: 'UPS',          url: 'https://www.ups.com/track?loc=en_US&tracknum={n}' },
+  indiapost:     { label: 'India Post',   url: 'https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx' },
+  other:         { label: 'Other / Amazon (enter link manually)', url: '' }
+};
+
+function ktUpdateTrackingUrl() {
+  const carrierKey = document.getElementById('ktOpCarrier').value;
+  const trackingNo = (document.getElementById('ktOpTrackingNo').value || '').trim();
+  const carrier = KT_CARRIERS[carrierKey];
+  if (carrier && carrier.url && trackingNo) {
+    document.getElementById('ktOpTrackingUrl').value = carrier.url.replace('{n}', encodeURIComponent(trackingNo));
+  }
+}
+
 function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
   let modal = document.getElementById('ktOrderPlacedModal');
   if (!modal) {
@@ -14361,9 +14388,13 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
       + '<input id="ktOpEta" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Store<\/label>'
       + '<input id="ktOpStore" type="text" placeholder="Amazon / Digikey / Other" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Carrier (optional)<\/label>'
+      + '<select id="ktOpCarrier" onchange="ktUpdateTrackingUrl()" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;background:#fff;">'
+      +   Object.keys(KT_CARRIERS).map(function(k) { return '<option value="' + k + '">' + KT_CARRIERS[k].label + '<\/option>'; }).join('')
+      + '<\/select>'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking Number (optional)<\/label>'
-      + '<input id="ktOpTrackingNo" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
-      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking URL (optional)<\/label>'
+      + '<input id="ktOpTrackingNo" type="text" oninput="ktUpdateTrackingUrl()" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking URL <span style="font-weight:400;color:#94a3b8;">(auto-filled from carrier — edit if needed)<\/span><\/label>'
       + '<input id="ktOpTrackingUrl" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;">'
       + '<div style="display:flex;gap:10px;">'
       + '<button onclick="ktCloseOrderPlaced()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
@@ -14379,6 +14410,7 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
   document.getElementById('ktOpOrderDate').value = today;
   document.getElementById('ktOpEta').value = '';
   document.getElementById('ktOpStore').value = '';
+  document.getElementById('ktOpCarrier').value = '';
   document.getElementById('ktOpTrackingNo').value = '';
   document.getElementById('ktOpTrackingUrl').value = '';
   modal.style.display = 'flex';
