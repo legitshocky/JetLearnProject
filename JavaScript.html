@@ -6620,6 +6620,7 @@ google.script.run
         loadImpactScore(user.username);
         loadNotifications(user.username);
         loadStuckMigrations();
+        refreshKitBadgesInBackground();
     }, 800);
 
     // Course Planner: update sidebar badge in background (non-blocking)
@@ -11427,6 +11428,8 @@ function handleNotifAction(action) {
     } else if (action === 'openStuckMigrations') {
         var _dbEl = document.querySelector('.menu-item[data-page="dashboard"]'); if (_dbEl) _dbEl.click();
         setTimeout(() => { openStuckMigrationsModal(); }, 400);
+    } else if (action === 'openKitTracking') {
+        var _ktEl = document.querySelector('.menu-item[data-page="kitTracking"]'); if (_ktEl) _ktEl.click();
     }
 }
 
@@ -11444,6 +11447,55 @@ document.addEventListener('click', function(e) {
 setInterval(() => {
     if (currentUser) loadNotifications(currentUser.username);
 }, 5 * 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────────────
+// KIT TRACKING SIDEBAR BADGES — background refresh
+// Keeps the "address verified" count on the sidebar live even if the user
+// never opens Kit Tracking or the notification bell. Pops a toast the
+// moment the addr-received count goes up so it's impossible to miss.
+// ─────────────────────────────────────────────────────────────────────────
+let _lastKitAddrReceivedCount = null;
+
+function refreshKitBadgesInBackground() {
+    google.script.run
+        .withSuccessHandler(function(result) {
+            if (!result || !result.success) return;
+            const s = result.stats || {};
+
+            const badge = document.getElementById('kitPendingBadge');
+            if (badge) {
+                const pending = (s.overdue || 0) + (s.awaiting || 0);
+                if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline-flex'; }
+                else badge.style.display = 'none';
+            }
+            const addrBadge = document.getElementById('kitAddrReceivedBadge');
+            const n = s.addressReceivedPendingOrder || 0;
+            if (addrBadge) {
+                if (n > 0) { addrBadge.textContent = n; addrBadge.style.display = 'inline-flex'; }
+                else addrBadge.style.display = 'none';
+            }
+            const callBadge = document.getElementById('kitNeedsCallBadge');
+            if (callBadge) {
+                const c = s.needsCall || 0;
+                if (c > 0) { callBadge.textContent = c; callBadge.style.display = 'inline-flex'; }
+                else callBadge.style.display = 'none';
+            }
+
+            if (_lastKitAddrReceivedCount !== null && n > _lastKitAddrReceivedCount) {
+                const added = n - _lastKitAddrReceivedCount;
+                if (typeof showToast === 'function') {
+                    showToast('success', 'Address verified', added + ' kit address' + (added > 1 ? 'es' : '') + ' ready to order');
+                } else {
+                    console.log('[KitBadges] ' + added + ' new address(es) verified');
+                }
+            }
+            _lastKitAddrReceivedCount = n;
+        })
+        .withFailureHandler(err => console.error('[KitBadges]', err))
+        .getKitBadgeStats();
+}
+
+setInterval(() => { if (currentUser) refreshKitBadgesInBackground(); }, 2 * 60 * 1000);
 
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550

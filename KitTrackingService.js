@@ -2501,6 +2501,20 @@ function getKitTrackingData() {
   }
 }
 
+// Lightweight sidebar-badge refresh — same stats as getKitTrackingData()
+// but callers only need the counts, not the full row list. Used for the
+// background poll that keeps the Kit Tracking sidebar badges live without
+// requiring the user to open the page.
+function getKitBadgeStats() {
+  try {
+    var full = getKitTrackingData();
+    return { success: full.success, stats: full.stats || {} };
+  } catch(e) {
+    Logger.log('[KitTracking] getKitBadgeStats ERROR: ' + e.message);
+    return { success: false, stats: {} };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // RESEND KIT FOLLOW-UP  (manual resend from dashboard)
 // ─────────────────────────────────────────────────────────────────────────────

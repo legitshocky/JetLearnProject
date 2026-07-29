@@ -4267,6 +4267,33 @@ function getNotifications(username) {
       }
     } catch(e) {}
 
+    // 5. Kit addresses received, order not yet placed (Kit Tracking pipeline)
+    try {
+      var kitSheet = _getKitSheet();
+      var kitLast  = kitSheet.getLastRow();
+      if (kitLast > 1) {
+        var kitRows = kitSheet.getRange(2, 1, kitLast - 1, KIT_LAST_COL).getValues();
+        var addrPending = 0;
+        kitRows.forEach(function(r) {
+          var addrStatus  = String(r[KIT_COL.ADDR_STATUS - 1]  || '').trim();
+          var orderPlaced = String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
+          var refunded    = String(r[KIT_COL.REFUNDED - 1]     || '').trim().toUpperCase() === 'TRUE';
+          if (addrStatus === 'Received' && !orderPlaced && !refunded) addrPending++;
+        });
+        if (addrPending > 0) {
+          items.push({
+            type:     'kit_addr_received',
+            icon:     'fa-box-open',
+            color:    '#0d9488',
+            title:    addrPending + ' kit address' + (addrPending > 1 ? 'es' : '') + ' verified',
+            body:     'Ready to place order — waiting on you.',
+            action:   'openKitTracking',
+            priority: 1
+          });
+        }
+      }
+    } catch(e) { Logger.log('[getNotifications] kit addr error: ' + e.message); }
+
     items.sort(function(a, b) { return a.priority - b.priority; });
 
     return { success: true, count: items.length, items: items };

@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-30] — Live "Address Verified" Notification (V8.28)
+
+### Sidebar badge + toast instead of relying on the notification bell (`HubSpotService.js`, `KitTrackingService.js`, `JavaScript.html`)
+- User feedback: bell dropdown is easy to forget to check. Kit Tracking already had a `kitAddrReceivedBadge` on the sidebar menu item, but it only refreshed when the Kit Tracking page itself was opened.
+- `getKitBadgeStats()` — thin wrapper around `getKitTrackingData()` returning just `stats`, cheap enough to poll in the background.
+- Frontend `refreshKitBadgesInBackground()` — runs on login and every 2 minutes, updates the sidebar badges live (no need to open Kit Tracking), and fires a toast ("N kit address(es) ready to order") the moment the addr-received count increases.
+- Also added a `kit_addr_received` entry to the existing `getNotifications()` bell aggregator, so it shows there too for anyone who does use it.
+
+---
+
 ## [2026-07-30] — Structured Address Fields in Order Details (V8.27)
 
 ### Order Details panel now shows Address/City/State/Postcode separately (`KitTrackingService.js`, `JavaScript.html`)
