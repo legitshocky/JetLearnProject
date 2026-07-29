@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-30] — Fix False-Positive Address-Received Spam (V8.32)
+
+### Root cause: two competing address-collection systems (`KitTrackingService.js`)
+- User reported parents getting duplicate "we've received your address" WhatsApp messages minutes after (and again hours after) an address request, without ever touching the new public portal.
+- Root cause: the legacy 1-minute poll (`pollPendingKitAddresses` → `checkKitAddressReply` → `_fetchContactAddress`) checked HubSpot's **contact-level** `address`/`city`/`state` properties. Those persist across every kit a family has ever ordered — so once *any* parent had *ever* had an address saved (from a prior kit, any time in the past), every future "Ask for Address" request for a *different* kit self-confirmed off that stale leftover value on the very next poll cycle, regardless of whether the parent submitted anything new. Re-asking later re-triggered the same false positive.
+- `pollPendingKitAddresses()` gutted to a no-op — the reliable signal is now exclusively `_bridgeAddressToKitTracking()` (fires once, on an actual public-form submission) or an explicit "Yes, Same Address" WhatsApp reply (`handleKitAddressReconfirmReply`).
+- The manual "Check Reply" button (`checkKitAddressReply`, Add Kit modal) had the identical flaw — rewritten to read this row's own `ADDR_STATUS`/`DELIVERY_ADDRESS` (only ever set by the two legitimate paths above) instead of polling HubSpot contact fields, and no longer re-sends a confirmation (the bridge/reconfirm path already sent it once).
+
+---
+
 ## [2026-07-30] — Send Proper Tracking-Link Template on Order Placed (V8.31)
 
 ### `markKitOrderPlaced()` now fires `kit_tracking_link_v1` (`KitTrackingService.js`, `JavaScript.html`)

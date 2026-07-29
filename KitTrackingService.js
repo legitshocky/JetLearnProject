@@ -1041,75 +1041,36 @@ function handleKitAddressReply(phone, addressText) {
 // Called from auto-trigger (pollPendingKitAddresses) and "Check for Reply" button.
 // When address found: updates sheet, sends WATI confirmation, clears cache.
 // Returns { received, address, confirmationSent }
+// "Check Reply" — manual ops action from the Add Kit modal, asking "has the
+// parent's address actually come through yet?" Previously this polled
+// HubSpot's CONTACT-level address/city/state fields directly — those persist
+// across every kit a family has ever ordered, so any family who'd EVER had an
+// address saved would show as "received" instantly, even with zero action on
+// the new public portal, and would re-fire the confirmation WhatsApp on every
+// check. Fixed (2026-07-30) to read this row's own ADDR_STATUS/DELIVERY_ADDRESS
+// instead — those are only ever written by an actual event: the public-form
+// bridge (_bridgeAddressToKitTracking) or an explicit "Yes, Same Address"
+// WhatsApp reply (handleKitAddressReconfirmReply). No confirmation is sent
+// here — whichever of those two paths set 'Received' already sent it once.
 function checkKitAddressReply(jlid, rowIndex, kitName) {
   try {
     if (!jlid) return { received: false };
-    var hs = fetchHubspotByJlid(jlid);
-    if (!hs || !hs.success) return { received: false, message: 'HubSpot lookup failed' };
 
-    var d     = hs.data;
-    var phone = _normalisePhone(d.parentContact || '');
-
-    // If kitName not passed, try to read from cache or sheet
-    var resolvedKit = kitName || '';
-    if (!resolvedKit && phone) {
-      try {
-        var cachedReq = CacheService.getScriptCache().get('KIT_ADDR_REQ_' + phone);
-        if (cachedReq) resolvedKit = JSON.parse(cachedReq).kitName || '';
-      } catch(ce) {}
+    if (!rowIndex || rowIndex <= 0) {
+      rowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase()) || 0;
     }
-    if (!resolvedKit && rowIndex && rowIndex > 0) {
-      try {
-        var sheetForKit = _getKitSheet();
-        resolvedKit = String(sheetForKit.getRange(rowIndex, KIT_COL.KIT).getValue() || '').trim();
-      } catch(se) {}
-    }
+    if (!rowIndex || rowIndex <= 0) return { received: false, message: 'No Kit Tracking row found for ' + jlid };
 
-    // Poll HubSpot contact for address
-    var addr = d.dealId ? _fetchContactAddress(d.dealId) : {};
-    var addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
-      .filter(function(p) { return p && String(p).trim(); }).join(', ');
+    var sheet = _getKitSheet();
+    var addrStatus = String(sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).getValue() || '').trim();
+    var addrStr = String(sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
 
-    if (!addrStr) {
-      // Address not yet in HubSpot — still waiting for parent to submit form
+    if (addrStatus !== 'Received' || !addrStr) {
       return { received: false, waiting: true };
     }
 
-    // Address found ─ update sheet row
-    if (rowIndex && rowIndex > 0) {
-      try {
-        var sheet = _getKitSheet();
-        sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
-        sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
-        sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
-      } catch(se) {
-        Logger.log('[KitTracking] checkKitAddressReply: sheet update failed: ' + se.message);
-      }
-    }
-
-    // Send WATI confirmation to parent (best-effort)
-    // Template kit_address_received_confirmation uses positional {{1}}=Parent {{2}}=Kit
-    var confirmationSent = false;
-    if (phone) {
-      try {
-        var wRes = sendWatiMessage(phone, 'kit_address_received_confirmation', [
-          { name: '1', value: d.parentName || '' },
-          { name: '2', value: resolvedKit  || '' }
-        ]);
-        confirmationSent = !!(wRes && wRes.success);
-        Logger.log('[KitTracking] Confirmation WATI sent=' + confirmationSent + ' for ' + jlid);
-      } catch(we) {
-        Logger.log('[KitTracking] checkKitAddressReply: WATI confirm error: ' + we.message);
-      }
-    }
-
-    // Clear pending cache
-    if (phone) {
-      try { CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + phone); } catch(ce) {}
-    }
-
-    Logger.log('[KitTracking] Address found for ' + jlid + ': "' + addrStr + '"');
-    return { received: true, address: addrStr, confirmationSent: confirmationSent };
+    Logger.log('[KitTracking] checkKitAddressReply: row ' + rowIndex + ' already Received for ' + jlid);
+    return { received: true, address: addrStr };
 
   } catch(e) {
     Logger.log('[KitTracking] checkKitAddressReply ERROR: ' + e.message);
@@ -1151,101 +1112,25 @@ function _kitAddrQueueRemove(jlid) {
   }
 }
 
-// ── Auto-poll: scan sheet rows + ScriptProperties queue, check HubSpot ───────
-// Runs every 30 min via time-based trigger. No manual action needed.
+// ── DISABLED (2026-07-30) — was auto-confirming addresses off stale data ────
+// `address`/`city`/`state` are CONTACT-level HubSpot properties, not deal-
+// level. Once any parent had ever had an address saved on their contact
+// record (any prior kit, any prior order), every future "Ask for Address"
+// request for a DIFFERENT kit self-confirmed off that old leftover value on
+// the very next 1-min poll cycle — regardless of whether the parent touched
+// the new public portal at all. Customers were getting "we've received your
+// address" moments after a request went out, sometimes duplicated, without
+// ever actually submitting anything. The real, reliable signal now is
+// `_bridgeAddressToKitTracking()` (fires once, on an actual public-form
+// submission) or an explicit "Yes, Same Address" WhatsApp button reply
+// (handleKitAddressReconfirmReply) — both are deliberate, per-request
+// events, not a blind contact-property scan. This function is kept as a
+// harmless no-op (rather than deleting) since a trigger may still call it;
+// do not re-enable the HubSpot-contact-address checks below without first
+// gating on a per-request freshness signal (e.g. property last-modified
+// time after ADDR_REQUESTED_AT).
 function pollPendingKitAddresses() {
-  Logger.log('[KitAddrPoll] Starting poll...');
-  var checked = 0, found = 0;
-
-  try {
-    // ── Part 1: sheet rows with ADDR_STATUS='Requested' ──────────────────────
-    var sheet   = _getKitSheet();
-    var lastRow = sheet.getLastRow();
-    if (lastRow >= 2) {
-      var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.ADDR_STATUS).getValues();
-      rows.forEach(function(row, idx) {
-        var sheetRow   = idx + 2;
-        var addrStatus = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
-        var jlid       = String(row[KIT_COL.JLID - 1]        || '').trim();
-        var kitName    = String(row[KIT_COL.KIT - 1]          || '').trim();
-        if (addrStatus !== 'Requested' || !jlid) return;
-        checked++;
-        Logger.log('[KitAddrPoll] Sheet row=' + sheetRow + ' JLID=' + jlid);
-        try {
-          var result = checkKitAddressReply(jlid, sheetRow, kitName);
-          if (result.received) {
-            found++;
-            _kitAddrQueueRemove(jlid); // clean up queue too if entry exists
-            Logger.log('[KitAddrPoll] Sheet: address found JLID=' + jlid + ' confirm=' + result.confirmationSent);
-          }
-        } catch(re) { Logger.log('[KitAddrPoll] Sheet row error JLID=' + jlid + ': ' + re.message); }
-        Utilities.sleep(400);
-      });
-    }
-
-    // ── Part 2: ScriptProperties queue (requests made before sheet row exists) ─
-    var queue = _kitAddrQueueGet();
-    Logger.log('[KitAddrPoll] Queue size=' + queue.length);
-    queue.forEach(function(entry) {
-      checked++;
-      Logger.log('[KitAddrPoll] Queue JLID=' + entry.jlid + ' kit=' + entry.kitName);
-      try {
-        // Poll HubSpot contact directly for address
-        var addr = entry.dealId ? _fetchContactAddress(entry.dealId) : {};
-        var addrStr = [addr.address, addr.city, addr.state, addr.zip, addr.country]
-          .filter(function(p) { return p && String(p).trim(); }).join(', ');
-
-        if (!addrStr) {
-          Logger.log('[KitAddrPoll] Queue: still waiting for JLID=' + entry.jlid);
-          return;
-        }
-
-        found++;
-        Logger.log('[KitAddrPoll] Queue: address found for JLID=' + entry.jlid + ': "' + addrStr + '"');
-
-        // Send confirmation WATI — {{1}}=Parent {{2}}=Kit
-        var confirmSent = false;
-        if (entry.phone) {
-          try {
-            var wRes = sendWatiMessage(entry.phone, 'kit_address_received_confirmation', [
-              { name: '1', value: entry.parentName  || '' },
-              { name: '2', value: entry.kitName     || '' }
-            ]);
-            confirmSent = !!(wRes && wRes.success);
-            Logger.log('[KitAddrPoll] Confirmation WATI sent=' + confirmSent + ' JLID=' + entry.jlid);
-          } catch(we) {
-            Logger.log('[KitAddrPoll] WATI confirm error: ' + we.message);
-          }
-        }
-
-        // Update sheet row if it exists now (e.g. addKitEntry ran after request)
-        if (entry.rowIndex > 0) {
-          try {
-            var sh = _getKitSheet();
-            sh.getRange(entry.rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addrStr);
-            sh.getRange(entry.rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
-            sh.getRange(entry.rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
-          } catch(se) {}
-        }
-
-        // Clear ScriptCache entry
-        if (entry.phone) {
-          try { CacheService.getScriptCache().remove('KIT_ADDR_REQ_' + entry.phone); } catch(ce) {}
-        }
-
-        // Remove from queue
-        _kitAddrQueueRemove(entry.jlid);
-
-      } catch(qe) {
-        Logger.log('[KitAddrPoll] Queue entry error JLID=' + entry.jlid + ': ' + qe.message);
-      }
-      Utilities.sleep(400);
-    });
-
-    Logger.log('[KitAddrPoll] Done. Checked=' + checked + ' Found=' + found);
-  } catch(e) {
-    Logger.log('[KitAddrPoll] ERROR: ' + e.message);
-  }
+  Logger.log('[KitAddrPoll] Disabled — see comment above pollPendingKitAddresses(). No-op.');
 }
 
 // ── HubSpot form webhook handler — fires instantly on form submit ─────────────
