@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-30] — Faster Address Page: 5 HubSpot Calls Down to 3 (V8.33, `HubSpotService.js`, `LearnerAddressFormService.js`)
+
+- User asked why the public "confirm your address" page felt slow, then asked to lower it.
+- Root cause: `getAddressFormContext()` was making its own associations lookup + contact GET to fetch address/city/state/email — duplicating work `fetchHubspotByJlid()` had *already* done one line earlier via `getBestPhoneNumberForDeal()` (which does its own associations + contacts/batch/read to get the phone number). Same contact, fetched twice.
+- `getBestPhoneNumberForDeal()` now requests `email`/`address`/`city`/`state`/`zip`/`country` in the same contacts/batch/read call (free — same request, more fields) and caches the full contact record per dealId (`_contactRecordByDealIdCache`). `getAddressFormContext()` reuses that cached record instead of re-fetching, falling back to the original 2-call path only if the cache is somehow empty.
+- Address-page load chain: deals/search → contact associations → contacts/batch/read (3 calls), down from 5. Should meaningfully cut the "waiting for form to load" delay parents see.
+
+---
+
 ## [2026-07-30] — Fix False-Positive Address-Received Spam (V8.32)
 
 ### Root cause: two competing address-collection systems (`KitTrackingService.js`)

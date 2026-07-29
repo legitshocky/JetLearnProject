@@ -1307,6 +1307,14 @@ function verifySubscriptionWithCalendar(jlid, expectedStartDate, expectedEndDate
 
 // Execution-level phone cache — same deal queried multiple times in one run
 var _phoneByDealIdCache = {};
+// Full contact-properties record per dealId, populated the same call as the
+// phone lookup below (same associations + contacts/batch/read round trip) —
+// lets other code (e.g. getAddressFormContext) reuse the already-resolved
+// contact instead of re-doing its own associations+contact lookup.
+var _contactRecordByDealIdCache = {};
+function _getCachedContactRecordForDeal(dealId) {
+  return _contactRecordByDealIdCache[dealId] || null;
+}
 
 function getBestPhoneNumberForDeal(dealId) {
   const token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
@@ -1342,7 +1350,7 @@ function getBestPhoneNumberForDeal(dealId) {
     // 2. Fetch Phone Properties for these Contacts
     const contactsUrl = `https://api.hubapi.com/crm/v3/objects/contacts/batch/read`;
     const contactsPayload = {
-      properties: ["mobilephone", "phone", "hs_whatsapp_phone_number"],
+      properties: ["mobilephone", "phone", "hs_whatsapp_phone_number", "email", "address", "city", "state", "zip", "country"],
       inputs: contactIds
     };
 
@@ -1355,6 +1363,13 @@ function getBestPhoneNumberForDeal(dealId) {
 
     if (contactsRes.getResponseCode() !== 200) return null;
     const contactsData = JSON.parse(contactsRes.getContentText());
+
+    // Cache the primary contact's full properties (address fields ride along
+    // free in the same request) so callers needing address/email don't have
+    // to repeat the associations+contact-read round trip themselves.
+    if (contactsData.results && contactsData.results.length > 0) {
+      _contactRecordByDealIdCache[dealId] = contactsData.results[0].properties || {};
+    }
 
     // 3. Logic to find the BEST number
     let bestNumber = null;

@@ -237,7 +237,21 @@ function getAddressFormContext(jlid) {
     var d = hs.data;
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     var existing = { address: '', city: '', state: '', zip: '', country: '', email: '' };
-    if (d.dealId) {
+    // fetchHubspotByJlid() above already resolved this deal's contact and
+    // fetched its properties (getBestPhoneNumberForDeal, for the phone
+    // number) — address/city/state/zip/email/country ride along in that
+    // same request now, so reuse it instead of repeating the associations
+    // lookup + a second contact GET (was 2 extra HubSpot round trips on
+    // every single address-page load).
+    var cachedContact = (d.dealId && typeof _getCachedContactRecordForDeal === 'function')
+      ? _getCachedContactRecordForDeal(d.dealId) : null;
+    if (cachedContact) {
+      existing = {
+        address: cachedContact.address || '', city: cachedContact.city || '',
+        state: cachedContact.state || '', zip: cachedContact.zip || '',
+        country: cachedContact.country || '', email: cachedContact.email || d.parentEmail || ''
+      };
+    } else if (d.dealId) {
       var contactId = _lafGetContactId(d.dealId, token);
       if (contactId) {
         try {
