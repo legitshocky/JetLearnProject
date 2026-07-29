@@ -357,8 +357,10 @@ function generateCertificatePdfViaHtml(learnerName, courseName, yearOverride) {
         // 'width'/'height' aren't real PDFShift fields (confirmed via API 400
         // "Rogue field") — page size comes from the HTML's own @page rule.
         // 'delay' gives the Montserrat webfont time to finish loading before
-        // the page is captured.
-        payload: JSON.stringify({ source: html, sandbox: false, delay: 1500 }),
+        // the page is captured — 1500ms wasn't always enough, the year still
+        // sometimes rendered in a fallback font (visibly different letterforms
+        // from the heading baked into the background image). Bumped to 3000ms.
+        payload: JSON.stringify({ source: html, sandbox: false, delay: 3000 }),
         muteHttpExceptions: true
       }, 'generateCertificatePdfViaHtml', 'PDFShift-Key' + (i + 1));
     } catch(fetchErr) {

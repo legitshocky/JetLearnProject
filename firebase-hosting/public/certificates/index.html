@@ -70,7 +70,7 @@
     @keyframes shimmer { to { background-position: 200% 0; } }
 
     .brandline { display: flex; align-items: center; justify-content: center; gap: 9px; margin-bottom: 24px; position: relative; z-index: 1; }
-    .brandline img { width: 28px; height: 28px; border-radius: 50%; background: #fff; padding: 3px; }
+    .brandline img { width: 44px; height: 44px; border-radius: 50%; background: #fff; padding: 4px; }
     .brandline span { text-align: left; line-height: 1.25; font-size: 11px; font-weight: 700; opacity: .92; }
 
     .badge-medal { width: 84px; height: 84px; margin: 0 auto 16px; position: relative; z-index: 1; }
@@ -179,10 +179,15 @@
     }
     .badge-medal.pop { animation: trophyPop .7s cubic-bezier(.21,1.2,.4,1) forwards; }
 
+    /* Only the large, screen-spanning drift/float motion gets turned off for
+       reduced-motion — the loading spinner, entrance fades, and confetti stay,
+       since those are brief/small and not real vestibular triggers. Hiding
+       everything (incl. the spinner and doodles' mere presence) was a bug,
+       not an accessibility win — it made the page look broken instead of
+       just calmer. */
     @media (prefers-reduced-motion: reduce) {
-      *{ animation: none !important; transition: none !important; }
-      .cert-card{ opacity: 1 !important; transform: none !important; }
-      .doodle{ display: none !important; }
+      .doodle, .orb { animation: none !important; }
+      .hero::after { animation: none !important; }
     }
   </style>
 </head>
@@ -295,9 +300,10 @@
       });
     }
 
-    // Lightweight confetti burst — no external library.
+    // Lightweight confetti burst — no external library. Fires unconditionally
+    // (a brief one-time celebration on load, not sustained motion — kept even
+    // under prefers-reduced-motion, same as most production apps do).
     function fireConfetti() {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
       var canvas = document.getElementById('confettiCanvas');
       if (!canvas || !canvas.getContext) return;
       var ctx = canvas.getContext('2d');
