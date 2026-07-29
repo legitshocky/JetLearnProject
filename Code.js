@@ -736,7 +736,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.22";
+const APP_VERSION = "8.23";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -1380,7 +1380,9 @@ function _processPendingCertHS() {
       var noteLines = ['📜 Certificates Sent', 'Learner : ' + d.learnerName + ' (' + d.jlid + ')',
         'Sent to : ' + d.parentEmail, 'Sent by : ' + (d.performedBy || 'System'), 'Courses:'];
       (d.courses || []).forEach(function(c){ noteLines.push('  • ' + c.name + ' (' + c.year + ')'); });
-      if (d.driveUrl) noteLines.push('\n🔗 View/Download Certificate: ' + d.driveUrl);
+      // Web app "My Certificates" page (shows every cert on record for this
+      // learner) instead of a raw Drive link to just this one PDF.
+      noteLines.push('\n🔗 View all certificates: https://jetlearn-kit-links.web.app/certificates/' + encodeURIComponent(d.jlid));
       _certCreateDealNote(dealId, noteLines.join('\n'), hsToken);
       (d.courses || []).forEach(function(c) {
         if ((d.failed || []).indexOf(c.name) === -1) _certTickCourseSent(dealId, c.name, hsToken);

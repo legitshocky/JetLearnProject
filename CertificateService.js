@@ -889,6 +889,11 @@ function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, 
     +     '</td></tr>'
     +   '</table>'
 
+    // View all certificates CTA
+    +   '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;"><tr><td align="center">'
+    +     '<a href="https://jetlearn-kit-links.web.app/certificates/' + encodeURIComponent(jlid || '') + '" style="display:inline-block;background-color:#1a1560;color:#ffffff;font-size:13.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;text-decoration:none;padding-top:12px;padding-bottom:12px;padding-left:28px;padding-right:28px;border-radius:100px;">View All ' + learnerName + '\'s Certificates &#8594;</a>'
+    +   '</td></tr></table>'
+
     // Closing
     +   '<p style="color:#4b5563;font-size:14px;font-weight:400;line-height:1.85;margin-top:0;margin-bottom:28px;font-family:Arial,Helvetica,sans-serif;">Thank you for trusting JetLearn with <span style="color:#1a1560;font-weight:700;">' + learnerName + '\'s</span> education. We are excited to see what they build next!</p>'
 
@@ -1010,8 +1015,12 @@ function resendCertificate(jlid, learnerName, courseName, parentEmail, parentNam
 
     var year    = new Date().getFullYear();
     var subject = 'JetLearn - ' + learnerName + ' has completed ' + courseName + ' - Certificate Enclosed';
+    // Web app "My Certificates" page — shows every cert on record for this
+    // learner (not just this one), inline preview + share buttons, instead
+    // of a raw Drive link to a single PDF.
+    var myCertsUrl = jlid ? 'https://jetlearn-kit-links.web.app/certificates/' + encodeURIComponent(jlid) : '';
     GmailApp.sendEmail(_resolveAllCertEmails(jlid, parentEmail), subject, '', {
-      htmlBody   : '<p>Dear ' + (parentName || 'Parent') + ',</p><p>Please find attached the certificate for <b>' + learnerName + '</b> completing <b>' + courseName + '</b>.</p><p>You can also view it online: <a href="' + (pdfBlob._driveUrl || '') + '">' + (pdfBlob._driveUrl ? 'View Certificate' : '') + '</a></p><p>Team JetLearn</p>',
+      htmlBody   : '<p>Dear ' + (parentName || 'Parent') + ',</p><p>Please find attached the certificate for <b>' + learnerName + '</b> completing <b>' + courseName + '</b>.</p>' + (myCertsUrl ? '<p>You can also view all of ' + learnerName + '\'s certificates online: <a href="' + myCertsUrl + '">View Certificates</a></p>' : '') + '<p>Team JetLearn</p>',
       attachments: [pdfBlob],
       name       : 'JetLearn',
       from       : 'hello@jet-learn.com',
@@ -1029,7 +1038,7 @@ function resendCertificate(jlid, learnerName, courseName, parentEmail, parentNam
           var noteLines = ['📜 Certificate Re-sent', 'Learner : ' + learnerName + ' (' + jlid + ')',
             'Sent to : ' + parentEmail, 'Sent by : ' + (performedBy || 'System'),
             'Course  : ' + courseName];
-          if (pdfBlob._driveUrl) noteLines.push('\n🔗 View/Download: ' + pdfBlob._driveUrl);
+          if (myCertsUrl) noteLines.push('\n🔗 View all certificates: ' + myCertsUrl);
           _certCreateDealNote(dr.data.dealId, noteLines.join('\n'), token);
         }
       }
@@ -1514,6 +1523,11 @@ function sendBulkCertificates(data) {
     +       '</tr></table>'
     +     '</td></tr>'
     +   '</table>'
+
+    // View all certificates CTA
+    +   '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:24px;"><tr><td align="center">'
+    +     '<a href="https://jetlearn-kit-links.web.app/certificates/' + encodeURIComponent(jlid || '') + '" style="display:inline-block;background-color:#1a1560;color:#ffffff;font-size:13.5px;font-weight:700;font-family:Arial,Helvetica,sans-serif;text-decoration:none;padding-top:12px;padding-bottom:12px;padding-left:28px;padding-right:28px;border-radius:100px;">View All ' + learnerName + '\'s Certificates &#8594;</a>'
+    +   '</td></tr></table>'
 
     // Closing
     +   '<p style="color:#4b5563;font-size:14px;font-weight:400;line-height:1.85;margin-top:0;margin-bottom:28px;font-family:Arial,Helvetica,sans-serif;">Thank you for trusting JetLearn with <span style="color:#1a1560;font-weight:700;">' + learnerName + '\'s</span> education. We are excited to see what they build next!</p>'
