@@ -172,14 +172,26 @@ function upsertApiDailySummaryRow_(dateKey, serviceName, functionName, stats) {
   }
 }
 
+// This lock is PROJECT-WIDE — LockService.getScriptLock() is shared by every
+// execution of the entire Apps Script app (every webhook, every trigger,
+// every CRM dashboard click, every public page load), not just calls within
+// this function. It was set to a 5-second timeout to protect a plain
+// CacheService JSON blob (sheet writes here were already disabled — see
+// logApiCall below) — real API monitoring correctness, not billing-critical.
+// Measured impact (2026-07-30): a single public address-page load chains 3
+// monitoredFetch() calls, each blocking on this lock; with contention from
+// any other concurrent execution across the whole app, that alone accounted
+// for ~15 SECONDS of load time (3 × up to 5s), while the fallback on timeout
+// ran the write unprotected anyway — so the wait bought zero correctness.
+// Cut to a short timeout: still reduces (doesn't eliminate) counter races
+// most of the time, without taxing every API call app-wide by seconds.
 function withMonitorLock_(callback) {
   const lock = LockService.getScriptLock();
-  const timeoutMs = 5000;
+  const timeoutMs = 150;
   try {
     lock.waitLock(timeoutMs);
     return callback();
   } catch (error) {
-    Logger.log('[APIMonitor] Lock timeout or failure: ' + error.message);
     return callback();
   } finally {
     try {

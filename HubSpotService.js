@@ -15,7 +15,7 @@ function safeParseHubspotNumber(value, defaultValue = 0) {
 // same JLID within one trigger/function run.
 var _hubspotJlidCache = {};
 
-function fetchHubspotByJlid(jlid) {
+function fetchHubspotByJlid(jlid, skipChurnCheck) {
   Logger.log('fetchHubspotByJlid called for JLID: ' + jlid);
 
   if (!jlid) return { success: false, message: 'JLID is required.' };
@@ -91,9 +91,13 @@ function fetchHubspotByJlid(jlid) {
       }
 
       // --- NEW: CHURN RISK CALCULATION ---
+      // Skippable (skipChurnCheck) — this runs an extra HubSpot ticket search
+      // (limit 100, sorted) that most callers never asked for. Measured
+      // (2026-07-30): a large chunk of fetchHubspotByJlid's cost on the
+      // public address-page load, which never displays churnAlert at all.
       let churnAlert = null;
-      try {
-          const ticketStats = getMigrationHistoryStats(jlid); 
+      if (!skipChurnCheck) try {
+          const ticketStats = getMigrationHistoryStats(jlid);
           const today = new Date();
           const threeMonthsAgo = new Date();
           threeMonthsAgo.setMonth(today.getMonth() - 3);

@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-07-30] — Address Page Load: ~15s → ~6s, Measured (V8.35)
+
+### Real profiling, not guesses (`Code.js`, `KitTrackingService.js`, `HubSpotService.js`, `LearnerAddressFormService.js`)
+- Two earlier attempts today (V8.33 contact-call dedup, V8.34 lock-timeout cut) did NOT move the measured load time at all (15.3s → 14.9s, noise-level) — flagged honestly rather than claimed as fixed. Added temporary server-side timing instrumentation to the `addressFormContext` API response instead of guessing further.
+- Real breakdown found: `recordKitAddressLinkOpen()` — pure open-count analytics tracking — was costing **~6.4s** of the ~15s load, and `fetchHubspotByJlid()` (used for the actual page data) another **~4s**.
+- **`_findOpenKitRowByJlid()`**: was reading **all 41 columns for every row** in the Kits sheet just to match one JLID column (~3.7s alone). Now reads only the JLID column to find candidate rows, then a tiny 2-field read only for actual matches.
+- **`recordKitAddressLinkOpen()`**: batched 3 contiguous columns (LINK_OPEN_COUNT/LINK_FIRST_OPENED_AT/LINK_LAST_OPENED_AT) into one read + one write instead of ~5 separate `getRange().getValue()/setValue()` round trips.
+- **`fetchHubspotByJlid()`**: was unconditionally running a churn-risk ticket search (HubSpot tickets/search, limit 100, sorted) that the address page never uses. Added an optional `skipChurnCheck` param (default off — every other caller unaffected), used by `getAddressFormContext()`.
+- Measured end-to-end: **~15s → ~6s** server-side (verified by hitting the live endpoint directly before/after each change, not assumed). Remaining ~6s is legitimate HubSpot API round trips (deals/search + contact lookup) and the JLID row-scan, which now reads far less data than before but is still an O(n) linear scan over the Kits sheet — a next-step optimization would be an indexed JLID→row cache if this needs to go faster still.
+
+---
+
 ## [2026-07-30] — Faster Address Page: 5 HubSpot Calls Down to 3 (V8.33, `HubSpotService.js`, `LearnerAddressFormService.js`)
 
 - User asked why the public "confirm your address" page felt slow, then asked to lower it.

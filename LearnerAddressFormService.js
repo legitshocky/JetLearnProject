@@ -231,7 +231,7 @@ function getAddressFormContext(jlid) {
     jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim();
     if (!jlid) return { success: false, message: 'Missing learner reference in this link.' };
 
-    var hs = fetchHubspotByJlid(jlid);
+    var hs = fetchHubspotByJlid(jlid, true); // skip churn-risk check — unused on this page, was a big chunk of load time
     if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner (' + jlid + '): ' + ((hs && hs.message) || 'no data returned') + '. Please contact JetLearn support.' };
 
     var d = hs.data;

@@ -229,19 +229,34 @@ function diagListKitRowsForJlid(jlid) {
   Logger.log('[KitDiag] Total rows for ' + jlid + ': ' + found);
 }
 
+// Was reading all 41 columns for every row just to match one JLID column —
+// measured (2026-07-30) at ~3.7s on the live Kits sheet, the single biggest
+// cost on the public address-page load. Now reads only the JLID column to
+// find candidate rows, then a tiny 2-column read (REFUNDED/DELIVERY_DATE)
+// only for actual matches — same matching semantics, far less data shipped.
 function _findOpenKitRowByJlid(jlid) {
   var sheet = _getKitSheet();
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return 0;
 
-  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var jlidCol = sheet.getRange(2, KIT_COL.JLID, lastRow - 1, 1).getValues();
+
+  var matchRows = [];
+  jlidCol.forEach(function(r, idx) {
+    if (String(r[0] || '').trim().toUpperCase() === jlid) matchRows.push(idx + 2);
+  });
+  if (matchRows.length === 0) return 0;
+
   var candidates = [];
-  raw.forEach(function(r, idx) {
-    if (String(r[KIT_COL.JLID - 1] || '').trim().toUpperCase() !== jlid) return;
-    var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
-    var isDelivered = !!r[KIT_COL.DELIVERY_DATE - 1];
+  matchRows.forEach(function(rowIndex) {
+    var flags = sheet.getRange(rowIndex, KIT_COL.DELIVERY_DATE > KIT_COL.REFUNDED ? KIT_COL.REFUNDED : KIT_COL.DELIVERY_DATE,
+      1, Math.abs(KIT_COL.DELIVERY_DATE - KIT_COL.REFUNDED) + 1).getValues()[0];
+    var refundedIdx = KIT_COL.REFUNDED - Math.min(KIT_COL.REFUNDED, KIT_COL.DELIVERY_DATE);
+    var deliveredIdx = KIT_COL.DELIVERY_DATE - Math.min(KIT_COL.REFUNDED, KIT_COL.DELIVERY_DATE);
+    var isRefunded = String(flags[refundedIdx] || '').trim().toUpperCase() === 'TRUE';
+    var isDelivered = !!flags[deliveredIdx];
     if (isRefunded || isDelivered) return;
-    candidates.push(idx + 2);
+    candidates.push(rowIndex);
   });
   return candidates.length === 1 ? candidates[0] : 0;
 }
@@ -256,15 +271,17 @@ function recordKitAddressLinkOpen(jlid) {
     var rowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase());
     if (!rowIndex) return;
 
+    // LINK_OPEN_COUNT/LINK_FIRST_OPENED_AT/LINK_LAST_OPENED_AT are contiguous
+    // columns (38-40) — batch into one read + one write instead of the
+    // previous ~5 separate getRange().getValue()/setValue() round trips.
     var sheet = _getKitSheet();
-    var count = sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT).getValue();
+    var block = sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT, 1, 3).getValues()[0];
+    var count = block[0];
     count = (typeof count === 'number' && count > 0) ? count + 1 : 1;
-    sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT).setValue(count);
-
-    var firstOpened = sheet.getRange(rowIndex, KIT_COL.LINK_FIRST_OPENED_AT).getValue();
+    var firstOpened = block[1];
     var now = new Date();
-    if (!firstOpened) sheet.getRange(rowIndex, KIT_COL.LINK_FIRST_OPENED_AT).setValue(now);
-    sheet.getRange(rowIndex, KIT_COL.LINK_LAST_OPENED_AT).setValue(now);
+    sheet.getRange(rowIndex, KIT_COL.LINK_OPEN_COUNT, 1, 3)
+      .setValues([[count, firstOpened || now, now]]);
   } catch(e) {
     Logger.log('[KitTracking] recordKitAddressLinkOpen error: ' + e.message);
   }
