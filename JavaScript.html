@@ -14641,13 +14641,15 @@ function ktSaveOrderPlaced() {
       if (result && result.success) {
         ktCloseOrderPlaced();
         const waOk = result.waStatus === 'sent';
+        const waTrackOk = result.waTrackStatus === 'sent';
         const noteOk = result.hsNoteStatus === 'added';
         const statusOk = result.hsStatusStatus === 'attempted';
-        if (waOk && noteOk && statusOk) {
-          showToast('success', 'Order Placed', 'Parent notified via WhatsApp, HubSpot note + status updated.');
+        if (waOk && waTrackOk && noteOk && statusOk) {
+          showToast('success', 'Order Placed', 'Parent notified (order + tracking link), HubSpot note + status updated.');
         } else {
           const gaps = [];
-          if (!waOk) gaps.push('WhatsApp not sent (' + (result.waStatus || 'unknown') + ')');
+          if (!waOk) gaps.push('Order notice not sent (' + (result.waStatus || 'unknown') + ')');
+          if (!waTrackOk) gaps.push('Tracking link not sent (' + (result.waTrackStatus || 'unknown') + ')');
           if (!noteOk) gaps.push('HubSpot note not added (' + (result.hsNoteStatus || 'unknown') + ')');
           if (!statusOk) gaps.push('HubSpot status patch (' + (result.hsStatusStatus || 'unknown') + ')');
           showToast('warning', 'Order Placed — with gaps', gaps.join('; '));

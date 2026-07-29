@@ -3339,34 +3339,42 @@ function markKitOrderPlaced(rowIndex, payload) {
       Logger.log('[KitTracking] markKitOrderPlaced kit-status patch failed: ' + se.message);
     }
 
-    // Notify the parent their kit is on the way. Failure is now surfaced
-    // back to the caller instead of being silently swallowed — ops needs
-    // to know if the WATI template was rejected/unapproved so they can
-    // follow up manually.
+    // Notify the parent their kit is on the way. Two separate templates,
+    // each doing its own job (previously the tracking link was crammed
+    // into the `address` variable of the order notice as a workaround —
+    // kit_tracking_link_v1 already exists and has a dedicated track_link
+    // variable, same template the "Send Tracking Link" button uses via
+    // sendKitTrackingLinkWhatsApp). Both attempted independently so one
+    // failing doesn't block the other; failures surfaced, not swallowed.
     var waStatus = 'not_attempted';
+    var waTrackStatus = 'not_attempted';
     try {
       if (hsData) {
         var phone = _normalisePhone(hsData.parentContact || '');
         if (phone) {
           // Named-placeholder template — param `name` must exactly match the
-          // template's variable names (ParentName/kit_name/delivery_date/
-          // address), not a description of the content. The template has no
-          // dedicated variable for a tracking link, so it rides along inside
-          // `address` — this is the ONLY place a parent is ever given the
-          // Track My Kit link (jetlearn-kit-links.web.app/track/{JLID}); with
-          // no other send point, it must go out here or parents never get it.
+          // template's variable names (ParentName/kit_name/delivery_date/address).
           sendWatiMessage(phone, 'kit_order_placed_notice_v2', [
             { name: 'ParentName',    value: hsData.parentName || '' },
             { name: 'kit_name',      value: kitName },
             { name: 'delivery_date', value: payload.eta || '' },
-            { name: 'address',       value: deliveryAddress + '\n\nTrack your kit here: ' + getKitTrackLink(jlid) }
+            { name: 'address',       value: deliveryAddress }
           ]);
           waStatus = 'sent';
+
+          try {
+            var trackRes = sendKitTrackingLinkWhatsApp(phone, hsData.parentName, kitName, jlid);
+            waTrackStatus = (trackRes && trackRes.success) ? 'sent' : ('failed: ' + (trackRes && trackRes.message));
+          } catch(te) {
+            waTrackStatus = 'failed: ' + te.message;
+          }
         } else {
           waStatus = 'no_phone';
+          waTrackStatus = 'no_phone';
         }
       } else {
         waStatus = 'no_hubspot_data';
+        waTrackStatus = 'no_hubspot_data';
       }
     } catch(we) {
       waStatus = 'failed: ' + we.message;
@@ -3374,8 +3382,8 @@ function markKitOrderPlaced(rowIndex, payload) {
     }
 
     Logger.log('[KitTracking] Order placed for row=' + rowIndex + ' jlid=' + jlid +
-      ' hsNote=' + hsNoteStatus + ' hsStatus=' + hsStatusStatus + ' wati=' + waStatus);
-    return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus };
+      ' hsNote=' + hsNoteStatus + ' hsStatus=' + hsStatusStatus + ' wati=' + waStatus + ' waTrack=' + waTrackStatus);
+    return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus, waTrackStatus: waTrackStatus };
   } catch(e) {
     Logger.log('[KitTracking] markKitOrderPlaced ERROR: ' + e.message);
     return { success: false, message: e.message };

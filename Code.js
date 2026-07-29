@@ -736,7 +736,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.30";
+const APP_VERSION = "8.31";
 
 function getAppVersion() {
   return APP_VERSION;

@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-30] — Send Proper Tracking-Link Template on Order Placed (V8.31)
+
+### `markKitOrderPlaced()` now fires `kit_tracking_link_v1` (`KitTrackingService.js`, `JavaScript.html`)
+- User correctly flagged that the order-placed flow was cramming the Track My Kit link into the `address` variable of `kit_order_placed_notice_v2` as a workaround, instead of using the dedicated, already-approved `kit_tracking_link_v1` template (which has its own `track_link` variable) — the same one the "Send Tracking Link" button already uses via `sendKitTrackingLinkWhatsApp()`.
+- Now sends both templates independently on order placement: the order notice (good news + delivery address) and the tracking-link message, each tracked separately (`waStatus`/`waTrackStatus`) so a failure in one doesn't mask the other or block the sheet write.
+- Frontend toast updated to report both sends' status individually instead of one combined WhatsApp status.
+
+---
+
 ## [2026-07-30] — Mark Order Placed: HubSpot Note/Status + Visible WATI Gaps (V8.30)
 
 ### `markKitOrderPlaced()` no longer only touches the sheet (`KitTrackingService.js`)
