@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JetLearn — My Certificates</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --ink: #1b1e3d; --muted: #6b7280; --yellow: #ffc700; --purple: #7c3aed; --purple-dark: #6d28d9;
+      --line: #e5e7eb; --field-bg: #fafafa; --page-bg: #ffffff; --green: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--page-bg); color: var(--ink); min-height: 100vh;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 40px 24px 60px; }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 40px; }
+    .brand img { height: 44px; display: block; }
+    .brand .tag { font-size: 0.68rem; color: var(--muted); line-height: 1.3; max-width: 160px; }
+
+    .learner-chip {
+      display: inline-flex; align-items: center; gap: 8px; background: #fff;
+      border: 1.5px solid var(--line); border-radius: 99px; padding: 7px 16px 7px 8px;
+      margin-bottom: 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .learner-chip .av {
+      width: 26px; height: 26px; border-radius: 50%; background: var(--purple);
+      color: #fff; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .learner-chip .info { line-height: 1.25; }
+    .learner-chip .info b { font-size: 0.82rem; }
+    .learner-chip .info span { display: block; font-size: 0.65rem; color: var(--muted); font-family: 'SF Mono', Consolas, monospace; }
+
+    h1 { font-size: clamp(1.5rem, 3.2vw, 2rem); font-weight: 700; line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.01em; }
+    .sub { font-size: 0.92rem; color: var(--muted); line-height: 1.6; margin: 0 0 32px; }
+
+    .cert-card {
+      border: 1.5px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03); transition: border-color 0.15s;
+    }
+    .cert-card:hover { border-color: var(--purple); }
+    .cert-top { display: flex; align-items: center; gap: 16px; }
+    .cert-icon {
+      flex: 0 0 auto; width: 46px; height: 46px; border-radius: 12px;
+      background: #fffbea; border: 1.5px solid var(--yellow); color: #7a5c00;
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+    }
+    .cert-info { flex: 1 1 auto; min-width: 0; }
+    .cert-info b { display: block; font-size: 0.92rem; margin-bottom: 3px; }
+    .cert-info span { font-size: 0.76rem; color: var(--muted); }
+    .cert-actions { flex: 0 0 auto; display: flex; gap: 8px; }
+    .btn-sm {
+      display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: none;
+      padding: 9px 14px; font-size: 0.78rem; font-weight: 700; border-radius: 99px; white-space: nowrap;
+      font-family: inherit; text-decoration: none;
+    }
+    .btn-view { color: #fff; background: var(--purple); }
+    .btn-view:hover { background: var(--purple-dark); }
+    .btn-download { color: var(--purple); background: #fff; border: 1.5px solid var(--purple); }
+    .btn-download:hover { background: #f5f3ff; }
+
+    .cert-preview {
+      margin-top: 16px; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--line);
+      background: var(--field-bg);
+    }
+    .cert-preview iframe { width: 100%; height: 460px; border: 0; display: block; }
+
+    .share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
+    .share-label { font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-right: 2px; }
+    .share-btn {
+      width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      color: #fff; text-decoration: none; font-size: 0.85rem; border: none; cursor: pointer; font-family: inherit;
+    }
+    .share-linkedin { background: #0a66c2; }
+    .share-whatsapp { background: #25d366; }
+    .share-x { background: #000; }
+    .share-facebook { background: #1877f2; }
+    .share-copy { background: #6b7280; }
+    .share-btn:hover { opacity: 0.85; }
+    .copy-toast { font-size: 0.72rem; color: var(--green); font-weight: 600; margin-left: 4px; opacity: 0; transition: opacity 0.2s; }
+    .copy-toast.show { opacity: 1; }
+
+    .state-msg { text-align: center; padding: 60px 24px; }
+    .state-msg .icon-wrap {
+      width: 66px; height: 66px; border-radius: 50%; margin: 0 auto 18px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.55rem;
+    }
+    .state-msg.error .icon-wrap { background: #fef2f2; color: #ef4444; }
+    .state-msg h2 { font-size: 1.2rem; font-weight: 700; margin: 0 0 8px; }
+    .state-msg p { font-size: 0.88rem; color: var(--muted); margin: 0; line-height: 1.55; }
+
+    #loadingState { text-align: center; padding: 80px 24px; color: #9ca3af; }
+    #loadingState .spinner {
+      width: 30px; height: 30px; border: 3px solid var(--line); border-top-color: var(--purple);
+      border-radius: 50%; margin: 0 auto 14px; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .foot { text-align: center; padding: 30px 20px 10px; color: #9ca3af; font-size: 0.75rem; }
+    .foot a { color: #6b7280; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <img src="https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/Logo.png" alt="JetLearn">
+      <div class="tag">Holistic Online STEM Education for Children</div>
+    </div>
+
+    <div id="loadingState"><div class="spinner"></div>Loading your certificates…</div>
+
+    <div id="certState" style="display:none;">
+      <div class="learner-chip">
+        <div class="av" id="chipAv">•</div>
+        <div class="info"><b id="dispLearnerName">—</b><span id="dispJlid">—</span></div>
+      </div>
+
+      <h1 id="heroTitle">My certificates</h1>
+      <p class="sub" id="heroSub">Every course completion certificate, in one place.</p>
+
+      <div id="certList"></div>
+    </div>
+
+    <div id="errorState" class="state-msg error" style="display:none;">
+      <div class="icon-wrap"><i class="fas fa-triangle-exclamation"></i></div>
+      <h2>Link Not Valid</h2>
+      <p id="errorMsg">This link appears to be invalid or has expired. Please contact JetLearn support.</p>
+    </div>
+
+    <div class="foot">Questions? <a href="https://wa.me/447401469536">Message us on WhatsApp</a></div>
+  </div>
+
+  <script>
+    var GAS_URL = 'https://script.google.com/macros/s/AKfycbzYXnVGNxTclM0Z6qrCuNUwkHDxRZzGqgfsf55tmGegZ_vxUhaL08T3k0MXnz2cM0hVOA/exec';
+
+    var pathParts = location.pathname.split('/certificates/');
+    var JLID = decodeURIComponent((pathParts[1] || '').replace(/\/$/, '')).trim().toUpperCase();
+
+    function showState(id) {
+      ['loadingState', 'certState', 'errorState'].forEach(function(s) {
+        document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
+      });
+    }
+
+    function esc(s) { return String(s || '').replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    // Google Drive "view" links (…/file/d/{ID}/view) can be embedded inline
+    // via the …/preview variant, and downloaded directly via uc?export=download
+    // — both stay same-origin-feeling (no forced redirect away from the page).
+    function driveFileId(url) {
+      var m = String(url || '').match(/\/file\/d\/([^/]+)/);
+      return m ? m[1] : '';
+    }
+    function drivePreviewUrl(url) {
+      var id = driveFileId(url);
+      return id ? 'https://drive.google.com/file/d/' + id + '/preview' : url;
+    }
+    function driveDownloadUrl(url) {
+      var id = driveFileId(url);
+      return id ? 'https://drive.google.com/uc?export=download&id=' + id : url;
+    }
+
+    function togglePreview(idx) {
+      var el = document.getElementById('preview-' + idx);
+      var btn = document.getElementById('viewbtn-' + idx);
+      if (!el) return;
+      var opening = el.style.display === 'none';
+      el.style.display = opening ? 'block' : 'none';
+      if (opening && !el.dataset.loaded) {
+        el.innerHTML = '<iframe src="' + el.dataset.src + '" allow="autoplay"></iframe>';
+        el.dataset.loaded = '1';
+      }
+      if (btn) btn.innerHTML = opening ? '<i class="fas fa-eye-slash"></i> Hide' : '<i class="fas fa-eye"></i> View';
+    }
+
+    function copyLink(idx, url) {
+      navigator.clipboard.writeText(url).then(function() {
+        var t = document.getElementById('copytoast-' + idx);
+        if (t) { t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); }, 1800); }
+      });
+    }
+
+    (function() {
+      if (!JLID) {
+        document.getElementById('errorMsg').textContent = 'This link is missing learner information. Please contact JetLearn support.';
+        showState('errorState');
+        return;
+      }
+      fetch(GAS_URL + '?api=myCertificates&jlid=' + encodeURIComponent(JLID))
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (!res || !res.success || !res.certificates || !res.certificates.length) {
+            document.getElementById('errorMsg').textContent = (res && res.message) || 'No certificates found for this link.';
+            showState('errorState');
+            return;
+          }
+          var first = (res.learnerName || '').split(' ')[0] || 'there';
+          document.getElementById('chipAv').textContent = first.charAt(0).toUpperCase();
+          document.getElementById('dispLearnerName').textContent = res.learnerName || '—';
+          document.getElementById('dispJlid').textContent = res.jlid || '';
+          document.getElementById('heroTitle').textContent = first + '’s certificates';
+          document.getElementById('heroSub').textContent = res.certificates.length + ' certificate' + (res.certificates.length > 1 ? 's' : '') + ' earned so far.';
+
+          var html = res.certificates.map(function(c, idx) {
+            var hasFile = !!c.driveUrl;
+            var previewUrl = hasFile ? drivePreviewUrl(c.driveUrl) : '';
+            var downloadUrl = hasFile ? driveDownloadUrl(c.driveUrl) : '';
+
+            var postText = 'I’m glad to inform that I’ve completed my certification in "' + c.course + '" with JetLearn! 🎉🚀 #JetLearn #STEM #Coding #LearningJourney';
+            var shareUrl = c.driveUrl || ('https://jetlearn-kit-links.web.app/certificates/' + encodeURIComponent(res.jlid));
+
+            var actions = hasFile
+              ? '<div class="cert-actions">'
+                + '<button class="btn-sm btn-view" id="viewbtn-' + idx + '" onclick="togglePreview(' + idx + ')"><i class="fas fa-eye"></i> View</button>'
+                + '<a class="btn-sm btn-download" href="' + esc(downloadUrl) + '" target="_blank"><i class="fas fa-download"></i> Download</a>'
+                + '</div>'
+              : '';
+
+            var preview = hasFile
+              ? '<div class="cert-preview" id="preview-' + idx + '" data-src="' + esc(previewUrl) + '" style="display:none;"></div>'
+              : '';
+
+            var shareRow = '<div class="share-row">'
+              + '<span class="share-label">Share:</span>'
+              + '<a class="share-btn share-linkedin" title="Share on LinkedIn" target="_blank" href="https://www.linkedin.com/shareArticle?mini=true&url=' + encodeURIComponent(shareUrl) + '&title=' + encodeURIComponent('Certificate: ' + c.course) + '&summary=' + encodeURIComponent(postText) + '"><i class="fab fa-linkedin-in"></i></a>'
+              + '<a class="share-btn share-whatsapp" title="Share on WhatsApp" target="_blank" href="https://wa.me/?text=' + encodeURIComponent(postText + ' ' + shareUrl) + '"><i class="fab fa-whatsapp"></i></a>'
+              + '<a class="share-btn share-x" title="Share on X" target="_blank" href="https://twitter.com/intent/tweet?text=' + encodeURIComponent(postText) + '&url=' + encodeURIComponent(shareUrl) + '"><i class="fab fa-x-twitter"></i></a>'
+              + '<a class="share-btn share-facebook" title="Share on Facebook" target="_blank" href="https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(shareUrl) + '"><i class="fab fa-facebook-f"></i></a>'
+              + '<button class="share-btn share-copy" title="Copy link" onclick="copyLink(' + idx + ',\'' + shareUrl.replace(/'/g, "\\'") + '\')"><i class="fas fa-link"></i></button>'
+              + '<span class="copy-toast" id="copytoast-' + idx + '">Copied!</span>'
+              + '</div>';
+
+            return '<div class="cert-card">'
+              + '<div class="cert-top">'
+              + '<div class="cert-icon"><i class="fas fa-award"></i></div>'
+              + '<div class="cert-info"><b>' + esc(c.course) + '</b><span>' + esc(c.timestamp || c.year) + '</span></div>'
+              + actions
+              + '</div>'
+              + preview
+              + shareRow
+              + '</div>';
+          }).join('');
+          document.getElementById('certList').innerHTML = html;
+
+          showState('certState');
+        })
+        .catch(function(err) {
+          document.getElementById('errorMsg').textContent = String((err && err.message) || err);
+          showState('errorState');
+        });
+    })();
+  </script>
+</body>
+</html>

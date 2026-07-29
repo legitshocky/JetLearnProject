@@ -127,6 +127,13 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify(trackCtx)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // --- Public JSON API for the statically-hosted "My Certificates" page (Firebase) ---
+  if (e && e.parameter && e.parameter.api === 'myCertificates') {
+    var certJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
+    var certCtx = getCertificatesForJlid(certJlid);
+    return ContentService.createTextOutput(JSON.stringify(certCtx)).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // --- Public Learner Address Form Route (no login required) ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
     var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
@@ -729,7 +736,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.17";
+const APP_VERSION = "8.22";
 
 function getAppVersion() {
   return APP_VERSION;

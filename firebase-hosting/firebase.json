@@ -11,6 +11,10 @@
       {
         "source": "/track/**",
         "destination": "/track/index.html"
+      },
+      {
+        "source": "/certificates/**",
+        "destination": "/certificates/index.html"
       }
     ]
   }

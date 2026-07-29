@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  @page { size: 21.3333in 15.0729in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 2048px; height: 1447px; overflow: hidden; }
+  .cert {
+    position: relative;
+    width: 2048px;
+    height: 1447px;
+    font-family: 'Montserrat', Arial, sans-serif;
+  }
+  /* Deliberately oversized + edge-negative so the background always
+     bleeds past the page edge, absorbing any sub-pixel rounding gap
+     between the declared @page size and how the PDF engine actually
+     renders it (a hairline white sliver showed up on the right/bottom
+     edges without this). .cert itself stays at the exact nominal size
+     so the text boxes' % positions above are unaffected. */
+  .bg {
+    position: absolute;
+    left: -1%; top: -1%;
+    width: 102%; height: 102%;
+    background-image: url('<?= data.bgUrl ?>');
+    background-size: cover;
+    z-index: 0;
+  }
+  .box {
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    color: #111;
+    font-weight: 700;
+  }
+  .name, .course { justify-content: center; text-align: center; }
+  .year { justify-content: flex-start; text-align: left; font-weight: 800; }
+</style>
+</head>
+<body>
+  <div class="cert">
+    <div class="bg"></div>
+    <div class="box name" style="left:<?= data.name.left ?>%; top:<?= data.name.top ?>%; width:<?= data.name.width ?>%; height:<?= data.name.height ?>%; font-size:<?= data.name.size ?>px;"><?= data.learnerName ?></div>
+    <div class="box course" style="left:<?= data.course.left ?>%; top:<?= data.course.top ?>%; width:<?= data.course.width ?>%; height:<?= data.course.height ?>%; font-size:<?= data.course.size ?>px;"><?= data.courseName ?></div>
+    <div class="box year" style="left:<?= data.year.left ?>%; top:<?= data.year.top ?>%; width:<?= data.year.width ?>%; height:<?= data.year.height ?>%; font-size:<?= data.year.size ?>px;"><?= data.year_ ?></div>
+  </div>
+</body>
+</html>

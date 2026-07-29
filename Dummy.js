@@ -1,13 +1,61 @@
 /**
- * DEBUG: Inspects the certificate template's actual page size and each
- * slide's background/image dimensions vs the page bounds — the parent
- * reported the exported certificate PDFs look "boxed" (a border/margin),
- * which almost always means the background image doesn't fully cover the
- * slide (page size ≠ image aspect ratio, or the image was inserted smaller
- * than full-bleed). Run from the Apps Script editor's function dropdown,
- * check the log — it reports page size in inches and, for every image on
- * every slide, whether it exactly covers the page or leaves a gap.
+ * DEBUG: Checks the PDFSHIFT_API_KEY script property WITHOUT logging the
+ * actual key — just its length and first/last 3 characters, enough to spot
+ * a truncated copy-paste without exposing the secret in logs.
  */
+function diagCheckPdfShiftKey() {
+  var key = PropertiesService.getScriptProperties().getProperty('PDFSHIFT_API_KEY');
+  if (!key) { Logger.log('[KeyDiag] PDFSHIFT_API_KEY is not set at all.'); return; }
+  Logger.log('[KeyDiag] length=' + key.length + ' starts="' + key.substring(0, 6) + '" ends="' + key.substring(key.length - 4) + '" hasWhitespace=' + (/\s/.test(key)));
+}
+
+/**
+ * DEBUG: Reads the EXACT position, size, and font of every text shape on
+ * all 3 certificate slides — the placeholders (learnerName/courseName/year)
+ * plus the "CERTIFICATE OF ACHIEVEMENT" heading and "for successfully..."
+ * caption, if they're separate shapes rather than baked into the
+ * background image. Reports each as a percentage of the page's actual
+ * 792x612pt size, so the numbers can be copied straight into CSS
+ * (top/left as %) for the new HTML certificate template — exact ground
+ * truth instead of eyeballing screenshots. Run from the Apps Script
+ * editor's function dropdown, check the log.
+ */
+function diagCertShapePositions() {
+  var pres = SlidesApp.openById(CERT_TEMPLATE_ID);
+  var pageW = pres.getPageWidth();
+  var pageH = pres.getPageHeight();
+  Logger.log('[CertShapes] Page: ' + pageW + ' x ' + pageH + ' pt');
+
+  pres.getSlides().forEach(function(slide, idx) {
+    Logger.log('=== Slide ' + (idx + 1) + ' ===');
+    slide.getShapes().forEach(function(shape) {
+      var txt = '';
+      try { txt = shape.getText().asString().trim(); } catch(e) {}
+      if (!txt) return; // skip empty/decorative shapes with no text
+      var left = shape.getLeft(), top = shape.getTop(), width = shape.getWidth(), height = shape.getHeight();
+      var fontInfo = '';
+      try {
+        var style = shape.getText().getTextStyle();
+        fontInfo = ' font=' + style.getFontFamily() + ' size=' + style.getFontSize() + 'pt bold=' + style.isBold();
+      } catch(fe) { fontInfo = ' (font read failed: ' + fe.message + ')'; }
+      Logger.log('[CertShapes] "' + txt + '" → left=' + (left/pageW*100).toFixed(2) + '% top=' + (top/pageH*100).toFixed(2)
+        + '% width=' + (width/pageW*100).toFixed(2) + '% height=' + (height/pageH*100).toFixed(2) + '%' + fontInfo);
+    });
+  });
+}
+function diagCheckNewCertPresentationSize() {
+  var pres = SlidesApp.openById('1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk');
+  var w = pres.getPageWidth(), h = pres.getPageHeight();
+  Logger.log('[CertDiag2] Actual page size: ' + w + ' x ' + h + ' pt (expected 1536 x 1085.25)');
+  pres.getSlides().forEach(function(slide, idx) {
+    var img = slide.getImages()[0];
+    if (img) {
+      Logger.log('[CertDiag2] Slide ' + (idx+1) + ' image: left=' + img.getLeft() + ' top=' + img.getTop()
+        + ' width=' + img.getWidth() + ' height=' + img.getHeight());
+    }
+  });
+}
+
 function diagCheckCertTemplateDimensions() {
   var EMU_PER_INCH = 914400;
   var pres = SlidesApp.openById(CERT_TEMPLATE_ID);

@@ -4,17 +4,27 @@
  * Generates course completion certificates from a Google Slides template
  * and emails them as PDF attachments to the parent on CCTC migration.
  *
- * Template file: JetLearn - Certificate Tool (Canva)
- * File ID: 1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk
+ * Template file: JetLearn - Certificate Tool
+ * File ID: 1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI
  *   Slide 1 (index 0) → Foundation courses
  *   Slide 2 (index 1) → Maths courses
  *   Slide 3 (index 2) → Pro / Advanced courses
  *
- * Rebuilt on 2026-07-27 from Canva-designed backgrounds (hosted on
- * jetlearn's GitHub Jet-learn-Images repo via jsDelivr) at their true
- * 1536x1085.25pt (2048x1447px) aspect ratio — see rebuildCertTemplateAtCorrectSize()
- * below for how this file was generated from the original template
- * (1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI, kept as a fallback/history).
+ * Page is 792x612pt (11x8.5in Letter) — this is a hard constraint: Slides
+ * page size can only be set at file-creation time and there is no API to
+ * change it after (confirmed via testing — SlidesApp has no setPageSize,
+ * and Slides.Presentations.create()'s pageSize field is silently ignored,
+ * always producing the default 720x405pt regardless of what's requested).
+ * Rebuilding a same-content presentation from scratch to get a custom size
+ * doesn't work for this reason — do not repeat that attempt.
+ *
+ * Backgrounds (2026-07-27) are Canva-designed, hosted on jetlearn's GitHub
+ * Jet-learn-Images repo via jsDelivr, native 2048x1447px (1.415 ratio) —
+ * wider than the fixed 792x612pt page (1.294 ratio). Applied via
+ * fixCertBackgroundsCoverFit() using COVER sizing (image height = page
+ * height, width scaled proportionally and overflows slightly, centered —
+ * so the art is trimmed a little at the left/right edges instead of being
+ * squished to fit, which was the first (bad) attempt's mistake).
  *
  * Placeholders on each slide:
  *   {{learnerName}}  — learner's first name
@@ -23,7 +33,7 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-var CERT_TEMPLATE_ID  = '1Z_UivNYiPNlJGEqsvvQs5Q1DH4ZXgkf9l7OgaNJCHDk';
+var CERT_TEMPLATE_ID  = '1QWy_mlcsF6K56I357rwyLDEUVzfcYTLH0TyP_gs83VI';
 var CERT_SAVE_FOLDER  = '1Eaub-wn5J7yMhYrHeQCiHKOXJEKR6vFX';
 
 // ── ONE-TIME: swap the 3 certificate slides' hand-built background art for
@@ -119,16 +129,48 @@ function applyCanvaCertBackgrounds() {
   Logger.log('[CertSwap] All slides processed. Open the Slides file and review each one — {{year}} is most likely to need a manual nudge.');
 }
 
-// ── ONE-TIME: Google Slides only lets you set page dimensions at creation
-// time — there's no API to resize an existing presentation. Since
-// applyCanvaCertBackgrounds() above had to fall back to stretching the new
-// 2048x1447 artwork into the OLD 792x612pt (11x8.5in Letter) page, this
-// creates a BRAND NEW presentation at the artwork's true 1536x1085.25pt
-// size, copies the 3 (already background-swapped) slides into it, and
-// rescales every element to fit — undistorted, true full-bleed. Requires
-// the Advanced Slides Service (enabled in appsscript.json). Run this AFTER
-// applyCanvaCertBackgrounds(). Does NOT touch CERT_TEMPLATE_ID — review the
-// new file first, then update that constant by hand once you're happy.
+// ── ONE-TIME: fixes the distortion left by applyCanvaCertBackgrounds()'s
+// stretch-to-exact-page-size fallback. The 2048x1447px artwork (1.415
+// ratio) doesn't match the page's fixed 792x612pt ratio (1.294, and this
+// CANNOT be changed — see file header), so instead of stretching the image
+// to exactly 792x612 (squishing it), this scales it to COVER the page:
+// height = page height, width scaled proportionally (overflows slightly),
+// centered horizontally. Net effect: a small trim off the left/right edges
+// of the background art, no squish/stretch distortion anywhere. Run once
+// from the Apps Script editor, then re-test an actual certificate send.
+function fixCertBackgroundsCoverFit() {
+  var pres = SlidesApp.openById(CERT_TEMPLATE_ID);
+  var pageW = pres.getPageWidth();
+  var pageH = pres.getPageHeight();
+  var IMG_RATIO = 2048 / 1447; // native artwork aspect ratio
+
+  var coverW = pageH * IMG_RATIO;
+  var coverH = pageH;
+  var left = (pageW - coverW) / 2; // negative — centers the overflow evenly
+
+  pres.getSlides().forEach(function(slide, idx) {
+    var img = slide.getImages()[0];
+    if (!img) {
+      Logger.log('[CertFix] Slide ' + (idx + 1) + ': no image found — nothing to fix here.');
+      return;
+    }
+    img.setWidth(coverW).setHeight(coverH).setLeft(left).setTop(0);
+    Logger.log('[CertFix] Slide ' + (idx + 1) + ': image set to cover-fit — width=' + coverW.toFixed(1)
+      + ' height=' + coverH.toFixed(1) + ' left=' + left.toFixed(1) + ' (page ' + pageW + 'x' + pageH + 'pt)');
+  });
+
+  Logger.log('[CertFix] Done. Page size is unchanged (' + pageW + 'x' + pageH + 'pt, immutable) — the artwork now covers it fully without stretching, trimmed ~'
+    + Math.abs(left).toFixed(0) + 'pt off each side. Test an actual certificate send next.');
+}
+
+// ── SUPERSEDED — do not use. Attempted to create a Slides presentation at a
+// custom page size to avoid the cover-fit trim above, but testing showed
+// Slides.Presentations.create()'s pageSize field is silently ignored (the
+// resulting file was always the default 720x405pt regardless of what was
+// requested), so every element positioned/sized for the intended
+// 1536x1085.25pt canvas badly overflowed the actual smaller page — this is
+// what produced the badly cropped certificate PDF. Kept only as a record of
+// what was tried; fixCertBackgroundsCoverFit() above is the real fix.
 function rebuildCertTemplateAtCorrectSize() {
   var PT_PER_PX = 0.75;
   var TARGET_W = 2048 * PT_PER_PX; // 1536pt
@@ -197,6 +239,174 @@ function _resolveAllCertEmails(jlid, fallbackEmail) {
   var deduped = emails.filter(function(e) { return e && isValidEmail(e); })
     .filter(function(e, i, arr) { return arr.indexOf(e) === i; });
   return deduped.length ? deduped.join(',') : fallbackEmail;
+}
+
+// ── HTML/PDF certificate generation — replaces the Slides-based pipeline's
+// distortion/cropping problems entirely. Renders a plain HTML page at the
+// artwork's true 2048x1447px size (no page-shape constraint like Slides
+// has) and converts it via an external HTML-to-PDF API. Box positions/sizes
+// below are EXACT values read from the working Slides template via
+// diagCertShapePositions() (Dummy.js) — not estimated.
+var CERT_HTML_LAYOUTS = {
+  foundation: {
+    bgUrl: 'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/1.png',
+    name:   { left: 5.90,  top: 50.15, width: 92.48, height: 7.95 },
+    course: { left: 5.62,  top: 64.01, width: 92.82, height: 5.38 },
+    // yearLeft measured by pixel-scanning the actual PNG, tight y-band +
+    // 3px-run filter to reject icon noise (two earlier looser scans gave
+    // 70.98% and 75.7%, both wrong — rendered too far right in testing).
+    year:   { left: 68.6,  top: 24.1,  width: 17.55, height: 5.94, size: 68 }
+  },
+  maths: {
+    bgUrl: 'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/2.png',
+    name:   { left: 4.57,  top: 45.87, width: 94.71, height: 7.95 },
+    course: { left: 8.70,  top: 60.49, width: 85.57, height: 6.29 },
+    year:   { left: 66.9,  top: 18.5,  width: 17.61, height: 5.94, size: 68 }
+  },
+  advanced: {
+    bgUrl: 'https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/3%20new.png',
+    name:   { left: 38.00, top: 42.05, width: 65.11, height: 7.95 },
+    course: { left: 39.76, top: 55.47, width: 59.68, height: 8.98 },
+    year:   { left: 86.7,  top: 20.65, width: 17.64, height: 5.94, size: 68 }
+  }
+};
+
+// Approximates the old Slides auto-scale-on-length behavior (see
+// generateCertificatePDF below), recalibrated to the new template's larger
+// px-based font sizes. Not exhaustively tested against every possible name
+// length — revisit if a very long name/course is seen overflowing its box.
+function _certHtmlFontSize(text, category, field) {
+  var len = (text || '').length;
+  if (field === 'name') {
+    var nameBase = category === 'advanced' ? 68 : 78;
+    if (len <= 20) return nameBase;
+    if (len <= 26) return nameBase - 10;
+    if (len <= 32) return nameBase - 20;
+    return nameBase - 30;
+  }
+  var courseBase = category === 'advanced' ? 48 : 48;
+  if (len <= 18) return courseBase;
+  if (len <= 26) return courseBase - 5;
+  if (len <= 36) return courseBase - 9;
+  return courseBase - 12;
+}
+
+function getCertificatePdfHtml(learnerName, courseName, year) {
+  var slideIndex = _getCertSlideIndex(courseName);
+  var category = ['foundation', 'maths', 'advanced'][slideIndex];
+  var layout = CERT_HTML_LAYOUTS[category];
+
+  var data = {
+    bgUrl: layout.bgUrl,
+    learnerName: learnerName,
+    courseName: courseName,
+    year_: year,
+    name: Object.assign({}, layout.name, { size: _certHtmlFontSize(learnerName, category, 'name') }),
+    course: Object.assign({}, layout.course, { size: _certHtmlFontSize(courseName, category, 'course') }),
+    year: layout.year
+  };
+
+  var template = HtmlService.createTemplateFromFile('CertificatePdfTemplate');
+  template.data = data;
+  return template.evaluate().getContent();
+}
+
+// Converts the certificate HTML to a PDF via PDFShift (pdfshift.io — free
+// tier available). Requires a Script Property 'PDFSHIFT_API_KEY', set via
+// the Apps Script editor's Project Settings > Script Properties (never
+// paste the key into chat/code). Returns a PDF Blob at the HTML's native
+// 2048x1447px size — no cropping, no distortion, true full-bleed.
+// Reads every PDFSHIFT_API_KEY_N script property in order (1, 2, 3, ...)
+// and returns them as an array. Falls back to the single PDFSHIFT_API_KEY
+// property (pre-multi-account setup) if no numbered keys exist, so existing
+// setups keep working unchanged.
+function _getPdfShiftApiKeys() {
+  var props = PropertiesService.getScriptProperties();
+  var keys = [];
+  for (var i = 1; i <= 10; i++) {
+    var k = props.getProperty('PDFSHIFT_API_KEY_' + i);
+    if (k) keys.push(k);
+  }
+  if (!keys.length) {
+    var legacy = props.getProperty('PDFSHIFT_API_KEY');
+    if (legacy) keys.push(legacy);
+  }
+  return keys;
+}
+
+function generateCertificatePdfViaHtml(learnerName, courseName, yearOverride) {
+  var apiKeys = _getPdfShiftApiKeys();
+  if (!apiKeys.length) throw new Error('No PDFShift API key found — set PDFSHIFT_API_KEY_1 (or PDFSHIFT_API_KEY) in Project Settings > Script Properties first.');
+
+  var year = yearOverride ? String(yearOverride) : String(new Date().getFullYear());
+  var html = getCertificatePdfHtml(learnerName, courseName, year);
+  var fileName = learnerName.replace(/\s+/g, '_') + '_' + courseName.replace(/\s+/g, '_') + '_Certificate.pdf';
+
+  var lastError = null;
+  for (var i = 0; i < apiKeys.length; i++) {
+    // Routed through monitoredFetch (not raw UrlFetchApp) with a distinct
+    // serviceName per key ('PDFShift-Key1'/'Key2'/'Key3'/...) so the System
+    // Health panel shows each account's call count separately — lets you
+    // see at a glance which key is being used/exhausted.
+    var response;
+    try {
+      response = monitoredFetch('https://api.pdfshift.io/v3/convert/pdf', {
+        method: 'post',
+        headers: { 'X-API-Key': apiKeys[i] },
+        contentType: 'application/json',
+        // 'width'/'height' aren't real PDFShift fields (confirmed via API 400
+        // "Rogue field") — page size comes from the HTML's own @page rule.
+        // 'delay' gives the Montserrat webfont time to finish loading before
+        // the page is captured.
+        payload: JSON.stringify({ source: html, sandbox: false, delay: 1500 }),
+        muteHttpExceptions: true
+      }, 'generateCertificatePdfViaHtml', 'PDFShift-Key' + (i + 1));
+    } catch(fetchErr) {
+      lastError = 'key #' + (i + 1) + ' threw: ' + fetchErr.message;
+      Logger.log('[Cert] PDFShift ' + lastError + (i + 1 < apiKeys.length ? ' — trying next key' : ''));
+      continue;
+    }
+
+    if (response.getResponseCode() === 200) {
+      if (i > 0) Logger.log('[Cert] Generated using PDFShift key #' + (i + 1) + ' (earlier key(s) exhausted/failed).');
+      return response.getBlob().setName(fileName).setContentType('application/pdf');
+    }
+
+    lastError = 'key #' + (i + 1) + ': (' + response.getResponseCode() + ') ' + response.getContentText();
+    Logger.log('[Cert] PDFShift ' + lastError + (i + 1 < apiKeys.length ? ' — trying next key' : ''));
+  }
+  throw new Error('All ' + apiKeys.length + ' PDFShift key(s) failed. Last error — ' + lastError);
+}
+
+// TEST — generates one certificate per category (Foundation/Maths/Advanced)
+// and saves them to CERT_SAVE_FOLDER, without sending any email. Run from
+// the Apps Script editor once PDFSHIFT_API_KEY is set, then open the
+// folder and check all 3 PDFs look right before wiring this into the real
+// send flow.
+function testGenerateCertificatePdfs() {
+  var samples = [
+    { name: 'Angelika Sharma', course: 'Animation with Scratch Jr' }, // → foundation
+    { name: 'Rohan Mehta',     course: 'Maths Year 4' },              // → maths (confirmed tagged in Course Name sheet)
+    { name: 'Dhairya Purbia',  course: 'AI-Powered Web Content Filtering Solution' } // → advanced/pro
+  ];
+  var folder = DriveApp.getFolderById(CERT_SAVE_FOLDER);
+  samples.forEach(function(s) {
+    try {
+      var blob = generateCertificatePdfViaHtml(s.name, s.course);
+      var file = folder.createFile(blob);
+      Logger.log('[CertTest] ' + s.name + ' | ' + s.course + ' → ' + file.getUrl());
+    } catch(e) {
+      Logger.log('[CertTest] FAILED for ' + s.name + ': ' + e.message);
+    }
+  });
+}
+
+// TEST — generates just the Advanced/Pro sample (Dhairya Purbia), to check
+// a single fix without burning credits on all 3 categories every time.
+function testGenerateAdvancedCertificateOnly() {
+  var blob = generateCertificatePdfViaHtml('Dhairya Purbia', 'AI-Powered Web Content Filtering Solution');
+  var file = DriveApp.getFolderById(CERT_SAVE_FOLDER).createFile(blob);
+  Logger.log('[CertTest] Dhairya Purbia → ' + file.getUrl());
 }
 
 // ── Course → slide index mapping ─────────────────────────────────────
@@ -368,6 +578,47 @@ function getCertificateLog(limit) {
   } catch(e) {
     Logger.log('[Cert] getCertificateLog error: ' + e.message);
     return { success: false, message: e.message, rows: [], todayCount: 0 };
+  }
+}
+
+// ── Public "My Certificates" page context ─────────────────────────────
+// Returns every certificate on record for a JLID (a learner who's completed
+// multiple courses gets one row per certificate) — newest first. Backs the
+// public jetlearn-kit-links.web.app/certificates/{JLID} page, same pattern
+// as getKitTrackContext() in KitTrackingService.js.
+function getCertificatesForJlid(jlid) {
+  try {
+    jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
+    if (!jlid) return { success: false, message: 'Missing learner reference in this link.' };
+
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.CERTIFICATE_LOG);
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: false, message: 'No certificates found for this link.' };
+
+    var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+    var learnerName = '';
+    var certs = [];
+    data.forEach(function(r) {
+      if (String(r[1] || '').trim().toUpperCase() !== jlid) return;
+      learnerName = String(r[2] || '').trim() || learnerName;
+      var ts = r[0] ? new Date(r[0]) : null;
+      certs.push({
+        course: String(r[3] || '').trim(),
+        year: String(r[4] || '').trim(),
+        driveUrl: String(r[8] || '').trim(),
+        timestamp: ts ? Utilities.formatDate(ts, Session.getScriptTimeZone(), 'MMM d, yyyy') : '',
+        sortTs: ts ? ts.getTime() : 0
+      });
+    });
+
+    if (!certs.length) return { success: false, message: 'We could not find any certificates for this link. Please contact JetLearn support.' };
+    certs.sort(function(a, b) { return b.sortTs - a.sortTs; });
+    certs.forEach(function(c) { delete c.sortTs; });
+
+    return { success: true, jlid: jlid, learnerName: learnerName, certificates: certs };
+  } catch(e) {
+    Logger.log('[Cert] getCertificatesForJlid ERROR: ' + e.message);
+    return { success: false, message: 'Something went wrong loading this page. Please contact JetLearn support.' };
   }
 }
 

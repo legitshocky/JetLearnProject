@@ -1,3 +1,97 @@
+// ── Fetches ALL WATI templates, paging past the ~100-result cap seen on the
+// plain (unpaginated) call. Tries pageSize/pageNumber query params (common
+// WATI pattern); if the account/API doesn't honor them, a repeated
+// identical page is detected and paging stops cleanly — never worse than
+// the old single-page behavior, just potentially more complete.
+function _watiFetchAllTemplates(apiBase, accessToken) {
+  var all = [];
+  var seenKeys = {};
+  var pageSize = 100;
+
+  for (var pageNumber = 1; pageNumber <= 20; pageNumber++) {
+    var url = apiBase + '/api/v1/getMessageTemplates?pageSize=' + pageSize + '&pageNumber=' + pageNumber;
+    var resp;
+    try {
+      resp = monitoredFetch(url, { method: 'get', headers: { 'Authorization': accessToken }, muteHttpExceptions: true });
+    } catch(e) { break; }
+    if (resp.getResponseCode() !== 200) break;
+
+    var data;
+    try { data = JSON.parse(resp.getContentText()); } catch(e) { break; }
+    var pageTemplates = data.messageTemplates || data.templates || data.data || [];
+    if (!pageTemplates.length) break;
+
+    var newCount = 0;
+    pageTemplates.forEach(function(t) {
+      var key = t.id || ((t.elementName || t.name || '') + '|' + t.lastModified);
+      if (!seenKeys[key]) { seenKeys[key] = true; all.push(t); newCount++; }
+    });
+
+    if (newCount === 0) break;          // pagination not honored — same page repeating, stop
+    if (pageTemplates.length < pageSize) break; // last page (short page returned)
+  }
+
+  return all;
+}
+
+// ── DIAGNOSTIC — read-only, sends NO message. Fetches WATI's own approved
+// template definitions so we can compare their exact variable count/order
+// against what our code sends, without risking a real send to a real parent.
+// Run from the Apps Script editor's function dropdown, then check the log.
+function diagWatiKitAddressTemplates() {
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var API_ENDPOINT_BASE = (scriptProperties.getProperty('WATI_API_ENDPOINT') || '').trim();
+  var ACCESS_TOKEN = (scriptProperties.getProperty('WATI_ACCESS_TOKEN') || '').trim();
+  if (!ACCESS_TOKEN.startsWith('Bearer ')) ACCESS_TOKEN = 'Bearer ' + ACCESS_TOKEN;
+  if (API_ENDPOINT_BASE.endsWith('/')) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
+
+  var templates = _watiFetchAllTemplates(API_ENDPOINT_BASE, ACCESS_TOKEN);
+  Logger.log('[WatiDiag] Total templates returned (all pages): ' + templates.length);
+
+  var targets = ['kit_address_request_link', 'kit_address_reconfirm', 'kit_order_placed_notice', 'migration_address_template', 'migration_kit_fup_sent_by_us'];
+  targets.forEach(function(name) {
+    var match = templates.filter(function(t) {
+      return (t.elementName || t.name || '').toLowerCase() === name.toLowerCase();
+    });
+    if (!match.length) {
+      Logger.log('[WatiDiag] "' + name + '" — NOT FOUND in WATI account.');
+      return;
+    }
+    Logger.log('[WatiDiag] "' + name + '" — FOUND: ' + JSON.stringify(match[0]));
+  });
+}
+
+// ── DIAGNOSTIC — read-only, sends NO message. Searches ALL WATI templates for
+// a given body substring (e.g. "hsforms" or "Kit Address") to identify which
+// approved template is actually producing a given message, regardless of its
+// name. Run from the Apps Script editor, then check the log.
+function diagWatiFindTemplateByText(searchText) {
+  searchText = (searchText || 'hsforms').toLowerCase();
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var API_ENDPOINT_BASE = (scriptProperties.getProperty('WATI_API_ENDPOINT') || '').trim();
+  var ACCESS_TOKEN = (scriptProperties.getProperty('WATI_ACCESS_TOKEN') || '').trim();
+  if (!ACCESS_TOKEN.startsWith('Bearer ')) ACCESS_TOKEN = 'Bearer ' + ACCESS_TOKEN;
+  if (API_ENDPOINT_BASE.endsWith('/')) API_ENDPOINT_BASE = API_ENDPOINT_BASE.slice(0, -1);
+
+  var templates = _watiFetchAllTemplates(API_ENDPOINT_BASE, ACCESS_TOKEN);
+  Logger.log('[WatiDiag] Scanning ' + templates.length + ' templates (all pages) for "' + searchText + '"...');
+
+  var found = 0;
+  templates.forEach(function(t) {
+    var body = String(t.body || '').toLowerCase();
+    var name = t.elementName || t.name || '';
+    if (body.indexOf(searchText) > -1) {
+      found++;
+      Logger.log('[WatiDiag] MATCH — name="' + name + '" id=' + t.id + ' category=' + t.category
+        + ' lastModified=' + t.lastModified + '\nbody=' + t.body);
+    }
+  });
+  Logger.log('[WatiDiag] Done. ' + found + ' match(es) for "' + searchText + '".');
+
+  // Also log every template name so we can eyeball anything address-related
+  Logger.log('[WatiDiag] All template names: ' + templates.map(function(t) { return t.elementName || t.name; }).join(', '));
+}
+
 function getWatiParameters(templateName, migrationData, hubspotData) {
     let weekdayStr = "TBD";
   let timeStr = "TBD";

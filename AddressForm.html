@@ -5,9 +5,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JetLearn — Confirm Your Details</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
@@ -377,7 +374,7 @@
       document.getElementById('chipAv').textContent = first.charAt(0).toUpperCase();
     }
 
-    (function() {
+    window.addEventListener('load', function() {
       if (!JLID) {
         document.getElementById('errorMsg').textContent = 'This link is missing learner information. Please contact JetLearn support.';
         showState('errorState');
@@ -413,7 +410,7 @@
           showState('errorState');
         })
         .getAddressFormContext(JLID);
-    })();
+    });
 
     function submitForm() {
       var fields = [
@@ -438,20 +435,21 @@
       });
       if (!valid) { if (firstInvalid) firstInvalid.focus(); return; }
 
-      // Show success the instant fields validate — the JLID was already
-      // confirmed real when this page loaded, so there's nothing left for
-      // the parent to wait on. The actual HubSpot/sheet write happens in
-      // the background; failures are logged for ops, not shown here.
-      showState('successState');
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
 
       google.script.run
         .withSuccessHandler(function(res) {
           if (!res || !res.success) {
-            console.error('[AddressForm] Background submit failed:', res && res.message);
+            btn.disabled = false; btn.textContent = 'Confirm My Details';
+            alert((res && res.message) || 'Something went wrong. Please try again.');
+            return;
           }
+          showState('successState');
         })
         .withFailureHandler(function(err) {
-          console.error('[AddressForm] Background submit error:', err);
+          btn.disabled = false; btn.textContent = 'Confirm My Details';
+          alert((err && err.message) || String(err));
         })
         .submitLearnerAddressForm({
           jlid: JLID,
