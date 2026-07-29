@@ -351,6 +351,130 @@ function getKitTrackLink(jlid) {
   return 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(jlid);
 }
 
+// ── Country → Amazon storefront domain ────────────────────────────────
+// Best-effort lookup, case/whitespace-insensitive on the HubSpot country
+// value. Falls back to amazon.com (global) if the country isn't mapped —
+// ops should double-check the fallback case manually.
+var KIT_AMAZON_DOMAINS = {
+  'united states': 'amazon.com', 'usa': 'amazon.com', 'us': 'amazon.com',
+  'united kingdom': 'amazon.co.uk', 'uk': 'amazon.co.uk',
+  'india': 'amazon.in',
+  'germany': 'amazon.de',
+  'italy': 'amazon.it',
+  'france': 'amazon.fr',
+  'spain': 'amazon.es',
+  'canada': 'amazon.ca',
+  'australia': 'amazon.com.au',
+  'japan': 'amazon.co.jp',
+  'united arab emirates': 'amazon.ae', 'uae': 'amazon.ae',
+  'saudi arabia': 'amazon.sa',
+  'netherlands': 'amazon.nl',
+  'sweden': 'amazon.se',
+  'poland': 'amazon.pl',
+  'belgium': 'amazon.com.be',
+  'singapore': 'amazon.sg',
+  'mexico': 'amazon.com.mx',
+  'brazil': 'amazon.com.br',
+  'turkey': 'amazon.com.tr',
+  'egypt': 'amazon.eg',
+  'south africa': 'amazon.com' // no local Amazon storefront
+};
+function _kitAmazonDomainForCountry(country) {
+  var key = String(country || '').trim().toLowerCase();
+  return KIT_AMAZON_DOMAINS[key] || 'amazon.com';
+}
+
+// Reads the LATEST "Learner Address Submissions" row for a JLID (that sheet
+// stores Address/City/State/PostalCode/Country as separate columns from the
+// original public-form submission — see LearnerAddressFormService.js). Newest
+// first, since a parent could have resubmitted more than once. Returns null
+// if this JLID never came through that form (e.g. address entered manually
+// by ops in Add Kit Entry) — caller falls back to the flattened string.
+function _getStructuredAddressForJlid(jlid) {
+  try {
+    var sheet = _lafGetLogSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return null;
+    var data = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A:I — through Country
+    var jlidUpper = String(jlid).trim().toUpperCase();
+    for (var i = data.length - 1; i >= 0; i--) {
+      if (String(data[i][1] || '').trim().toUpperCase() === jlidUpper) {
+        return {
+          address: String(data[i][4] || '').trim(),
+          city: String(data[i][5] || '').trim(),
+          state: String(data[i][6] || '').trim(),
+          postalCode: String(data[i][7] || '').trim(),
+          country: String(data[i][8] || '').trim()
+        };
+      }
+    }
+    return null;
+  } catch(e) {
+    Logger.log('[KitTracking] _getStructuredAddressForJlid error: ' + e.message);
+    return null;
+  }
+}
+
+// ── "Order Details" panel — everything ops needs to actually place the
+// order (Amazon or otherwise) for one kit, without opening the sheet.
+// Pulls parent name/phone/email from HubSpot (not stored in the Kit sheet
+// itself) plus the delivery address and kit/country already on the row.
+function getKitOrderDetails(rowIndex) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
+    var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+    var deliveryAddress = String(row[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim();
+    var sheetCountry = String(row[3] || '').trim(); // col D — Country
+
+    if (!deliveryAddress) {
+      return { success: false, message: 'No delivery address on file for this row yet — request/verify the address first.' };
+    }
+
+    var parentName = '', parentPhone = '', parentEmail = '', country = sheetCountry;
+    if (jlid) {
+      var hs = fetchHubspotByJlid(jlid);
+      if (hs && hs.success && hs.data) {
+        parentName = hs.data.parentName || '';
+        parentPhone = hs.data.parentContact || '';
+        parentEmail = hs.data.parentEmail || '';
+        country = hs.data.country || sheetCountry;
+      }
+    }
+
+    // Prefer the structured fields from the original submission (Learner
+    // Address Submissions sheet) over re-splitting the flattened
+    // DELIVERY_ADDRESS string — parsing an arbitrary comma-joined address
+    // back into line/city/state/postcode is unreliable across countries,
+    // but the real structured values are sitting right there from when the
+    // parent actually submitted the form.
+    var structured = jlid ? _getStructuredAddressForJlid(jlid) : null;
+
+    return {
+      success: true,
+      jlid: jlid,
+      learnerName: learnerName,
+      kitName: kitName,
+      parentName: parentName,
+      parentPhone: parentPhone,
+      parentEmail: parentEmail,
+      country: (structured && structured.country) || country,
+      deliveryAddress: deliveryAddress,
+      addressLine: structured ? structured.address : '',
+      city: structured ? structured.city : '',
+      state: structured ? structured.state : '',
+      postalCode: structured ? structured.postalCode : '',
+      amazonDomain: _kitAmazonDomainForCountry((structured && structured.country) || country)
+    };
+  } catch(e) {
+    Logger.log('[KitTracking] getKitOrderDetails ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // Sends the "track your kit" link via WhatsApp. Uses template
 // 'kit_tracking_link_v1' (named params: ParentName / kit_name / track_link)
 // — NOT YET CREATED IN WATI. Create it there and get it Meta-approved before

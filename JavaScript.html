@@ -13962,7 +13962,8 @@ function renderKitTrackingTable(filterArg) {
     } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'addr_received_pending_order') {
-      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
+      var orderDetailsBtn = '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>';
+      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + orderDetailsBtn + msgBtn + trackBtn + editBtn + refundBtn;
     } else {
       actionBtn = msgBtn + trackBtn + sendTrackBtn + editBtn + refundBtn;
     }
@@ -14130,6 +14131,7 @@ function renderKitAskingAddressTable() {
       : '';
     const orderBtn = row.addrStatus === 'Received'
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
+        + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
       : '<span style="font-size:0.72rem;color:#94a3b8;">Waiting on parent<\/span>';
 
     const rowBg = row.needsCall ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#fafbfc');
@@ -14431,6 +14433,133 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
 function ktCloseOrderPlaced() {
   const modal = document.getElementById('ktOrderPlacedModal');
   if (modal) modal.style.display = 'none';
+}
+
+// ── "Order Details" — everything needed to actually place the order
+// (Amazon or otherwise), pulled from HubSpot + the Kit sheet, with a
+// one-click "Copy All" so ops never has to open the sheet.
+function ktOpenOrderDetails(rowIndex) {
+  let modal = document.getElementById('ktOrderDetailsModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktOrderDetailsModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:28px 32px;width:440px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">'
+      + '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-clipboard-list" style="color:#0d9488;margin-right:8px;"><\/i>Order Details<\/h3>'
+      + '<button onclick="ktCloseOrderDetails()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<div id="ktOdBody" style="font-size:0.85rem;color:#1e293b;"><\/div>'
+      + '<div style="display:flex;gap:10px;margin-top:20px;">'
+      + '<button onclick="ktCloseOrderDetails()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Close<\/button>'
+      + '<button id="ktOdCopyBtn" onclick="ktCopyOrderDetails()" title="Copies everything as one text block — for reference/pasting into a note, not for Amazon\'s form fields directly (use the per-field copy icons for those)" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-copy"><\/i> Copy All (as note)<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktOdBody').innerHTML = '<div style="text-align:center;padding:30px 0;color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Loading…<\/div>';
+  modal.style.display = 'flex';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      var body = document.getElementById('ktOdBody');
+      if (!res || !res.success) {
+        body.innerHTML = '<div style="color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load order details.') + '<\/div>';
+        return;
+      }
+      modal.dataset.orderText =
+          'Name: ' + (res.parentName || '—') + '\n'
+        + 'Phone: ' + (res.parentPhone || '—') + '\n'
+        + 'Email: ' + (res.parentEmail || '—') + '\n'
+        + 'Country: ' + (res.country || '—') + '\n'
+        + 'Address: ' + (res.deliveryAddress || '—') + '\n'
+        + 'Kit to order: ' + (res.kitName || '—') + '\n'
+        + 'Amazon: https://www.' + res.amazonDomain;
+
+      // Per-field copy buttons — Amazon's "Add an address" form is several
+      // separate single-line inputs (Name, Phone, Postcode, Address Line 1,
+      // etc.), so one big multi-line block doesn't paste cleanly into any
+      // of them. Each field gets its own copy button: click it, tab to the
+      // matching Amazon field, paste, repeat.
+      var fieldId = 0;
+      var row = function(label, val, copyable) {
+        fieldId++;
+        var id = 'ktOdField' + fieldId;
+        var copyBtn = (copyable && val)
+          ? '<button id="' + id + 'Btn" onclick="ktCopyField(\'' + id + '\')" title="Copy ' + label + '" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:3px 7px;font-size:0.7rem;color:#0d9488;cursor:pointer;margin-left:8px;flex:0 0 auto;"><i class="fas fa-copy"><\/i><\/button>'
+          : '';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">'
+          + '<span style="color:#64748b;flex:0 0 auto;">' + label + '<\/span>'
+          + '<span style="display:flex;align-items:center;min-width:0;">'
+          +   '<span id="' + id + '" data-copy="' + escapeHtml(val || '') + '" style="font-weight:600;text-align:right;overflow-wrap:anywhere;">' + escapeHtml(val || '—') + '<\/span>'
+          +   copyBtn
+          + '<\/span>'
+          + '<\/div>';
+      };
+      // If this JLID's address came through the public form, we have real
+      // structured Address/City/State/Postcode fields (from the Learner
+      // Address Submissions sheet) — show those separately, in the same
+      // order Amazon's own form asks for them. Otherwise (e.g. address was
+      // typed straight into Add Kit Entry by ops) fall back to the one
+      // combined line, since there's nothing structured to split it from.
+      var hasStructured = !!(res.addressLine || res.city || res.state || res.postalCode);
+      var addressBlock = hasStructured
+        ? row('Address Line 1', res.addressLine, true)
+          + row('Town / City', res.city, true)
+          + row('State / County', res.state, true)
+          + row('Postal Code', res.postalCode, true)
+        : row('Delivery Address', res.deliveryAddress, true);
+
+      body.innerHTML =
+          row('Learner', res.learnerName, false)
+        + row('Kit to order', res.kitName, false)
+        + row('Parent Name', res.parentName, true)
+        + row('Phone', res.parentPhone, true)
+        + row('Email', res.parentEmail, true)
+        + row('Country', res.country, true)
+        + addressBlock
+        + '<div style="padding:10px 0 0;">'
+        +   '<a href="https://www.' + res.amazonDomain + '" target="_blank" style="color:#0d9488;font-weight:700;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"><\/i> Open ' + res.amazonDomain + '<\/a>'
+        + '<\/div>';
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('ktOdBody').innerHTML = '<div style="color:#dc2626;">' + escapeHtml(err.message || String(err)) + '<\/div>';
+    })
+    .getKitOrderDetails(rowIndex);
+}
+
+function ktCloseOrderDetails() {
+  const modal = document.getElementById('ktOrderDetailsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function ktCopyOrderDetails() {
+  const modal = document.getElementById('ktOrderDetailsModal');
+  const text = modal && modal.dataset.orderText;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(function() {
+    const btn = document.getElementById('ktOdCopyBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"><\/i> Copied!';
+    setTimeout(function() { btn.innerHTML = orig; }, 1600);
+  });
+}
+
+// Copies just ONE field's value (Name/Phone/Email/Address) — for pasting
+// into Amazon's separate single-line inputs one at a time, rather than the
+// bulk "Copy All" block which doesn't split cleanly across multiple fields.
+function ktCopyField(fieldId) {
+  const el = document.getElementById(fieldId);
+  const val = el && el.dataset.copy;
+  if (!val) return;
+  navigator.clipboard.writeText(val).then(function() {
+    const btn = document.getElementById(fieldId + 'Btn');
+    if (!btn) return;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"><\/i>';
+    setTimeout(function() { btn.innerHTML = orig; }, 1200);
+  });
 }
 
 function ktSaveOrderPlaced() {

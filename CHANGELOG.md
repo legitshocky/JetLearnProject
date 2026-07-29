@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-07-30] — Structured Address Fields in Order Details (V8.27)
+
+### Order Details panel now shows Address/City/State/Postcode separately (`KitTrackingService.js`, `JavaScript.html`)
+- `_getStructuredAddressForJlid(jlid)` — new helper, reads the latest matching row from the "Learner Address Submissions" sheet (newest-first, handles resubmits), returns structured `address/city/state/postalCode/country`.
+- `getKitOrderDetails()` now merges these into its response (`addressLine`, `city`, `state`, `postalCode`), falling back to the flattened `deliveryAddress` string when a JLID never came through the public form (e.g. address typed manually in Add Kit Entry).
+- `ktOpenOrderDetails()` renders separate labeled rows (Address Line 1 / Town-City / State-County / Postal Code) each with its own copy button, matching Amazon's own "Add an address" form order, instead of one combined block — per explicit user feedback that a single copy-paste block can't feed multiple separate form fields.
+
+---
+
 ## [2026-07-27] — Switch Certificate Template to New Canva Designs (V8.16–V8.17)
 
 ### New certificate backgrounds sourced from Canva, hosted on GitHub (`CertificateService.js`)
