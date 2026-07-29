@@ -2,6 +2,24 @@
 
 ---
 
+## [2026-07-30] — Mark Order Placed: HubSpot Note/Status + Visible WATI Gaps (V8.30)
+
+### `markKitOrderPlaced()` no longer only touches the sheet (`KitTrackingService.js`)
+- User feedback: after using "Mark Order Placed," neither the HubSpot deal note nor the kit-status property was updated, and the parent never got a WhatsApp message — but the UI still said "Parent has been notified via WhatsApp" regardless.
+- Now adds a `[Kit Order Placed]` note to the deal (store/ETA/tracking) via the existing `_addNoteToDeal`, and attempts a `kit_status` property patch (`'Ordered'`) via the existing `_updateHubspotKitStatus` — both best-effort, logged, never block the sheet write.
+- The WATI send success/failure is no longer swallowed — `markKitOrderPlaced()` returns `hsNoteStatus`/`hsStatusStatus`/`waStatus`, and the frontend toast now says exactly what happened ("Order Placed — with gaps: WhatsApp not sent (failed: ...)") instead of always claiming success.
+- Likely root cause of the WhatsApp gap: `kit_order_placed_notice_v2` may not be an approved WATI template yet (flagged as a standing risk when the address/order pipeline was built — new templates need manual creation + Meta approval in the WATI dashboard). The new gap-reporting will make that visible per-order instead of silent.
+
+---
+
+## [2026-07-30] — Fix Off-By-One Date Bug in Mark Order Placed (V8.29)
+
+### Order Date defaulted to yesterday (`JavaScript.html`)
+- `ktOpenMarkOrderPlaced()` and `openAddKitModal()` built today's default date via `new Date().toISOString().split('T')[0]` — `toISOString()` converts to UTC first, so in timezones ahead of UTC (e.g. IST) the date field silently defaulted to the previous day while other timestamps written by the same action (`ORDER_PLACED_AT`, `NUDGE_STAGE_AT`) used the correct local day. Root cause of the reported "Mark Order Placed filled wrong date" — 29/7 shown for Date of Order against 30/7 everywhere else.
+- Fixed both to build the date string from local `getFullYear()/getMonth()/getDate()` instead, matching the pattern already used elsewhere in the file (`_taskDateKey`).
+
+---
+
 ## [2026-07-30] — Live "Address Verified" Notification (V8.28)
 
 ### Sidebar badge + toast instead of relying on the notification bell (`HubSpotService.js`, `KitTrackingService.js`, `JavaScript.html`)

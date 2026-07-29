@@ -14472,7 +14472,8 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
 
   modal.dataset.rowIndex = rowIndex;
   document.getElementById('ktOrderPlacedSubtitle').textContent = learnerName + (kitName ? ' — ' + kitName : '') + (jlid ? ' (' + jlid + ')' : '');
-  const today = new Date().toISOString().split('T')[0];
+  const _todayD = new Date();
+  const today = _todayD.getFullYear() + '-' + String(_todayD.getMonth()+1).padStart(2,'0') + '-' + String(_todayD.getDate()).padStart(2,'0');
   document.getElementById('ktOpOrderDate').value = today;
   document.getElementById('ktOpEta').value = '';
   document.getElementById('ktOpStore').value = '';
@@ -14639,7 +14640,18 @@ function ktSaveOrderPlaced() {
       saveBtn.disabled = false;
       if (result && result.success) {
         ktCloseOrderPlaced();
-        showToast('success', 'Order Placed', 'Parent has been notified via WhatsApp.');
+        const waOk = result.waStatus === 'sent';
+        const noteOk = result.hsNoteStatus === 'added';
+        const statusOk = result.hsStatusStatus === 'attempted';
+        if (waOk && noteOk && statusOk) {
+          showToast('success', 'Order Placed', 'Parent notified via WhatsApp, HubSpot note + status updated.');
+        } else {
+          const gaps = [];
+          if (!waOk) gaps.push('WhatsApp not sent (' + (result.waStatus || 'unknown') + ')');
+          if (!noteOk) gaps.push('HubSpot note not added (' + (result.hsNoteStatus || 'unknown') + ')');
+          if (!statusOk) gaps.push('HubSpot status patch (' + (result.hsStatusStatus || 'unknown') + ')');
+          showToast('warning', 'Order Placed — with gaps', gaps.join('; '));
+        }
         loadKitTrackingPage();
       } else {
         showToast('error', 'Could Not Save', (result && result.message) || 'Unknown error.');
@@ -14679,7 +14691,7 @@ function ktSendTrackingLink(rowIndex, btn) {
 
 function openAddKitModal() {
   const today = new Date();
-  const iso = today.toISOString().split('T')[0];
+  const iso = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
   const orderEl = document.getElementById('ktfOrderDate');
   if (orderEl && !orderEl.value) { orderEl.value = iso; ktAutoFillMonth(); }
   const errEl = document.getElementById('ktfError');

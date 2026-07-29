@@ -3303,11 +3303,50 @@ function markKitOrderPlaced(rowIndex, payload) {
     if (payload.trackingNo) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_NO).setValue(payload.trackingNo);
     if (payload.trackingUrl) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_URL).setValue(payload.trackingUrl);
 
-    // Notify the parent their kit is on the way (best-effort, non-fatal)
+    var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+    var hsData = (hs && hs.success) ? hs.data : null;
+
+    // HubSpot deal note — always attempted, independent of the WATI send,
+    // so there's a durable record even if the parent notification fails.
+    var hsNoteStatus = 'not_attempted';
     try {
-      var hs = jlid ? fetchHubspotByJlid(jlid) : null;
-      if (hs && hs.success && hs.data) {
-        var phone = _normalisePhone(hs.data.parentContact || '');
+      if (hsData && hsData.dealId) {
+        _addNoteToDeal(hsData.dealId,
+          '[Kit Order Placed] Order placed on ' + _formatDMY(new Date()) + ' for ' + kitName +
+          (payload.store ? ' via ' + payload.store : '') +
+          (payload.eta ? '. ETA: ' + payload.eta : '') +
+          (payload.trackingNo ? '. Tracking: ' + payload.trackingNo : ''));
+        hsNoteStatus = 'added';
+      } else {
+        hsNoteStatus = 'no_deal_id';
+      }
+    } catch(ne) {
+      hsNoteStatus = 'failed: ' + ne.message;
+      Logger.log('[KitTracking] markKitOrderPlaced HS note failed: ' + ne.message);
+    }
+
+    // Kit-status property patch — best-effort. Not every kit type/property
+    // combo is guaranteed to have an "Ordered" picklist option in HubSpot,
+    // so a failure here is logged but never blocks the rest of the flow.
+    var hsStatusStatus = 'not_attempted';
+    try {
+      if (jlid) {
+        _updateHubspotKitStatus(jlid, kitName, 'Ordered');
+        hsStatusStatus = 'attempted';
+      }
+    } catch(se) {
+      hsStatusStatus = 'failed: ' + se.message;
+      Logger.log('[KitTracking] markKitOrderPlaced kit-status patch failed: ' + se.message);
+    }
+
+    // Notify the parent their kit is on the way. Failure is now surfaced
+    // back to the caller instead of being silently swallowed — ops needs
+    // to know if the WATI template was rejected/unapproved so they can
+    // follow up manually.
+    var waStatus = 'not_attempted';
+    try {
+      if (hsData) {
+        var phone = _normalisePhone(hsData.parentContact || '');
         if (phone) {
           // Named-placeholder template — param `name` must exactly match the
           // template's variable names (ParentName/kit_name/delivery_date/
@@ -3317,19 +3356,26 @@ function markKitOrderPlaced(rowIndex, payload) {
           // Track My Kit link (jetlearn-kit-links.web.app/track/{JLID}); with
           // no other send point, it must go out here or parents never get it.
           sendWatiMessage(phone, 'kit_order_placed_notice_v2', [
-            { name: 'ParentName',    value: hs.data.parentName || '' },
+            { name: 'ParentName',    value: hsData.parentName || '' },
             { name: 'kit_name',      value: kitName },
             { name: 'delivery_date', value: payload.eta || '' },
             { name: 'address',       value: deliveryAddress + '\n\nTrack your kit here: ' + getKitTrackLink(jlid) }
           ]);
+          waStatus = 'sent';
+        } else {
+          waStatus = 'no_phone';
         }
+      } else {
+        waStatus = 'no_hubspot_data';
       }
     } catch(we) {
-      Logger.log('[KitTracking] markKitOrderPlaced WATI notice failed (non-fatal): ' + we.message);
+      waStatus = 'failed: ' + we.message;
+      Logger.log('[KitTracking] markKitOrderPlaced WATI notice failed: ' + we.message);
     }
 
-    Logger.log('[KitTracking] Order placed for row=' + rowIndex + ' jlid=' + jlid);
-    return { success: true };
+    Logger.log('[KitTracking] Order placed for row=' + rowIndex + ' jlid=' + jlid +
+      ' hsNote=' + hsNoteStatus + ' hsStatus=' + hsStatusStatus + ' wati=' + waStatus);
+    return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus };
   } catch(e) {
     Logger.log('[KitTracking] markKitOrderPlaced ERROR: ' + e.message);
     return { success: false, message: e.message };
