@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-07-30] — Mark Order Placed: Fill Price/Reason/Subscription/Roadmap/Sent By (V8.36)
+
+### Rows created via the address-first pipeline were missing 6 columns (`KitTrackingService.js`, `JavaScript.html`)
+- User reported "JetLearn Sends" rows placed via Mark Order Placed had Price/Country/Site/Reason/Subscription/Roadmap/Sent By all blank. Root cause: `_createBareKitRow()` (used when an address request starts the pipeline before an order exists) only ever writes Learner/Kit/JLID — the older "Add Kit Entry" flow is the only place that ever asked for the other 6 fields, and `markKitOrderPlaced()` never collected or wrote them.
+- Added named `KIT_COL` constants for `COUNTRY`(4)/`PRICE`(5)/`SITE`(6)/`REASON`(12)/`SUBSCRIPTION`(13)/`ROADMAP`(14)/`SENT_BY`(15) — previously only used as raw column-number literals inside `addKitEntry()`.
+- "Mark Order Placed" modal now also asks for Price, Reason to Send, Current Subscription, Roadmap, and Sent By (same dropdown options as Add Kit Entry). **Country and Site are auto-filled** (from the HubSpot deal's country and the selected store, respectively) rather than asked again — ops already gave the address, no need to re-ask.
+- If a price is entered, `learning_kit_cost` is accumulated on the HubSpot deal the same way `addKitEntry()` already does, so address-first orders show up in kit-cost totals too. Deal note also now includes price/reason/sent-by.
+
+---
+
 ## [2026-07-30] — Address Page Load: ~15s → ~6s, Measured (V8.35)
 
 ### Real profiling, not guesses (`Code.js`, `KitTrackingService.js`, `HubSpotService.js`, `LearnerAddressFormService.js`)

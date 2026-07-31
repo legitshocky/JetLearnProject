@@ -14448,6 +14448,8 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
       + '<button onclick="ktCloseOrderPlaced()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
       + '<\/div>'
       + '<p id="ktOrderPlacedSubtitle" style="margin:0 0 18px;font-size:0.82rem;color:#64748b;"><\/p>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Price (EUR)<\/label>'
+      + '<input id="ktOpPrice" type="number" placeholder="e.g. 35" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Order Date<\/label>'
       + '<input id="ktOpOrderDate" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Expected Delivery (ETA)<\/label>'
@@ -14461,7 +14463,27 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking Number (optional)<\/label>'
       + '<input id="ktOpTrackingNo" type="text" oninput="ktUpdateTrackingUrl()" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Tracking URL <span style="font-weight:400;color:#94a3b8;">(auto-filled from carrier — edit if needed)<\/span><\/label>'
-      + '<input id="ktOpTrackingUrl" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;">'
+      + '<input id="ktOpTrackingUrl" type="text" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Reason to Send<\/label>'
+      + '<select id="ktOpReason" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;background:#fff;">'
+      +   '<option value="">Select reason…<\/option>'
+      +   '<option>Renewed Learner- Next course requires the kit<\/option>'
+      +   '<option>New Learner - Next course requires the Kit<\/option>'
+      +   '<option>New Learner - Sales Pitched<\/option>'
+      + '<\/select>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Current Subscription<\/label>'
+      + '<select id="ktOpSubscription" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;background:#fff;">'
+      +   '<option value="">Select…<\/option>'
+      +   '<option>Yearly<\/option><option>2 Yearly<\/option><option>3 Yearly<\/option>'
+      +   '<option>Half Yearly<\/option><option>Quarterly<\/option><option>Monthly<\/option>'
+      + '<\/select>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Roadmap<\/label>'
+      + '<select id="ktOpRoadmap" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;background:#fff;">'
+      +   '<option value="">Select…<\/option>'
+      +   '<option>Advanced<\/option><option>Foundation<\/option><option>Junior<\/option><option>PRO<\/option>'
+      + '<\/select>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Sent By (Name)<\/label>'
+      + '<input id="ktOpSentBy" type="text" placeholder="e.g. Shubham" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;">'
       + '<div style="display:flex;gap:10px;">'
       + '<button onclick="ktCloseOrderPlaced()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
       + '<button id="ktOpSaveBtn" onclick="ktSaveOrderPlaced()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-check"><\/i> Confirm Order Placed<\/button>'
@@ -14480,6 +14502,11 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
   document.getElementById('ktOpCarrier').value = '';
   document.getElementById('ktOpTrackingNo').value = '';
   document.getElementById('ktOpTrackingUrl').value = '';
+  document.getElementById('ktOpPrice').value = '';
+  document.getElementById('ktOpReason').value = '';
+  document.getElementById('ktOpSubscription').value = '';
+  document.getElementById('ktOpRoadmap').value = '';
+  document.getElementById('ktOpSentBy').value = '';
   modal.style.display = 'flex';
 }
 
@@ -14623,11 +14650,16 @@ function ktSaveOrderPlaced() {
   const toDMY = (iso) => { if (!iso) return ''; const p = iso.split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ''; };
 
   const payload = {
-    orderDate:   toDMY((document.getElementById('ktOpOrderDate').value || '').trim()),
-    eta:         toDMY((document.getElementById('ktOpEta').value || '').trim()),
-    store:       (document.getElementById('ktOpStore').value || '').trim(),
-    trackingNo:  (document.getElementById('ktOpTrackingNo').value || '').trim(),
-    trackingUrl: (document.getElementById('ktOpTrackingUrl').value || '').trim()
+    orderDate:    toDMY((document.getElementById('ktOpOrderDate').value || '').trim()),
+    eta:          toDMY((document.getElementById('ktOpEta').value || '').trim()),
+    store:        (document.getElementById('ktOpStore').value || '').trim(),
+    trackingNo:   (document.getElementById('ktOpTrackingNo').value || '').trim(),
+    trackingUrl:  (document.getElementById('ktOpTrackingUrl').value || '').trim(),
+    price:        (document.getElementById('ktOpPrice').value || '').trim(),
+    reason:       (document.getElementById('ktOpReason').value || '').trim(),
+    subscription: (document.getElementById('ktOpSubscription').value || '').trim(),
+    roadmap:      (document.getElementById('ktOpRoadmap').value || '').trim(),
+    sentBy:       (document.getElementById('ktOpSentBy').value || '').trim()
   };
 
   const origHTML = saveBtn.innerHTML;

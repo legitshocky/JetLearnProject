@@ -31,10 +31,17 @@ var KIT_COL = {
   SR_NO:              1,
   LEARNER_NAME:       2,
   KIT:                3,
+  COUNTRY:            4,
+  PRICE:              5,
+  SITE:               6,
   DATE_OF_ORDER:      7,
   ETA:                9,
   DELIVERY_DATE:      10,
   TIME_TAKEN:         11,
+  REASON:             12,
+  SUBSCRIPTION:       13,
+  ROADMAP:            14,
+  SENT_BY:            15,
   JLID:               16,
   FOLLOWUP_SENT:      17,
   FOLLOWUP_SENT_AT:   18,
@@ -3205,8 +3212,40 @@ function markKitOrderPlaced(rowIndex, payload) {
     if (payload.trackingNo) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_NO).setValue(payload.trackingNo);
     if (payload.trackingUrl) sheet.getRange(rowIndex, KIT_COL.ORDER_TRACKING_URL).setValue(payload.trackingUrl);
 
+    // Rows created via the address-first pipeline (_createBareKitRow) only
+    // ever get Learner/Kit/JLID — Price/Site/Reason/Subscription/Roadmap/
+    // Sent By were never captured anywhere downstream, unlike the older
+    // "Add Kit Entry" flow which asks for all of them upfront. Filling them
+    // in here too so the main "JetLearn Sends" table isn't permanently
+    // blank for these columns on address-first orders.
+    if (payload.price) sheet.getRange(rowIndex, KIT_COL.PRICE).setValue(payload.price);
+    if (payload.store) sheet.getRange(rowIndex, KIT_COL.SITE).setValue(payload.store);
+    if (payload.reason) sheet.getRange(rowIndex, KIT_COL.REASON).setValue(payload.reason);
+    if (payload.subscription) sheet.getRange(rowIndex, KIT_COL.SUBSCRIPTION).setValue(payload.subscription);
+    if (payload.roadmap) sheet.getRange(rowIndex, KIT_COL.ROADMAP).setValue(payload.roadmap);
+    if (payload.sentBy) sheet.getRange(rowIndex, KIT_COL.SENT_BY).setValue(payload.sentBy);
+
     var hs = jlid ? fetchHubspotByJlid(jlid) : null;
     var hsData = (hs && hs.success) ? hs.data : null;
+
+    // Country — auto-filled from HubSpot rather than asked again (ops
+    // already told us the address; the country's right there in the deal).
+    if (hsData && hsData.country) {
+      try { sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(hsData.country); } catch(cne) {}
+    }
+
+    // Accumulate learning_kit_cost on the deal, same as the older Add Kit
+    // Entry flow does — otherwise address-first orders never show up in
+    // the kit-cost total HubSpot side.
+    if (payload.price && hsData && hsData.dealId) {
+      try {
+        var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+        var existingCost = _getHubSpotDealKitCost(hsData.dealId, token);
+        _patchHubSpotKitCost(hsData.dealId, token, existingCost + parseFloat(payload.price));
+      } catch(pe) {
+        Logger.log('[KitTracking] markKitOrderPlaced learning_kit_cost patch failed: ' + pe.message);
+      }
+    }
 
     // HubSpot deal note — always attempted, independent of the WATI send,
     // so there's a durable record even if the parent notification fails.
@@ -3217,7 +3256,10 @@ function markKitOrderPlaced(rowIndex, payload) {
           '[Kit Order Placed] Order placed on ' + _formatDMY(new Date()) + ' for ' + kitName +
           (payload.store ? ' via ' + payload.store : '') +
           (payload.eta ? '. ETA: ' + payload.eta : '') +
-          (payload.trackingNo ? '. Tracking: ' + payload.trackingNo : ''));
+          (payload.trackingNo ? '. Tracking: ' + payload.trackingNo : '') +
+          (payload.price ? '. Price: €' + payload.price : '') +
+          (payload.reason ? '. Reason: ' + payload.reason : '') +
+          (payload.sentBy ? '. Sent by: ' + payload.sentBy : ''));
         hsNoteStatus = 'added';
       } else {
         hsNoteStatus = 'no_deal_id';
