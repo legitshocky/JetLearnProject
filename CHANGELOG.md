@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-07-30] — "Parent Purchased (Reimburse)" Flow (V8.37)
+
+### New action for address-issue/out-of-stock cases where the parent buys the kit themselves (`KitTrackingService.js`, `HubSpotService.js`, `JavaScript.html`, `Index.html`)
+- User's workflow: sometimes JetLearn asks the parent to buy the kit locally (address issue or regional out-of-stock) and reimburses once they share the invoice — this had no tracking anywhere.
+- New "Parent Purchased" button next to "Mark Order Placed" (both the main table and Asking Address sub-tab) opens a modal for Reason (Address/Delivery Issue, Out of Stock in Region, Other), Purchase Date, Amount Paid, Invoice/Proof Link, Sent By.
+- `markKitReimbursement()` writes the amount into the **same** `PRICE`/`SITE`/`SENT_BY` columns the normal Sent-By-Us flow uses (per explicit instruction — must show up in existing expense views unchanged), plus 7 new dedicated columns (`REIMBURSEMENT`, `REIMBURSEMENT_AMOUNT`, `REIMBURSEMENT_INVOICE_LINK`, `REIMBURSEMENT_REASON`, `REIMBURSEMENT_STATUS`, `REIMBURSEMENT_REQUESTED_AT`, `REIMBURSEMENT_PAID_AT`) for invoice/status tracking on top. Accumulates `learning_kit_cost` on the deal same as normal orders. No parent-facing WhatsApp (they already have the kit).
+- `markKitReimbursementPaid()` — "Mark Reimbursed" button closes out a pending entry once ops actually pays the parent back.
+- New sidebar badge (`kitReimbursementBadge`, purple) + notification-bell entry, following the same live-refresh pattern as the address-received badge.
+
+---
+
 ## [2026-07-30] — Mark Order Placed: Fill Price/Reason/Subscription/Roadmap/Sent By (V8.36)
 
 ### Rows created via the address-first pipeline were missing 6 columns (`KitTrackingService.js`, `JavaScript.html`)

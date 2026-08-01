@@ -4293,11 +4293,16 @@ function getNotifications(username) {
       if (kitLast > 1) {
         var kitRows = kitSheet.getRange(2, 1, kitLast - 1, KIT_LAST_COL).getValues();
         var addrPending = 0;
+        var reimbPending = 0;
         kitRows.forEach(function(r) {
           var addrStatus  = String(r[KIT_COL.ADDR_STATUS - 1]  || '').trim();
           var orderPlaced = String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
           var refunded    = String(r[KIT_COL.REFUNDED - 1]     || '').trim().toUpperCase() === 'TRUE';
           if (addrStatus === 'Received' && !orderPlaced && !refunded) addrPending++;
+
+          var isReimb    = String(r[KIT_COL.REIMBURSEMENT - 1]        || '').trim().toUpperCase() === 'TRUE';
+          var reimbStatus = String(r[KIT_COL.REIMBURSEMENT_STATUS - 1] || '').trim();
+          if (isReimb && reimbStatus === 'Pending') reimbPending++;
         });
         if (addrPending > 0) {
           items.push({
@@ -4308,6 +4313,17 @@ function getNotifications(username) {
             body:     'Ready to place order — waiting on you.',
             action:   'openKitTracking',
             priority: 1
+          });
+        }
+        if (reimbPending > 0) {
+          items.push({
+            type:     'kit_reimbursement_pending',
+            icon:     'fa-hand-holding-usd',
+            color:    '#7c3aed',
+            title:    reimbPending + ' reimbursement' + (reimbPending > 1 ? 's' : '') + ' pending',
+            body:     'Parent purchased kit(s) — waiting on payback.',
+            action:   'openKitTracking',
+            priority: 2
           });
         }
       }

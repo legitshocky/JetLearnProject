@@ -73,13 +73,27 @@ var KIT_COL = {
   LINK_OPEN_COUNT:      38,  // Number of times the public address page was loaded
   LINK_FIRST_OPENED_AT: 39,  // Timestamp of first open
   LINK_LAST_OPENED_AT:  40,  // Timestamp of most recent open
-  ADDR_SUBMITTED_AT:    41   // Timestamp the parent actually submitted the form
+  ADDR_SUBMITTED_AT:    41,  // Timestamp the parent actually submitted the form
+  // Parent-purchased/reimbursement columns (appended — AP..AV) — used when
+  // an address issue or local out-of-stock means the parent buys the kit
+  // themselves and JetLearn reimburses on invoice, instead of JetLearn
+  // ordering it. The actual expense still lands in PRICE/SITE/SENT_BY
+  // (same columns the normal flow uses) so it shows up in existing expense
+  // views — these columns are only the extra reimbursement-specific tracking
+  // on top (invoice proof, pending/paid status).
+  REIMBURSEMENT:            42,  // 'TRUE' / '' — was this kit parent-purchased for reimbursement
+  REIMBURSEMENT_AMOUNT:     43,
+  REIMBURSEMENT_INVOICE_LINK: 44,
+  REIMBURSEMENT_REASON:     45,  // Address/Delivery Issue, Out of Stock in Region, Other
+  REIMBURSEMENT_STATUS:     46,  // 'Pending' / 'Reimbursed'
+  REIMBURSEMENT_REQUESTED_AT: 47,
+  REIMBURSEMENT_PAID_AT:    48
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
 // KIT_COL.REFUNDED) for any full-row range read, since REFUNDED is no
 // longer the last column.
-var KIT_LAST_COL = KIT_COL.ADDR_SUBMITTED_AT;
+var KIT_LAST_COL = KIT_COL.REIMBURSEMENT_PAID_AT;
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
 // Fetch current learning_kit_cost directly from deal GET — bypasses search cache
@@ -2382,9 +2396,19 @@ function getKitTrackingData() {
         subscription: String(r[12] || '').trim(),   // M: Subscription
         roadmap:      String(r[13] || '').trim(),   // N: Roadmap
         sentBy:       String(r[14] || '').trim(),   // O: Sent By
-        phone:        String(r[19] || '').replace(/\D/g, '')  // T: Phone Sent To
+        phone:        String(r[19] || '').replace(/\D/g, ''),  // T: Phone Sent To
+        // Reimbursement (parent-purchased kits)
+        isReimbursement:      String(r[KIT_COL.REIMBURSEMENT - 1] || '').trim().toUpperCase() === 'TRUE',
+        reimbursementAmount:  String(r[KIT_COL.REIMBURSEMENT_AMOUNT - 1] || '').trim(),
+        reimbursementInvoiceLink: String(r[KIT_COL.REIMBURSEMENT_INVOICE_LINK - 1] || '').trim(),
+        reimbursementReason:  String(r[KIT_COL.REIMBURSEMENT_REASON - 1] || '').trim(),
+        reimbursementStatus:  String(r[KIT_COL.REIMBURSEMENT_STATUS - 1] || '').trim()
       });
     });
+
+    var reimbursementPendingCount = rows.filter(function(r) {
+      return r.isReimbursement && r.reimbursementStatus === 'Pending';
+    }).length;
 
     // Stats
     var stats = {
@@ -2397,6 +2421,7 @@ function getKitTrackingData() {
       refunded:    rows.filter(function(r) { return r.status === 'refunded'; }).length,
       addressReceivedPendingOrder: rows.filter(function(r) { return r.status === 'addr_received_pending_order'; }).length,
       needsCall:   rows.filter(function(r) { return r.needsCall; }).length,
+      reimbursementPending: reimbursementPendingCount,
       addressAwaitingReply: rows.filter(function(r) { return r.inAddressPipeline && r.addrStatus === 'Requested'; }).length,
       askingAddressTotal: rows.filter(function(r) { return r.inAddressPipeline; }).length
     };
@@ -3330,6 +3355,121 @@ function markKitOrderPlaced(rowIndex, payload) {
     return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus, waTrackStatus: waTrackStatus };
   } catch(e) {
     Logger.log('[KitTracking] markKitOrderPlaced ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── "Parent Purchased (Reimburse)" — used when an address issue or local
+// out-of-stock means the parent buys the kit themselves instead of JetLearn
+// ordering it, and JetLearn reimburses once they share the invoice. The
+// actual expense (payload.amount) lands in the SAME PRICE/SITE/SENT_BY
+// columns the normal Sent-By-Us flow writes, so it shows up in existing
+// expense views unchanged — the REIMBURSEMENT_* columns are purely extra
+// tracking (invoice proof + pending/paid status) on top of that.
+// No parent-facing WhatsApp is sent here — they already have the kit in
+// hand (or are buying it themselves), there's nothing to notify them of.
+function markKitReimbursement(rowIndex, payload) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  payload = payload || {};
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+
+    var addrStatus = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    if (addrStatus !== 'Received') {
+      return { success: false, message: 'Address must be Received before recording a reimbursement.' };
+    }
+
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+
+    if (payload.purchaseDate) sheet.getRange(rowIndex, KIT_COL.DATE_OF_ORDER).setValue(payload.purchaseDate);
+    sheet.getRange(rowIndex, KIT_COL.ORDER_PLACED).setValue('TRUE');
+    sheet.getRange(rowIndex, KIT_COL.ORDER_PLACED_AT).setValue(new Date());
+    sheet.getRange(rowIndex, KIT_COL.ORDER_STORE).setValue('Parent Purchased');
+
+    // Same columns the normal flow uses — this is what makes it show up in
+    // existing expense views without any separate reporting needed.
+    if (payload.amount) sheet.getRange(rowIndex, KIT_COL.PRICE).setValue(payload.amount);
+    sheet.getRange(rowIndex, KIT_COL.SITE).setValue('Parent Purchased');
+    if (payload.sentBy) sheet.getRange(rowIndex, KIT_COL.SENT_BY).setValue(payload.sentBy);
+
+    var now = new Date();
+    sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT).setValue('TRUE');
+    if (payload.amount) sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_AMOUNT).setValue(payload.amount);
+    if (payload.invoiceLink) sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_INVOICE_LINK).setValue(payload.invoiceLink);
+    if (payload.reason) sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_REASON).setValue(payload.reason);
+    sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_STATUS).setValue('Pending');
+    sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_REQUESTED_AT).setValue(now);
+
+    var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+    var hsData = (hs && hs.success) ? hs.data : null;
+
+    if (hsData && hsData.country) {
+      try { sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(hsData.country); } catch(cne) {}
+    }
+
+    var hsNoteStatus = 'not_attempted';
+    try {
+      if (hsData && hsData.dealId) {
+        _addNoteToDeal(hsData.dealId,
+          '[Kit Reimbursement] Parent purchased ' + kitName + ' themselves on ' + _formatDMY(new Date()) +
+          (payload.reason ? ' — reason: ' + payload.reason : '') +
+          (payload.amount ? '. Amount: €' + payload.amount : '') +
+          (payload.invoiceLink ? '. Invoice: ' + payload.invoiceLink : '') +
+          '. Reimbursement status: Pending.');
+        hsNoteStatus = 'added';
+      } else {
+        hsNoteStatus = 'no_deal_id';
+      }
+    } catch(ne) {
+      hsNoteStatus = 'failed: ' + ne.message;
+      Logger.log('[KitTracking] markKitReimbursement HS note failed: ' + ne.message);
+    }
+
+    // Same accumulation the normal flow does — a reimbursed kit is still a
+    // real cost to JetLearn.
+    if (payload.amount && hsData && hsData.dealId) {
+      try {
+        var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+        var existingCost = _getHubSpotDealKitCost(hsData.dealId, token);
+        _patchHubSpotKitCost(hsData.dealId, token, existingCost + parseFloat(payload.amount));
+      } catch(pe) {
+        Logger.log('[KitTracking] markKitReimbursement learning_kit_cost patch failed: ' + pe.message);
+      }
+    }
+
+    Logger.log('[KitTracking] Reimbursement recorded for row=' + rowIndex + ' jlid=' + jlid + ' hsNote=' + hsNoteStatus);
+    return { success: true, hsNoteStatus: hsNoteStatus };
+  } catch(e) {
+    Logger.log('[KitTracking] markKitReimbursement ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// Closes out a pending reimbursement once ops has actually paid the parent
+// back — flips REIMBURSEMENT_STATUS to 'Reimbursed' and stamps the date.
+function markKitReimbursementPaid(rowIndex) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var sheet = _getKitSheet();
+    var jlid = String(sheet.getRange(rowIndex, KIT_COL.JLID).getValue() || '').trim();
+    sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_STATUS).setValue('Reimbursed');
+    sheet.getRange(rowIndex, KIT_COL.REIMBURSEMENT_PAID_AT).setValue(new Date());
+
+    try {
+      var hs = jlid ? fetchHubspotByJlid(jlid) : null;
+      if (hs && hs.success && hs.data && hs.data.dealId) {
+        _addNoteToDeal(hs.data.dealId, '[Kit Reimbursement] Reimbursement paid on ' + _formatDMY(new Date()) + '.');
+      }
+    } catch(ne) {
+      Logger.log('[KitTracking] markKitReimbursementPaid HS note failed: ' + ne.message);
+    }
+
+    Logger.log('[KitTracking] Reimbursement marked paid for row=' + rowIndex);
+    return { success: true };
+  } catch(e) {
+    Logger.log('[KitTracking] markKitReimbursementPaid ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
 }

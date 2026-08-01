@@ -11480,6 +11480,12 @@ function refreshKitBadgesInBackground() {
                 if (c > 0) { callBadge.textContent = c; callBadge.style.display = 'inline-flex'; }
                 else callBadge.style.display = 'none';
             }
+            const reimbBadge = document.getElementById('kitReimbursementBadge');
+            if (reimbBadge) {
+                const r = s.reimbursementPending || 0;
+                if (r > 0) { reimbBadge.textContent = r; reimbBadge.style.display = 'inline-flex'; }
+                else reimbBadge.style.display = 'none';
+            }
 
             if (_lastKitAddrReceivedCount !== null && n > _lastKitAddrReceivedCount) {
                 const added = n - _lastKitAddrReceivedCount;
@@ -13857,6 +13863,12 @@ function loadKitTrackingPage() {
         if (n > 0) { callBadge.textContent = n; callBadge.style.display = 'inline-flex'; }
         else callBadge.style.display = 'none';
       }
+      const reimbBadge = document.getElementById('kitReimbursementBadge');
+      if (reimbBadge) {
+        const r = s.reimbursementPending || 0;
+        if (r > 0) { reimbBadge.textContent = r; reimbBadge.style.display = 'inline-flex'; }
+        else reimbBadge.style.display = 'none';
+      }
 
       renderKitTrackingTable();
       // Keep the Asking Address badge fresh regardless of which tab is active
@@ -14015,7 +14027,14 @@ function renderKitTrackingTable(filterArg) {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'addr_received_pending_order') {
       var orderDetailsBtn = '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>';
-      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + orderDetailsBtn + msgBtn + trackBtn + editBtn + refundBtn;
+      var reimburseBtn = '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>';
+      actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + reimburseBtn + orderDetailsBtn + msgBtn + trackBtn + editBtn + refundBtn;
+    } else if (row.isReimbursement && row.reimbursementStatus === 'Pending') {
+      var payBtn = '<button onclick="event.stopPropagation();ktMarkReimbursed(' + row.rowIndex + ', this)" style="background:#7c3aed;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;" title="' + (row.reimbursementAmount ? 'Amount: €' + escapeHtml(row.reimbursementAmount) : '') + '"><i class="fas fa-hand-holding-usd"><\/i> Mark Reimbursed<\/button>';
+      var invoiceBtn = row.reimbursementInvoiceLink
+        ? '<a href="' + escapeHtml(row.reimbursementInvoiceLink) + '" target="_blank" onclick="event.stopPropagation();" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;text-decoration:none;display:inline-block;" title="View invoice/proof"><i class="fas fa-receipt"><\/i> Invoice<\/a>'
+        : '';
+      actionBtn = payBtn + invoiceBtn + msgBtn + trackBtn + editBtn + refundBtn;
     } else {
       actionBtn = msgBtn + trackBtn + sendTrackBtn + editBtn + refundBtn;
     }
@@ -14183,6 +14202,7 @@ function renderKitAskingAddressTable() {
       : '';
     const orderBtn = row.addrStatus === 'Received'
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
+        + '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
       : '<span style="font-size:0.72rem;color:#94a3b8;">Waiting on parent<\/span>';
 
@@ -14513,6 +14533,132 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
 function ktCloseOrderPlaced() {
   const modal = document.getElementById('ktOrderPlacedModal');
   if (modal) modal.style.display = 'none';
+}
+
+// ── "Parent Purchased (Reimburse)" — for when an address issue or local
+// out-of-stock means the parent buys the kit themselves and JetLearn
+// reimburses once they share the invoice. Separate flow from Mark Order
+// Placed since JetLearn didn't do the ordering — the amount still lands in
+// the same Price/Site/Sent By columns for expense visibility, plus extra
+// invoice-link + pending/paid tracking on top.
+function ktOpenReimbursement(rowIndex, jlid, learnerName, kitName) {
+  let modal = document.getElementById('ktReimbursementModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktReimbursementModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:28px 32px;width:420px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">'
+      + '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-hand-holding-usd" style="color:#7c3aed;margin-right:8px;"><\/i>Parent Purchased (Reimburse)<\/h3>'
+      + '<button onclick="ktCloseReimbursement()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<p id="ktReimbSubtitle" style="margin:0 0 18px;font-size:0.82rem;color:#64748b;"><\/p>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Reason<\/label>'
+      + '<select id="ktReimbReason" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;background:#fff;">'
+      +   '<option value="">Select reason…<\/option>'
+      +   '<option>Address/Delivery Issue<\/option>'
+      +   '<option>Out of Stock in Region<\/option>'
+      +   '<option>Other<\/option>'
+      + '<\/select>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Purchase Date<\/label>'
+      + '<input id="ktReimbPurchaseDate" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Amount Paid by Parent (EUR)<\/label>'
+      + '<input id="ktReimbAmount" type="number" placeholder="e.g. 35" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Invoice / Proof Link<\/label>'
+      + '<input id="ktReimbInvoiceLink" type="url" placeholder="https://…" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Sent By / Recorded By<\/label>'
+      + '<input id="ktReimbSentBy" type="text" placeholder="e.g. Shubham" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;">'
+      + '<div style="display:flex;gap:10px;">'
+      + '<button onclick="ktCloseReimbursement()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      + '<button id="ktReimbSaveBtn" onclick="ktSaveReimbursement()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#7c3aed;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-check"><\/i> Record Reimbursement<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktReimbSubtitle').textContent = learnerName + (kitName ? ' — ' + kitName : '') + (jlid ? ' (' + jlid + ')' : '');
+  const _todayD = new Date();
+  const today = _todayD.getFullYear() + '-' + String(_todayD.getMonth()+1).padStart(2,'0') + '-' + String(_todayD.getDate()).padStart(2,'0');
+  document.getElementById('ktReimbReason').value = '';
+  document.getElementById('ktReimbPurchaseDate').value = today;
+  document.getElementById('ktReimbAmount').value = '';
+  document.getElementById('ktReimbInvoiceLink').value = '';
+  document.getElementById('ktReimbSentBy').value = '';
+  modal.style.display = 'flex';
+}
+
+function ktCloseReimbursement() {
+  const modal = document.getElementById('ktReimbursementModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function ktSaveReimbursement() {
+  const modal    = document.getElementById('ktReimbursementModal');
+  const rowIndex = parseInt(modal.dataset.rowIndex, 10);
+  const saveBtn  = document.getElementById('ktReimbSaveBtn');
+
+  const toDMY = (iso) => { if (!iso) return ''; const p = iso.split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ''; };
+
+  const amount = (document.getElementById('ktReimbAmount').value || '').trim();
+  const invoiceLink = (document.getElementById('ktReimbInvoiceLink').value || '').trim();
+  if (!amount) { showToast('warning', 'Missing Amount', 'Enter how much the parent paid.'); return; }
+  if (!invoiceLink) { showToast('warning', 'Missing Invoice', 'Add a link to the invoice/proof the parent shared.'); return; }
+
+  const payload = {
+    reason:        (document.getElementById('ktReimbReason').value || '').trim(),
+    purchaseDate:  toDMY((document.getElementById('ktReimbPurchaseDate').value || '').trim()),
+    amount:        amount,
+    invoiceLink:   invoiceLink,
+    sentBy:        (document.getElementById('ktReimbSentBy').value || '').trim()
+  };
+
+  const origHTML = saveBtn.innerHTML;
+  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Saving...';
+  saveBtn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      if (result && result.success) {
+        ktCloseReimbursement();
+        showToast('success', 'Reimbursement Recorded', 'Marked pending — use "Mark Reimbursed" once the parent is paid back.');
+        loadKitTrackingPage();
+      } else {
+        showToast('error', 'Could Not Save', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      saveBtn.innerHTML = origHTML;
+      saveBtn.disabled = false;
+      showToast('error', 'Could Not Save', err.message || String(err));
+    })
+    .markKitReimbursement(rowIndex, payload);
+}
+
+function ktMarkReimbursed(rowIndex, btn) {
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  btn.disabled = true;
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (result && result.success) {
+        showToast('success', 'Reimbursement Paid', 'Marked as reimbursed.');
+        loadKitTrackingPage();
+      } else {
+        btn.innerHTML = origHTML;
+        btn.disabled = false;
+        showToast('error', 'Could Not Update', (result && result.message) || 'Unknown error.');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.innerHTML = origHTML;
+      btn.disabled = false;
+      showToast('error', 'Could Not Update', err.message || String(err));
+    })
+    .markKitReimbursementPaid(rowIndex);
 }
 
 // ── "Order Details" — everything needed to actually place the order
