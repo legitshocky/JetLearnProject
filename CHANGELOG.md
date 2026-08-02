@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-08-02] — Concept C Rolled Out to Remaining 4 Forms (V8.42)
+
+### Migration, Invoice Generator, Minecraft, Roblox all restructured (`Index.html`)
+- Same reusable rail + icon-badge-section pattern from V8.41 (Onboarding) applied to the rest, per explicit request to redesign all forms.
+- **Migration** (~15 fields, the most custom-styled form — WhatsApp contact picker, booking/slot-suggester blocks): 5 sections — Learner & Contact, Teacher & Booking, Course & Reason, Class & Schedule, Communication.
+- **Onboarding Email & Invoice Generator** (~30 fields, the heaviest form): 5 sections — Core Information, Schedule & Links, Financial & Invoice, Attachments, Send Options — reusing the form's own pre-existing `<h3>` section boundaries rather than inventing new groupings.
+- **Minecraft / Roblox** (4 fields each): 2 sections each — Learner & Recipient, Attachments & Notes. Kept the rail for consistency even though these are short enough not to need scrolling.
+- Field order was preserved exactly within each section — no field was moved relative to its neighbors, only wrapped into section/rail markup, to avoid any risk to JS behavior that might depend on DOM structure.
+- Caught and fixed two off-by-one div-nesting mistakes during this pass (Migration's Schedule→Communication transition, Invoice Generator's Core→Schedule transition) via a repeatable div-balance script, not by eyeballing — every tab re-verified individually plus the whole `communicationPage` end to end (final depth 0), and every field `id` re-confirmed present exactly once (two `data-form-id`/`data-container-id` substring matches were false positives, not real duplicates).
+
+---
+
 ## [2026-08-02] — Onboarding Form → Concept C: Anchor Rail + Icon-Badge Sections (V8.41)
 
 ### Reusable "concept C" pattern established (`Index.html`, `JavaScript.html`, `Styles.html`)

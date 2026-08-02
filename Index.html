@@ -603,10 +603,21 @@
 
         <!-- Migration Tab -->
         <div id="migrationTab" class="tab-content">
-          <div class="form-container">
+          <div class="form-container form-container-wide">
             <h2 class="form-title">Learner Migration Details</h2>
             <form id="migrationForm"> <input type="hidden" id="globalMigrationTimezone" value="">
-              <div class="form-grid">
+              <div class="formc-shell">
+                <div class="formc-rail">
+                  <a href="#migSecLearner" class="current">Learner &amp; Contact</a>
+                  <a href="#migSecTeacher">Teacher &amp; Booking</a>
+                  <a href="#migSecCourse">Course &amp; Reason</a>
+                  <a href="#migSecSchedule">Class &amp; Schedule</a>
+                  <a href="#migSecComms">Communication</a>
+                </div>
+                <div class="formc-main">
+              <div class="form-section" id="migSecLearner">
+                <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Learner &amp; Contact</div>
+                <div class="form-grid">
                 <div class="form-group">
                     <label for="jlid" class="form-label">JLID</label>
                     <div style="display: flex; gap: 0.5rem;">
@@ -642,6 +653,12 @@
                     <div id="emailContactList" style="display:flex;flex-direction:column;gap:6px;"></div>
                   </div>
                 </div>
+                </div>
+              </div>
+
+              <div class="form-section" id="migSecTeacher">
+                <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-chalkboard-teacher"></i></span>Teacher &amp; Booking</div>
+                <div class="form-grid">
                 <div class="form-group"><label for="oldTeacher" class="form-label">Old Teacher (Optional)</label><select id="oldTeacher" class="form-control form-select"><option value="" disabled selected>Select old teacher</option></select></div>
                 <div class="form-group"><label for="newTeacher" class="form-label">New Teacher</label><select id="newTeacher" class="form-control form-select" required><option value="" disabled selected>Select new teacher</option></select></div>
                 <div class="form-group full-width" style="background:#f8faff;border:1px solid #e0e7ff;border-radius:10px;padding:14px 16px;">
@@ -674,6 +691,12 @@
                   </div>
                   <div id="bookClassesWithNewTeacherStatus" style="font-size:0.82rem;margin-top:8px;"></div>
                 </div>
+                </div>
+              </div>
+
+              <div class="form-section" id="migSecCourse">
+                <div class="form-section-title"><span class="sec-icon c-teal"><i class="fas fa-book"></i></span>Course &amp; Reason</div>
+                <div class="form-grid">
                 <div class="form-group"><label for="migrationCourse" class="form-label">Course</label><select id="migrationCourse" class="form-control form-select" required><option value="" disabled selected>Select course</option></select></div>
 
                 <!-- ── CCTC: Old / New course fields — shown only for Course Change Teacher Change ── -->
@@ -764,7 +787,13 @@
                         </div>
                     </div>
                 </div>
-                
+
+                </div>
+              </div>
+
+              <div class="form-section" id="migSecSchedule">
+                <div class="form-section-title"><span class="sec-icon c-amber"><i class="fas fa-calendar-alt"></i></span>Class &amp; Schedule</div>
+                <div class="form-grid">
                 <div class="form-group full-width">
                 <label for="migrationClassLink" class="form-label">Class Link (Zoom / Google Meet)<span style="float:right; font-size:0.8em; font-weight:normal; color:var(--text-light);"><input type="checkbox" id="migrationLinkManual"> Manual/GMeet</span></label><input type="text" id="migrationClassLink" class="form-control" placeholder="Will auto-generate based on JLID if left empty"></div>
                 <div class="form-group">
@@ -797,7 +826,12 @@
                         </div>
                     </div>
                 </div>
+                </div>
+              </div>
 
+              <div class="form-section" id="migSecComms">
+                <div class="form-section-title"><span class="sec-icon c-blue"><i class="fas fa-bullhorn"></i></span>Communication</div>
+                <div class="form-grid">
                 <!-- NEW: Communication Options -->
       <div class="form-group full-width" style="background: var(--comm-box-bg, #f8f9fa); padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0; color: #374151;">
           <label class="form-label" style="margin-bottom: 10px; display:block; color: var(--primary);">
@@ -835,7 +869,10 @@
           </div>
       </div>
 
-              </div> <!-- End of form-grid -->
+              </div>
+                </div>
+                </div>
+              </div> <!-- End of formc-shell -->
 
               <!-- NEW: Actions with Review Button -->
               <div class="form-actions" style="gap: 10px;">
@@ -980,12 +1017,22 @@
         <!-- Onboarding Email & Invoice Generator Tab -->
          <input type="hidden" id="onboardingParentDealId">
         <div id="onboardingParentTab" class="tab-content">
-            <div class="form-container" style="max-width: 950px;">
+            <div class="form-container form-container-wide">
             <h2 class="form-title">Onboarding Email & Invoice Generator</h2>
             <form id="onboardingParentEmailForm">
-                
+              <div class="formc-shell">
+                <div class="formc-rail">
+                  <a href="#opSecCore" class="current">Core Information</a>
+                  <a href="#opSecSchedule">Schedule &amp; Links</a>
+                  <a href="#opSecFinancial">Financial &amp; Invoice</a>
+                  <a href="#opSecAttachments">Attachments</a>
+                  <a href="#opSecSend">Send Options</a>
+                </div>
+                <div class="formc-main">
+
                 <!-- Section 1: Core Information -->
-                <h3 class="dashboard-section-title" style="font-size: 1.1rem; margin-top: 0;">Core Onboarding Information</h3>
+                <div class="form-section" id="opSecCore">
+                <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Core Onboarding Information</div>
                 <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr;">
                     <div class="form-group">
                         <label for="onboardingParentJlid" class="form-label">JLID</label>
@@ -1005,9 +1052,11 @@
                     <div class="form-group"><label for="onboardingParentClsManager" class="form-label">CLS Manager</label><select id="onboardingParentClsManager" class="form-control form-select" required></select></div>
                     <div class="form-group"><label for="onboardingParentTpManager" class="form-label">TP Manager</label><select id="onboardingParentTpManager" class="form-control form-select" required></select></div>
                 </div>
+                </div>
 
                 <!-- Section 2: Schedule Information -->
-                <h3 class="dashboard-section-title" style="font-size: 1.1rem;">Schedule & Links</h3>
+                <div class="form-section" id="opSecSchedule">
+                <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-calendar-alt"></i></span>Schedule &amp; Links</div>
                  <div class="form-grid">
                     <div class="form-group"><label for="onboardingParentStartDate" class="form-label">Start Date</label><input type="date" id="onboardingParentStartDate" class="form-control" required></div>
                     <div class="form-group"><label for="onboardingParentEndDate" class="form-label">End Date</label><input type="date" id="onboardingParentEndDate" class="form-control" required></div>
@@ -1025,9 +1074,11 @@
                     <div class="form-group"><label for="onboardingParentPracticeDocumentLink" class="form-label">Practice Doc Link (Optional)</label><input type="url" id="onboardingParentPracticeDocumentLink" class="form-control"></div>
                     <div class="form-group"><label for="onboardingParentJetGuide" class="form-label">JetGuide</label><select id="onboardingParentJetGuide" class="form-control form-select" required></select></div>
                 </div>
-                
+                </div>
+
                 <!-- Section 3: Financial & Invoice Information -->
-                <h3 class="dashboard-section-title" style="font-size: 1.1rem;">Financial & Invoice Details</h3>
+                <div class="form-section" id="opSecFinancial">
+                <div class="form-section-title"><span class="sec-icon c-teal"><i class="fas fa-file-invoice-dollar"></i></span>Financial &amp; Invoice Details</div>
                 <div class="form-grid" style="grid-template-columns: repeat(3, 1fr);">
                     <div class="form-group"><label for="onboardingParentPlanName" class="form-label">Plan Name</label><select id="onboardingParentPlanName" class="form-control form-select" required></select></div>
                     <div class="form-group"><label for="onboardingParentSubscriptionTenure" class="form-label">Subscription Tenure (Months)</label><select id="onboardingParentSubscriptionTenure" class="form-control form-select" required></select></div>
@@ -1116,17 +1167,21 @@
                   <div class="form-group"><label id="onboardingParentAmountPaidLabel" class="form-label">Amount Paid</label><input type="text" id="onboardingParentAmountPaidDisplay" class="form-control" readonly style="font-weight: bold; color: var(--success);"></div>
                   <div class="form-group"><label class="form-label">Balance Due</label><input type="text" id="onboardingParentBalanceDueDisplay" class="form-control" readonly style="font-weight: bold; color: var(--danger);"></div>
                 </div>
-
+                </div>
 
                 <!-- Section 4: Attachments & Final Touches -->
-                <h3 class="dashboard-section-title" style="font-size: 1.1rem;">Attachments & Final Touches</h3>
+                <div class="form-section" id="opSecAttachments">
+                <div class="form-section-title"><span class="sec-icon c-amber"><i class="fas fa-paperclip"></i></span>Attachments &amp; Final Touches</div>
                 <div class="form-grid">
                     <div class="form-group full-width"><label for="onboardingParentSpecialNeeds" class="form-label">Special Needs (if any)</label><textarea id="onboardingParentSpecialNeeds" class="form-control" rows="3" placeholder="Enter any special needs or notes for the teacher"></textarea></div>
                     <div class="form-group full-width"><label for="onboardingParentAttachmentsInput" class="form-label">Other Attachments (Optional)</label><input type="file" id="onboardingParentAttachmentsInput" multiple class="form-control"></div>
                     <div class="form-group full-width"><label for="onboardingParentComments" class="form-label">Additional Comments for Email</label><textarea id="onboardingParentComments" class="form-control" rows="3"></textarea></div>
                 </div>
+                </div>
 
-                        <!-- Section 5: Smart Action -->
+                <!-- Section 5: Smart Action -->
+                <div class="form-section" id="opSecSend">
+                <div class="form-section-title"><span class="sec-icon c-blue"><i class="fas fa-paper-plane"></i></span>Send Options</div>
             <div class="form-group full-width" style="background-color: var(--secondary); padding: 1rem; border-radius: 8px; border: 1px solid var(--primary-light); display: flex; flex-direction: column; gap: 10px;">
                 
                 <!-- EXISTING INVOICE CHECKBOX -->
@@ -1154,6 +1209,9 @@
                     <div id="onboardingEmailContactList" style="display:flex;flex-direction:column;gap:6px;"></div>
                 </div>
             </div>
+                </div>
+                </div>
+                </div>
 
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="onboardingParentEmailForm" data-container-id="onboardingParentClassSessionsContainer" data-prefix="onboardingParent"><i class="fas fa-undo"></i> Reset</button>
@@ -1167,9 +1225,17 @@
 
         <!-- Minecraft Email Tab -->
         <div id="minecraftTab" class="tab-content">
-          <div class="form-container">
+          <div class="form-container form-container-wide">
             <h2 class="form-title">Minecraft Installation Email</h2>
             <form id="minecraftEmailForm">
+              <div class="formc-shell">
+                <div class="formc-rail">
+                  <a href="#mcSecLearner" class="current">Learner &amp; Recipient</a>
+                  <a href="#mcSecAttachments">Attachments &amp; Notes</a>
+                </div>
+                <div class="formc-main">
+              <div class="form-section" id="mcSecLearner">
+                <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Learner &amp; Recipient</div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="minecraftJlid" class="form-label">JLID (Optional)</label>
@@ -1195,6 +1261,10 @@
                         <select id="minecraftCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select>
                     </div>
                 </div>
+              </div>
+
+              <div class="form-section" id="mcSecAttachments">
+                <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-paperclip"></i></span>Attachments &amp; Notes</div>
                 <div class="form-group full-width">
                     <label for="minecraftAttachmentsInput" class="form-label">Attachments (Optional)</label>
                     <input type="file" id="minecraftAttachmentsInput" multiple class="form-control">
@@ -1213,6 +1283,10 @@
                     <label for="minecraftComments" class="form-label">Additional Comments (Optional)</label>
                     <textarea id="minecraftComments" class="form-control" rows="3" placeholder="Add any specific comments for this email..."></textarea>
                 </div>
+              </div>
+
+                </div>
+              </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="minecraftEmailForm" data-prefix="minecraft"><i class="fas fa-undo"></i> Reset Form</button>
                     <button type="button" class="btn btn-outline preview-email-btn" data-email-type="minecraft" onclick="getAndRenderEmailPreview('minecraft')"><i class="fas fa-eye"></i> Review Email</button>
@@ -1224,9 +1298,17 @@
 
         <!-- Roblox Email Tab -->
         <div id="robloxTab" class="tab-content">
-          <div class="form-container">
+          <div class="form-container form-container-wide">
             <h2 class="form-title">Roblox Installation Email</h2>
             <form id="robloxEmailForm">
+              <div class="formc-shell">
+                <div class="formc-rail">
+                  <a href="#rbxSecLearner" class="current">Learner &amp; Recipient</a>
+                  <a href="#rbxSecAttachments">Attachments &amp; Notes</a>
+                </div>
+                <div class="formc-main">
+              <div class="form-section" id="rbxSecLearner">
+                <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Learner &amp; Recipient</div>
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="robloxJlid" class="form-label">JLID (Optional)</label>
@@ -1252,6 +1334,10 @@
                         <select id="robloxCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select>
                     </div>
                 </div>
+              </div>
+
+              <div class="form-section" id="rbxSecAttachments">
+                <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-paperclip"></i></span>Attachments &amp; Notes</div>
                 <div class="form-group full-width">
                     <label for="robloxAttachmentsInput" class="form-label">Attachments (Optional)</label>
                     <input type="file" id="robloxAttachmentsInput" multiple class="form-control">
@@ -1270,6 +1356,10 @@
                     <label for="robloxComments" class="form-label">Additional Comments (Optional)</label>
                     <textarea id="robloxComments" class="form-control" rows="3" placeholder="Add any specific comments for this email..."></textarea>
                 </div>
+              </div>
+
+                </div>
+              </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-outline reset-form-btn" data-form-id="robloxEmailForm" data-prefix="roblox"><i class="fas fa-undo"></i> Reset Form</button>
                     <button type="button" class="btn btn-outline preview-email-btn" data-email-type="roblox" onclick="getAndRenderEmailPreview('roblox')"><i class="fas fa-eye"></i> Review Email</button>
