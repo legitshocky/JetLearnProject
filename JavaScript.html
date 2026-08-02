@@ -2515,6 +2515,41 @@ function commOpenPanel(tabId) {
     wrapper.classList.add('open');
     if (grid) grid.style.display = 'none';
     window.scrollTo(0, 0);
+    initFormRailScrollspy(tabId);
+}
+
+// Anchor-rail scrollspy for the sectioned forms (concept C) — smooth-scrolls
+// on click, highlights the current section's rail link while scrolling.
+// Scoped to whichever tab just opened; harmless no-op for tabs without a rail.
+var _commRailObserver = null;
+function initFormRailScrollspy(tabId) {
+    if (_commRailObserver) { _commRailObserver.disconnect(); _commRailObserver = null; }
+    var tabEl = document.getElementById(tabId + 'Tab');
+    if (!tabEl) return;
+    var rail = tabEl.querySelector('.formc-rail');
+    if (!rail) return;
+
+    var links = rail.querySelectorAll('a');
+    links.forEach(function (link) {
+        link.onclick = function (e) {
+            e.preventDefault();
+            var target = document.querySelector(link.getAttribute('href'));
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+    });
+
+    var sections = tabEl.querySelectorAll('.form-section[id]');
+    if (!sections.length) return;
+    _commRailObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+            if (!entry.isIntersecting) return;
+            var link = rail.querySelector('a[href="#' + entry.target.id + '"]');
+            if (!link) return;
+            links.forEach(function (l) { l.classList.remove('current'); });
+            link.classList.add('current');
+        });
+    }, { rootMargin: '-96px 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (sec) { _commRailObserver.observe(sec); });
 }
 
 function commClosePanel() {

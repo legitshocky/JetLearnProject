@@ -1023,19 +1023,54 @@
       grid-column: span 2;
     }
 
-    /* ── Grouped form sections (New Communication redesign) ── */
-    .form-container-wide { max-width: 960px; }
-    .form-section { margin-bottom: 2rem; }
-    .form-section:last-of-type { margin-bottom: 0; }
-    .form-section-title {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--primary); margin-bottom: 1rem; padding-bottom: 0.6rem;
-      border-bottom: 1px solid #eef0fe;
+    /* ── Grouped form sections, concept C (anchor rail + section cards) ──
+       Chosen direction for the New Communication form redesign. Reusable
+       across all 6 forms: .formc-shell wraps a sticky left rail + main
+       column of section cards, each card headed by a colored icon badge
+       matching the New Communication launcher cards' icon treatment. */
+    .form-container-wide { max-width: 1120px; }
+    .formc-shell { display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: start; }
+    .formc-rail { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 2px; }
+    .formc-rail a {
+      font-size: 0.82rem; color: #64748b; text-decoration: none; padding: 8px 12px;
+      border-radius: 8px; border-left: 2px solid transparent; font-weight: 500;
+      transition: background .15s, color .15s;
     }
-    .form-section-title i { font-size: 0.85rem; }
-    body.dark-mode .form-section-title { border-color: rgba(255,255,255,0.08); }
+    .formc-rail a:hover { background: #f8fafc; color: #374151; }
+    .formc-rail a.current { color: var(--primary); font-weight: 700; background: var(--primary-50, #eef0fe); border-left-color: var(--primary); }
+    body.dark-mode .formc-rail a { color: #94a3b8; }
+    body.dark-mode .formc-rail a:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
+    body.dark-mode .formc-rail a.current { background: rgba(99,102,241,0.15); }
+
+    .formc-main { display: flex; flex-direction: column; gap: 22px; }
+    .form-section {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
+      padding: 22px 24px; scroll-margin-top: 96px;
+    }
+    body.dark-mode .form-section { background: #1e293b; border-color: rgba(255,255,255,0.08); }
+    .form-section-title {
+      display: flex; align-items: center; gap: 12px;
+      font-size: 0.95rem; font-weight: 700; color: #1e293b;
+      margin-bottom: 1.1rem;
+    }
+    body.dark-mode .form-section-title { color: #f1f5f9; }
     .form-section .form-grid { margin-bottom: 0; }
+
+    .sec-icon {
+      width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
+      background: rgba(99,102,241,0.1); color: var(--primary);
+    }
+    .sec-icon.c-pink { background: rgba(236,72,153,0.1); color: var(--accent); }
+    .sec-icon.c-teal { background: #e1f5ee; color: #0f6e56; }
+    .sec-icon.c-amber { background: #fef6e7; color: #f59e0b; }
+    .sec-icon.c-blue { background: rgba(14,165,233,0.1); color: #0ea5e9; }
+    body.dark-mode .sec-icon.c-teal { background: #0f2e26; color: #5dcaa5; }
+
+    @media (max-width: 900px) {
+      .formc-shell { grid-template-columns: 1fr; }
+      .formc-rail { position: static; flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 6px; }
+    }
 
     .form-label {
       display: block;

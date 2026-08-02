@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-08-02] — Onboarding Form → Concept C: Anchor Rail + Icon-Badge Sections (V8.41)
+
+### Reusable "concept C" pattern established (`Index.html`, `JavaScript.html`, `Styles.html`)
+- User picked concept C from the 7 form-layout mockups. Onboarding form rebuilt as the reference implementation: sticky left rail (Learner / Class & Schedule / Internal Assignment) + each section as its own card, headed by a colored icon badge matching the New Communication launcher cards.
+- New reusable classes (`.formc-shell`, `.formc-rail`, `.form-section`, `.sec-icon` + color variants `c-pink`/`c-teal`/`c-amber`/`c-blue`) — built generic so the same pattern drops onto Migration, Invoice Generator, Minecraft, and Roblox without new CSS.
+- `initFormRailScrollspy()` — clicking a rail link smooth-scrolls to that section; an `IntersectionObserver` highlights whichever section is currently in view as you scroll, without a page reload. Runs automatically whenever `commOpenPanel()` opens a tab with a rail; harmless no-op for tabs without one.
+- Every field's `id`/`name`/`class` unchanged from V8.40 — only the wrapper structure changed. Div-balance and per-field-ID checks re-verified clean.
+- Migration, Invoice Generator, Minecraft, Roblox still pending — same pattern to be applied next.
+
+---
+
 ## [2026-08-02] — Redesign New Learner Onboarding into Grouped Sections (V8.40, preview)
 
 ### First of 6 forms restyled — preview before rolling out to the rest (`Index.html`, `Styles.html`)
