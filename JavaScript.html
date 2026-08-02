@@ -1331,8 +1331,11 @@ function switchPage(pageId, context = null) {
      function loadCommunicationForms() {
     showLoading('Loading form data...');
     
-    // Fix: Switch tab immediately so user sees structure even if data takes time
+    // Switch tab immediately so its fields exist for population below, then
+    // close the panel back down so the user lands on the launcher grid,
+    // not straight into the Onboarding form.
     switchCommunicationTab('onboarding');
+    commClosePanel();
 
     // Reset listener to avoid duplicates
     const communicationTabButtons = document.querySelectorAll('#communicationPage .tab-button');
@@ -2488,6 +2491,43 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
 
     // Load scheduled emails when that tab is activated
     if (tabId === 'scheduled') loadEmailQueueTab();
+
+    commOpenPanel(tabId);
+}
+
+// New Communication launcher — panel titles + which forms need the wide
+// variant (Migration and the Invoice Generator have far more fields than
+// the others, a 460px slide-over is too cramped for them).
+var COMM_PANEL_TITLES = {
+    onboarding:      'New Learner Onboarding',
+    migration:       'Learner Migration',
+    onboardingParent:'Onboarding Email & Invoice Generator',
+    minecraft:       'Minecraft Email',
+    roblox:          'Roblox Email',
+    scheduled:       'Scheduled'
+};
+var COMM_WIDE_PANELS = { migration: true, onboardingParent: true };
+
+function commOpenPanel(tabId) {
+    var wrapper  = document.getElementById('commPanelsWrapper');
+    var backdrop = document.getElementById('commPanelBackdrop');
+    var grid     = document.getElementById('commLauncherGrid');
+    var title    = document.getElementById('commPanelTitle');
+    if (!wrapper) return;
+    if (title) title.textContent = COMM_PANEL_TITLES[tabId] || 'New Communication';
+    wrapper.classList.toggle('comm-wide', !!COMM_WIDE_PANELS[tabId]);
+    wrapper.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    if (grid) grid.style.display = 'none';
+}
+
+function commClosePanel() {
+    var wrapper  = document.getElementById('commPanelsWrapper');
+    var backdrop = document.getElementById('commPanelBackdrop');
+    var grid     = document.getElementById('commLauncherGrid');
+    if (wrapper) wrapper.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    if (grid) grid.style.display = '';
 }
 
 

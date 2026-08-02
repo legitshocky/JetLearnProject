@@ -497,7 +497,7 @@
       <!-- Combined Communication Page -->
       <div id="communicationPage" class="page-content" style="display: none;">
         <div class="header"><h1 class="page-title">New Communication</h1></div>
-        <div class="page-tabs">
+        <div class="page-tabs" style="display:none;">
           <button class="tab-button active" data-tab="onboarding">New Learner Onboarding</button>
           <button class="tab-button" data-tab="migration">Learner Migration</button>
           <button class="tab-button" data-tab="onboardingParent">Onboarding Email & Invoice Generator</button>
@@ -505,6 +505,47 @@
           <button class="tab-button" data-tab="roblox">Roblox Email</button>
           <button class="tab-button" data-tab="scheduled" onclick="switchCommunicationTab('scheduled')"><i class="fas fa-calendar-alt" style="margin-right:5px;"></i>Scheduled</button>
         </div>
+
+        <!-- Launcher grid — default landing view for New Communication -->
+        <div class="comm-launcher-grid" id="commLauncherGrid">
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('onboarding')">
+            <div class="comm-launcher-icon"><i class="fas fa-user-plus"></i></div>
+            <h3>New Learner Onboarding</h3>
+            <p>Welcome email, teacher assignment and class schedule for a new learner.</p>
+          </button>
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('migration')">
+            <div class="comm-launcher-icon"><i class="fas fa-random"></i></div>
+            <h3>Learner Migration</h3>
+            <p>Move a learner to a new teacher and notify both sides.</p>
+          </button>
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('onboardingParent')">
+            <div class="comm-launcher-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+            <h3>Onboarding Email &amp; Invoice Generator</h3>
+            <p>Full onboarding with plan, subscription and invoice details.</p>
+          </button>
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('minecraft')">
+            <div class="comm-launcher-icon"><i class="fas fa-cube"></i></div>
+            <h3>Minecraft Email</h3>
+            <p>Setup instructions for the Minecraft coding track.</p>
+          </button>
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('roblox')">
+            <div class="comm-launcher-icon"><i class="fas fa-gamepad"></i></div>
+            <h3>Roblox Email</h3>
+            <p>Setup instructions for the Roblox coding track.</p>
+          </button>
+          <button type="button" class="comm-launcher-card" onclick="switchCommunicationTab('scheduled')">
+            <div class="comm-launcher-icon"><i class="fas fa-calendar-alt"></i></div>
+            <h3>Scheduled</h3>
+            <p>View and manage communications queued to send later.</p>
+          </button>
+        </div>
+
+        <div id="commPanelBackdrop" onclick="commClosePanel()"></div>
+        <div id="commPanelsWrapper">
+          <div class="comm-panel-header">
+            <h2 id="commPanelTitle">New Learner Onboarding</h2>
+            <button id="commPanelCloseBtn" onclick="commClosePanel()" title="Back"><i class="fas fa-times"></i></button>
+          </div>
 
         <!-- Onboarding Tab -->
         <div id="onboardingTab" class="tab-content active">
@@ -1238,6 +1279,7 @@
             </table>
           </div>
         </div>
+        </div><!-- end #commPanelsWrapper -->
       </div>
 
       <!-- Batch Processing Page -->

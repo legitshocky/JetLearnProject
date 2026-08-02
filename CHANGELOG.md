@@ -2,6 +2,18 @@
 
 ---
 
+## [2026-08-02] — New Communication Redesign: Launcher Grid + Slide-Over (V8.38)
+
+### Replaced the static horizontal tab bar with concept B from the design review (`Index.html`, `JavaScript.html`, `Styles.html`)
+- User picked "B — launcher grid" from 6 mocked-up concepts and asked to implement it, on condition every existing form field is preserved.
+- Landing view is now a card grid (`#commLauncherGrid`) — one card per send type (Onboarding, Migration, Invoice Generator, Minecraft, Roblox, Scheduled). Clicking a card opens that form as a slide-over panel (`#commPanelsWrapper`) instead of switching a horizontal tab.
+- **No form fields were touched or moved** — every existing `.tab-content` div (`onboardingTab`, `migrationTab`, `onboardingParentTab`, `minecraftTab`, `robloxTab`, `scheduledTab`) keeps its exact original markup/IDs, just wrapped in the new slide-over shell. All existing dropdown-population, validation, and submit logic is untouched.
+- Migration and Invoice Generator (the two field-heavy forms — ~15 and ~30 fields respectively) get a wide panel (900px, `.comm-wide`); the lighter forms (Onboarding ~9 fields, Minecraft/Roblox ~4 each) use a compact 460px slide-over — flagged as a real sizing constraint during the design review rather than forcing one width on everything.
+- `switchCommunicationTab()` (the existing tab-switch function, called from ~7 places across the app including cross-page "jump to migration" shortcuts) now also opens the panel automatically — every existing caller gets the new slide-over behavior for free, no other call sites needed changes.
+- Old `.page-tabs` bar kept in the DOM (hidden) rather than deleted, in case of a rollback.
+
+---
+
 ## [2026-07-30] — "Parent Purchased (Reimburse)" Flow (V8.37)
 
 ### New action for address-issue/out-of-stock cases where the parent buys the kit themselves (`KitTrackingService.js`, `HubSpotService.js`, `JavaScript.html`, `Index.html`)
