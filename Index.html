@@ -548,28 +548,45 @@
 
         <!-- Onboarding Tab -->
         <div id="onboardingTab" class="tab-content active">
-          <div class="form-container">
+          <div class="form-container form-container-wide">
             <h2 class="form-title">New Learner Onboarding Details</h2>
             <form id="onboardingForm">
-              <div class="form-grid">
-                <div class="form-group">
-                    <label for="onboardingJlid" class="form-label">JLID</label>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <input type="text" id="onboardingJlid" class="form-control" placeholder="Enter JLID">
-                        <button type="button" class="btn btn-outline btn-sm" id="fetchOnboardingDataBtn" title="Fetch data from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
-                    </div>
+
+              <div class="form-section">
+                <div class="form-section-title"><i class="fas fa-user"></i> Learner</div>
+                <div class="form-grid">
+                  <div class="form-group">
+                      <label for="onboardingJlid" class="form-label">JLID</label>
+                      <div style="display: flex; gap: 0.5rem;">
+                          <input type="text" id="onboardingJlid" class="form-control" placeholder="Enter JLID">
+                          <button type="button" class="btn btn-outline btn-sm" id="fetchOnboardingDataBtn" title="Fetch data from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
+                      </div>
+                  </div>
+                  <div class="form-group"><label for="onboardingLearnerName" class="form-label">Learner's Full Name</label><input type="text" id="onboardingLearnerName" class="form-control" placeholder="Enter full name" required></div>
+                  <div class="form-group"><label for="onboardingAge" class="form-label">Age</label><input type="number" id="onboardingAge" class="form-control" placeholder="Enter learner's age"></div>
+                  <div class="form-group full-width"><label for="onboardingSpecialNeeds" class="form-label">Special Needs (if any)</label><textarea id="onboardingSpecialNeeds" class="form-control" rows="3" placeholder="Enter any special needs or notes"></textarea></div>
                 </div>
-                <div class="form-group"><label for="onboardingLearnerName" class="form-label">Learner's Full Name</label><input type="text" id="onboardingLearnerName" class="form-control" placeholder="Enter full name" required></div>
-                <div class="form-group"><label for="onboardingTeacher" class="form-label">Teacher</label><select id="onboardingTeacher" class="form-control form-select" required><option value="" disabled selected>Select a teacher</option></select></div>
-                <div class="form-group"><label for="onboardingAge" class="form-label">Age</label><input type="number" id="onboardingAge" class="form-control" placeholder="Enter learner's age"></div>
-                <div class="form-group"><label for="onboardingStartDate" class="form-label">Start Date</label><input type="date" id="onboardingStartDate" class="form-control" required></div>
-                <div class="form-group full-width"><label for="onboardingCourse" class="form-label">Course Enrolled</label><select id="onboardingCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select></div>
-                <div class="form-group full-width"><label for="onboardingSpecialNeeds" class="form-label">Special Needs (if any)</label><textarea id="onboardingSpecialNeeds" class="form-control" rows="3" placeholder="Enter any special needs or notes"></textarea></div>
-                <div class="form-group full-width"><label class="form-label">Class Schedule</label><div id="onboardingClassSessionsContainer"></div><button type="button" class="btn btn-outline" id="addOnboardingClassSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button></div>
-                <div class="form-group"><label for="onboardingClsManager" class="form-label">CLS Manager</label><select id="onboardingClsManager" class="form-control" required><option value="" disabled selected>Select CLS</option></select></div>
-                <div class="form-group"><label for="onboardingTpManager" class="form-label">TP Manager</label><select id="onboardingTpManager" class="form-control form-select" required><option value="" disabled selected>Select TP Manager</option></select></div>
-                <div class="form-group"><label for="onboardingJetGuide" class="form-label">JetGuide</label><select id="onboardingJetGuide" class="form-control form-select" required><option value="" disabled selected>Select JetGuide</option></select></div>
               </div>
+
+              <div class="form-section">
+                <div class="form-section-title"><i class="fas fa-calendar-alt"></i> Class &amp; Schedule</div>
+                <div class="form-grid">
+                  <div class="form-group"><label for="onboardingTeacher" class="form-label">Teacher</label><select id="onboardingTeacher" class="form-control form-select" required><option value="" disabled selected>Select a teacher</option></select></div>
+                  <div class="form-group"><label for="onboardingStartDate" class="form-label">Start Date</label><input type="date" id="onboardingStartDate" class="form-control" required></div>
+                  <div class="form-group full-width"><label for="onboardingCourse" class="form-label">Course Enrolled</label><select id="onboardingCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select></div>
+                  <div class="form-group full-width"><label class="form-label">Class Schedule</label><div id="onboardingClassSessionsContainer"></div><button type="button" class="btn btn-outline" id="addOnboardingClassSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button></div>
+                </div>
+              </div>
+
+              <div class="form-section">
+                <div class="form-section-title"><i class="fas fa-user-tie"></i> Internal Assignment</div>
+                <div class="form-grid">
+                  <div class="form-group"><label for="onboardingClsManager" class="form-label">CLS Manager</label><select id="onboardingClsManager" class="form-control" required><option value="" disabled selected>Select CLS</option></select></div>
+                  <div class="form-group"><label for="onboardingTpManager" class="form-label">TP Manager</label><select id="onboardingTpManager" class="form-control form-select" required><option value="" disabled selected>Select TP Manager</option></select></div>
+                  <div class="form-group"><label for="onboardingJetGuide" class="form-label">JetGuide</label><select id="onboardingJetGuide" class="form-control form-select" required><option value="" disabled selected>Select JetGuide</option></select></div>
+                </div>
+              </div>
+
               <div class="form-actions"><button type="submit" class="btn btn-primary" id="submitOnboarding"><i class="fas fa-paper-plane"></i> Send Onboarding Email</button></div>
             </form>
           </div>

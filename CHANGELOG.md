@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-08-02] — Redesign New Learner Onboarding into Grouped Sections (V8.40, preview)
+
+### First of 6 forms restyled — preview before rolling out to the rest (`Index.html`, `Styles.html`)
+- User explicitly asked for the forms themselves to be redesigned too, not just the New Communication container (V8.38/39). Confirmed direction: grouped sections with headers, one form first to approve before doing all 6.
+- Onboarding form (11 fields) restructured into 3 labeled sections — Learner, Class & Schedule, Internal Assignment — each its own `.form-grid`, under a new `.form-section-title` header style.
+- Every field's `id`, `name`, and `class` is byte-for-byte unchanged — only reordered/regrouped and wrapped in new section divs. Verified no `id` was duplicated or dropped, and DOM div nesting still balances.
+- `.form-container-wide` (960px, up from the shared 800px cap) applied only to this form via a second class, not a change to the global `.form-container` rule other pages rely on.
+- Migration, Invoice Generator, Minecraft, Roblox, and Scheduled are unchanged pending approval of this direction.
+
+---
+
 ## [2026-08-02] — New Communication: Full-Page Takeover, Bigger Cards (V8.39)
 
 ### Follow-up to V8.38 based on first look (`Index.html`, `JavaScript.html`, `Styles.html`)

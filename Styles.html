@@ -1023,6 +1023,20 @@
       grid-column: span 2;
     }
 
+    /* ── Grouped form sections (New Communication redesign) ── */
+    .form-container-wide { max-width: 960px; }
+    .form-section { margin-bottom: 2rem; }
+    .form-section:last-of-type { margin-bottom: 0; }
+    .form-section-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--primary); margin-bottom: 1rem; padding-bottom: 0.6rem;
+      border-bottom: 1px solid #eef0fe;
+    }
+    .form-section-title i { font-size: 0.85rem; }
+    body.dark-mode .form-section-title { border-color: rgba(255,255,255,0.08); }
+    .form-section .form-grid { margin-bottom: 0; }
+
     .form-label {
       display: block;
       font-weight: 500;
