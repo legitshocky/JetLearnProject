@@ -3578,68 +3578,72 @@ body.dark-mode .hs-option-email { color: rgba(255,255,255,0.40) !important; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    /* ── New Communication: launcher grid ── */
+    /* ── New Communication: launcher grid ──
+       Big, generously-spaced tiles that fill the page rather than bunching
+       in a corner — fewer, larger columns instead of many small ones. */
     .comm-launcher-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 22px;
       margin-bottom: 1.5rem;
     }
     .comm-launcher-card {
       background: #fff;
       border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 20px;
+      border-radius: 16px;
+      padding: 32px 28px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 18px;
       text-align: left;
       font-family: inherit;
-      transition: border-color .15s, box-shadow .15s;
+      min-height: 190px;
+      transition: border-color .15s, box-shadow .15s, transform .15s;
     }
-    .comm-launcher-card:hover { border-color: var(--primary-light); box-shadow: 0 2px 10px rgba(99,102,241,0.08); }
+    .comm-launcher-card:hover {
+      border-color: var(--primary-light);
+      box-shadow: 0 10px 28px rgba(99,102,241,0.14);
+      transform: translateY(-2px);
+    }
     .comm-launcher-icon {
-      width: 40px; height: 40px; border-radius: 10px;
+      width: 60px; height: 60px; border-radius: 16px;
       display: flex; align-items: center; justify-content: center;
-      background: rgba(99,102,241,0.1); color: var(--primary); font-size: 1.05rem;
+      background: rgba(99,102,241,0.1); color: var(--primary); font-size: 1.7rem;
     }
-    .comm-launcher-card h3 { margin: 0; font-size: 0.92rem; font-weight: 700; color: #1e293b; }
-    .comm-launcher-card p { margin: 0; font-size: 0.78rem; color: #64748b; line-height: 1.5; }
+    .comm-launcher-card:nth-child(2) .comm-launcher-icon { background: rgba(236,72,153,0.1); color: var(--accent); }
+    .comm-launcher-card:nth-child(4) .comm-launcher-icon { background: rgba(16,185,129,0.12); color: #10b981; }
+    .comm-launcher-card:nth-child(5) .comm-launcher-icon { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .comm-launcher-card:nth-child(6) .comm-launcher-icon { background: rgba(14,165,233,0.12); color: #0ea5e9; }
+    .comm-launcher-card h3 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b; }
+    .comm-launcher-card p { margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.55; }
     body.dark-mode .comm-launcher-card { background: #1e293b; border-color: rgba(255,255,255,0.08); }
     body.dark-mode .comm-launcher-card h3 { color: #f1f5f9; }
     body.dark-mode .comm-launcher-card p { color: #94a3b8; }
+    @media (min-width: 1400px) {
+      .comm-launcher-grid { grid-template-columns: repeat(3, minmax(280px, 1fr)); }
+    }
 
-    /* ── New Communication: slide-over panel ── */
-    #commPanelBackdrop {
-      position: fixed; inset: 0; background: rgba(15,23,42,0.4);
-      z-index: 998; opacity: 0; pointer-events: none; transition: opacity .2s;
-    }
-    #commPanelBackdrop.open { opacity: 1; pointer-events: auto; }
-    #commPanelsWrapper {
-      position: fixed; top: 0; right: 0; height: 100vh; width: 460px; max-width: 94vw;
-      background: #f8fafc; box-shadow: -10px 0 30px rgba(0,0,0,0.14);
-      z-index: 999; transform: translateX(100%); transition: transform .22s ease, width .18s ease;
-      overflow-y: auto; padding: 24px 26px 60px;
-    }
-    #commPanelsWrapper.open { transform: translateX(0); }
-    #commPanelsWrapper.comm-wide { width: 900px; }
-    body.dark-mode #commPanelsWrapper { background: #0f172a; }
+    /* ── New Communication: full-page form takeover ──
+       Clicking a card replaces the grid in place — normal in-flow content,
+       full page width, not a drawer or overlay. */
+    #commPanelsWrapper { display: none; }
+    #commPanelsWrapper.open { display: block; }
     .comm-panel-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #e5e7eb;
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e5e7eb;
     }
-    .comm-panel-header h2 { margin: 0; font-size: 1rem; font-weight: 700; color: #1e293b; }
+    .comm-panel-header h2 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e293b; }
     body.dark-mode .comm-panel-header { border-color: rgba(255,255,255,0.08); }
     body.dark-mode .comm-panel-header h2 { color: #f1f5f9; }
     #commPanelCloseBtn {
-      background: none; border: none; font-size: 1.2rem; color: #94a3b8; cursor: pointer;
-      width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      background: none; border: 1px solid #e5e7eb; color: #475569; cursor: pointer;
+      padding: 7px 14px 7px 10px; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+      display: flex; align-items: center; gap: 6px; font-family: inherit;
     }
-    #commPanelCloseBtn:hover { background: rgba(148,163,184,0.15); }
-    @media (max-width: 640px) {
-      #commPanelsWrapper, #commPanelsWrapper.comm-wide { width: 100vw; max-width: 100vw; }
-    }
+    #commPanelCloseBtn:hover { background: #f1f5f9; }
+    body.dark-mode #commPanelCloseBtn { border-color: rgba(255,255,255,0.12); color: #cbd5e1; }
+    body.dark-mode #commPanelCloseBtn:hover { background: rgba(255,255,255,0.06); }
 
     .header-actions .btn { white-space: nowrap; }
 

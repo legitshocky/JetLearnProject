@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-02] — New Communication: Full-Page Takeover, Bigger Cards (V8.39)
+
+### Follow-up to V8.38 based on first look (`Index.html`, `JavaScript.html`, `Styles.html`)
+- User feedback: the right-edge slide-over drawer felt "distracting," and the launcher cards were small and bunched in the top-left, leaving the page looking mostly empty.
+- Removed the slide-over/backdrop entirely — clicking a card now replaces the grid in place with the form, full page width (`#commPanelsWrapper` is a normal in-flow block, no `position: fixed`, no drawer animation, no width variants needed since it's always full width). "← New Communication" button at the top returns to the grid.
+- Launcher cards enlarged (280px+ tiles, 60px icons, more padding) and given a per-card accent color, so the grid reads as a real landing page instead of a sparse row in the corner. 3-column layout kicks in above 1400px so it fills wide screens too.
+
+---
+
 ## [2026-08-02] — New Communication Redesign: Launcher Grid + Slide-Over (V8.38)
 
 ### Replaced the static horizontal tab bar with concept B from the design review (`Index.html`, `JavaScript.html`, `Styles.html`)
