@@ -3082,6 +3082,21 @@
       animation: fadeIn 0.5s ease-in-out;
     }
 
+    /* ── Smooth fetch-result skeleton (Kit Tracking JLID lookup etc.) ──
+       Shimmering placeholder shown while a fetch is in flight, instead of
+       an abrupt hidden→visible swap once data lands. */
+    .kt-skeleton-line {
+      position: relative; overflow: hidden;
+      height: 13px; border-radius: 5px; background: #eef0f5; margin-bottom: 6px;
+    }
+    .kt-skeleton-line:last-child { margin-bottom: 0; width: 62%; }
+    .kt-skeleton-line::after {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent);
+      animation: placeholder-shimmer 1.3s infinite;
+    }
+    body.dark-mode .kt-skeleton-line { background: rgba(255,255,255,0.08); }
+
     /* Toast notifications */
     .toast-container {
       position: fixed;

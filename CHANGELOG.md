@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-02] — Instant WhatsApp Chat Open + Smoother Kit Fetch (V8.43)
+
+### Fixed a real popup-blocker risk, not just a feel issue (`JavaScript.html`, `Styles.html`)
+- User: "hs whatsapp links needs to popup and open instantly not load." Root cause found in `pwbOpenChat()` — it called `window.open()` only *after* a `google.script.run` round trip resolved. Browsers block `window.open()` calls that aren't a direct synchronous result of the click, so this wasn't just slow — it could silently fail to open at all, not just feel laggy.
+- Fixed: opens a blank tab **synchronously** inside the click handler (shows "Opening WhatsApp chat…"), then redirects that same tab to the real WATI/wa.me link once it resolves. Feels instant and can no longer be popup-blocked.
+- Kit Tracking's JLID fetch (`ktFetchByJlid`) — the abrupt hidden→spinner→result swap replaced with a shimmering skeleton placeholder (new `.kt-skeleton-line`, reusing the existing shimmer animation from elsewhere in the app) and a fade-in (`.fade-in`, already existed) on the result, matching the smoother feel of the New Communication redesign instead of content just popping in.
+
+---
+
 ## [2026-08-02] — Concept C Rolled Out to Remaining 4 Forms (V8.42)
 
 ### Migration, Invoice Generator, Minecraft, Roblox all restructured (`Index.html`)

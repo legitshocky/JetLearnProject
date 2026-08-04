@@ -15088,13 +15088,17 @@ function ktFetchByJlid() {
   const resultEl = document.getElementById('ktfFetchResult');
   fetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
   fetchBtn.disabled = true;
-  resultEl.style.display = 'none';
+  // Shimmering skeleton instead of just hiding the result box — makes the
+  // wait feel active rather than the UI going abruptly blank.
+  resultEl.style.cssText = 'display:block;padding:6px 2px;';
+  resultEl.innerHTML = '<div class="kt-skeleton-line"><\/div><div class="kt-skeleton-line"><\/div>';
 
   google.script.run
     .withSuccessHandler(function(r) {
       fetchBtn.innerHTML = '<i class="fas fa-search"><\/i> Fetch';
       fetchBtn.disabled = false;
       if (!r || !r.success) {
+        resultEl.className = 'fade-in';
         resultEl.style.cssText = 'display:block;color:#ef4444;';
         resultEl.textContent = '✗ ' + ((r && r.message) || 'Learner not found.');
         return;
@@ -15121,6 +15125,7 @@ function ktFetchByJlid() {
       }
 
       const existing = r.kitCostSoFar || 0;
+      resultEl.className = 'fade-in';
       resultEl.style.cssText = 'display:block;color:#059669;background:#f0fdf4;padding:6px 10px;border-radius:6px;';
       resultEl.innerHTML = '✔ Found: <strong>' + escapeHtml(r.learnerName) + '<\/strong>' +
         (r.subscription ? ' · ' + escapeHtml(r.subscription) : '') +
@@ -15168,6 +15173,7 @@ function ktFetchByJlid() {
     .withFailureHandler(function(err) {
       fetchBtn.innerHTML = '<i class="fas fa-search"><\/i> Fetch';
       fetchBtn.disabled = false;
+      resultEl.className = 'fade-in';
       resultEl.style.cssText = 'display:block;color:#ef4444;';
       resultEl.textContent = '✗ ' + (err.message || String(err));
     })
@@ -15871,21 +15877,29 @@ function openHsDeal(jlid, btn) {
 
 function pwbOpenChat(phone, btn) {
   var orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  // Open the tab SYNCHRONOUSLY, inside the click handler — browsers block
+  // window.open() calls that happen after an async gap (e.g. once a
+  // google.script.run round trip resolves), which is what made this feel
+  // both slow AND made the tab sometimes just not open at all. Opening a
+  // blank tab immediately, then redirecting it once the real WATI link
+  // resolves, is instant from the user's perspective and never gets
+  // popup-blocked since it's a direct result of the click.
+  var chatWindow = window.open('', '_blank');
+  if (chatWindow) {
+    chatWindow.document.title = 'Opening chat…';
+    chatWindow.document.body && (chatWindow.document.body.style.cssText = 'font:14px system-ui;color:#94a3b8;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;');
+    if (chatWindow.document.body) chatWindow.document.body.textContent = 'Opening WhatsApp chat…';
+  }
   google.script.run
     .withSuccessHandler(function(res) {
-      btn.disabled = false; btn.innerHTML = orig;
-      if (res && res.success && res.link) {
-        window.open(res.link, '_blank');
-      } else {
-        // Fallback: open wa.me
-        window.open('https://wa.me/' + phone, '_blank');
-      }
+      var link = (res && res.success && res.link) ? res.link : ('https://wa.me/' + phone);
+      if (chatWindow && !chatWindow.closed) chatWindow.location.href = link;
+      else window.open(link, '_blank');
     })
     .withFailureHandler(function() {
-      btn.disabled = false; btn.innerHTML = orig;
-      window.open('https://wa.me/' + phone, '_blank');
+      var link = 'https://wa.me/' + phone;
+      if (chatWindow && !chatWindow.closed) chatWindow.location.href = link;
+      else window.open(link, '_blank');
     })
     .fetchWatiDirectLink(phone);
 }
