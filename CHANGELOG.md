@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-08-02] — Revert V8.46: Footer Belongs Pinned to the Bottom (V8.49)
+
+### Misdiagnosed the original complaint (`Styles.html`)
+- V8.46 removed `.page-content { flex: 1 }` and `.app-footer { margin-top: auto }`, assuming the gap above the footer on short pages was a bug. It wasn't — that's normal sticky-footer behavior. Removing it left the footer floating right after short content instead, with a large dead zone below it down to the actual window edge on every page — visibly worse, confirmed by the user across New Communication, Kit Tracking's Pivot Report, and Asking Address tabs.
+- Reverted both properties to their original values. The real fix for the login-page white-strip issue (V8.47, pinning `html`/`body` to `height: 100%`) is unrelated and stays in place.
+
+---
+
 ## [2026-08-02] — Order Details Modal: Faster + Smoother Loading (V8.48)
 
 ### Same class of bug as the address page (V8.35), found in a different call site (`KitTrackingService.js`, `JavaScript.html`)
