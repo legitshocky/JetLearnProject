@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-08-02] — Fix Blank Strip Below Login Screen Too (V8.47)
+
+### V8.46 only covered the post-login app shell — login page uses a separate container (`Styles.html`)
+- User: gap still visible, this time on the login screen itself. `.login-container` (the login page's own root, separate from `.main-content` fixed in V8.46) already had `height:100vh; overflow:hidden`, so in principle it should clip exactly to the viewport — but `body` itself had no explicit height, so if body's natural height ended up taller than the container by even a little, its own light-grey background (`--light: #f4f5f7`) would show through below as a blank strip.
+- `html`/`body` now pinned to `height: 100%` with `overflow-y: hidden` on body — neither can ever be taller than the viewport, so no container's background can show through beneath it. Verified safe first: the other full-page views (Kit Tracking, Course Planner, Migration Center, Operations, Persona, Bulk Certificates) are properly nested inside `.main-content`, which has its own independent `overflow-y: auto` — they don't rely on body-level scroll, so hiding overflow on body doesn't break them.
+
+---
+
 ## [2026-08-02] — Fix Empty Gap Before Footer on Short Pages (V8.46)
 
 ### `.page-content` was force-stretched to fill the viewport regardless of content (`Styles.html`)
