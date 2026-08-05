@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-02] — Custom Currency Totals Weren't Actually Converting (V8.45)
+
+### The real bug behind "why is DKK showing 1788 instead of ~13366" (`InvoiceService.js`, `JavaScript.html`)
+- The V8.44 fix made the conversion *rate* display correctly, but the pricing calculation had a separate, deliberate gate: `calculateInvoicePricing()` (server, used by both Invoice Generator and Onboarding+Invoice) and its client-side preview twin only ever multiplied the total by the conversion rate for **INR/PKR/BDT** — every other currency, including anything picked via Custom Currency, displayed the raw EUR number with a different currency symbol swapped on. That's why 1788 (the EUR total) stayed 1788 with a "kr" prefix instead of becoming ~13366 DKK.
+- Fixed in 3 duplicated spots (2 server: `calculateInvoicePricing()` + its validation twin in `InvoiceService.js`; 1 client: `calculateInvoicePricingClient()` in `JavaScript.html`) — conversion now applies whenever `currency === 'CUSTOM'`, regardless of which code is picked, not just when the resolved code happens to be INR/PKR/BDT. Direct dropdown picks of GBP/USD/etc. (not via Custom Currency) are intentionally left unconverted — that policy wasn't part of what was asked to change.
+- Added `_getRawConversionRate()` — an ungated version of the existing `getConversionRate()` for this purpose specifically; left `getConversionRate()` itself untouched since HubSpotService.js relies on its INR/PKR/BDT-only gate for unrelated discount/churn analytics, and widening it there would have silently changed that too.
+
+---
+
 ## [2026-08-02] — Custom Currency Conversion Rate Was Never Wired Up (V8.44)
 
 ### Fixed missing conversion value for DKK and every other custom currency (`Index.html`, `JavaScript.html`)

@@ -5447,11 +5447,15 @@ function calculateInvoicePricingClient(formData) {
         finalCurrencySymbol = getCurrencySymbolClient(targetCurrencyCode);
     }
 
-    // Pricing policy: only INR/PKR/BDT get a real EUR conversion rate applied.
-    // Every other currency (GBP, USD, CHF, AED, etc.) shows the EUR number with its own symbol.
+    // Pricing policy: INR/PKR/BDT picked directly from the main currency
+    // dropdown get a real EUR conversion rate; other direct picks (GBP,
+    // USD, CHF, etc.) show the EUR number with their own symbol — no
+    // conversion. Custom Currency is different: whatever code is picked
+    // there always converts, matching the server-side calc in
+    // InvoiceService.js (calculateInvoicePricing).
     const _CONVERTED_CURRENCIES_CLIENT = ['INR', 'PKR', 'BDT'];
     let finalConversionRateFromEUR = 1;
-    if (_CONVERTED_CURRENCIES_CLIENT.includes(targetCurrencyCode)) {
+    if (formData.currency === 'CUSTOM' || _CONVERTED_CURRENCIES_CLIENT.includes(targetCurrencyCode)) {
         finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
             ? parseFloat(formData.customCurrencyRate)
             : getConversionRateClient('EUR', targetCurrencyCode);
@@ -5468,7 +5472,7 @@ function calculateInvoicePricingClient(formData) {
     if (formData.currency === 'CUSTOM' && effectiveBasePrice > 0 && customCurrencyExtraDiscountPercentage > 0) {
         effectiveBasePrice *= (1 - customCurrencyExtraDiscountPercentage / 100);
     }
-    // Conversion only applies to INR/PKR/BDT — rate is 1 for everything else, so this is safe either way.
+    // Conversion is 1 for direct picks outside INR/PKR/BDT, so this is safe either way.
     effectiveBasePrice *= finalConversionRateFromEUR;
 
     // --- FIX: Total Calculation ---

@@ -136,7 +136,10 @@ function getLiveExchangeRates() {
 }
 function getConversionRate(toCurrency) {
   // Only INR/PKR/BDT get a real EUR conversion rate; every other currency
-  // shows the EUR number as-is (rate = 1) per pricing policy.
+  // shows the EUR number as-is (rate = 1) per pricing policy. This gate is
+  // relied on elsewhere (churn/discount analytics in HubSpotService.js) so
+  // it stays as-is — use _getRawConversionRate() below when you need the
+  // real rate for a currency outside this list (e.g. Custom Currency).
   var code = String(toCurrency || '').toUpperCase();
   if (['INR', 'PKR', 'BDT'].indexOf(code) === -1) return 1;
   try {
@@ -144,6 +147,23 @@ function getConversionRate(toCurrency) {
     if (rates && rates[code]) return rates[code];
   } catch(e) {
     Logger.log('getConversionRate live fetch error: ' + e.message);
+  }
+  return _CURRENCY_FALLBACK_RATES[code] || 1;
+}
+
+// Ungated version — real EUR conversion rate for ANY currency, live if
+// available else the static fallback table. Used for Custom Currency
+// (any code, not just INR/PKR/BDT) so picking DKK/SEK/whatever in the
+// Custom Currency flow actually converts instead of showing the raw EUR
+// number with a different symbol.
+function _getRawConversionRate(code) {
+  code = String(code || '').toUpperCase();
+  if (code === 'EUR') return 1;
+  try {
+    var rates = getLiveCurrencyRates();
+    if (rates && rates[code]) return rates[code];
+  } catch(e) {
+    Logger.log('_getRawConversionRate live fetch error: ' + e.message);
   }
   return _CURRENCY_FALLBACK_RATES[code] || 1;
 }
@@ -204,15 +224,18 @@ function calculateInvoicePricing(formData, previewOnly = false) {
         finalCurrencySymbol = getCurrencySymbol(targetCurrencyCode);
     }
 
-    // Pricing policy: only INR/PKR/BDT get a real EUR conversion rate applied.
-    // Every other currency (GBP, USD, CHF, AED, etc.) just displays the EUR number
-    // with its own currency symbol — no conversion.
+    // Pricing policy: INR/PKR/BDT (picked directly from the main currency
+    // dropdown) get a real EUR conversion rate applied; GBP/USD/etc picked
+    // directly just display the EUR number with their own symbol — no
+    // conversion. Custom Currency is different: whatever code you pick
+    // there (DKK, SEK, whatever) always gets a real conversion, since the
+    // whole point of that flow is "convert to this currency".
     const _CONVERTED_CURRENCIES = ['INR', 'PKR', 'BDT'];
     let finalConversionRate = 1.0;
-    if (_CONVERTED_CURRENCIES.includes(targetCurrencyCode)) {
+    if (formData.currency === 'CUSTOM' || _CONVERTED_CURRENCIES.includes(targetCurrencyCode)) {
         finalConversionRate = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
             ? parseFloat(formData.customCurrencyRate)
-            : getConversionRate(targetCurrencyCode);
+            : _getRawConversionRate(targetCurrencyCode);
     }
 
     // Base price always read from the EUR column — that's the canonical price table.
@@ -453,12 +476,13 @@ function validateInvoiceData(formData) {
           }
       }
 
-      // Only INR/PKR/BDT get a real conversion rate; everything else uses EUR number as-is.
+      // Same policy as calculateInvoicePricing() above — Custom Currency
+      // always converts, regardless of which code is picked.
       const _CONVERTED_CURRENCIES_V = ['INR', 'PKR', 'BDT'];
-      if (_CONVERTED_CURRENCIES_V.includes(targetCurrencyCode)) {
+      if (formData.currency === 'CUSTOM' || _CONVERTED_CURRENCIES_V.includes(targetCurrencyCode)) {
           finalConversionRateFromEUR = (formData.customCurrencyRate && parseFloat(formData.customCurrencyRate) > 0)
             ? parseFloat(formData.customCurrencyRate)
-            : getConversionRate(targetCurrencyCode);
+            : _getRawConversionRate(targetCurrencyCode);
           if (finalConversionRateFromEUR <= 0) {
               errors.push(`Invalid conversion rate from EUR to ${targetCurrencyCode}.`);
           }
