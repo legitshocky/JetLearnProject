@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-08-02] — Order Details Modal: Faster + Smoother Loading (V8.48)
+
+### Same class of bug as the address page (V8.35), found in a different call site (`KitTrackingService.js`, `JavaScript.html`)
+- User: Order Details modal takes 2-3s to open. Two real costs found:
+  1. `getKitOrderDetails()` called `fetchHubspotByJlid(jlid)` without `skipChurnCheck` — every open paid for an unused HubSpot ticket search (churn-risk data this panel never displays), same wasted call fixed on the public address page in V8.35 but missed here.
+  2. `_getStructuredAddressForJlid()` read all 9 columns for every row in the (append-only, ever-growing) Learner Address Submissions log just to match one JLID — now reads only the JLID column first, then a small 5-column read for just the matching row.
+- Can't measure this one directly (it's a `google.script.run` call, not a public HTTP endpoint like the address page was) — fixed on the same evidence-based reasoning as V8.35, not verified with a before/after number this time.
+- Loading state also replaced: bare spinner → shimmering skeleton rows (reusing `.kt-skeleton-line` from V8.43) with a fade-in on the real content, so the wait (however long it ends up being) reads as active loading rather than a dead pause.
+
+---
+
 ## [2026-08-02] — Fix Blank Strip Below Login Screen Too (V8.47)
 
 ### V8.46 only covered the post-login app shell — login page uses a separate container (`Styles.html`)

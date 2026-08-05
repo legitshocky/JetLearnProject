@@ -14783,13 +14783,18 @@ function ktOpenOrderDetails(rowIndex) {
     document.body.appendChild(modal);
   }
   modal.dataset.rowIndex = rowIndex;
-  document.getElementById('ktOdBody').innerHTML = '<div style="text-align:center;padding:30px 0;color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Loading…<\/div>';
+  // Shimmering skeleton rows instead of a bare spinner — same treatment as
+  // the Kit JLID fetch (V8.43), so the wait reads as "loading a real thing"
+  // rather than a blank pause.
+  document.getElementById('ktOdBody').innerHTML =
+      '<div class="kt-skeleton-line"><\/div>'.repeat(6);
   modal.style.display = 'flex';
 
   google.script.run
     .withSuccessHandler(function(res) {
       var body = document.getElementById('ktOdBody');
       if (!res || !res.success) {
+        body.className = 'fade-in';
         body.innerHTML = '<div style="color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load order details.') + '<\/div>';
         return;
       }
@@ -14836,6 +14841,7 @@ function ktOpenOrderDetails(rowIndex) {
           + row('Postal Code', res.postalCode, true)
         : row('Delivery Address', res.deliveryAddress, true);
 
+      body.className = 'fade-in';
       body.innerHTML =
           row('Learner', res.learnerName, false)
         + row('Kit to order', res.kitName, false)
@@ -14849,7 +14855,9 @@ function ktOpenOrderDetails(rowIndex) {
         + '<\/div>';
     })
     .withFailureHandler(function(err) {
-      document.getElementById('ktOdBody').innerHTML = '<div style="color:#dc2626;">' + escapeHtml(err.message || String(err)) + '<\/div>';
+      var body = document.getElementById('ktOdBody');
+      body.className = 'fade-in';
+      body.innerHTML = '<div style="color:#dc2626;">' + escapeHtml(err.message || String(err)) + '<\/div>';
     })
     .getKitOrderDetails(rowIndex);
 }

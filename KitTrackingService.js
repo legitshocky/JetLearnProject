@@ -428,25 +428,31 @@ function _kitAmazonDomainForCountry(country) {
 // first, since a parent could have resubmitted more than once. Returns null
 // if this JLID never came through that form (e.g. address entered manually
 // by ops in Add Kit Entry) — caller falls back to the flattened string.
+// Was reading all 9 columns for every row in the (append-only, ever-growing)
+// submissions log just to match one JLID column — same class of bug fixed
+// in _findOpenKitRowByJlid (2026-07-30). Now reads only the JLID column
+// first to find the matching row, then a small targeted 5-column read for
+// just that row.
 function _getStructuredAddressForJlid(jlid) {
   try {
     var sheet = _lafGetLogSheet();
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return null;
-    var data = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A:I — through Country
+    var jlidCol = sheet.getRange(2, 2, lastRow - 1, 1).getValues(); // B — JLID only
     var jlidUpper = String(jlid).trim().toUpperCase();
-    for (var i = data.length - 1; i >= 0; i--) {
-      if (String(data[i][1] || '').trim().toUpperCase() === jlidUpper) {
-        return {
-          address: String(data[i][4] || '').trim(),
-          city: String(data[i][5] || '').trim(),
-          state: String(data[i][6] || '').trim(),
-          postalCode: String(data[i][7] || '').trim(),
-          country: String(data[i][8] || '').trim()
-        };
-      }
+    var matchRow = -1;
+    for (var i = jlidCol.length - 1; i >= 0; i--) {
+      if (String(jlidCol[i][0] || '').trim().toUpperCase() === jlidUpper) { matchRow = i + 2; break; }
     }
-    return null;
+    if (matchRow < 0) return null;
+    var row = sheet.getRange(matchRow, 5, 1, 5).getValues()[0]; // E:I — Address..Country
+    return {
+      address: String(row[0] || '').trim(),
+      city: String(row[1] || '').trim(),
+      state: String(row[2] || '').trim(),
+      postalCode: String(row[3] || '').trim(),
+      country: String(row[4] || '').trim()
+    };
   } catch(e) {
     Logger.log('[KitTracking] _getStructuredAddressForJlid error: ' + e.message);
     return null;
@@ -474,7 +480,10 @@ function getKitOrderDetails(rowIndex) {
 
     var parentName = '', parentPhone = '', parentEmail = '', country = sheetCountry;
     if (jlid) {
-      var hs = fetchHubspotByJlid(jlid);
+      // skipChurnCheck=true — this panel never displays churn-risk data,
+      // and that extra HubSpot ticket search was most of why this modal
+      // took 2-3s to open (same fix as the public address page, V8.35).
+      var hs = fetchHubspotByJlid(jlid, true);
       if (hs && hs.success && hs.data) {
         parentName = hs.data.parentName || '';
         parentPhone = hs.data.parentContact || '';
