@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-02] — Fix Empty Gap Before Footer on Short Pages (V8.46)
+
+### `.page-content` was force-stretched to fill the viewport regardless of content (`Styles.html`)
+- User: large blank space appearing before the footer bar when scrolling, on both the New Communication form and the Recent Activities feed.
+- Root cause: `.page-content { flex: 1; }` inside the `.main-content` flex column always stretched the active page to fill 100% of the remaining viewport height, and `.app-footer { margin-top: auto; }` pinned the footer to the very bottom of that stretched space — regardless of how much actual content there was. This became more visible after the form redesigns (V8.41/42) made several pages noticeably shorter than before.
+- Removed both: `.page-content` now sizes to its own content (`flex: 0 0 auto`), and the footer just follows the content naturally instead of being pinned to the viewport bottom. Pages long enough to fill the viewport still end up with the footer at the bottom naturally; short pages no longer leave a dead gap above it.
+
+---
+
 ## [2026-08-02] — Custom Currency Totals Weren't Actually Converting (V8.45)
 
 ### The real bug behind "why is DKK showing 1788 instead of ~13366" (`InvoiceService.js`, `JavaScript.html`)

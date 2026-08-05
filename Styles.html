@@ -541,13 +541,18 @@
     /* Main content no pseudo orbs in light mode */
     .main-content::before, .main-content::after { display: none; }
 
-    /* Each page fills available space and scrolls — footer stays at the very end */
+    /* Page follows its own content height — footer sits right after it,
+       not forced to the bottom of the viewport. Previously `flex: 1` made
+       every page stretch to fill the full remaining height regardless of
+       how much content it actually had, which left a large empty gap
+       above the footer on shorter pages (visible after the form redesigns
+       made several pages more compact). */
   .page-content {
       padding: 1.5rem 2rem;
       animation: cardSlideUp 0.4s cubic-bezier(0.16,1,0.3,1) both;
       position: relative;
       z-index: 1;
-      flex: 1;                   /* This line is critical for footer placement */
+      flex: 0 0 auto;
     }
     /* Teacher Intelligence Center — reduced side padding so results table uses full width */
     #personaPage.page-content {
@@ -3339,7 +3344,11 @@
       justify-content: flex-end;
       gap: 1rem;
     }
-/* ── App footer ── */
+/* ── App footer ──
+   No longer force-pinned to the viewport bottom (margin-top:auto) — it
+   now just follows the page content, so short pages don't leave a big
+   empty gap above it. On pages long enough to fill the viewport it still
+   ends up at the bottom naturally. */
     .app-footer {
       flex-shrink: 0;
       width: 100%;
@@ -3352,7 +3361,6 @@
       gap: 1.5rem;
       font-size: 0.8rem;
       color: #9ca3af;
-      margin-top: auto;
     }
 
 .footer-item {
