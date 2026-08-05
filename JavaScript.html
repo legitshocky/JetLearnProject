@@ -7435,6 +7435,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Custom-currency code (e.g. DKK) picked from the second dropdown that
+    // only appears once "Custom" is selected above — this was never wired
+    // to anything, so switching to any custom currency left the conversion
+    // rate blank no matter which one you picked. Now auto-fills the rate
+    // from live rates (same source handleCurrencyChange already uses for
+    // INR/PKR/BDT) and shows "1 EUR = X <code>" under the field so it's
+    // visible, not just silently filled in.
+    function handleCustomCurrencyCodeChange(prefix) {
+        const codeSelect = document.getElementById(prefix + 'CustomCurrencyCode');
+        const rateInput  = document.getElementById(prefix + 'CustomCurrencyRate');
+        const rateInfo    = document.getElementById(prefix + 'CustomCurrencyRateInfo');
+        if (!codeSelect) return;
+        const code = (codeSelect.value || '').trim().toUpperCase();
+        if (!code) {
+            if (rateInfo) rateInfo.textContent = '';
+            return;
+        }
+        const liveRate = getConversionRateClient('EUR', code);
+        if (liveRate && liveRate > 0) {
+            if (rateInput) rateInput.value = liveRate.toFixed(4);
+            if (rateInfo) rateInfo.textContent = 'Live rate: 1 EUR = ' + liveRate.toFixed(4) + ' ' + code;
+        } else if (rateInfo) {
+            rateInfo.textContent = 'No live rate found for ' + code + ' — enter it manually.';
+        }
+    }
+
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==========================================

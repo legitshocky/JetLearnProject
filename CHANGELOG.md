@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-02] — Custom Currency Conversion Rate Was Never Wired Up (V8.44)
+
+### Fixed missing conversion value for DKK and every other custom currency (`Index.html`, `JavaScript.html`)
+- User: selecting DKK via "Custom Currency" showed no conversion value at all. Root cause: `handleCurrencyChange()` only auto-fills a live rate for the 3 hardcoded direct-converted currencies (INR/PKR/BDT) — the actual custom-currency **code** dropdown (where DKK gets picked, revealed only after choosing "Custom" in the main currency select) had no `onchange` handler at all, on either the Onboarding or Invoice Generator form. Selecting any custom currency left the rate blank by design, not just for DKK.
+- New `handleCustomCurrencyCodeChange(prefix)` — fires on the custom-currency-code select, auto-fills the rate input via the same `getConversionRateClient('EUR', code)` helper already used for INR/PKR/BDT, and shows "Live rate: 1 EUR = 7.4500 DKK" under the field. Works for every currency in the fallback table, not just DKK.
+- Invoice Generator's rate-info element was also misnamed (`customCurrencyRateInfo` instead of `invoiceCustomCurrencyRateInfo`, inconsistent with every other field on that form) — renamed for consistency; confirmed nothing else referenced the old id.
+
+---
+
 ## [2026-08-02] — Instant WhatsApp Chat Open + Smoother Kit Fetch (V8.43)
 
 ### Fixed a real popup-blocker risk, not just a feel issue (`JavaScript.html`, `Styles.html`)
