@@ -2,6 +2,20 @@
 
 ---
 
+## [2026-08-07] — Book Classes — Phase 2: Real Week-Grid, Live Timezone, Edit/Cancel from the Grid (V8.51)
+
+### Book Classes rebuilt into the Google-Calendar-style grid that was actually workshopped (`Index.html`, `JavaScript.html`, `ReserveSlot.js`)
+- User flagged that the shipped Phase 1 page (JLID → dropdowns → book) didn't match the agreed Google-Calendar mockup and re-confirmed scope: search a teacher, see their real week, click an open slot to book at any time, click a booked slot to edit/cancel.
+- New backend `getTeacherWeekGrid(teacherNames, weekStartDate)` (`ReserveSlot.js`) — reads each selected teacher's REAL personal calendar via `Calendar.Events.list` for the picked Mon–Sun week; "Availability Hour" events become open slots, everything else is a booked class. Booked events are best-effort matched against the Class Booking Log (Active rows, same teacher + event title) so the UI gets a real `rowIndex`/`jlid`/`learnerName` for Edit/Cancel — no calendar enumeration existed before this.
+- New page UI: sidebar with searchable-select timezone (full IANA `bookingTimezones` list already used elsewhere in the app), teacher search + multi-select with color dots, and week Prev/Next/Today nav. Main pane renders an hourly grid — open slots green, booked slots grey with the learner's name.
+- **Live timezone conversion is real**, not a static label swap: the grid is fetched/stored in UTC and every hour label + event time is computed per-cell via `Intl.DateTimeFormat` in the picked IANA zone, so switching timezone genuinely reflows which hour row each class lands on (handles DST and day-boundary shifts correctly, unlike a fixed-offset hack).
+- Clicking an **open** slot opens a booking drawer: JLID fetch (reusing `fetchHubspotByJlid`), 1:1/1:2 toggle (1:2 asks for a second JLID + which learner's class link to use, invites both), start date, total classes — confirms via the existing `checkBookingConflicts()` → `bookClassesWithNewTeacher()` pair, no new booking logic.
+- Clicking a **booked** slot opens Manage Booking: shows learner/teacher/course/slot, and now supports the merged Edit flow the user asked for — pick a new teacher and/or new day/time, Save cancels the old series (`cancelBookedClasses`) and books fresh (`bookClassesWithNewTeacher`) in one step — plus a separate explicit Cancel confirmation for removing remaining sessions outright.
+- Old Phase 1 dropdown-based booking form and its `bkc*` DOM (JLID field, session-group builder, bookings list) are fully replaced by the grid; the `'bookClasses'` branch in the shared `createClassSessionGroup()`/`_updateSessionGroupCET()` helpers is now unused dead code (left in place — additive, harmless, shared with Migration/Onboarding which still use it).
+- **Not yet built**: mini month-calendar date picker (using a plain date input + Prev/Next for now), drag-to-resize, and a full month/day view toggle — deferred, not requested.
+
+---
+
 ## [2026-08-02] — New Standalone "Book Classes" Page — Phase 1 (V8.50)
 
 ### Class booking no longer requires going through Migration (`Index.html`, `JavaScript.html`)

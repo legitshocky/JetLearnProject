@@ -15,7 +15,13 @@
       "Bash(npx clasp *)",
       "Bash(node -e ' *)",
       "Bash(git push *)",
-      "Bash(clasp push *)"
+      "Bash(clasp push *)",
+      "Bash(clasp --version)",
+      "Bash(clasp status *)",
+      "Bash(node --check ParentWillBuyService.js)",
+      "Bash(node --check KitTrackingService.js)",
+      "Bash(cd C:/Users/legit/JetLearnProject && ls -a | grep -i clasp; ls ~/.clasprc.json 2>/dev/null && echo rc-exists)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

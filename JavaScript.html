@@ -1049,216 +1049,484 @@ function _updateSessionGroupCET(sessionGroup, prefix) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
-// BOOK CLASSES — standalone page (Phase 1: reuses the exact same backend
-// the Migration form's "Book Classes with New Teacher" widget already
-// calls; no new server-side booking logic here, just a page that doesn't
-// require going through Migration first).
+// BOOK CLASSES — Phase 2: Google-Calendar-style week grid. Search/pick
+// teachers, see their REAL week (their own calendar, via getTeacherWeekGrid),
+// click an "Availability Hour" slot to book, click a booked slot to
+// edit(reassign teacher+day/time)/cancel. All times shown in the picked
+// IANA timezone via Intl — the grid itself is authored in UTC from the server.
 // ═════════════════════════════════════════════════════════════════════════
 var _bcInited = false;
+var bkcTeacherColors = ['#1a73e8', '#ea4335', '#33a853', '#f9ab00', '#a142f4', '#00acc1', '#e67c73', '#795548'];
+var bkcSelectedTeachers = {}; // name -> color
+var bkcWeekEvents = [];       // last grid fetch result
+var bkcDuoType = 'single';
+var bkcLinkSource = 1;
+var bkcCurrentSlot = null;    // { teacherName, dayIdx, startUtc, endUtc } for the drawer
+var bkcMgCurrent = null;      // currently-open Manage Booking event
 
 function bkcInitPage() {
-    // Ensure the shared dropdown data (teachers/courses/timezones) is loaded —
-    // this page can be opened without ever visiting New Communication first.
-    var needsData = !globalTeachers || !globalTeachers.length || !globalCourses || !globalCourses.length || !globalTimezones || !globalTimezones.length;
+    var needsData = !globalTeachers || !globalTeachers.length || !globalCourses || !globalCourses.length || !globalBookingTimezones || !globalBookingTimezones.length;
     if (needsData) {
         google.script.run
             .withSuccessHandler(function(data) {
                 if (!data || !data.success) return;
-                if (!globalTeachers  || !globalTeachers.length)  globalTeachers  = data.teachers  || [];
-                if (!globalCourses   || !globalCourses.length)   globalCourses   = data.courses   || [];
-                if (!globalTimezones || !globalTimezones.length) globalTimezones = data.timezones || [];
-                bkcPopulateSelects();
+                if (!globalTeachers || !globalTeachers.length) globalTeachers = data.teachers || [];
+                if (!globalCourses  || !globalCourses.length)  globalCourses  = data.courses  || [];
+                if (!globalBookingTimezones || !globalBookingTimezones.length) globalBookingTimezones = data.bookingTimezones || [];
+                bkcRenderTeacherList();
+                bkcPopulateEditTeacherSelect();
             })
             .withFailureHandler(function(err) { showToast('error', 'Load Failed', err && err.message ? err.message : String(err)); })
             .getCommunicationPageData();
     } else {
-        bkcPopulateSelects();
+        bkcRenderTeacherList();
+        bkcPopulateEditTeacherSelect();
     }
+    populateSelect(document.getElementById('bkcDCourse'), globalCourses, false, 'Select a course');
 
     if (!_bcInited) {
         _bcInited = true;
-        document.getElementById('bkcFetchBtn').addEventListener('click', bkcFetchLearner);
-        document.getElementById('bkcAddSessionBtn').addEventListener('click', function() {
-            document.getElementById('bookClassesSessionsContainer').appendChild(createClassSessionGroup(false, 'bookClasses'));
-        });
-        document.getElementById('bkcBookBtn').addEventListener('click', bkcBookClasses);
-        var tzInput = document.getElementById('bkcTimezoneSearch');
-        if (tzInput) tzInput.addEventListener('change', function() {
-            document.querySelectorAll('#bookClassesSessionsContainer .class-session-group').forEach(function(sg) { _updateSessionGroupCET(sg, 'bookClasses'); });
+
+        var tzInput = document.getElementById('bkcTzSearch');
+        var tzId = document.getElementById('bkcTzId');
+        tzInput.value = 'Asia/Kolkata — IST (UTC+5:30)';
+        tzInput.addEventListener('focus', bkcOpenTzList);
+        tzInput.addEventListener('input', bkcFilterTzList);
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.bkc-side .bkc-search-box') && e.target.id !== 'bkcTzDropdown') {
+                var dd = document.getElementById('bkcTzDropdown');
+                if (dd && !dd.contains(e.target)) dd.style.display = 'none';
+            }
         });
 
-        var startEl = document.getElementById('bkcStartDate');
-        if (startEl && !startEl.value) {
+        document.getElementById('bkcTeacherSearch').addEventListener('input', bkcRenderTeacherList);
+
+        var weekEl = document.getElementById('bkcWeekDate');
+        weekEl.value = bkcMondayOf(new Date());
+        weekEl.addEventListener('change', bkcRefreshGrid);
+        document.getElementById('bkcPrevWeekBtn').addEventListener('click', function() { bkcShiftWeek(-7); });
+        document.getElementById('bkcNextWeekBtn').addEventListener('click', function() { bkcShiftWeek(7); });
+        document.getElementById('bkcTodayBtn').addEventListener('click', function() { weekEl.value = bkcMondayOf(new Date()); bkcRefreshGrid(); });
+
+        var dStart = document.getElementById('bkcDStartDate');
+        if (dStart && !dStart.value) {
             var today = new Date();
-            startEl.value = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+            dStart.value = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
         }
-        // First session row
-        document.getElementById('bookClassesSessionsContainer').appendChild(createClassSessionGroup(true, 'bookClasses'));
     }
+    bkcRenderWeekHead();
 }
 
-function bkcPopulateSelects() {
-    populateSelect(document.getElementById('bkcTeacher'), globalTeachers, false, 'Select a teacher');
-    populateSelect(document.getElementById('bkcCourse'), globalCourses, false, 'Select a course');
-    var tzField = document.getElementById('bkcTimezoneSearch');
-    if (tzField && !tzField.dataset.wired) {
-        makeSearchableSelect(tzField, 'Search timezone...');
-        tzField.dataset.wired = '1';
+function bkcPopulateEditTeacherSelect() {
+    populateSelect(document.getElementById('bkcEditTeacher'), globalTeachers, false, 'Select a teacher');
+}
+
+// ── Timezone search (bookingTimezones is IANA {id,label}, loaded via New Communication already) ──
+function bkcOpenTzList() { bkcRenderTzList(globalBookingTimezones || []); document.getElementById('bkcTzDropdown').style.display = 'block'; }
+function bkcFilterTzList() {
+    var q = document.getElementById('bkcTzSearch').value.toLowerCase();
+    bkcRenderTzList((globalBookingTimezones || []).filter(function(t) { return t.label.toLowerCase().indexOf(q) > -1; }));
+    document.getElementById('bkcTzDropdown').style.display = 'block';
+}
+function bkcRenderTzList(list) {
+    var dd = document.getElementById('bkcTzDropdown');
+    dd.innerHTML = list.slice(0, 60).map(function(t) {
+        return '<div class="bkc-tz-opt" onclick="bkcSelectTz(\'' + t.id + '\',\'' + escapeHtml(t.label).replace(/'/g,"\\'") + '\')">' + escapeHtml(t.label) + '</div>';
+    }).join('') || '<div class="bkc-tz-opt" style="color:#94a3b8;">No match</div>';
+}
+function bkcSelectTz(id, label) {
+    document.getElementById('bkcTzId').value = id;
+    document.getElementById('bkcTzSearch').value = label;
+    document.getElementById('bkcTzDropdown').style.display = 'none';
+    document.getElementById('bkcTzHint').textContent = 'Showing ' + id + '.';
+    bkcRenderWeekHead();
+    bkcRenderGrid();
+}
+
+// ── Teacher search + multi-select ──
+function bkcRenderTeacherList() {
+    var q = (document.getElementById('bkcTeacherSearch').value || '').toLowerCase();
+    var list = (globalTeachers || []).filter(function(n) { return n.toLowerCase().indexOf(q) > -1; });
+    var box = document.getElementById('bkcTeacherList');
+    box.innerHTML = list.map(function(name) {
+        var checked = bkcSelectedTeachers[name] ? 'checked' : '';
+        var color = bkcSelectedTeachers[name] || bkcColorFor(name);
+        return '<label class="bkc-t-row"><input type="checkbox" ' + checked + ' onchange="bkcToggleTeacher(\'' + escapeHtml(name).replace(/'/g,"\\'") + '\', this.checked)">'
+            + '<span class="bkc-dot" style="background:' + color + ';"></span><span>' + escapeHtml(name) + '</span></label>';
+    }).join('') || '<div class="bkc-hint">No teachers match.</div>';
+}
+function bkcColorFor(name) {
+    var idx = 0;
+    for (var i = 0; i < name.length; i++) idx += name.charCodeAt(i);
+    return bkcTeacherColors[idx % bkcTeacherColors.length];
+}
+function bkcToggleTeacher(name, checked) {
+    if (checked) bkcSelectedTeachers[name] = bkcColorFor(name);
+    else delete bkcSelectedTeachers[name];
+    bkcRenderTeacherList();
+    bkcRenderWeekHead();
+    bkcRefreshGrid();
+}
+
+// ── Week navigation ──
+function bkcMondayOf(d) {
+    var day = d.getDay(); // 0=Sun
+    var diff = (day === 0 ? -6 : 1 - day);
+    var mon = new Date(d); mon.setDate(d.getDate() + diff);
+    return mon.getFullYear() + '-' + String(mon.getMonth()+1).padStart(2,'0') + '-' + String(mon.getDate()).padStart(2,'0');
+}
+function bkcShiftWeek(days) {
+    var el = document.getElementById('bkcWeekDate');
+    var d = new Date(el.value + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    el.value = bkcMondayOf(d);
+    bkcRefreshGrid();
+}
+function bkcRenderWeekHead() {
+    var el = document.getElementById('bkcWeekDate');
+    if (!el || !el.value) return;
+    var mon = new Date(el.value + 'T00:00:00');
+    var head = document.getElementById('bkcWeekHead');
+    var dows = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+    var todayStr = bkcMondayOf(new Date());
+    var cells = '<div class="bkc-hcell"></div>';
+    for (var i = 0; i < 7; i++) {
+        var d = new Date(mon); d.setDate(mon.getDate() + i);
+        var isToday = (d.toDateString() === new Date().toDateString());
+        cells += '<div class="bkc-hcell' + (isToday ? ' today' : '') + '"><div class="bkc-dow">' + dows[i] + '</div><div class="bkc-dnum">' + d.getDate() + '</div></div>';
     }
+    head.innerHTML = cells;
 }
 
-function bkcFetchLearner() {
-    var jlid = (document.getElementById('bkcJlid').value || '').trim();
-    if (!jlid) return;
-    var btn = document.getElementById('bkcFetchBtn');
-    var result = document.getElementById('bkcFetchResult');
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    btn.disabled = true;
-    result.style.cssText = 'display:block;margin-top:6px;';
-    result.innerHTML = '<div class="kt-skeleton-line"></div>';
-
-    google.script.run
-        .withSuccessHandler(function(hs) {
-            btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
-            btn.disabled = false;
-            result.className = 'fade-in';
-            if (!hs || !hs.success || !hs.data) {
-                result.style.cssText = 'display:block;color:#ef4444;margin-top:6px;';
-                result.textContent = '✗ ' + ((hs && hs.message) || 'Learner not found.');
-                return;
-            }
-            document.getElementById('bkcLearnerName').value = hs.data.learnerName || '';
-            var courseSel = document.getElementById('bkcCourse');
-            if (courseSel && hs.data.currentCourse) {
-                var opt = Array.from(courseSel.options).find(function(o) { return o.value === hs.data.currentCourse; });
-                if (opt) courseSel.value = hs.data.currentCourse;
-            }
-            result.style.cssText = 'display:block;color:#059669;background:#f0fdf4;padding:6px 10px;border-radius:6px;margin-top:6px;';
-            result.textContent = '✔ Found: ' + (hs.data.learnerName || '—');
-            bkcLoadBookings(jlid);
-        })
-        .withFailureHandler(function(err) {
-            btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
-            btn.disabled = false;
-            result.className = 'fade-in';
-            result.style.cssText = 'display:block;color:#ef4444;margin-top:6px;';
-            result.textContent = '✗ ' + (err.message || String(err));
-        })
-        .fetchHubspotByJlid(jlid, true); // skipChurnCheck — irrelevant here
-}
-
-function bkcBookClasses() {
-    var jlid = (document.getElementById('bkcJlid').value || '').trim();
-    var learnerName = (document.getElementById('bkcLearnerName').value || '').trim();
-    var teacherName = document.getElementById('bkcTeacher').value;
-    var courseName  = document.getElementById('bkcCourse').value;
-    var startDate    = document.getElementById('bkcStartDate').value;
-    var gmtTzLabel   = (document.getElementById('bookClassesTimezone').value || '').trim();
-    var numEvents    = parseInt(document.getElementById('bkcNumEvents').value, 10) || 12;
-    var statusEl     = document.getElementById('bkcStatus');
-    statusEl.textContent = '';
-
-    var classSessions = Array.from(document.querySelectorAll('#bookClassesSessionsContainer .class-session-group')).map(function(group) {
-        var day = group.querySelector('.class-day-select').value;
-        var hour = group.querySelector('.class-hour-select').value;
-        var minute = group.querySelector('.class-minute-select').value;
-        var meridiem = group.querySelector('.class-meridiem-select').value;
-        return (day && hour && minute && meridiem) ? { day: day, time: hour + ':' + minute + ' ' + meridiem } : null;
-    }).filter(Boolean);
-
-    if (!jlid || !learnerName) { showToast('error', 'Missing Learner', 'Fetch a learner (JLID) first.'); return; }
-    if (!teacherName) { showToast('error', 'Missing Teacher', 'Select a teacher first.'); return; }
-    if (!classSessions.length) { showToast('error', 'Missing Schedule', 'Add at least one weekly session.'); return; }
-    if (!startDate) { showToast('error', 'Missing Start Date', 'Select a start date first.'); return; }
-    if (!gmtTzLabel) {
-        showToast('error', 'Missing Timezone', 'Select a timezone first.');
-        document.getElementById('bkcTimezoneSearch').focus();
+// ── Fetch + render grid ──
+function bkcRefreshGrid() {
+    var names = Object.keys(bkcSelectedTeachers);
+    var statusEl = document.getElementById('bkcGridStatus');
+    var grid = document.getElementById('bkcWeekGrid');
+    if (!names.length) {
+        statusEl.textContent = 'Pick at least one teacher to see their week.';
+        statusEl.style.display = 'block';
+        grid.innerHTML = '';
         return;
     }
-
-    showLoading('Checking teacher availability…');
-    google.script.run
-        .withSuccessHandler(function(chk) {
-            hideLoading();
-            var warnHtml = '';
-            if (chk && chk.success && chk.conflicts && chk.conflicts.length) {
-                warnHtml = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-top:8px;text-align:left;">'
-                    + '<strong style="color:#dc2626;">⚠ Teacher already booked:</strong><br>'
-                    + chk.conflicts.map(function(c) { return '<span style="font-size:0.8rem;color:#991b1b;">• ' + escapeHtml(c.day) + ' ' + escapeHtml(c.time) + ' — ' + escapeHtml(c.eventTitle) + '</span>'; }).join('<br>')
-                    + '<br><span style="font-size:0.75rem;color:#94a3b8;">Booking anyway will double-book this teacher.</span></div>';
-            } else if (chk && chk.success && chk.unverifiable) {
-                warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Could not verify teacher calendar — check manually.</div>';
-            } else if (!chk || !chk.success) {
-                warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Availability check failed — proceeding without verification.</div>';
-            }
-            showConfirm(
-                'Book Classes',
-                'Book <strong>' + numEvents + ' total classes</strong> across ' + classSessions.length + ' weekly session(s) with <strong>' + escapeHtml(teacherName) + '</strong> for <strong>' + escapeHtml(learnerName) + '</strong> (' + escapeHtml(gmtTzLabel) + ')?' + warnHtml,
-                function(confirmed) {
-                    if (!confirmed) return;
-                    showLoading('Booking ' + numEvents + ' total classes…');
-                    google.script.run
-                        .withSuccessHandler(function(res) {
-                            hideLoading();
-                            if (!res || !res.success) {
-                                showToast('error', 'Booking Failed', res ? res.message : 'Unknown error');
-                                statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Unknown error') + '</span>';
-                                return;
-                            }
-                            showToast('success', 'Classes Booked', res.occurrences + ' total classes booked with ' + teacherName);
-                            statusEl.innerHTML = '<span style="color:#16a34a;">Booked ' + res.occurrences + ' total classes across ' + res.booked.length + ' session(s).</span>';
-                            bkcLoadBookings(jlid);
-                        })
-                        .withFailureHandler(function(err) {
-                            hideLoading();
-                            showToast('error', 'Booking Failed', err.message || String(err));
-                        })
-                        .bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, gmtTzLabel, numEvents, [], (currentUser && currentUser.username) || '', '', '', '');
-                }
-            );
-        })
-        .withFailureHandler(function() {
-            hideLoading();
-            showToast('warning', 'Availability Check Failed', 'Proceeding without verification is your call — try again or book anyway.');
-        })
-        .checkBookingConflicts(teacherName, classSessions, startDate, gmtTzLabel);
-}
-
-function bkcLoadBookings(jlid) {
-    var body = document.getElementById('bkcBookingsBody');
-    body.innerHTML = '<div class="kt-skeleton-line"></div><div class="kt-skeleton-line"></div>';
+    statusEl.textContent = 'Loading week…';
+    statusEl.style.display = 'block';
+    grid.innerHTML = '';
+    var weekStart = document.getElementById('bkcWeekDate').value;
     google.script.run
         .withSuccessHandler(function(res) {
-            body.className = 'fade-in';
-            var rows = (res && res.success && res.rows) ? res.rows.filter(function(r) { return r.status === 'Active'; }) : [];
-            if (!rows.length) { body.innerHTML = 'No active bookings found for this learner.'; return; }
-            body.innerHTML = rows.map(function(r) {
-                return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;">'
-                    + '<span>' + escapeHtml(r.eventTitle || '—') + '<span style="display:block;font-size:0.75rem;color:#94a3b8;">' + escapeHtml(r.teacherName || '') + ' · ' + escapeHtml(r.sessions || '') + '</span></span>'
-                    + '<button type="button" class="btn btn-outline btn-sm" onclick="bkcCancelBooking(' + r.rowIndex + ', this)" style="color:#dc2626;border-color:#fecaca;flex-shrink:0;"><i class="fas fa-times"></i> Cancel</button>'
-                    + '</div>';
-            }).join('');
+            if (!res || !res.success) {
+                statusEl.textContent = 'Could not load: ' + ((res && res.message) || 'unknown error');
+                return;
+            }
+            bkcWeekEvents = res.events || [];
+            statusEl.style.display = 'none';
+            bkcRenderGrid();
         })
-        .withFailureHandler(function() { body.textContent = 'Could not load bookings.'; })
-        .getBookingLogForJlid(jlid);
+        .withFailureHandler(function(err) {
+            statusEl.textContent = 'Could not load: ' + (err.message || String(err));
+        })
+        .getTeacherWeekGrid(names, weekStart);
 }
 
-function bkcCancelBooking(rowIndex, btn) {
-    if (!confirm('Cancel this booking series? Remaining sessions will be removed from both calendars.')) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+function bkcRenderGrid() {
+    var grid = document.getElementById('bkcWeekGrid');
+    var tzId = document.getElementById('bkcTzId').value || 'Asia/Kolkata';
+    var weekStart = document.getElementById('bkcWeekDate').value;
+    if (!weekStart) return;
+    var mon = new Date(weekStart + 'T00:00:00Z');
+
+    // Bucket events by local (in tzId) hour-of-day + day offset from Monday, using the
+    // event's own UTC start/end so DST/offset is always correct for that specific date.
+    var buckets = {}; // "hour|dayIdx" -> [event...]
+    var minHour = 24, maxHour = 0;
+    bkcWeekEvents.forEach(function(ev) {
+        var start = new Date(ev.startUtc);
+        var parts = bkcTzParts(start, tzId);
+        var dayIdx = bkcDayIdxInWeek(parts.dateStr, weekStart);
+        if (dayIdx === null) return;
+        var key = parts.hour + '|' + dayIdx;
+        if (!buckets[key]) buckets[key] = [];
+        buckets[key].push({ ev: ev, minute: parts.minute });
+        if (parts.hour < minHour) minHour = parts.hour;
+        if (parts.hour > maxHour) maxHour = parts.hour;
+    });
+    if (minHour > maxHour) { minHour = 8; maxHour = 20; }
+    minHour = Math.max(0, minHour - 1);
+    maxHour = Math.min(23, maxHour + 1);
+
+    var html = '';
+    for (var h = minHour; h <= maxHour; h++) {
+        html += '<div class="bkc-hr-label">' + bkcFmt24(h) + '</div><div class="bkc-hr-row">';
+        for (var d = 0; d < 7; d++) {
+            var items = buckets[h + '|' + d] || [];
+            html += '<div class="bkc-hr-cell">' + items.map(function(it) {
+                var ev = it.ev;
+                var cls = ev.type === 'open' ? 'open' : 'busy';
+                var label = ev.type === 'open' ? 'Open' : (ev.learnerName || ev.title || 'Booked');
+                var timeLbl = bkcFmt12(h, it.minute);
+                var teacherAttr = escapeHtml(ev.teacher).replace(/'/g,"\\'");
+                var handler = ev.type === 'open'
+                    ? "bkcOpenDrawer('" + teacherAttr + "','" + ev.startUtc + "','" + ev.endUtc + "')"
+                    : "bkcOpenManageByEvent(" + JSON.stringify(ev).replace(/"/g,'&quot;') + ")";
+                return '<div class="bkc-ev ' + cls + '" onclick="' + handler + '" title="' + escapeHtml(label) + '"><span class="bkc-ev-time">' + timeLbl + '</span>' + escapeHtml(label) + '</div>';
+            }).join('') + '</div>';
+        }
+        html += '</div>';
+    }
+    grid.innerHTML = html;
+}
+
+// Formats a Date in a given IANA timezone into {dateStr:'YYYY-MM-DD', hour, minute}.
+function bkcTzParts(date, tzId) {
+    var fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tzId, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+    var parts = {};
+    fmt.formatToParts(date).forEach(function(p) { parts[p.type] = p.value; });
+    var hour = parseInt(parts.hour, 10); if (hour === 24) hour = 0;
+    return { dateStr: parts.year + '-' + parts.month + '-' + parts.day, hour: hour, minute: parseInt(parts.minute, 10) };
+}
+function bkcDayIdxInWeek(dateStr, weekStartStr) {
+    var d = new Date(dateStr + 'T00:00:00Z');
+    var mon = new Date(weekStartStr + 'T00:00:00Z');
+    var diffDays = Math.round((d - mon) / 86400000);
+    return (diffDays >= 0 && diffDays <= 6) ? diffDays : null;
+}
+function bkcFmt24(h) { return String(h).padStart(2,'0') + ':00'; }
+function bkcFmt12(h, m) {
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + (m ? ':' + String(m).padStart(2,'0') : '') + ' ' + ampm;
+}
+var _bkcDayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+// ── Booking drawer (click an "Open" slot) ──
+function bkcOpenDrawer(teacherName, startUtc, endUtc) {
+    var tzId = document.getElementById('bkcTzId').value || 'Asia/Kolkata';
+    var start = new Date(startUtc);
+    var parts = bkcTzParts(start, tzId);
+    var weekStart = document.getElementById('bkcWeekDate').value;
+    var dayIdx = bkcDayIdxInWeek(parts.dateStr, weekStart);
+    bkcCurrentSlot = { teacherName: teacherName, dayIdx: dayIdx, day: _bkcDayNames[dayIdx], time: bkcFmt12(parts.hour, parts.minute), startUtc: startUtc, tzId: tzId };
+
+    document.getElementById('bkcDTeacher').value = teacherName;
+    document.getElementById('bkcDJlid').value = '';
+    document.getElementById('bkcDLearnerName').value = '';
+    document.getElementById('bkcDFetchResult1').style.display = 'none';
+    document.getElementById('bkcDJlid2').value = '';
+    document.getElementById('bkcDFetchResult2').style.display = 'none';
+    document.getElementById('bkcDClassLink').value = '';
+    bkcSetClassType('single');
+    document.getElementById('bkcDSlotLabel').textContent = bkcCurrentSlot.day + ', ' + bkcCurrentSlot.time + ' (' + tzId + ')';
+    document.getElementById('bkcDConflictLabel').textContent = 'Not checked yet';
+    document.getElementById('bkcDStatus').textContent = '';
+    document.getElementById('bkcDrawerTitle').textContent = 'Book Classes — ' + teacherName;
+    document.getElementById('bkcDrawerOverlay').style.display = 'flex';
+}
+function bkcCloseDrawer() { document.getElementById('bkcDrawerOverlay').style.display = 'none'; bkcCurrentSlot = null; }
+
+function bkcSetClassType(type) {
+    bkcDuoType = type;
+    document.getElementById('bkcTypeSingle').classList.toggle('sel', type === 'single');
+    document.getElementById('bkcTypeDuo').classList.toggle('sel', type === 'duo');
+    document.getElementById('bkcDuoFields').style.display = type === 'duo' ? 'block' : 'none';
+}
+function bkcSetLinkSource(n) {
+    bkcLinkSource = n;
+    document.getElementById('bkcLinkFrom1').classList.toggle('sel', n === 1);
+    document.getElementById('bkcLinkFrom2').classList.toggle('sel', n === 2);
+}
+
+function bkcFetchLearner(which) {
+    var jlidEl = document.getElementById(which === 2 ? 'bkcDJlid2' : 'bkcDJlid');
+    var resultEl = document.getElementById(which === 2 ? 'bkcDFetchResult2' : 'bkcDFetchResult1');
+    var jlid = (jlidEl.value || '').trim();
+    if (!jlid) return;
+    resultEl.style.cssText = 'display:block;';
+    resultEl.innerHTML = '<div class="kt-skeleton-line"></div>';
+    google.script.run
+        .withSuccessHandler(function(hs) {
+            resultEl.className = 'fade-in';
+            if (!hs || !hs.success || !hs.data) {
+                resultEl.style.cssText = 'display:block;color:#ef4444;';
+                resultEl.textContent = '✗ ' + ((hs && hs.message) || 'Learner not found.');
+                return;
+            }
+            resultEl.style.cssText = 'display:block;color:#059669;';
+            resultEl.textContent = '✔ ' + (hs.data.learnerName || '—') + (hs.data.currentCourse ? ' — ' + hs.data.currentCourse : '');
+            if (which !== 2) {
+                document.getElementById('bkcDLearnerName').value = hs.data.learnerName || '';
+                var courseSel = document.getElementById('bkcDCourse');
+                if (courseSel && hs.data.currentCourse) {
+                    var opt = Array.from(courseSel.options).find(function(o) { return o.value === hs.data.currentCourse; });
+                    if (opt) courseSel.value = hs.data.currentCourse;
+                }
+            }
+        })
+        .withFailureHandler(function(err) {
+            resultEl.style.cssText = 'display:block;color:#ef4444;';
+            resultEl.textContent = '✗ ' + (err.message || String(err));
+        })
+        .fetchHubspotByJlid(jlid, true);
+}
+
+function bkcConfirmBooking() {
+    if (!bkcCurrentSlot) return;
+    var jlid = (document.getElementById('bkcDJlid').value || '').trim();
+    var learnerName = (document.getElementById('bkcDLearnerName').value || '').trim();
+    var teacherName = bkcCurrentSlot.teacherName;
+    var courseName = document.getElementById('bkcDCourse').value;
+    var classLink = (document.getElementById('bkcDClassLink').value || '').trim();
+    var startDate = document.getElementById('bkcDStartDate').value;
+    var numEvents = parseInt(document.getElementById('bkcDNumEvents').value, 10) || 12;
+    var tzId = bkcCurrentSlot.tzId;
+    var statusEl = document.getElementById('bkcDStatus');
+    statusEl.textContent = '';
+
+    var extraEmails = [];
+    if (bkcDuoType === 'duo') {
+        var jlid2 = (document.getElementById('bkcDJlid2').value || '').trim();
+        if (!jlid2) { showToast('error', 'Missing Second Learner', 'Enter the second JLID for a 1:2 class.'); return; }
+    }
+    if (!jlid || !learnerName) { showToast('error', 'Missing Learner', 'Fetch a learner (JLID) first.'); return; }
+    if (!startDate) { showToast('error', 'Missing Start Date', 'Select a start date.'); return; }
+
+    var classSessions = [{ day: bkcCurrentSlot.day, time: bkcCurrentSlot.time }];
+    document.getElementById('bkcDConflictLabel').textContent = 'Checking…';
+    google.script.run
+        .withSuccessHandler(function(chk) {
+            var conflictText = 'None found';
+            if (chk && chk.success && chk.conflicts && chk.conflicts.length) {
+                conflictText = chk.conflicts.length + ' conflict(s) — booking anyway double-books this teacher.';
+            } else if (chk && chk.unverifiable) {
+                conflictText = 'Could not verify — proceed with care.';
+            }
+            document.getElementById('bkcDConflictLabel').textContent = conflictText;
+            showLoading('Booking ' + numEvents + ' total classes…');
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    hideLoading();
+                    if (!res || !res.success) {
+                        showToast('error', 'Booking Failed', res ? res.message : 'Unknown error');
+                        statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Unknown error') + '</span>';
+                        return;
+                    }
+                    showToast('success', 'Classes Booked', res.occurrences + ' total classes booked with ' + teacherName);
+                    bkcCloseDrawer();
+                    bkcRefreshGrid();
+                })
+                .withFailureHandler(function(err) {
+                    hideLoading();
+                    showToast('error', 'Booking Failed', err.message || String(err));
+                })
+                .bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, tzId, numEvents, extraEmails, (currentUser && currentUser.username) || '', classLink, '', '');
+        })
+        .withFailureHandler(function() {
+            document.getElementById('bkcDConflictLabel').textContent = 'Check failed — proceed with care.';
+        })
+        .checkBookingConflicts(teacherName, classSessions, startDate, tzId);
+}
+
+// ── Manage Booking (click a booked slot) ──
+function bkcOpenManageByEvent(ev) {
+    bkcMgCurrent = ev;
+    document.getElementById('bkcMgLearner').textContent = ev.learnerName || ev.title || '—';
+    document.getElementById('bkcMgTeacher').textContent = ev.teacher || '—';
+    document.getElementById('bkcMgCourse').textContent = ev.courseName || '—';
+    var tzId = document.getElementById('bkcTzId').value || 'Asia/Kolkata';
+    var start = new Date(ev.startUtc);
+    var parts = bkcTzParts(start, tzId);
+    var weekStart = document.getElementById('bkcWeekDate').value;
+    var dayIdx = bkcDayIdxInWeek(parts.dateStr, weekStart);
+    document.getElementById('bkcMgSlot').textContent = (_bkcDayNames[dayIdx] || '') + ', ' + bkcFmt12(parts.hour, parts.minute) + ' (' + tzId + ')';
+
+    var hasRow = !!ev.rowIndex;
+    document.getElementById('bkcMgActions').style.display = hasRow ? 'flex' : 'none';
+    document.getElementById('bkcMgCancelBtn').style.display = hasRow ? 'block' : 'none';
+    if (!hasRow) {
+        document.getElementById('bkcMgActions').insertAdjacentHTML('afterend', '');
+    }
+    bkcCloseSubPanel();
+    document.getElementById('bkcManageOverlay').style.display = 'flex';
+}
+function bkcCloseManage() { document.getElementById('bkcManageOverlay').style.display = 'none'; bkcMgCurrent = null; }
+function bkcCloseSubPanel() {
+    document.getElementById('bkcEditPanel').style.display = 'none';
+    document.getElementById('bkcCancelPanel').style.display = 'none';
+    if (bkcMgCurrent && bkcMgCurrent.rowIndex) {
+        document.getElementById('bkcMgActions').style.display = 'flex';
+        document.getElementById('bkcMgCancelBtn').style.display = 'block';
+    }
+}
+function bkcOpenEdit() {
+    if (!bkcMgCurrent) return;
+    var tzId = document.getElementById('bkcTzId').value || 'Asia/Kolkata';
+    var parts = bkcTzParts(new Date(bkcMgCurrent.startUtc), tzId);
+    var weekStart = document.getElementById('bkcWeekDate').value;
+    var dayIdx = bkcDayIdxInWeek(parts.dateStr, weekStart);
+    document.getElementById('bkcEditTeacher').value = bkcMgCurrent.teacher;
+    document.getElementById('bkcEditDay').value = _bkcDayNames[dayIdx] || 'Monday';
+    document.getElementById('bkcEditTime').value = String(parts.hour).padStart(2,'0') + ':' + String(parts.minute).padStart(2,'0');
+    document.getElementById('bkcEditSessions').value = 12;
+    document.getElementById('bkcEditStatus').textContent = '';
+    document.getElementById('bkcMgActions').style.display = 'none';
+    document.getElementById('bkcMgCancelBtn').style.display = 'none';
+    document.getElementById('bkcEditPanel').style.display = 'block';
+}
+function bkcSaveEdit() {
+    if (!bkcMgCurrent || !bkcMgCurrent.rowIndex) return;
+    var newTeacher = document.getElementById('bkcEditTeacher').value;
+    var newDay = document.getElementById('bkcEditDay').value;
+    var newTime24 = document.getElementById('bkcEditTime').value;
+    var sessions = parseInt(document.getElementById('bkcEditSessions').value, 10) || 12;
+    if (!newTeacher || !newDay || !newTime24) { showToast('error', 'Missing Fields', 'Fill teacher, day and time.'); return; }
+    var h24 = parseInt(newTime24.split(':')[0], 10), m = newTime24.split(':')[1];
+    var ampm = h24 >= 12 ? 'PM' : 'AM'; var h12 = h24 % 12; if (h12 === 0) h12 = 12;
+    var newTime = h12 + ':' + m + ' ' + ampm;
+    var tzId = document.getElementById('bkcTzId').value || 'Asia/Kolkata';
+    var startDateStr = document.getElementById('bkcWeekDate').value;
+    var statusEl = document.getElementById('bkcEditStatus');
+    statusEl.textContent = 'Rebooking…';
+    var jlid = bkcMgCurrent.jlid, learnerName = bkcMgCurrent.learnerName, courseName = bkcMgCurrent.courseName;
     google.script.run
         .withSuccessHandler(function() {
-            showToast('success', 'Cancelled', 'Booking series cancelled.');
-            var jlid = (document.getElementById('bkcJlid').value || '').trim();
-            if (jlid) bkcLoadBookings(jlid);
+            google.script.run
+                .withSuccessHandler(function(res) {
+                    if (!res || !res.success) {
+                        statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Booking failed after cancel — check manually.') + '</span>';
+                        return;
+                    }
+                    showToast('success', 'Rebooked', learnerName + ' moved to ' + newTeacher + ', ' + newDay + ' ' + newTime);
+                    bkcCloseManage();
+                    bkcRefreshGrid();
+                })
+                .withFailureHandler(function(err) {
+                    statusEl.innerHTML = '<span style="color:#dc2626;">Cancelled old booking but rebooking failed: ' + escapeHtml(err.message || String(err)) + '</span>';
+                })
+                .bookClassesWithNewTeacher(jlid, learnerName, newTeacher, [{ day: newDay, time: newTime }], courseName, startDateStr, tzId, sessions, [], (currentUser && currentUser.username) || '', '', '', '');
+        })
+        .withFailureHandler(function(err) {
+            statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(err.message || String(err)) + '</span>';
+        })
+        .cancelBookedClasses(bkcMgCurrent.rowIndex);
+}
+function bkcConfirmCancel() {
+    document.getElementById('bkcMgActions').style.display = 'none';
+    document.getElementById('bkcMgCancelBtn').style.display = 'none';
+    document.getElementById('bkcCancelPanel').style.display = 'block';
+}
+function bkcDoCancel() {
+    if (!bkcMgCurrent || !bkcMgCurrent.rowIndex) return;
+    var learnerName = bkcMgCurrent.learnerName;
+    google.script.run
+        .withSuccessHandler(function() {
+            showToast('success', 'Cancelled', learnerName + '\'s remaining sessions cancelled.');
+            bkcCloseManage();
+            bkcRefreshGrid();
         })
         .withFailureHandler(function(err) {
             showToast('error', 'Cancel Failed', err && err.message ? err.message : String(err));
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-times"></i> Cancel';
         })
-        .cancelBookedClasses(rowIndex);
+        .cancelBookedClasses(bkcMgCurrent.rowIndex);
 }
 
     var _loadingTimelineTimer = null;

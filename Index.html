@@ -1408,63 +1408,132 @@
       <div id="bookClassesPage" class="page-content" style="display: none;">
         <div class="header">
           <h1 class="page-title">Book Classes</h1>
-          <p class="page-subtitle">Book a recurring class series with any teacher — independent of Migration.</p>
+          <p class="page-subtitle">Search a teacher, see their real week, click any open slot to book — or click a booked class to edit/cancel it.</p>
         </div>
-        <div class="form-container form-container-wide">
-          <form id="bookClassesForm" onsubmit="return false;">
-            <div class="formc-shell">
-              <div class="formc-rail">
-                <a href="#bkcSecLearner" class="current">Learner &amp; Teacher</a>
-                <a href="#bkcSecSchedule">Schedule</a>
-                <a href="#bkcSecBookings">Existing Bookings</a>
+        <div class="bkc-shell">
+          <div class="bkc-side">
+            <div class="bkc-side-label">Timezone</div>
+            <div class="bkc-search-box">
+              <i class="fas fa-globe"></i>
+              <input type="text" id="bkcTzSearch" placeholder="Search timezone..." autocomplete="off">
+            </div>
+            <input type="hidden" id="bkcTzId" value="Asia/Kolkata">
+            <div id="bkcTzDropdown" class="bkc-tz-dropdown" style="display:none;"></div>
+            <div class="bkc-hint" id="bkcTzHint">Showing Asia/Kolkata.</div>
+
+            <div class="bkc-side-label" style="margin-top:16px;">Search teacher</div>
+            <div class="bkc-search-box"><i class="fas fa-search"></i><input type="text" id="bkcTeacherSearch" placeholder="Type a teacher name..."></div>
+            <div id="bkcTeacherList" class="bkc-teacher-list"></div>
+
+            <div class="bkc-side-label" style="margin-top:16px;">Week</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button type="button" class="btn btn-outline btn-sm" id="bkcPrevWeekBtn"><i class="fas fa-chevron-left"></i></button>
+              <input type="date" id="bkcWeekDate" class="form-control" style="flex:1;">
+              <button type="button" class="btn btn-outline btn-sm" id="bkcNextWeekBtn"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="bkcTodayBtn" style="margin-top:6px;width:100%;">Today</button>
+          </div>
+
+          <div class="bkc-main">
+            <div id="bkcGridStatus" class="bkc-hint" style="padding:10px 4px;">Pick at least one teacher to see their week.</div>
+            <div id="bkcWeekHead" class="bkc-week-head"></div>
+            <div id="bkcWeekGrid" class="bkc-week-grid"></div>
+          </div>
+        </div>
+
+        <!-- Booking drawer — click any open slot to fill and confirm -->
+        <div id="bkcDrawerOverlay" class="bkc-overlay" style="display:none;">
+          <div class="bkc-drawer">
+            <div class="bkc-drawer-head">
+              <h3 id="bkcDrawerTitle">Book Classes</h3>
+              <button type="button" class="bkc-close" onclick="bkcCloseDrawer()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="bkc-field">
+              <label>JLID</label>
+              <div style="display:flex;gap:6px;">
+                <input type="text" id="bkcDJlid" class="form-control" placeholder="Enter JLID">
+                <button type="button" class="btn btn-outline btn-sm" onclick="bkcFetchLearner(1)" title="Fetch learner from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
               </div>
-              <div class="formc-main">
+              <small id="bkcDFetchResult1" style="display:none;"></small>
+            </div>
+            <div class="bkc-field"><label>Learner Name</label><input type="text" id="bkcDLearnerName" class="form-control"></div>
+            <div class="bkc-field"><label>Teacher</label><input type="text" id="bkcDTeacher" class="form-control" readonly style="background:var(--bg-secondary,#f1f5f9);"></div>
+            <div class="bkc-field"><label>Course</label><select id="bkcDCourse" class="form-control form-select"><option value="" disabled selected>Select a course</option></select></div>
 
-                <div class="form-section" id="bkcSecLearner">
-                  <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Learner &amp; Teacher</div>
-                  <div class="form-grid">
-                    <div class="form-group">
-                      <label for="bkcJlid" class="form-label">JLID</label>
-                      <div style="display: flex; gap: 0.5rem;">
-                        <input type="text" id="bkcJlid" class="form-control" placeholder="Enter JLID">
-                        <button type="button" class="btn btn-outline btn-sm" id="bkcFetchBtn" title="Fetch learner from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
-                      </div>
-                      <small id="bkcFetchResult" class="form-text-muted" style="display:none;margin-top:6px;"></small>
-                    </div>
-                    <div class="form-group"><label for="bkcLearnerName" class="form-label">Learner Name</label><input type="text" id="bkcLearnerName" class="form-control" required></div>
-                    <div class="form-group"><label for="bkcTeacher" class="form-label">Teacher</label><select id="bkcTeacher" class="form-control form-select" required><option value="" disabled selected>Select a teacher</option></select></div>
-                    <div class="form-group"><label for="bkcCourse" class="form-label">Course</label><select id="bkcCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select></div>
-                  </div>
+            <div class="bkc-field">
+              <label>Class Type</label>
+              <div class="bkc-toggle-row">
+                <button type="button" class="bkc-toggle sel" id="bkcTypeSingle" onclick="bkcSetClassType('single')">1:1</button>
+                <button type="button" class="bkc-toggle" id="bkcTypeDuo" onclick="bkcSetClassType('duo')">1:2 (two learners)</button>
+              </div>
+              <div id="bkcDuoFields" style="display:none;margin-top:10px;padding:10px;background:var(--bg-secondary,#f1f5f9);border-radius:8px;">
+                <label>Second Learner JLID</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="text" id="bkcDJlid2" class="form-control" placeholder="Enter second JLID">
+                  <button type="button" class="btn btn-outline btn-sm" onclick="bkcFetchLearner(2)" title="Fetch second learner"><i class="fas fa-cloud-download-alt"></i></button>
                 </div>
-
-                <div class="form-section" id="bkcSecSchedule">
-                  <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-calendar-alt"></i></span>Schedule</div>
-                  <div class="form-grid">
-                    <div class="form-group">
-                      <label class="form-label">Timezone</label>
-                      <input type="text" id="bkcTimezoneSearch" class="form-control" placeholder="Search timezone..." autocomplete="off">
-                      <input type="hidden" id="bookClassesTimezone">
-                    </div>
-                    <div class="form-group"><label for="bkcStartDate" class="form-label">Start Date</label><input type="date" id="bkcStartDate" class="form-control" required></div>
-                    <div class="form-group"><label for="bkcNumEvents" class="form-label">Total Classes to Book</label><input type="number" id="bkcNumEvents" class="form-control" value="12" min="1"></div>
-                    <div class="form-group full-width">
-                      <label class="form-label">Weekly Session(s) <span style="font-weight:400;font-size:0.78em;color:var(--text-light);">— add more than one for twice-weekly etc.</span></label>
-                      <div id="bookClassesSessionsContainer"></div>
-                      <button type="button" class="btn btn-outline" id="bkcAddSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button>
-                    </div>
-                  </div>
-                  <div id="bkcStatus" style="margin-top:12px;font-size:0.85rem;"></div>
-                  <div class="form-actions"><button type="button" class="btn btn-primary" id="bkcBookBtn"><i class="fas fa-calendar-check"></i> Book Classes</button></div>
+                <small id="bkcDFetchResult2" style="display:none;"></small>
+                <label style="margin-top:8px;">Whose class link do we use?</label>
+                <div class="bkc-toggle-row">
+                  <button type="button" class="bkc-toggle sel" id="bkcLinkFrom1" onclick="bkcSetLinkSource(1)">Learner 1's link</button>
+                  <button type="button" class="bkc-toggle" id="bkcLinkFrom2" onclick="bkcSetLinkSource(2)">Learner 2's link</button>
                 </div>
-
-                <div class="form-section" id="bkcSecBookings">
-                  <div class="form-section-title"><span class="sec-icon c-teal"><i class="fas fa-list-check"></i></span>Existing Bookings for this Learner</div>
-                  <div id="bkcBookingsBody" style="font-size:0.85rem;color:#64748b;">Fetch a JLID above to see their current bookings here.</div>
-                </div>
-
+                <div class="bkc-hint">Both learners are invited either way — this only picks whose class link the event uses.</div>
               </div>
             </div>
-          </form>
+
+            <div class="bkc-field"><label>Class Link (optional)</label><input type="text" id="bkcDClassLink" class="form-control" placeholder="https://..."></div>
+            <div class="bkc-field"><label>Start Date</label><input type="date" id="bkcDStartDate" class="form-control"></div>
+            <div class="bkc-field"><label>Total Classes to Book</label><input type="number" id="bkcDNumEvents" class="form-control" value="12" min="1"></div>
+
+            <div class="bkc-summary-row"><span>Slot</span><span id="bkcDSlotLabel">—</span></div>
+            <div class="bkc-summary-row"><span>Conflicts</span><span id="bkcDConflictLabel">Not checked yet</span></div>
+
+            <div id="bkcDStatus" style="margin-top:8px;font-size:0.85rem;"></div>
+            <button type="button" class="btn btn-primary" id="bkcDConfirmBtn" onclick="bkcConfirmBooking()" style="width:100%;margin-top:10px;"><i class="fas fa-calendar-check"></i> Book Classes</button>
+          </div>
+        </div>
+
+        <!-- Manage booking — click a booked (grey) slot -->
+        <div id="bkcManageOverlay" class="bkc-overlay" style="display:none;">
+          <div class="bkc-manage-card">
+            <div class="bkc-drawer-head">
+              <h3>Manage Booking</h3>
+              <button type="button" class="bkc-close" onclick="bkcCloseManage()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="bkc-summary-row"><span>Learner</span><span id="bkcMgLearner">—</span></div>
+            <div class="bkc-summary-row"><span>Teacher</span><span id="bkcMgTeacher">—</span></div>
+            <div class="bkc-summary-row"><span>Course</span><span id="bkcMgCourse">—</span></div>
+            <div class="bkc-summary-row"><span>Slot</span><span id="bkcMgSlot">—</span></div>
+
+            <div id="bkcMgActions" style="display:flex;gap:8px;margin-top:14px;">
+              <button type="button" class="btn btn-outline" style="flex:1;" onclick="bkcOpenEdit()"><i class="fas fa-pen"></i> Edit (teacher/day/time)</button>
+            </div>
+            <button type="button" id="bkcMgCancelBtn" class="btn" style="width:100%;margin-top:8px;background:#fdecea;color:#c5221f;border:1px solid #f2c2c2;" onclick="bkcConfirmCancel()"><i class="fas fa-trash-alt"></i> Cancel remaining sessions</button>
+
+            <div id="bkcEditPanel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-color,#e2e8f0);">
+              <div class="bkc-hint" style="margin-bottom:8px;">Picking a new teacher and/or slot removes this booking and books fresh with what's below — remaining sessions only.</div>
+              <div class="bkc-field"><label>New Teacher</label><select id="bkcEditTeacher" class="form-control form-select"></select></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div class="bkc-field"><label>Day</label><select id="bkcEditDay" class="form-control form-select"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></div>
+                <div class="bkc-field"><label>Time</label><input type="time" id="bkcEditTime" class="form-control"></div>
+              </div>
+              <div class="bkc-field"><label>Remaining Sessions to Rebook</label><input type="number" id="bkcEditSessions" class="form-control" min="1"></div>
+              <div id="bkcEditStatus" style="margin:6px 0;font-size:0.85rem;"></div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-outline" style="flex:1;" onclick="bkcCloseSubPanel()">Cancel</button>
+                <button type="button" class="btn btn-primary" style="flex:1;" onclick="bkcSaveEdit()">Save — Rebook</button>
+              </div>
+            </div>
+
+            <div id="bkcCancelPanel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-color,#e2e8f0);">
+              <div style="font-size:0.85rem;color:#c5221f;margin-bottom:10px;"><i class="fas fa-triangle-exclamation"></i> This cancels every remaining session in this series and removes the calendar events. Cannot be undone from here.</div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-outline" style="flex:1;" onclick="bkcCloseSubPanel()">Keep classes</button>
+                <button type="button" class="btn" style="flex:1;background:#c5221f;color:#fff;" onclick="bkcDoCancel()">Yes, cancel</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -651,6 +651,80 @@ function cancelBookedClasses(rowIndex) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// getTeacherWeekGrid
+// Powers the Book Classes week-grid UI. For each requested teacher, reads their
+// REAL personal calendar (Calendar.Events.list, singleEvents expanded) for the
+// Mon–Sun week starting at weekStartDate ('YYYY-MM-DD'). "Availability Hour"
+// events are open slots; everything else is a booked class. Booked events are
+// best-effort matched against the Class Booking Log (Active rows, same teacher,
+// same event title) so the UI can offer Edit/Cancel with a real rowIndex.
+// Returns { success, events: [{ teacher, title, startUtc, endUtc, type:
+//   'open'|'busy', rowIndex, jlid, learnerName, courseName }] }
+// ─────────────────────────────────────────────────────────────────────────────
+function getTeacherWeekGrid(teacherNames, weekStartDate) {
+  try {
+    if (!teacherNames || !teacherNames.length) return { success: false, message: 'Pick at least one teacher.' };
+    if (!weekStartDate) return { success: false, message: 'Week start date required.' };
+
+    var sdp = String(weekStartDate).split('-');
+    var monday = new Date(Date.UTC(parseInt(sdp[0],10), parseInt(sdp[1],10)-1, parseInt(sdp[2],10)));
+    var sunday = new Date(monday.getTime() + 7 * 86400000);
+
+    var logSheet = _getClassBookingLogSheet();
+    var lastRow = logSheet.getLastRow();
+    var logRows = lastRow >= 2 ? logSheet.getRange(2, 1, lastRow - 1, CLASS_BOOKING_LOG_COLS.length).getValues() : [];
+
+    var events = [];
+    teacherNames.forEach(function(teacherName) {
+      var info = _lookupTeacherCalendarInfo(teacherName);
+      if (!info.calendarId) return;
+      try {
+        var list = Calendar.Events.list(info.calendarId, {
+          timeMin: monday.toISOString(), timeMax: sunday.toISOString(),
+          singleEvents: true, orderBy: 'startTime', maxResults: 250
+        });
+        (list.items || []).forEach(function(ev) {
+          if (ev.status === 'cancelled') return;
+          if (!ev.start || !ev.start.dateTime || !ev.end || !ev.end.dateTime) return; // skip all-day markers
+          var isOpen = /availability\s*hour/i.test(ev.summary || '');
+          var rec = {
+            teacher: teacherName,
+            title: ev.summary || (isOpen ? 'Open' : 'Booked'),
+            startUtc: ev.start.dateTime,
+            endUtc: ev.end.dateTime,
+            type: isOpen ? 'open' : 'busy',
+            rowIndex: null, jlid: '', learnerName: '', courseName: ''
+          };
+          if (!isOpen) {
+            var titleNorm = String(ev.summary || '').replace(/^Migration\s*:\s*/i, '').trim();
+            for (var i = 0; i < logRows.length; i++) {
+              var r = logRows[i];
+              if (String(r[14] || 'Active').trim() !== 'Active') continue;
+              if (normalizeTeacherName(String(r[3] || '')) !== normalizeTeacherName(teacherName)) continue;
+              if (String(r[11] || '').trim() === titleNorm) {
+                rec.rowIndex = i + 2;
+                rec.jlid = String(r[1] || '');
+                rec.learnerName = String(r[2] || '');
+                rec.courseName = String(r[4] || '');
+                break;
+              }
+            }
+          }
+          events.push(rec);
+        });
+      } catch (te) {
+        Logger.log('[getTeacherWeekGrid] ' + teacherName + ': ' + te.message);
+      }
+    });
+
+    return { success: true, events: events };
+  } catch (e) {
+    Logger.log('[getTeacherWeekGrid] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // Returns the UTC offset (in hours, can be fractional e.g. India = 5.5) of `timeZone`
 // on the given date, using the IANA tz database via Utilities.formatDate.
 function _tzOffsetHours(dateStr, timeZone) {

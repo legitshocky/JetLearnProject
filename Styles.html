@@ -4858,4 +4858,54 @@ body.dark-mode .filter-label { color: rgba(255,255,255,0.5) !important; }
     body.dark-mode .mw-teacher-card { background: var(--secondary); border-color: rgba(255,255,255,0.08); }
     body.dark-mode .mw-teacher-card.selected { background: rgba(99,102,241,0.15); }
 
+    /* ── Book Classes — Google-Calendar-style week grid ── */
+    .bkc-shell { display: flex; gap: 0; border: 1px solid var(--border-color,#e2e8f0); border-radius: 10px; overflow: hidden; background: var(--card-bg,#fff); }
+    .bkc-side { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border-color,#e2e8f0); padding: 16px; overflow-y: auto; max-height: 78vh; }
+    .bkc-main { flex: 1; min-width: 0; overflow: auto; max-height: 78vh; }
+    .bkc-side-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-light,#94a3b8); margin: 12px 0 6px; }
+    .bkc-search-box { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-color,#e2e8f0); border-radius: 8px; padding: 7px 10px; position: relative; }
+    .bkc-search-box i { color: var(--text-light,#94a3b8); font-size: 12px; }
+    .bkc-search-box input { border: none; outline: none; background: none; font-family: inherit; font-size: 0.82rem; flex: 1; color: inherit; }
+    .bkc-tz-dropdown { position: relative; z-index: 30; background: var(--card-bg,#fff); border: 1px solid var(--border-color,#e2e8f0); border-radius: 8px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.12); margin-top: 4px; }
+    .bkc-tz-opt { padding: 8px 12px; font-size: 0.8rem; cursor: pointer; }
+    .bkc-tz-opt:hover { background: var(--bg-secondary,#f1f5f9); }
+    .bkc-hint { font-size: 0.72rem; color: var(--text-light,#94a3b8); margin-top: 4px; }
+    .bkc-t-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
+    .bkc-t-row:hover { background: var(--bg-secondary,#f1f5f9); }
+    .bkc-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+    .bkc-teacher-list { max-height: 180px; overflow-y: auto; }
+
+    .bkc-week-head { display: grid; grid-template-columns: 52px repeat(7, 1fr); border-bottom: 1px solid var(--border-color,#e2e8f0); position: sticky; top: 0; background: var(--card-bg,#fff); z-index: 2; }
+    .bkc-hcell { text-align: center; padding: 8px 4px; }
+    .bkc-dow { font-size: 0.65rem; color: var(--text-light,#94a3b8); font-weight: 600; letter-spacing: .04em; }
+    .bkc-dnum { font-size: 1.1rem; margin-top: 2px; }
+    .bkc-hcell.today .bkc-dnum { background: #1a73e8; color: #fff; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; margin: 2px auto 0; }
+    .bkc-week-grid { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
+    .bkc-hr-label { grid-column: 1; text-align: right; padding-right: 8px; font-size: 0.65rem; color: var(--text-light,#94a3b8); transform: translateY(-6px); }
+    .bkc-hr-row { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border-color,#f1f5f9); min-height: 52px; }
+    .bkc-hr-cell { border-right: 1px solid var(--border-color,#f1f5f9); position: relative; padding: 2px; }
+    .bkc-hr-cell:last-child { border-right: none; }
+    .bkc-ev { border-radius: 4px; padding: 3px 6px; font-size: 0.68rem; line-height: 1.25; cursor: pointer; overflow: hidden; margin-bottom: 2px; }
+    .bkc-ev.open { background: #e6f4ea; border: 1px solid #ceead6; color: #137333; font-weight: 600; }
+    .bkc-ev.busy { background: #e8eaed; color: #5f6368; border-left: 3px solid #80868b; }
+    .bkc-ev-time { display: block; font-weight: 700; font-size: 0.6rem; opacity: 0.85; }
+
+    .bkc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; display: flex; align-items: center; justify-content: flex-end; }
+    .bkc-drawer { height: 100%; width: 400px; max-width: 92vw; background: var(--card-bg,#fff); box-shadow: -4px 0 24px rgba(0,0,0,0.18); padding: 20px 22px; overflow-y: auto; }
+    .bkc-manage-card { background: var(--card-bg,#fff); border-radius: 10px; width: 380px; max-width: 92vw; padding: 20px 22px; box-shadow: 0 8px 30px rgba(0,0,0,0.25); margin: auto; }
+    .bkc-drawer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .bkc-drawer-head h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+    .bkc-close { border: none; background: none; color: var(--text-light,#94a3b8); cursor: pointer; font-size: 1rem; }
+    .bkc-field { margin-bottom: 12px; }
+    .bkc-field label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-light,#94a3b8); margin-bottom: 4px; }
+    .bkc-toggle-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .bkc-toggle { border: 1px solid var(--border-color,#e2e8f0); background: var(--card-bg,#fff); color: var(--text-light,#94a3b8); padding: 6px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .bkc-toggle.sel { background: #eef2ff; border-color: #6366f1; color: #6366f1; }
+    .bkc-summary-row { display: flex; justify-content: space-between; font-size: 0.78rem; padding: 7px 0; border-bottom: 1px solid var(--border-color,#f1f5f9); color: var(--text-light,#94a3b8); }
+    .bkc-summary-row span:last-child { color: inherit; font-weight: 600; }
+
+    body.dark-mode .bkc-ev.open { background: #0d3320; border-color: #1b5e3a; color: #81c995; }
+    body.dark-mode .bkc-ev.busy { background: #3c4043; color: #dadce0; border-left-color: #9aa0a6; }
+    body.dark-mode .bkc-toggle.sel { background: rgba(99,102,241,0.15); }
+
   </style>
