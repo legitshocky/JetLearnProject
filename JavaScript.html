@@ -1075,14 +1075,15 @@ function bkcInitPage() {
                 if (!globalBookingTimezones || !globalBookingTimezones.length) globalBookingTimezones = data.bookingTimezones || [];
                 bkcRenderTeacherList();
                 bkcPopulateEditTeacherSelect();
+                populateSelect(document.getElementById('bkcDCourse'), globalCourses, false, 'Select a course');
             })
             .withFailureHandler(function(err) { showToast('error', 'Load Failed', err && err.message ? err.message : String(err)); })
             .getCommunicationPageData();
     } else {
         bkcRenderTeacherList();
         bkcPopulateEditTeacherSelect();
+        populateSelect(document.getElementById('bkcDCourse'), globalCourses, false, 'Select a course');
     }
-    populateSelect(document.getElementById('bkcDCourse'), globalCourses, false, 'Select a course');
 
     if (!_bcInited) {
         _bcInited = true;
@@ -1295,7 +1296,9 @@ function bkcFmt24(h) { return String(h).padStart(2,'0') + ':00'; }
 function bkcFmt12(h, m) {
     var ampm = h >= 12 ? 'PM' : 'AM';
     var h12 = h % 12; if (h12 === 0) h12 = 12;
-    return h12 + (m ? ':' + String(m).padStart(2,'0') : '') + ' ' + ampm;
+    // Always include :MM — _parse12hTime (ReserveSlot.js) requires "HH:MM AM/PM";
+    // omitting minutes on the hour (e.g. "4 PM") silently fails booking parsing.
+    return h12 + ':' + String(m || 0).padStart(2,'0') + ' ' + ampm;
 }
 var _bkcDayNames = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
