@@ -930,6 +930,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       if (uniquePrefix === 'onboarding') container = onboardingClassSessionsContainer;
       else if (uniquePrefix === 'migration') container = classSessionsContainer;
       else if (uniquePrefix === 'onboardingParent') container = onboardingParentClassSessionsContainer;
+      else if (uniquePrefix === 'bookClasses') container = document.getElementById('bookClassesSessionsContainer');
       else return null;
 
       const count = container.querySelectorAll('.class-session-group').length;
@@ -951,7 +952,7 @@ function createClassSessionGroup(isInitial, uniquePrefix) {
       let gridStyle = "grid-template-columns: 1fr 1fr 1fr 1fr auto;"; 
       let timezoneFieldHtml = "";
 
-      if (uniquePrefix === 'migration') {
+      if (uniquePrefix === 'migration' || uniquePrefix === 'bookClasses') {
           // Timezone is now universal (one field above sessions) — no per-session TZ
           gridStyle = "grid-template-columns: 1.3fr 0.7fr 0.7fr 0.8fr auto;";
       }
@@ -999,6 +1000,8 @@ function _updateSessionGroupCET(sessionGroup, prefix) {
     var optz = document.getElementById('onboardingParentTimezone'); tzVal = (optz && optz.value) ? optz.value : '';
   } else if (prefix === 'onboarding') {
     var otz = document.getElementById('onboardingTimezone'); tzVal = (otz && otz.value) ? otz.value : '';
+  } else if (prefix === 'bookClasses') {
+    var bctz = document.getElementById('bookClassesTimezone'); tzVal = (bctz && bctz.value) ? bctz.value : '';
   }
   var hourEl = sessionGroup.querySelector('.class-hour-select');
   var minEl  = sessionGroup.querySelector('.class-minute-select');
@@ -1043,6 +1046,219 @@ function _updateSessionGroupCET(sessionGroup, prefix) {
     preview.textContent = '⌚ ' + cetDay + ' ' + cetH12 + ':' + String(cetMin).padStart(2,'0') + ' ' + cetAP + ' CET';
     preview.style.display = 'inline-block';
   } catch(e) { preview.style.display = 'none'; }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// BOOK CLASSES — standalone page (Phase 1: reuses the exact same backend
+// the Migration form's "Book Classes with New Teacher" widget already
+// calls; no new server-side booking logic here, just a page that doesn't
+// require going through Migration first).
+// ═════════════════════════════════════════════════════════════════════════
+var _bcInited = false;
+
+function bkcInitPage() {
+    // Ensure the shared dropdown data (teachers/courses/timezones) is loaded —
+    // this page can be opened without ever visiting New Communication first.
+    var needsData = !globalTeachers || !globalTeachers.length || !globalCourses || !globalCourses.length || !globalTimezones || !globalTimezones.length;
+    if (needsData) {
+        google.script.run
+            .withSuccessHandler(function(data) {
+                if (!data || !data.success) return;
+                if (!globalTeachers  || !globalTeachers.length)  globalTeachers  = data.teachers  || [];
+                if (!globalCourses   || !globalCourses.length)   globalCourses   = data.courses   || [];
+                if (!globalTimezones || !globalTimezones.length) globalTimezones = data.timezones || [];
+                bkcPopulateSelects();
+            })
+            .withFailureHandler(function(err) { showToast('error', 'Load Failed', err && err.message ? err.message : String(err)); })
+            .getCommunicationPageData();
+    } else {
+        bkcPopulateSelects();
+    }
+
+    if (!_bcInited) {
+        _bcInited = true;
+        document.getElementById('bkcFetchBtn').addEventListener('click', bkcFetchLearner);
+        document.getElementById('bkcAddSessionBtn').addEventListener('click', function() {
+            document.getElementById('bookClassesSessionsContainer').appendChild(createClassSessionGroup(false, 'bookClasses'));
+        });
+        document.getElementById('bkcBookBtn').addEventListener('click', bkcBookClasses);
+        var tzInput = document.getElementById('bkcTimezoneSearch');
+        if (tzInput) tzInput.addEventListener('change', function() {
+            document.querySelectorAll('#bookClassesSessionsContainer .class-session-group').forEach(function(sg) { _updateSessionGroupCET(sg, 'bookClasses'); });
+        });
+
+        var startEl = document.getElementById('bkcStartDate');
+        if (startEl && !startEl.value) {
+            var today = new Date();
+            startEl.value = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+        }
+        // First session row
+        document.getElementById('bookClassesSessionsContainer').appendChild(createClassSessionGroup(true, 'bookClasses'));
+    }
+}
+
+function bkcPopulateSelects() {
+    populateSelect(document.getElementById('bkcTeacher'), globalTeachers, false, 'Select a teacher');
+    populateSelect(document.getElementById('bkcCourse'), globalCourses, false, 'Select a course');
+    var tzField = document.getElementById('bkcTimezoneSearch');
+    if (tzField && !tzField.dataset.wired) {
+        makeSearchableSelect(tzField, 'Search timezone...');
+        tzField.dataset.wired = '1';
+    }
+}
+
+function bkcFetchLearner() {
+    var jlid = (document.getElementById('bkcJlid').value || '').trim();
+    if (!jlid) return;
+    var btn = document.getElementById('bkcFetchBtn');
+    var result = document.getElementById('bkcFetchResult');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+    result.style.cssText = 'display:block;margin-top:6px;';
+    result.innerHTML = '<div class="kt-skeleton-line"></div>';
+
+    google.script.run
+        .withSuccessHandler(function(hs) {
+            btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
+            btn.disabled = false;
+            result.className = 'fade-in';
+            if (!hs || !hs.success || !hs.data) {
+                result.style.cssText = 'display:block;color:#ef4444;margin-top:6px;';
+                result.textContent = '✗ ' + ((hs && hs.message) || 'Learner not found.');
+                return;
+            }
+            document.getElementById('bkcLearnerName').value = hs.data.learnerName || '';
+            var courseSel = document.getElementById('bkcCourse');
+            if (courseSel && hs.data.currentCourse) {
+                var opt = Array.from(courseSel.options).find(function(o) { return o.value === hs.data.currentCourse; });
+                if (opt) courseSel.value = hs.data.currentCourse;
+            }
+            result.style.cssText = 'display:block;color:#059669;background:#f0fdf4;padding:6px 10px;border-radius:6px;margin-top:6px;';
+            result.textContent = '✔ Found: ' + (hs.data.learnerName || '—');
+            bkcLoadBookings(jlid);
+        })
+        .withFailureHandler(function(err) {
+            btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
+            btn.disabled = false;
+            result.className = 'fade-in';
+            result.style.cssText = 'display:block;color:#ef4444;margin-top:6px;';
+            result.textContent = '✗ ' + (err.message || String(err));
+        })
+        .fetchHubspotByJlid(jlid, true); // skipChurnCheck — irrelevant here
+}
+
+function bkcBookClasses() {
+    var jlid = (document.getElementById('bkcJlid').value || '').trim();
+    var learnerName = (document.getElementById('bkcLearnerName').value || '').trim();
+    var teacherName = document.getElementById('bkcTeacher').value;
+    var courseName  = document.getElementById('bkcCourse').value;
+    var startDate    = document.getElementById('bkcStartDate').value;
+    var gmtTzLabel   = (document.getElementById('bookClassesTimezone').value || '').trim();
+    var numEvents    = parseInt(document.getElementById('bkcNumEvents').value, 10) || 12;
+    var statusEl     = document.getElementById('bkcStatus');
+    statusEl.textContent = '';
+
+    var classSessions = Array.from(document.querySelectorAll('#bookClassesSessionsContainer .class-session-group')).map(function(group) {
+        var day = group.querySelector('.class-day-select').value;
+        var hour = group.querySelector('.class-hour-select').value;
+        var minute = group.querySelector('.class-minute-select').value;
+        var meridiem = group.querySelector('.class-meridiem-select').value;
+        return (day && hour && minute && meridiem) ? { day: day, time: hour + ':' + minute + ' ' + meridiem } : null;
+    }).filter(Boolean);
+
+    if (!jlid || !learnerName) { showToast('error', 'Missing Learner', 'Fetch a learner (JLID) first.'); return; }
+    if (!teacherName) { showToast('error', 'Missing Teacher', 'Select a teacher first.'); return; }
+    if (!classSessions.length) { showToast('error', 'Missing Schedule', 'Add at least one weekly session.'); return; }
+    if (!startDate) { showToast('error', 'Missing Start Date', 'Select a start date first.'); return; }
+    if (!gmtTzLabel) {
+        showToast('error', 'Missing Timezone', 'Select a timezone first.');
+        document.getElementById('bkcTimezoneSearch').focus();
+        return;
+    }
+
+    showLoading('Checking teacher availability…');
+    google.script.run
+        .withSuccessHandler(function(chk) {
+            hideLoading();
+            var warnHtml = '';
+            if (chk && chk.success && chk.conflicts && chk.conflicts.length) {
+                warnHtml = '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-top:8px;text-align:left;">'
+                    + '<strong style="color:#dc2626;">⚠ Teacher already booked:</strong><br>'
+                    + chk.conflicts.map(function(c) { return '<span style="font-size:0.8rem;color:#991b1b;">• ' + escapeHtml(c.day) + ' ' + escapeHtml(c.time) + ' — ' + escapeHtml(c.eventTitle) + '</span>'; }).join('<br>')
+                    + '<br><span style="font-size:0.75rem;color:#94a3b8;">Booking anyway will double-book this teacher.</span></div>';
+            } else if (chk && chk.success && chk.unverifiable) {
+                warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Could not verify teacher calendar — check manually.</div>';
+            } else if (!chk || !chk.success) {
+                warnHtml = '<div style="font-size:0.78rem;color:#d97706;margin-top:6px;">⚠ Availability check failed — proceeding without verification.</div>';
+            }
+            showConfirm(
+                'Book Classes',
+                'Book <strong>' + numEvents + ' total classes</strong> across ' + classSessions.length + ' weekly session(s) with <strong>' + escapeHtml(teacherName) + '</strong> for <strong>' + escapeHtml(learnerName) + '</strong> (' + escapeHtml(gmtTzLabel) + ')?' + warnHtml,
+                function(confirmed) {
+                    if (!confirmed) return;
+                    showLoading('Booking ' + numEvents + ' total classes…');
+                    google.script.run
+                        .withSuccessHandler(function(res) {
+                            hideLoading();
+                            if (!res || !res.success) {
+                                showToast('error', 'Booking Failed', res ? res.message : 'Unknown error');
+                                statusEl.innerHTML = '<span style="color:#dc2626;">' + escapeHtml(res ? res.message : 'Unknown error') + '</span>';
+                                return;
+                            }
+                            showToast('success', 'Classes Booked', res.occurrences + ' total classes booked with ' + teacherName);
+                            statusEl.innerHTML = '<span style="color:#16a34a;">Booked ' + res.occurrences + ' total classes across ' + res.booked.length + ' session(s).</span>';
+                            bkcLoadBookings(jlid);
+                        })
+                        .withFailureHandler(function(err) {
+                            hideLoading();
+                            showToast('error', 'Booking Failed', err.message || String(err));
+                        })
+                        .bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, gmtTzLabel, numEvents, [], (currentUser && currentUser.username) || '', '', '', '');
+                }
+            );
+        })
+        .withFailureHandler(function() {
+            hideLoading();
+            showToast('warning', 'Availability Check Failed', 'Proceeding without verification is your call — try again or book anyway.');
+        })
+        .checkBookingConflicts(teacherName, classSessions, startDate, gmtTzLabel);
+}
+
+function bkcLoadBookings(jlid) {
+    var body = document.getElementById('bkcBookingsBody');
+    body.innerHTML = '<div class="kt-skeleton-line"></div><div class="kt-skeleton-line"></div>';
+    google.script.run
+        .withSuccessHandler(function(res) {
+            body.className = 'fade-in';
+            var rows = (res && res.success && res.rows) ? res.rows.filter(function(r) { return r.status === 'Active'; }) : [];
+            if (!rows.length) { body.innerHTML = 'No active bookings found for this learner.'; return; }
+            body.innerHTML = rows.map(function(r) {
+                return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f1f5f9;">'
+                    + '<span>' + escapeHtml(r.eventTitle || '—') + '<span style="display:block;font-size:0.75rem;color:#94a3b8;">' + escapeHtml(r.teacherName || '') + ' · ' + escapeHtml(r.sessions || '') + '</span></span>'
+                    + '<button type="button" class="btn btn-outline btn-sm" onclick="bkcCancelBooking(' + r.rowIndex + ', this)" style="color:#dc2626;border-color:#fecaca;flex-shrink:0;"><i class="fas fa-times"></i> Cancel</button>'
+                    + '</div>';
+            }).join('');
+        })
+        .withFailureHandler(function() { body.textContent = 'Could not load bookings.'; })
+        .getBookingLogForJlid(jlid);
+}
+
+function bkcCancelBooking(rowIndex, btn) {
+    if (!confirm('Cancel this booking series? Remaining sessions will be removed from both calendars.')) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    google.script.run
+        .withSuccessHandler(function() {
+            showToast('success', 'Cancelled', 'Booking series cancelled.');
+            var jlid = (document.getElementById('bkcJlid').value || '').trim();
+            if (jlid) bkcLoadBookings(jlid);
+        })
+        .withFailureHandler(function(err) {
+            showToast('error', 'Cancel Failed', err && err.message ? err.message : String(err));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-times"></i> Cancel';
+        })
+        .cancelBookedClasses(rowIndex);
 }
 
     var _loadingTimelineTimer = null;
@@ -1291,7 +1507,8 @@ function switchPage(pageId, context = null) {
         kitTracking:           loadKitTrackingPage,
         kitTrackingPage:       loadKitTrackingPage,
         operations:            loadOperationsPage,
-        operationsPage:        loadOperationsPage
+        operationsPage:        loadOperationsPage,
+        bookClassesPage:       bkcInitPage
     };
 
     if (pageLoaders[pageId]) {

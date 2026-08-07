@@ -2,6 +2,17 @@
 
 ---
 
+## [2026-08-02] — New Standalone "Book Classes" Page — Phase 1 (V8.50)
+
+### Class booking no longer requires going through Migration (`Index.html`, `JavaScript.html`)
+- User asked for classes bookable independently, matching a Google-Calendar-style mockup workshopped in chat (full timezone list, JLID fetch confirming course, 1:2 support, subscription dates, inline edit/cancel).
+- **Phase 1 shipped now**: a new sidebar page ("Book Classes") with JLID fetch, teacher/course selects, the same weekly-session builder used in Migration (extended to a new `bookClasses` prefix in the shared `createClassSessionGroup()`/`_updateSessionGroupCET()` functions — additive only, Migration/Onboarding untouched), a searchable global timezone field, start date, total-classes count, and an "Existing Bookings for this Learner" list with per-row Cancel.
+- **Deliberately reuses the exact same backend** the Migration form's "Book Classes with New Teacher" widget already calls — `checkBookingConflicts()`, `bookClassesWithNewTeacher()`, `getBookingLogForJlid()`, `cancelBookedClasses()` — no new server-side booking logic, so this inherits the same conflict-checking and calendar-write behavior that's already been in production.
+- Caught a real ID collision before shipping: `bc*` was already used by the existing Bulk Certificates page (`bcJlid`, `bcLearnerName`) — renamed the whole new feature to `bkc*` throughout, verified via a script (not by eye) that every new element ID and function name is unique, and that DOM nesting balances.
+- **Not yet built** (Phase 2+, separate work): the actual visual week-grid showing real per-hour open/booked slots (needs a new backend function to enumerate a teacher's calendar — doesn't exist yet), live timezone-converted display, the 1:2 second-JLID flow, and inline Edit/Reschedule on an already-booked event. This page currently books the same way the Migration widget always has — pick day/time from dropdowns, not a visual calendar.
+
+---
+
 ## [2026-08-02] — Revert V8.46: Footer Belongs Pinned to the Bottom (V8.49)
 
 ### Misdiagnosed the original complaint (`Styles.html`)

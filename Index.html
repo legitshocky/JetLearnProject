@@ -269,6 +269,7 @@
         <div class="menu-item" data-page="learnerMigration"><i class="fas fa-exchange-alt"></i><span>Migration Center</span><span class="badge">New</span></div>
         <div class="menu-item" data-page="coursePlanner"><i class="fas fa-route"></i><span>Course Planner</span><span id="coursePlannerAlertBadge" class="badge" style="display:none;background:#ef4444;color:#fff;">0</span></div>
         <div class="menu-item" data-page="onboardingTracker"><i class="fas fa-route"></i><span>Learner Ops</span></div>
+        <div class="menu-item" data-page="bookClasses"><i class="fas fa-calendar-plus"></i><span>Book Classes</span></div>
 
         <span class="sidebar-section-label">Communications</span>
         <div class="menu-item" data-page="communication"><i class="fas fa-paper-plane"></i><span>New Communication</span></div>
@@ -1395,6 +1396,76 @@
           </div>
         </div>
         </div><!-- end #commPanelsWrapper -->
+      </div>
+
+      <!-- Book Classes Page — standalone class booking, independent of Migration.
+           Phase 1: reuses the exact same backend the Migration form's "Book
+           Classes with New Teacher" widget already calls (checkBookingConflicts,
+           bookClassesWithNewTeacher, getBookingLogForJlid, cancelBookedClasses) —
+           nothing new server-side yet. Phase 2 (separate, not yet built): a real
+           visual week-grid showing actual open/booked slots per hour, which
+           needs a new backend function to enumerate a teacher's calendar. -->
+      <div id="bookClassesPage" class="page-content" style="display: none;">
+        <div class="header">
+          <h1 class="page-title">Book Classes</h1>
+          <p class="page-subtitle">Book a recurring class series with any teacher — independent of Migration.</p>
+        </div>
+        <div class="form-container form-container-wide">
+          <form id="bookClassesForm" onsubmit="return false;">
+            <div class="formc-shell">
+              <div class="formc-rail">
+                <a href="#bkcSecLearner" class="current">Learner &amp; Teacher</a>
+                <a href="#bkcSecSchedule">Schedule</a>
+                <a href="#bkcSecBookings">Existing Bookings</a>
+              </div>
+              <div class="formc-main">
+
+                <div class="form-section" id="bkcSecLearner">
+                  <div class="form-section-title"><span class="sec-icon"><i class="fas fa-user"></i></span>Learner &amp; Teacher</div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label for="bkcJlid" class="form-label">JLID</label>
+                      <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="bkcJlid" class="form-control" placeholder="Enter JLID">
+                        <button type="button" class="btn btn-outline btn-sm" id="bkcFetchBtn" title="Fetch learner from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
+                      </div>
+                      <small id="bkcFetchResult" class="form-text-muted" style="display:none;margin-top:6px;"></small>
+                    </div>
+                    <div class="form-group"><label for="bkcLearnerName" class="form-label">Learner Name</label><input type="text" id="bkcLearnerName" class="form-control" required></div>
+                    <div class="form-group"><label for="bkcTeacher" class="form-label">Teacher</label><select id="bkcTeacher" class="form-control form-select" required><option value="" disabled selected>Select a teacher</option></select></div>
+                    <div class="form-group"><label for="bkcCourse" class="form-label">Course</label><select id="bkcCourse" class="form-control form-select" required><option value="" disabled selected>Select a course</option></select></div>
+                  </div>
+                </div>
+
+                <div class="form-section" id="bkcSecSchedule">
+                  <div class="form-section-title"><span class="sec-icon c-pink"><i class="fas fa-calendar-alt"></i></span>Schedule</div>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <label class="form-label">Timezone</label>
+                      <input type="text" id="bkcTimezoneSearch" class="form-control" placeholder="Search timezone..." autocomplete="off">
+                      <input type="hidden" id="bookClassesTimezone">
+                    </div>
+                    <div class="form-group"><label for="bkcStartDate" class="form-label">Start Date</label><input type="date" id="bkcStartDate" class="form-control" required></div>
+                    <div class="form-group"><label for="bkcNumEvents" class="form-label">Total Classes to Book</label><input type="number" id="bkcNumEvents" class="form-control" value="12" min="1"></div>
+                    <div class="form-group full-width">
+                      <label class="form-label">Weekly Session(s) <span style="font-weight:400;font-size:0.78em;color:var(--text-light);">— add more than one for twice-weekly etc.</span></label>
+                      <div id="bookClassesSessionsContainer"></div>
+                      <button type="button" class="btn btn-outline" id="bkcAddSessionBtn" style="margin-top: 1rem;"><i class="fas fa-plus"></i> Add Another Session</button>
+                    </div>
+                  </div>
+                  <div id="bkcStatus" style="margin-top:12px;font-size:0.85rem;"></div>
+                  <div class="form-actions"><button type="button" class="btn btn-primary" id="bkcBookBtn"><i class="fas fa-calendar-check"></i> Book Classes</button></div>
+                </div>
+
+                <div class="form-section" id="bkcSecBookings">
+                  <div class="form-section-title"><span class="sec-icon c-teal"><i class="fas fa-list-check"></i></span>Existing Bookings for this Learner</div>
+                  <div id="bkcBookingsBody" style="font-size:0.85rem;color:#64748b;">Fetch a JLID above to see their current bookings here.</div>
+                </div>
+
+              </div>
+            </div>
+          </form>
+        </div>
       </div>
 
       <!-- Batch Processing Page -->
