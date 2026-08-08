@@ -289,6 +289,9 @@ function submitLearnerAddressForm(payload) {
     if (!payload.email || !payload.address || !payload.city || !payload.state || !payload.postalCode || !payload.country) {
       return { success: false, message: 'Please fill in all required fields.' };
     }
+    // Invalidate the addressFormContext cache (Code.js doGet) so a reopened
+    // link reflects what was just submitted instead of a stale 3-minute-old snapshot.
+    try { CacheService.getScriptCache().remove('addrFormCtx_' + jlid); } catch(cce) {}
 
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner. Please contact JetLearn support.' };

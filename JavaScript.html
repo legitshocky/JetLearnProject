@@ -15267,6 +15267,7 @@ function ktOpenOrderDetails(rowIndex) {
       + '<button onclick="ktCloseOrderDetails()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Close<\/button>'
       + '<button id="ktOdCopyBtn" onclick="ktCopyOrderDetails()" title="Copies everything as one text block — for reference/pasting into a note, not for Amazon\'s form fields directly (use the per-field copy icons for those)" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-copy"><\/i> Copy All (as note)<\/button>'
       + '<\/div>'
+      + '<button id="ktOdMarkPlacedBtn" onclick="ktMarkOrderPlacedFromDetails()" style="display:none;width:100%;margin-top:10px;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
       + '<\/div>';
     document.body.appendChild(modal);
   }
@@ -15276,6 +15277,8 @@ function ktOpenOrderDetails(rowIndex) {
   // rather than a blank pause.
   document.getElementById('ktOdBody').innerHTML =
       '<div class="kt-skeleton-line"><\/div>'.repeat(6);
+  var markBtnReset = document.getElementById('ktOdMarkPlacedBtn');
+  if (markBtnReset) markBtnReset.style.display = 'none';
   modal.style.display = 'flex';
 
   google.script.run
@@ -15341,6 +15344,12 @@ function ktOpenOrderDetails(rowIndex) {
         + '<div style="padding:10px 0 0;">'
         +   '<a href="https://www.' + res.amazonDomain + '" target="_blank" style="color:#0d9488;font-weight:700;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"><\/i> Open ' + res.amazonDomain + '<\/a>'
         + '<\/div>';
+
+      modal.dataset.jlid = res.jlid || '';
+      modal.dataset.learnerName = res.learnerName || '';
+      modal.dataset.kitName = res.kitName || '';
+      var markBtn = document.getElementById('ktOdMarkPlacedBtn');
+      if (markBtn) markBtn.style.display = 'block';
     })
     .withFailureHandler(function(err) {
       var body = document.getElementById('ktOdBody');
@@ -15353,6 +15362,19 @@ function ktOpenOrderDetails(rowIndex) {
 function ktCloseOrderDetails() {
   const modal = document.getElementById('ktOrderDetailsModal');
   if (modal) modal.style.display = 'none';
+}
+
+// Jump straight from Order Details into Mark Order Placed — no need to close
+// this modal, hunt down the row again, and click its button separately.
+function ktMarkOrderPlacedFromDetails() {
+  const modal = document.getElementById('ktOrderDetailsModal');
+  if (!modal) return;
+  const rowIndex = modal.dataset.rowIndex;
+  const jlid = modal.dataset.jlid || '';
+  const learnerName = modal.dataset.learnerName || '';
+  const kitName = modal.dataset.kitName || '';
+  ktCloseOrderDetails();
+  ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName);
 }
 
 function ktCopyOrderDetails() {

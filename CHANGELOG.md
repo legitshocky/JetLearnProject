@@ -2,6 +2,19 @@
 
 ---
 
+## [2026-08-09] — Mark Order Placed from Order Details + Faster/Nicer Public Address Page (V8.52)
+
+### Order Details modal now has its own "Mark Order Placed" button (`JavaScript.html`)
+- User was in the Order Details popup and wanted to mark the order placed right there instead of closing it and hunting for the row button — added a button in the modal footer (`ktMarkOrderPlacedFromDetails`) that closes Order Details and opens Mark Order Placed pre-filled with the same JLID/learner/kit, using data already returned by `getKitOrderDetails()` — no extra fetch.
+- Tracking fields (Store, Carrier, Tracking Number, Tracking URL with carrier-based auto-fill) were already present in the Mark Order Placed modal from earlier work — confirmed still there, nothing missing.
+
+### Public kit-address page (`jetlearn-kit-links.web.app/kit/{JLID}`) — real speed fix + nicer loading state
+- User reported it "loading from sheet" felt slow — it's actually not a sheet read, it's `getAddressFormContext()` chaining a HubSpot deal search + associations/contact-batch lookup on every single page open, including reopens/back-button/link-preview crawler refetches.
+- Added a 3-minute `CacheService` cache in `doGet`'s `addressFormContext` branch (`Code.js`), keyed by JLID — a repeat open within that window skips both HubSpot round trips entirely. Cache is explicitly invalidated on submit (`submitLearnerAddressForm`, `LearnerAddressFormService.js`) so a reopened link never shows stale just-submitted data.
+- Replaced the bare spinner with a skeleton that mirrors the real form layout (chip, heading, labeled fields, button, side panel) — same shimmer treatment already used elsewhere in the app — so the page reads as "already here" instead of a blank pause. Deployed via `firebase deploy --only hosting:kitlinks`.
+
+---
+
 ## [2026-08-07] — Book Classes — Phase 2: Real Week-Grid, Live Timezone, Edit/Cancel from the Grid (V8.51)
 
 ### Book Classes rebuilt into the Google-Calendar-style grid that was actually workshopped (`Index.html`, `JavaScript.html`, `ReserveSlot.js`)

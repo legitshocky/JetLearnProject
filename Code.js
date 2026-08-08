@@ -116,7 +116,22 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.api === 'addressFormContext') {
     var apiJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
     try { recordKitAddressLinkOpen(apiJlid); } catch(oe) { Logger.log('[doGet] recordKitAddressLinkOpen failed: ' + oe.message); }
-    var ctx = getAddressFormContext(apiJlid);
+    // Cache the (slow, 2 chained HubSpot round-trips) result for 3 minutes —
+    // a parent reopening the link, hitting back/forward, or a chat-app link
+    // preview crawler re-fetching it all skip straight to a cache hit instead
+    // of paying the HubSpot latency again.
+    var cache = CacheService.getScriptCache();
+    var cacheKey = 'addrFormCtx_' + apiJlid.toUpperCase();
+    var cached = apiJlid ? cache.get(cacheKey) : null;
+    var ctx;
+    if (cached) {
+      ctx = JSON.parse(cached);
+    } else {
+      ctx = getAddressFormContext(apiJlid);
+      if (ctx && ctx.success) {
+        try { cache.put(cacheKey, JSON.stringify(ctx), 180); } catch(ce) {}
+      }
+    }
     return ContentService.createTextOutput(JSON.stringify(ctx)).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -736,7 +751,7 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.51";
+const APP_VERSION = "8.52";
 
 function getAppVersion() {
   return APP_VERSION;
