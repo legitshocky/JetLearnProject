@@ -445,13 +445,14 @@ function _getStructuredAddressForJlid(jlid) {
       if (String(jlidCol[i][0] || '').trim().toUpperCase() === jlidUpper) { matchRow = i + 2; break; }
     }
     if (matchRow < 0) return null;
-    var row = sheet.getRange(matchRow, 5, 1, 5).getValues()[0]; // E:I — Address..Country
+    var row = sheet.getRange(matchRow, 4, 1, 6).getValues()[0]; // D:I — Email, Address..Country
     return {
-      address: String(row[0] || '').trim(),
-      city: String(row[1] || '').trim(),
-      state: String(row[2] || '').trim(),
-      postalCode: String(row[3] || '').trim(),
-      country: String(row[4] || '').trim()
+      email: String(row[0] || '').trim(),
+      address: String(row[1] || '').trim(),
+      city: String(row[2] || '').trim(),
+      state: String(row[3] || '').trim(),
+      postalCode: String(row[4] || '').trim(),
+      country: String(row[5] || '').trim()
     };
   } catch(e) {
     Logger.log('[KitTracking] _getStructuredAddressForJlid error: ' + e.message);
@@ -3286,14 +3287,16 @@ function markKitOrderPlaced(rowIndex, payload) {
     var hsNoteStatus = 'not_attempted';
     try {
       if (hsData && hsData.dealId) {
-        _addNoteToDeal(hsData.dealId,
-          '[Kit Order Placed] Order placed on ' + _formatDMY(new Date()) + ' for ' + kitName +
-          (payload.store ? ' via ' + payload.store : '') +
-          (payload.eta ? '. ETA: ' + payload.eta : '') +
-          (payload.trackingNo ? '. Tracking: ' + payload.trackingNo : '') +
-          (payload.price ? '. Price: €' + payload.price : '') +
-          (payload.reason ? '. Reason: ' + payload.reason : '') +
-          (payload.sentBy ? '. Sent by: ' + payload.sentBy : ''));
+        var _orderedOn = payload.orderDate || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        var _noteLines = ['Kit Order Entry', ''];
+        _noteLines.push('Ordered: ' + _orderedOn);
+        _noteLines.push('Kit: ' + kitName + (payload.price ? ' — €' + payload.price : ''));
+        if (payload.eta) _noteLines.push('ETA: ' + payload.eta);
+        if (payload.reason) _noteLines.push('Reason: ' + payload.reason);
+        if (payload.sentBy) _noteLines.push('Sent by: ' + payload.sentBy);
+        if (payload.trackingNo) _noteLines.push('Order No: ' + payload.trackingNo);
+        if (payload.trackingUrl) _noteLines.push(payload.trackingUrl);
+        _addNoteToDeal(hsData.dealId, _noteLines.join('\n'));
         hsNoteStatus = 'added';
       } else {
         hsNoteStatus = 'no_deal_id';

@@ -222,58 +222,58 @@ function _lafGetLogSheet() {
 }
 
 // Called by AddressForm.html on load — looks up the learner name + any
-// address/email HubSpot already has, so the parent can review and correct
-// rather than retype everything from scratch.
+// address/email already on file so the parent can review and correct rather
+// than retype everything from scratch.
+//
+// Sourced ENTIRELY from our own sheets (Kits sheet for learner name, Learner
+// Address Submissions for the last address/email we collected) — no HubSpot
+// deal/contact round trip. We're not verifying anything against the deal
+// here, just re-displaying data we already collected via this same sheet-
+// backed flow, so there's nothing to check on the deal for. This was the
+// actual source of the page's load delay (2 chained HubSpot API calls);
+// removing it entirely, not just caching it, is the real fix.
+// HubSpot is only ever touched at submit time (to patch the contact), never
+// on page load. Falls back to a HubSpot lookup only if the JLID isn't found
+// in the Kits sheet at all (shouldn't happen — this link is only ever
+// generated for a real open Kit row — but keeps old/malformed links working).
 function getAddressFormContext(jlid) {
   try {
     // Defensively strip stray quote characters — belt-and-braces in case a
     // link ever gets copy-pasted with encoding artifacts around the JLID.
-    jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim();
+    jlid = String(jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
     if (!jlid) return { success: false, message: 'Missing learner reference in this link.' };
 
-    var hs = fetchHubspotByJlid(jlid, true); // skip churn-risk check — unused on this page, was a big chunk of load time
-    if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner (' + jlid + '): ' + ((hs && hs.message) || 'no data returned') + '. Please contact JetLearn support.' };
-
-    var d = hs.data;
-    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    var existing = { address: '', city: '', state: '', zip: '', country: '', email: '' };
-    // fetchHubspotByJlid() above already resolved this deal's contact and
-    // fetched its properties (getBestPhoneNumberForDeal, for the phone
-    // number) — address/city/state/zip/email/country ride along in that
-    // same request now, so reuse it instead of repeating the associations
-    // lookup + a second contact GET (was 2 extra HubSpot round trips on
-    // every single address-page load).
-    var cachedContact = (d.dealId && typeof _getCachedContactRecordForDeal === 'function')
-      ? _getCachedContactRecordForDeal(d.dealId) : null;
-    if (cachedContact) {
-      existing = {
-        address: cachedContact.address || '', city: cachedContact.city || '',
-        state: cachedContact.state || '', zip: cachedContact.zip || '',
-        country: cachedContact.country || '', email: cachedContact.email || d.parentEmail || ''
-      };
-    } else if (d.dealId) {
-      var contactId = _lafGetContactId(d.dealId, token);
-      if (contactId) {
-        try {
-          var cRes = monitoredFetch(
-            'https://api.hubapi.com/crm/v3/objects/contacts/' + contactId + '?properties=email,address,city,state,zip,country',
-            { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
-          );
-          if (cRes.getResponseCode() === 200) {
-            var p = JSON.parse(cRes.getContentText()).properties || {};
-            existing = { address: p.address || '', city: p.city || '', state: p.state || '', zip: p.zip || '', country: p.country || '', email: p.email || d.parentEmail || '' };
-          }
-        } catch(ce) { Logger.log('[LAF] contact fetch error: ' + ce.message); }
-      }
+    var kitSheet = _getKitSheet();
+    var kitRowIndex = _findOpenKitRowByJlid(jlid);
+    var learnerName = '', sheetAddress = '', sheetCountry = '';
+    if (kitRowIndex) {
+      var kitRow = kitSheet.getRange(kitRowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+      learnerName = String(kitRow[KIT_COL.LEARNER_NAME - 1] || '').trim();
+      sheetAddress = String(kitRow[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim();
+      sheetCountry = String(kitRow[3] || '').trim(); // col D — Country
     }
-    if (!existing.email) existing.email = d.parentEmail || '';
 
-    return {
-      success: true,
-      jlid: jlid,
-      learnerName: d.learnerName || '',
-      existing: existing
+    var structured = _getStructuredAddressForJlid(jlid); // last real submission, if any
+    var existing = {
+      address: (structured && structured.address) || sheetAddress || '',
+      city: (structured && structured.city) || '',
+      state: (structured && structured.state) || '',
+      zip: (structured && structured.postalCode) || '',
+      country: (structured && structured.country) || sheetCountry || '',
+      email: (structured && structured.email) || ''
     };
+
+    if (learnerName) {
+      return { success: true, jlid: jlid, learnerName: learnerName, existing: existing };
+    }
+
+    // Fallback — JLID not found in our own Kits sheet (unexpected for a real
+    // link). Only now do we pay the HubSpot round trip, to at least confirm
+    // the learner is real rather than showing a dead-end error.
+    var hs = fetchHubspotByJlid(jlid, true);
+    if (!hs || !hs.success || !hs.data) return { success: false, message: 'We could not find this learner (' + jlid + '): ' + ((hs && hs.message) || 'no data returned') + '. Please contact JetLearn support.' };
+    if (!existing.email) existing.email = hs.data.parentEmail || '';
+    return { success: true, jlid: jlid, learnerName: hs.data.learnerName || '', existing: existing };
   } catch(e) {
     Logger.log('[LAF] getAddressFormContext ERROR: ' + e.message);
     return { success: false, message: 'Something went wrong loading this form. Please contact JetLearn support.' };

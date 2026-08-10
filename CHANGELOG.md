@@ -2,6 +2,31 @@
 
 ---
 
+## [2026-08-10] — Address Page: Actually Instant + Smooth Fades; Mark Order Placed Auto-Fetch + New Note Format (V8.53)
+
+### Public address page no longer touches HubSpot at all on load (`LearnerAddressFormService.js`, `KitTrackingService.js`, `Code.js`)
+- User asked the real question: "we collect address on sheet, why check on deal?" — correct catch. `getAddressFormContext()` was calling HubSpot (deal search + contact lookup) just to re-display data we'd already collected ourselves. Rewrote it to read purely from our own sheets: learner name from the Kits sheet (`_findOpenKitRowByJlid`), last submitted address/email from "Learner Address Submissions" (`_getStructuredAddressForJlid`, now also returns email). HubSpot is only ever touched at submit time (to patch the contact) — never on page load. Falls back to a HubSpot lookup only if the JLID somehow isn't in the Kits sheet at all.
+- The V8.52 3-minute cache stays as a second layer but is no longer the load-bearing fix — sheet reads are fast enough that it barely matters now.
+- Added smooth cross-fade (`fadeUp` keyframe) between loading → form/error/success states on the Firebase page (`firebase-hosting/public/kit/index.html`) instead of a hard display-toggle pop-in. Redeployed via `firebase deploy --only hosting:kitlinks`.
+
+### Mark Order Placed — new HubSpot note format + auto-fetch (`KitTrackingService.js`, `JavaScript.html`)
+- User gave the exact note layout they want, replacing the old single-line sentence:
+  ```
+  Kit Order Entry
+
+  Ordered: 2026-07-30
+  Kit: Microbit — €31
+  ETA: 2026-08-02
+  Reason: New Learner - Next course requires the Kit
+  Sent by: Sourav
+  Order No: 114-7880164-8877005
+  https://www.amazon.com/your-orders/order-details?orderID=...
+  ```
+  `markKitOrderPlaced()`'s `_addNoteToDeal` call rebuilt line-by-line to match, using the actual order date entered (not "today") and the tracking URL on its own line.
+- Opening Mark Order Placed now auto-fetches the learner's HubSpot deal in the background and pre-fills **Reason** (guessed New vs Renewed from `learner_status`) and **Subscription** (matched from the deal's `subscription` property) — same auto-fetch pattern used everywhere else in the app. Silent on failure; fields stay manually editable either way. Roadmap has no HubSpot source (it's an ops-only classification), so it's still manual.
+
+---
+
 ## [2026-08-09] — Mark Order Placed from Order Details + Faster/Nicer Public Address Page (V8.52)
 
 ### Order Details modal now has its own "Mark Order Placed" button (`JavaScript.html`)

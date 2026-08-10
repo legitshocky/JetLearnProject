@@ -119,6 +119,10 @@
     .state-msg h2 { font-size: 1.2rem; font-weight: 700; margin: 0 0 8px; }
     .state-msg p { font-size: 0.88rem; color: var(--muted); margin: 0; line-height: 1.55; }
 
+    /* Smooth cross-fade between loading/form/error/success — no hard pop-in */
+    #loadingState, #formState, #errorState, #successState { animation: fadeUp 0.32s ease both; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
     #loadingState { text-align: center; padding: 80px 24px; color: #9ca3af; }
     #loadingState .spinner {
       width: 30px; height: 30px; border: 3px solid var(--line); border-top-color: var(--purple);
