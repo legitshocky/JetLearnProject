@@ -14791,7 +14791,9 @@ function renderKitAskingAddressTable() {
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
-      : '<span style="font-size:0.72rem;color:#94a3b8;">Waiting on parent<\/span>';
+      : '<span style="font-size:0.72rem;color:#94a3b8;margin-right:6px;">Waiting on parent<\/span>'
+        + '<button onclick="event.stopPropagation();ktOpenManualAddress(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-right:4px;" title="You have the address (call/email/WhatsApp) — enter it directly"><i class="fas fa-map-marker-alt"><\/i> Add Address<\/button>'
+        + '<button onclick="event.stopPropagation();ktMarkNotRequired(' + row.rowIndex + ', this)" style="background:none;border:1px solid #94a3b8;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;" title="Kit no longer needed — learner paused, roadmap changed, etc."><i class="fas fa-ban"><\/i> Not Required<\/button>';
 
     const rowBg = row.needsCall ? '#fef2f2' : (i % 2 === 0 ? '#fff' : '#fafbfc');
     const rowBorder = row.needsCall ? 'border-bottom:1px solid #fecaca;border-left:3px solid #dc2626;' : 'border-bottom:1px solid #f1f5f9;';
@@ -16540,6 +16542,139 @@ function pwbUpdateStatus(jlid, newStatus, btn) {
       showToast('error', 'Error', err && err.message ? err.message : String(err));
     })
     .updatePWBStatus(jlid, newStatus);
+}
+
+// ── Kit Tracking: manually mark address received — ops has the address via
+// phone/email/WhatsApp reply outside the automated form flow. Paste it as
+// one line (comma-separated works best); a best-effort parse splits it into
+// Address/City/State/Postcode/Country, shown editable so ops can fix any
+// misparse before saving — never silently trusts the guess.
+function ktOpenManualAddress(rowIndex, jlid, learnerName) {
+  let modal = document.getElementById('ktManualAddrModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktManualAddrModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:28px 32px;width:440px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+      + '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-map-marker-alt" style="color:#0d9488;margin-right:8px;"><\/i>Add Address Manually<\/h3>'
+      + '<button onclick="ktCloseManualAddress()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<p id="ktMaSubtitle" style="margin:0 0 16px;font-size:0.82rem;color:#64748b;"><\/p>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Paste address — one line, comma-separated<\/label>'
+      + '<textarea id="ktMaRaw" rows="2" placeholder="e.g. 29 Queensland, Liverpool, Merseyside, L7 3JE, United Kingdom" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:8px;font-family:inherit;resize:vertical;" oninput="ktParseManualAddress()"><\/textarea>'
+      + '<div id="ktMaParsed" style="display:none;margin-bottom:6px;">'
+      +   '<div style="font-size:0.72rem;color:#94a3b8;margin-bottom:8px;">Auto-split below — fix anything before saving.<\/div>'
+      +   '<label style="font-size:0.74rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Address Line<\/label>'
+      +   '<input id="ktMaAddress" type="text" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.82rem;margin-bottom:8px;">'
+      +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">'
+      +     '<div><label style="font-size:0.74rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">City<\/label><input id="ktMaCity" type="text" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.82rem;"><\/div>'
+      +     '<div><label style="font-size:0.74rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">State / Region<\/label><input id="ktMaState" type="text" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.82rem;"><\/div>'
+      +   '<\/div>'
+      +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+      +     '<div><label style="font-size:0.74rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Postal Code<\/label><input id="ktMaPostal" type="text" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.82rem;"><\/div>'
+      +     '<div><label style="font-size:0.74rem;font-weight:600;color:#475569;display:block;margin-bottom:3px;">Country<\/label><input id="ktMaCountry" type="text" style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid #e2e8f0;border-radius:7px;font-size:0.82rem;"><\/div>'
+      +   '<\/div>'
+      + '<\/div>'
+      + '<div style="display:flex;gap:10px;margin-top:18px;">'
+      + '<button onclick="ktCloseManualAddress()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      + '<button id="ktMaSaveBtn" onclick="ktSaveManualAddress()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-check"><\/i> Mark Address Received<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktMaSubtitle').textContent = learnerName + (jlid ? ' (' + jlid + ')' : '');
+  document.getElementById('ktMaRaw').value = '';
+  document.getElementById('ktMaParsed').style.display = 'none';
+  ['ktMaAddress','ktMaCity','ktMaState','ktMaPostal','ktMaCountry'].forEach(function(id) { document.getElementById(id).value = ''; });
+  modal.style.display = 'flex';
+  setTimeout(function() { document.getElementById('ktMaRaw').focus(); }, 50);
+}
+function ktCloseManualAddress() {
+  const modal = document.getElementById('ktManualAddrModal');
+  if (modal) modal.style.display = 'none';
+}
+// Best-effort split of a free-typed one-line address into structured parts.
+// Not meant to be perfect — just a head start ops can correct in the fields
+// it fills, which is why every field it produces stays editable.
+function ktParseManualAddress() {
+  var raw = document.getElementById('ktMaRaw').value;
+  var segs = raw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  document.getElementById('ktMaParsed').style.display = segs.length ? 'block' : 'none';
+  if (!segs.length) return;
+
+  var country = segs.length > 1 ? segs.pop() : '';
+  // Postal code: look for a segment containing a digit, prefer the last such one
+  // (postcodes usually sit right before/after country, not at the very start).
+  var postal = '';
+  for (var i = segs.length - 1; i >= 0; i--) {
+    if (/\d/.test(segs[i]) && segs[i].replace(/\s/g, '').length <= 10) { postal = segs.splice(i, 1)[0]; break; }
+  }
+  var state = segs.length > 2 ? segs.pop() : '';
+  var city  = segs.length > 1 ? segs.pop() : '';
+  var address = segs.join(', ');
+
+  document.getElementById('ktMaAddress').value = address;
+  document.getElementById('ktMaCity').value = city;
+  document.getElementById('ktMaState').value = state;
+  document.getElementById('ktMaPostal').value = postal;
+  document.getElementById('ktMaCountry').value = country;
+}
+function ktSaveManualAddress() {
+  const modal = document.getElementById('ktManualAddrModal');
+  const rowIndex = modal.dataset.rowIndex;
+  const raw = (document.getElementById('ktMaRaw').value || '').trim();
+  if (!raw) { showToast('error', 'Missing Address', 'Paste the address first.'); return; }
+  const parts = {
+    address: document.getElementById('ktMaAddress').value.trim(),
+    city: document.getElementById('ktMaCity').value.trim(),
+    state: document.getElementById('ktMaState').value.trim(),
+    postalCode: document.getElementById('ktMaPostal').value.trim(),
+    country: document.getElementById('ktMaCountry').value.trim()
+  };
+  const btn = document.getElementById('ktMaSaveBtn');
+  const origHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Saving...';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      if (res && res.success) {
+        showToast('success', 'Address Received', 'Marked received — ready to order.');
+        ktCloseManualAddress();
+        loadKitTrackingPage();
+      } else {
+        showToast('error', 'Failed', (res && res.message) || 'Unknown error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .markKitAddressReceivedManual(rowIndex, raw, parts);
+}
+
+// ── Kit Tracking: kit no longer needed (learner paused, roadmap changed,
+// etc.) — reuses the existing refund flag so it drops out of every open-
+// pipeline view/count, same mechanism the JetLearn Sends tab's "Refunded"
+// action already uses.
+function ktMarkNotRequired(rowIndex, btn) {
+  if (!confirm('Mark this kit as not required?\n\nUse this when the learner paused, the roadmap changed, or the kit is otherwise no longer needed. It drops out of the address-collection pipeline and is excluded from monthly totals.')) return;
+  var origHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      if (res && res.success) {
+        showToast('success', 'Marked Not Required', 'Removed from the address-collection pipeline.');
+        loadKitTrackingPage();
+      } else { showToast('error', 'Failed', (res && res.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .markKitAsRefunded(rowIndex);
 }
 
 // ── Kit Tracking: mark kit as refunded (logistics loss) ───────────────────

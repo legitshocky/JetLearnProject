@@ -3178,6 +3178,50 @@ function getPWBEntries() {
   }
 }
 
+// ── Manually mark an address as received — for when ops has the address
+// (phone call, email, WhatsApp reply outside the automated flow) instead of
+// waiting on the parent form. `parts` is the structured breakdown the UI
+// already parsed/let ops correct from the one-line paste; `rawLine` is kept
+// as the flattened DELIVERY_ADDRESS string (what every other view already
+// expects), while the structured parts are logged to Learner Address
+// Submissions too, so the public page prefill / Order Details structured
+// fields work exactly like a real parent submission would.
+function markKitAddressReceivedManual(rowIndex, rawLine, parts) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  rawLine = String(rawLine || '').trim();
+  if (!rawLine) return { success: false, message: 'Address is empty.' };
+  parts = parts || {};
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
+
+    sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(rawLine);
+    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    try { sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date()); } catch(ne) {}
+    if (parts.country) { try { sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(parts.country); } catch(ce) {} }
+
+    // Log to Learner Address Submissions so structured Address/City/State/
+    // Postcode are available everywhere else that reads them (Order
+    // Details, the public page's own prefill on reopen).
+    try {
+      var logSheet = _lafGetLogSheet();
+      logSheet.appendRow([
+        new Date(), jlid, learnerName, '',
+        parts.address || rawLine, parts.city || '', parts.state || '', parts.postalCode || '', parts.country || '',
+        '', 'manual_entry_by_ops', 'not_attempted'
+      ]);
+    } catch(le) { Logger.log('[KitTracking] markKitAddressReceivedManual log failed: ' + le.message); }
+
+    Logger.log('[KitTracking] markKitAddressReceivedManual row=' + rowIndex + ' jlid=' + jlid);
+    return { success: true };
+  } catch(e) {
+    Logger.log('[KitTracking] markKitAddressReceivedManual ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── Mark kit as refunded (logistics loss) — zeros price, sets refunded flag, subtracts from HubSpot ──
 function markKitAsRefunded(rowIndex) {
   if (!rowIndex) return { success: false, message: 'No rowIndex' };

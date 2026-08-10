@@ -2,6 +2,15 @@
 
 ---
 
+## [2026-08-10] — Asking Address: Manual Address Entry + "Not Required" (V8.54)
+
+### Two new row actions for kits still waiting on the parent (`KitTrackingService.js`, `JavaScript.html`)
+- User pointed at the "Call parent" / "Requested" rows and asked for more than just the WhatsApp nudge button: a way to enter an address ops already has (phone call, email, WhatsApp reply outside the automated flow), and a way to close out a kit that's no longer needed (learner paused, roadmap changed).
+- **"Add Address"** — new modal, paste the address as one line; `ktParseManualAddress()` best-effort splits it into Address/City/State/Postcode/Country (postcode found by scanning for a short digit-bearing segment, country assumed last, then state/city working backward) and shows every field editable so ops corrects any misparse before saving, never trusts the guess blindly. Saves via new `markKitAddressReceivedManual(rowIndex, rawLine, parts)` — sets `DELIVERY_ADDRESS`/`ADDR_STATUS='Received'` on the Kits sheet AND logs the structured parts to Learner Address Submissions, so Order Details' structured fields and the public page's prefill-on-reopen both work exactly as if the parent had submitted the form themselves.
+- **"Not Required"** — new `ktMarkNotRequired()`, reuses the existing `markKitAsRefunded()` (same refund flag every other view already filters on) so the row drops out of the address pipeline and monthly totals in one click, with a confirm dialog explaining what it does.
+
+---
+
 ## [2026-08-10] — Address Page: Actually Instant + Smooth Fades; Mark Order Placed Auto-Fetch + New Note Format (V8.53)
 
 ### Public address page no longer touches HubSpot at all on load (`LearnerAddressFormService.js`, `KitTrackingService.js`, `Code.js`)
