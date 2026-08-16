@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-08-10] — Mark Order Placed Auto-Fill Now Uses the Same Line-Item-Count Logic as Add Kit Entry (V8.56)
+
+### `JavaScript.html`
+- User asked directly: are we using the line-item-count signal (1 item = New Learner, 2+ = Renewed) the same way Add Kit Entry does? We weren't — Mark Order Placed's auto-fetch was guessing Reason off `learner_status` free text (unreliable field) and matching Subscription by exact string instead of the shared mapper.
+- Switched it to call `fetchKitLearnerDetails()` (same server function Add Kit Entry's fetch uses) and reuse its `isRenewedLearner` (derived from `_countDealLineItems` — >1 line item on the deal = renewed) and the shared `_mapHsSubscriptionToKitOption()` regex mapper for Subscription. Both flows now derive these two fields identically.
+
+---
+
 ## [2026-08-10] — Add Kit Entry: Sent By Now Defaults to Logged-In User (V8.55)
 
 ### Root cause of "Sent by us not updating on HS" found (`JavaScript.html`)

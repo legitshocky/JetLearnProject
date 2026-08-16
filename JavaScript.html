@@ -15118,31 +15118,29 @@ function ktOpenMarkOrderPlaced(rowIndex, jlid, learnerName, kitName) {
   document.getElementById('ktOpSentBy').value = (currentUser && currentUser.username) || '';
   modal.style.display = 'flex';
 
-  // Auto-fetch the learner's HubSpot deal — pre-fills Reason (new vs
-  // renewal) and Subscription (billing plan) so ops doesn't have to
-  // remember/retype what HubSpot already knows, same idea as every other
-  // JLID-fetch in the app. Silent on failure — fields just stay manual.
+  // Auto-fetch the learner's HubSpot deal — pre-fills Reason and Subscription
+  // using the EXACT same signal Add Kit Entry's fetch already uses: deal line
+  // item count (>1 = renewed learner, not a guess off learner_status text)
+  // and the shared HS-plan-label → dropdown-option mapper. Silent on
+  // failure — fields just stay manual.
   if (jlid) {
     google.script.run
-      .withSuccessHandler(function(hs) {
-        if (!hs || !hs.success || !hs.data || modal.style.display === 'none' || modal.dataset.rowIndex != rowIndex) return;
-        var d = hs.data;
+      .withSuccessHandler(function(r) {
+        if (!r || !r.success || modal.style.display === 'none' || modal.dataset.rowIndex != rowIndex) return;
         var reasonSel = document.getElementById('ktOpReason');
         if (reasonSel && !reasonSel.value) {
-          var statusLow = String(d.learnerStatus || '').toLowerCase();
-          var guess = statusLow.indexOf('renew') > -1
+          reasonSel.value = r.isRenewedLearner
             ? 'Renewed Learner- Next course requires the kit'
-            : (statusLow.indexOf('new') > -1 ? 'New Learner - Next course requires the Kit' : '');
-          if (guess) reasonSel.value = guess;
+            : 'New Learner - Next course requires the Kit';
         }
         var subSel = document.getElementById('ktOpSubscription');
-        if (subSel && !subSel.value && d.planName) {
-          var opt = Array.from(subSel.options).find(function(o) { return o.value.toLowerCase() === String(d.planName).toLowerCase(); });
-          if (opt) subSel.value = opt.value;
+        if (subSel && !subSel.value && r.subscription) {
+          var mapped = _mapHsSubscriptionToKitOption(r.subscription);
+          if (mapped) subSel.value = mapped;
         }
       })
       .withFailureHandler(function() { /* silent — manual entry still works */ })
-      .fetchHubspotByJlid(jlid, true);
+      .fetchKitLearnerDetails(jlid);
   }
 }
 
