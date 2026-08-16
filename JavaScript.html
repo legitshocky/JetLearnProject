@@ -15527,6 +15527,11 @@ function openAddKitModal() {
   ['ktfJlid','ktfOrderNo','ktfOrderLink','ktfOtherStore','ktfDeliveryAddress'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
+  // Sent By defaults to the logged-in ops user — left blank before, which
+  // meant the HubSpot note's "Sent by:" line was silently empty whenever
+  // ops forgot to type their own name in an optional field. Still editable.
+  var sentByEl = document.getElementById('ktfSentBy');
+  if (sentByEl && !sentByEl.value) sentByEl.value = (currentUser && currentUser.username) || '';
   // Hide address section until JLID fetched
   var addrSec = document.getElementById('ktfAddressSection');
   if (addrSec) addrSec.style.display = 'none';

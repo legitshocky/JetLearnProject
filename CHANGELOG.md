@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-08-10] — Add Kit Entry: Sent By Now Defaults to Logged-In User (V8.55)
+
+### Root cause of "Sent by us not updating on HS" found (`JavaScript.html`)
+- Investigated the screenshot the user flagged — turned out to be the pre-existing **Add Kit Entry** modal (`ktFetchByJlid`), not the newer Mark Order Placed one. Checked against a real JLID: Reason and Subscription auto-fill correctly from HubSpot already (confirmed via screenshot — "Renewed Learner…", "2 Yearly"). Roadmap has no HubSpot source at all (it's an ops-only classification), so it staying blank is expected, not a bug.
+- The real gap: **Sent By** is an optional field that was never defaulted, so whenever ops left it blank, `addKitEntry()`'s HubSpot note (`KitTrackingService.js:2732-2748`, already writing "Sent by: " + name) silently wrote an empty name — looked like the note wasn't updating, but the note itself was working the whole time. `openAddKitModal()` now defaults it to the logged-in user automatically (still editable) so the note line is never blank going forward.
+
+---
+
 ## [2026-08-10] — Asking Address: Manual Address Entry + "Not Required" (V8.54)
 
 ### Two new row actions for kits still waiting on the parent (`KitTrackingService.js`, `JavaScript.html`)
