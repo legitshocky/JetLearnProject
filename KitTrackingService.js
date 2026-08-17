@@ -87,13 +87,18 @@ var KIT_COL = {
   REIMBURSEMENT_REASON:     45,  // Address/Delivery Issue, Out of Stock in Region, Other
   REIMBURSEMENT_STATUS:     46,  // 'Pending' / 'Reimbursed'
   REIMBURSEMENT_REQUESTED_AT: 47,
-  REIMBURSEMENT_PAID_AT:    48
+  REIMBURSEMENT_PAID_AT:    48,
+  // Manual "Follow-up" button tracking (appended — AW/AX) — separate from the
+  // automated NUDGE_STAGE cadence: ops can send an extra reminder any time,
+  // and this alternates urgency copy (odd count = normal, even = urgent).
+  MANUAL_REMINDER_COUNT:   49,
+  MANUAL_REMINDER_LAST_AT: 50
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
 // KIT_COL.REFUNDED) for any full-row range read, since REFUNDED is no
 // longer the last column.
-var KIT_LAST_COL = KIT_COL.REIMBURSEMENT_PAID_AT;
+var KIT_LAST_COL = KIT_COL.MANUAL_REMINDER_LAST_AT;
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
 // Fetch current learning_kit_cost directly from deal GET — bypasses search cache
@@ -3183,6 +3188,76 @@ function getPWBEntries() {
   } catch(e) {
     Logger.log('[getPWBEntries] ERROR: ' + e.message);
     return [];
+  }
+}
+
+// ── Manual "Follow-up" — ops-triggered reminder for a kit still waiting on
+// an address, independent of the automated daily nudge cadence (that one
+// only fires on its own schedule; this lets ops chase a specific parent
+// right now). Sends BOTH channels every time:
+//   - WhatsApp: reuses the already-approved kit_address_request_link_v2
+//     template (sendKitAddressLinkWhatsApp, same one used everywhere else).
+//     Deliberately NOT a new WATI template — creating one requires manual
+//     approval in the WATI dashboard, which code can't do (flagging this
+//     explicitly rather than assuming a name and guessing wrong, same
+//     mistake this project has hit before with kit_order_placed_notice_v2).
+//   - Email: our own branded HTML (no approval needed), alternating tone —
+//     every other manual follow-up escalates from "Action needed" to a
+//     visibly more urgent red "Still waiting" variant, driven by
+//     MANUAL_REMINDER_COUNT so it's stateful across clicks, not random.
+function sendKitAddressManualReminder(rowIndex) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    var addrStatus = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    if (addrStatus === 'Received') return { success: false, message: 'Address already received — no reminder needed.' };
+
+    var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
+    var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
+    var kitName = String(row[KIT_COL.KIT - 1] || '').trim();
+    if (!jlid) return { success: false, message: 'No JLID on this row — cannot look up the parent.' };
+
+    var hs = fetchHubspotByJlid(jlid, true);
+    if (!hs || !hs.success || !hs.data) return { success: false, message: 'HubSpot lookup failed for ' + jlid + '.' };
+    var d = hs.data;
+    var phone = _normalisePhone(d.parentContact || '');
+
+    var priorCount = parseInt(row[KIT_COL.MANUAL_REMINDER_COUNT - 1], 10) || 0;
+    var newCount = priorCount + 1;
+    var urgency = (newCount % 2 === 0) ? 'urgent' : 'normal'; // alternate every send
+
+    var waStatus = 'not_attempted';
+    if (phone) {
+      try {
+        sendKitAddressLinkWhatsApp(phone, d.parentName, kitName, jlid, learnerName);
+        waStatus = 'sent';
+      } catch(we) { waStatus = 'failed: ' + we.message; Logger.log('[KitTracking] manual reminder WA failed: ' + we.message); }
+    } else {
+      waStatus = 'no_phone';
+    }
+
+    var emailStatus = 'not_attempted';
+    var emails = [];
+    try {
+      if (d.dealId) { var emailRes = getEmailsForDeal(d.dealId); if (emailRes && emailRes.all) emails = emailRes.all; }
+    } catch(ee) {}
+    if (!emails.length && d.parentEmail) emails = [d.parentEmail];
+    if (emails.length) {
+      var er = sendKitAddressReminderEmail({ jlid: jlid, learnerName: learnerName, kitName: kitName, parentName: d.parentName, parentEmail: emails }, urgency);
+      emailStatus = (er && er.success) ? 'sent' : ('failed: ' + (er && er.message));
+    } else {
+      emailStatus = 'no_email';
+    }
+
+    sheet.getRange(rowIndex, KIT_COL.MANUAL_REMINDER_COUNT).setValue(newCount);
+    sheet.getRange(rowIndex, KIT_COL.MANUAL_REMINDER_LAST_AT).setValue(new Date());
+
+    Logger.log('[KitTracking] sendKitAddressManualReminder row=' + rowIndex + ' jlid=' + jlid + ' urgency=' + urgency + ' wa=' + waStatus + ' email=' + emailStatus);
+    return { success: true, urgency: urgency, waStatus: waStatus, emailStatus: emailStatus, count: newCount };
+  } catch(e) {
+    Logger.log('[KitTracking] sendKitAddressManualReminder ERROR: ' + e.message);
+    return { success: false, message: e.message };
   }
 }
 

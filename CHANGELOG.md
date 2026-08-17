@@ -2,6 +2,20 @@
 
 ---
 
+## [2026-08-17] — Manual "Follow-up" Reminder + Non-Blocking Background Task Tray (V8.58)
+
+### Manual address follow-up button (`KitTrackingService.js`, `EmailService.js`, `KitAddressReminderTemplate.html`, `JavaScript.html`)
+- User wanted a way to chase a specific parent right now instead of waiting on the automated daily nudge cadence. New "Follow-up" button on every row still waiting on an address, next to Add Address / Not Required.
+- `sendKitAddressManualReminder(rowIndex)` sends both channels every click: WhatsApp via the already-approved `kit_address_request_link_v2` template (reused, not invented — a new WATI template needs manual dashboard approval, which code can't do), and our own branded email, alternating tone every other send via a new `MANUAL_REMINDER_COUNT`/`MANUAL_REMINDER_LAST_AT` column pair — odd sends use the normal "Action needed" copy, even sends switch to a visibly more urgent red "Still waiting — please confirm today" variant with a stronger subject line. Stateful per-row, not random.
+- **Flagging, not guessing this time**: no new WhatsApp template was created for the urgent tone — only the email escalates. If a genuinely different urgent WhatsApp template is wanted, it needs to be built and approved in the WATI dashboard first.
+
+### Background task tray — actions no longer block the whole app (`Styles.html`)
+- User asked for a modern "run in background" pattern across every page — start a migration/certificate/search, keep working elsewhere, get notified on completion — without a page-by-page rewrite.
+- Nearly every long-running action in the app already funnels through the shared `showLoading()`/`hideLoading()` pair, which rendered as a full-screen blocking `.modal-overlay`. Restyled `#loadingModal` (ID-scoped override, no other modal touched) from a centered blocking dialog into a small non-blocking corner card (bottom-right, transparent backdrop with `pointer-events:none`, only the card itself clickable) — so every existing action that already calls `showLoading`/`hideLoading` gets background-capable "keep working while it runs" behavior for free, with zero per-call-site changes.
+- **Scope of this pass**: single global tray (one action's progress shown at a time, matching how `showLoading`/`hideLoading` already work as a singleton) — genuinely concurrent multi-task tracking with a persistent notification history is a bigger follow-up if wanted.
+
+---
+
 ## [2026-08-16] — Real Bug: WATI "Kit Received" Reply Was Sweeping Up Unrelated Sibling Kits (V8.57)
 
 ### `handleKitReply()` (`KitTrackingService.js`) — false auto-deliveries

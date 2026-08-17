@@ -14791,7 +14791,7 @@ function renderKitAskingAddressTable() {
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
-      : '<span style="font-size:0.72rem;color:#94a3b8;margin-right:6px;">Waiting on parent<\/span>'
+      : '<button onclick="event.stopPropagation();ktSendAddressFollowUp(' + row.rowIndex + ', this)" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;margin-right:4px;" title="Send a WhatsApp + email reminder now — alternates a stronger urgency tone every other send"><i class="fas fa-bell"><\/i> Follow-up<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenManualAddress(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-right:4px;" title="You have the address (call/email/WhatsApp) — enter it directly"><i class="fas fa-map-marker-alt"><\/i> Add Address<\/button>'
         + '<button onclick="event.stopPropagation();ktMarkNotRequired(' + row.rowIndex + ', this)" style="background:none;border:1px solid #94a3b8;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;" title="Kit no longer needed — learner paused, roadmap changed, etc."><i class="fas fa-ban"><\/i> Not Required<\/button>';
 
@@ -16545,6 +16545,28 @@ function pwbUpdateStatus(jlid, newStatus, btn) {
       showToast('error', 'Error', err && err.message ? err.message : String(err));
     })
     .updatePWBStatus(jlid, newStatus);
+}
+
+// ── Kit Tracking: manual "Follow-up" — send a WhatsApp + email reminder
+// right now, independent of the automated daily nudge cadence. Alternates
+// urgency tone on the email every other send (server-tracked count).
+function ktSendAddressFollowUp(rowIndex, btn) {
+  var origHtml = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      if (!res || !res.success) { showToast('error', 'Follow-up Failed', (res && res.message) || 'Unknown error'); return; }
+      var parts = [];
+      if (res.waStatus === 'sent') parts.push('WhatsApp');
+      if (res.emailStatus === 'sent') parts.push('email' + (res.urgency === 'urgent' ? ' (urgent)' : ''));
+      showToast('success', 'Follow-up Sent', parts.length ? (parts.join(' + ') + ' sent to parent.') : 'Sent, but check delivery — ' + res.waStatus + '/' + res.emailStatus);
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = origHtml;
+      showToast('error', 'Follow-up Failed', err && err.message ? err.message : String(err));
+    })
+    .sendKitAddressManualReminder(rowIndex);
 }
 
 // ── Kit Tracking: manually mark address received — ops has the address via

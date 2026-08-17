@@ -131,20 +131,27 @@
 
             <!-- Header -->
             <div class="main-header" style="padding:28px 28px 22px; border-bottom:1px solid #f0f0ef;">
+              <? if (data.urgent) { ?>
+              <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 9px; margin:0 0 14px; color:#7a1a1a; background-color:#fde2e2; border:1px solid #e33e3e;">Still waiting — please confirm today</p>
+              <p style="font-size:13px; line-height:1.7; margin:0;" class="header-text">
+                Hi <strong class="header-strong"><?= data.parentName || 'there' ?></strong>, we still haven't heard back about the delivery address for <strong class="header-strong"><?= data.learnerName || 'your child' ?></strong>'s <strong class="header-strong"><?= data.kitName || 'learning' ?></strong> kit — it's ready to ship as soon as we have it.
+              </p>
+              <? } else { ?>
               <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 9px; margin:0 0 14px;" class="action-tag">Action needed</p>
               <p style="font-size:13px; line-height:1.7; margin:0;" class="header-text">
                 Hi <strong class="header-strong"><?= data.parentName || 'there' ?></strong>, the <strong class="header-strong"><?= data.kitName || 'learning' ?></strong> kit for <strong class="header-strong"><?= data.learnerName || 'your child' ?></strong> is packed and ready to ship.
               </p>
+              <? } ?>
             </div>
 
             <!-- Body -->
             <div class="main-body" style="padding:22px 28px;">
 
               <!-- Highlight -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden;" class="highlight-bg">
-                <tr><td style="padding:16px 18px; border-radius:9px; border-left:3px solid #111111;">
-                  <p style="font-size:12px; font-weight:600; margin:0 0 6px;" class="highlight-title">One step left</p>
-                  <p style="font-size:13px; line-height:1.65; margin:0;" class="highlight-text">We just need the delivery address confirmed before it heads out. Takes about 30 seconds.</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px; border-radius:9px; overflow:hidden; <?= data.urgent ? 'background-color:#fff5f5; border:1px solid #e33e3e;' : '' ?>" class="<?= data.urgent ? '' : 'highlight-bg' ?>">
+                <tr><td style="padding:16px 18px; border-radius:9px; border-left:3px solid <?= data.urgent ? '#e33e3e' : '#111111' ?>;">
+                  <p style="font-size:12px; font-weight:600; margin:0 0 6px;" class="highlight-title"><?= data.urgent ? 'This is holding up shipping' : 'One step left' ?></p>
+                  <p style="font-size:13px; line-height:1.65; margin:0;" class="highlight-text"><?= data.urgent ? "We can't send the kit out until we have a confirmed delivery address — takes about 30 seconds to sort out." : 'We just need the delivery address confirmed before it heads out. Takes about 30 seconds.' ?></p>
                 </td></tr>
               </table>
 

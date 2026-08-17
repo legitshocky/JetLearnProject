@@ -1601,7 +1601,12 @@ function getKitAddressReminderEmailHTML(data) {
 // kitRow.parentEmail may be a single string OR an array of emails — sends to
 // every valid, de-duped address on the deal (both guardians, additional
 // emails, etc.) in one call via a comma-separated 'to' list.
-function sendKitAddressReminderEmail(kitRow) {
+// `urgency` ('normal' | 'urgent', default 'normal') swaps in a stronger
+// subject/intro for manual follow-ups sent later in the cadence — no new
+// WATI template needed for this since it's our own HTML email, unlike the
+// WhatsApp side which stays on the already-approved template (see
+// sendKitAddressManualReminder for why we didn't invent a new WATI template).
+function sendKitAddressReminderEmail(kitRow, urgency) {
   try {
     var rawEmails = kitRow && kitRow.parentEmail;
     var emailList = (Array.isArray(rawEmails) ? rawEmails : [rawEmails])
@@ -1616,20 +1621,26 @@ function sendKitAddressReminderEmail(kitRow) {
     var addressLink = (linkRes && linkRes.success) ? linkRes.url : '';
     if (!addressLink) return { success: false, message: 'Could not build address link.' };
 
+    var isUrgent = urgency === 'urgent';
     var htmlBody = getKitAddressReminderEmailHTML({
       parentName: kitRow.parentName,
       learnerName: kitRow.learnerName,
       kitName: kitRow.kitName,
-      addressLink: addressLink
+      addressLink: addressLink,
+      urgent: isUrgent
     });
+
+    var subject = isUrgent
+      ? '⏳ Still need ' + (kitRow.learnerName || "your child") + "'s delivery address — please confirm today"
+      : 'Quick favor — confirm ' + (kitRow.learnerName || 'your child') + "'s kit delivery address";
 
     var result = sendTrackedEmail({
       to: emailList.join(','),
-      subject: 'Quick favor — confirm ' + (kitRow.learnerName || 'your child') + "'s kit delivery address",
+      subject: subject,
       htmlBody: htmlBody,
       jlid: kitRow.jlid
     });
-    Logger.log('[KitAddrReminder] Reminder email sent to ' + emailList.join(',') + ' for ' + kitRow.jlid);
+    Logger.log('[KitAddrReminder] Reminder email (' + (urgency||'normal') + ') sent to ' + emailList.join(',') + ' for ' + kitRow.jlid);
     return { success: true, trackingId: result.trackingId };
   } catch(e) {
     Logger.log('[KitAddrReminder] sendKitAddressReminderEmail ERROR: ' + e.message);
