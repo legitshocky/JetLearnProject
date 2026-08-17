@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-08-17] — Proper Multi-Task Background Engine + Bell/History (V8.59)
+
+### `Index.html`, `Styles.html`, `JavaScript.html`
+- Follow-up to V8.58's single-slot background tray — user wanted real concurrent multi-tasking: start something, do something else, know it finished, and see history.
+- Replaced the single `#loadingModal` with a proper task engine: `#bgDock` (bottom-right) now stacks one card per concurrently-running task, and a new global bell icon (top-right, visible on every page) shows a live running-count badge plus a dropdown history panel of the last 40 tasks (running + finished), each with duration and relative time, with a one-click Clear for finished entries.
+- **Every existing call site works unchanged** — `showLoading(message, steps)`, `hideLoading()`, `renderLoadingTimeline(steps)`, `finalizeLoadingTimeline(result, fallbackSteps)` keep their exact original signatures; they now operate on a `_bgTasks` array + per-task DOM cards instead of one shared modal. `showLoading()` additionally returns a task id a call site can optionally pass to `hideLoading(id)` for exact matching.
+- **Known limitation, called out rather than hidden**: legacy call sites invoke `hideLoading()`/`renderLoadingTimeline()`/`finalizeLoadingTimeline()` with no task id (they predate multi-tasking), so those resolve against the top of a LIFO stack of "active" tasks. This is correct for the realistic case (a short task started while a longer one is running finishes first, so it's naturally on top) but could misattribute in the rarer case of an older task finishing after a newer nested one starts. Any call site can sidestep this entirely by capturing `showLoading()`'s return value and passing it to `hideLoading(id)`.
+
+---
+
 ## [2026-08-17] — Manual "Follow-up" Reminder + Non-Blocking Background Task Tray (V8.58)
 
 ### Manual address follow-up button (`KitTrackingService.js`, `EmailService.js`, `KitAddressReminderTemplate.html`, `JavaScript.html`)

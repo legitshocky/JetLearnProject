@@ -3181,38 +3181,80 @@
       width: min(92vw, 460px);
     }
 
-    /* ── Background task tray ──────────────────────────────────────────────
-       #loadingModal used to be a full-screen blocking dialog like every
-       other .modal-overlay — that meant a long action (migration, batch
-       send, etc.) locked the whole app until it finished. Overridden here
-       (ID beats the shared .modal-overlay class, so no other modal is
-       touched) into a small non-blocking corner card: the backdrop no
-       longer covers the screen or eats clicks, so ops can switch pages,
-       search a teacher, open another form — whatever — while it runs.
-       hideLoading()/finalizeLoadingTimeline() already fire on completion
-       exactly as before, so every existing showLoading()/hideLoading()
-       call site gets this for free, no per-call-site changes needed. */
-    #loadingModal.modal-overlay {
-      top: auto; left: auto;
+    /* ── Background task dock + bell ───────────────────────────────────────
+       Replaces the old single blocking #loadingModal. #bgDock stacks one
+       non-blocking card per running/just-finished task, bottom-right,
+       never covering or blocking the rest of the page. #bgBellWrap is a
+       fixed, always-visible (every page) bell with a running-count badge
+       and a dropdown history panel — "what did I start, is it done yet". */
+    #bgDock {
+      position: fixed;
       bottom: 20px; right: 20px;
-      background: transparent;
-      pointer-events: none;
-      justify-content: flex-end;
-      align-items: flex-end;
+      z-index: 9400;
+      display: flex;
+      flex-direction: column-reverse; /* newest card at the bottom, growing upward */
+      gap: 10px;
+      pointer-events: none; /* only individual cards intercept clicks */
     }
-    #loadingModal .loading-timeline-modal {
+    .bg-card {
       pointer-events: auto;
-      width: min(88vw, 360px);
-      max-height: 70vh;
+      width: min(88vw, 340px);
+      max-height: 60vh;
       overflow-y: auto;
-      box-shadow: 0 12px 32px rgba(15,23,42,0.22);
+      background: #fff;
+      border: 1px solid #e9eaf0;
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(15,23,42,0.18);
+      padding: 14px 16px;
       animation: bgTaskIn 0.22s ease;
     }
+    body.dark-mode .bg-card { background: #1e2035; border-color: rgba(255,255,255,0.08); box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
     @keyframes bgTaskIn {
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-    body.dark-mode #loadingModal .loading-timeline-modal { box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+    .bg-card-head { display: flex; align-items: center; gap: 12px; }
+    .bg-card-spin { margin: 0; flex-shrink: 0; width: 20px; height: 20px; border-width: 2.5px; }
+    .bg-card-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .bg-card-text { flex: 1; min-width: 0; }
+    .bg-card-text p { margin: 0; font-weight: 700; font-size: 0.86rem; color: #111827; overflow-wrap: anywhere; }
+    body.dark-mode .bg-card-text p { color: #e2e8f0; }
+    .bg-card-text > div { margin-top: 2px; color: #94a3b8; font-size: 0.72rem; font-weight: 600; }
+    .bg-card-x { border: none; background: none; color: #cbd5e1; cursor: pointer; font-size: 0.85rem; flex-shrink: 0; padding: 4px; }
+    .bg-card-x:hover { color: #64748b; }
+    .bg-card .loading-timeline-list { margin-top: 10px; }
+    .bg-card-donebar { padding-top: 10px; text-align: right; border-top: 1px solid var(--gray, #e2e8f0); margin-top: 10px; }
+
+    #bgBellBtn { flex-shrink: 0; }
+    .bg-bell-panel {
+      position: absolute;
+      top: 48px; right: 0;
+      width: 320px;
+      max-height: 420px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #e9eaf0;
+      border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(15,23,42,0.18);
+      z-index: 9500;
+    }
+    body.dark-mode .bg-bell-panel { background: #1e2035; border-color: rgba(255,255,255,0.08); }
+    .bg-bell-panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px; border-bottom: 1px solid #f1f5f9;
+      font-size: 0.8rem; font-weight: 700; color: #111827;
+    }
+    body.dark-mode .bg-bell-panel-head { color: #e2e8f0; border-color: rgba(255,255,255,0.08); }
+    .bg-bell-panel-head button { border: none; background: none; color: #6366f1; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+    .bg-bell-panel-body { padding: 4px 0; }
+    .bg-bell-empty { padding: 24px 14px; text-align: center; color: #94a3b8; font-size: 0.8rem; }
+    .bg-bell-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #f8fafc; }
+    body.dark-mode .bg-bell-row { border-color: rgba(255,255,255,0.05); }
+    .bg-bell-icon { flex-shrink: 0; margin-top: 2px; font-size: 0.85rem; }
+    .bg-bell-text { min-width: 0; }
+    .bg-bell-msg { font-size: 0.78rem; font-weight: 600; color: #1e293b; overflow-wrap: anywhere; }
+    body.dark-mode .bg-bell-msg { color: #e2e8f0; }
+    .bg-bell-time { font-size: 0.68rem; color: #94a3b8; margin-top: 1px; }
     .loading-timeline-head {
       display: flex;
       align-items: center;

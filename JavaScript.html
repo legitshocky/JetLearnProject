@@ -391,8 +391,8 @@ const personaResultsBody      = document.getElementById('personaResultsBody');
 const personaResultsCount     = document.getElementById('personaResultsCount');
 
 // Modal elements
-const loadingModal = document.getElementById('loadingModal');
-const loadingMessage = document.getElementById('loadingMessage');
+// (loadingModal/loadingMessage removed — background tasks now live in
+// #bgDock/#bgBellPanel, see showLoading()/hideLoading() below)
 const confirmModal = document.getElementById('confirmModal');
 const confirmTitle = document.getElementById('confirmTitle');
 const confirmMessage = document.getElementById('confirmMessage');
@@ -1532,8 +1532,28 @@ function bkcDoCancel() {
         .cancelBookedClasses(bkcMgCurrent.rowIndex);
 }
 
-    var _loadingTimelineTimer = null;
-    var _loadingTimelineStartedAt = 0;
+    // ═════════════════════════════════════════════════════════════════════
+    // BACKGROUND TASKS — multi-task engine behind showLoading()/hideLoading()/
+    // renderLoadingTimeline()/finalizeLoadingTimeline(). Every existing call
+    // site keeps calling these exact same functions with the exact same
+    // arguments (none of them were changed) — what's different is there can
+    // now be several live task cards in #bgDock at once, plus a persistent
+    // history in the bell panel, instead of one single blocking modal.
+    //
+    // Known limitation: legacy call sites call hideLoading()/
+    // renderLoadingTimeline()/finalizeLoadingTimeline() with NO task id —
+    // they were never written knowing multiple tasks could exist. Those
+    // calls resolve against "the currently active task" = top of _bgStack
+    // (LIFO). This is correct for the common real case (a short task
+    // started while a longer one is still running finishes first, so it's
+    // naturally on top and gets closed correctly) but can misattribute in
+    // the rarer case where an OLDER task finishes before a NEWER nested one.
+    // Passing an explicit id (returned by showLoading()) to hideLoading()
+    // avoids the ambiguity entirely for any call site that wants it.
+    // ═════════════════════════════════════════════════════════════════════
+    var _bgTasks = [];   // all tasks, newest first — running ones + capped history
+    var _bgStack = [];   // ids of tasks opened via the legacy no-arg API, LIFO
+    var _bgSeq = 0;
 
     function _formatDuration(ms) {
         ms = Math.max(0, Number(ms) || 0);
@@ -1544,7 +1564,11 @@ function bkcDoCancel() {
         var rest = Math.round(seconds % 60);
         return minutes + 'm ' + String(rest).padStart(2, '0') + 's';
     }
-
+    function _bgRelTime(ts) {
+        var diff = Math.max(0, Date.now() - ts);
+        if (diff < 60000) return 'just now';
+        return _formatDuration(diff) + ' ago';
+    }
     function _timelineIcon(status) {
         if (status === 'success') return 'fa-check';
         if (status === 'failed') return 'fa-times';
@@ -1552,11 +1576,101 @@ function bkcDoCancel() {
         if (status === 'running') return 'fa-spinner fa-spin';
         return 'fa-circle';
     }
+    function _bgTaskById(id) { return _bgTasks.find(function(t) { return t.id === id; }); }
+    function _bgActiveId() { return _bgStack.length ? _bgStack[_bgStack.length - 1] : null; }
+
+    function _bgCardHtml(t) {
+        return '<div class="bg-card" id="bgCard_' + t.id + '">' +
+            '<div class="bg-card-head">' +
+                '<div class="spinner bg-card-spin" id="bgSpin_' + t.id + '"></div>' +
+                '<i class="fas fa-check-circle bg-card-icon" id="bgDone_' + t.id + '" style="display:none;color:#22c55e;"></i>' +
+                '<div class="bg-card-text">' +
+                    '<p id="bgMsg_' + t.id + '">' + escapeHtml(t.message) + '<\/p>' +
+                    '<div id="bgElapsed_' + t.id + '">Elapsed 0s<\/div>' +
+                '<\/div>' +
+                '<button class="bg-card-x" onclick="bgDismissCard(' + t.id + ')" title="Dismiss"><i class="fas fa-times"><\/i><\/button>' +
+            '<\/div>' +
+            '<div class="loading-timeline-list" id="bgTimeline_' + t.id + '"><\/div>' +
+            '<div class="bg-card-donebar" id="bgDoneBar_' + t.id + '" style="display:none;"><button class="btn btn-primary btn-sm" onclick="hideLoading(' + t.id + ')">Close<\/button><\/div>' +
+        '<\/div>';
+    }
+
+    function _bgRenderDock() {
+        var dock = document.getElementById('bgDock');
+        if (!dock) return;
+        // Prepend any task not yet in the DOM — never rebuild existing cards
+        // (that would blow away their own live-updating child nodes).
+        _bgTasks.forEach(function(t) {
+            if (t.dismissed) return;
+            if (t.status !== 'running' && t.doneAt && (Date.now() - t.doneAt) > 3500) return; // faded out
+            if (!document.getElementById('bgCard_' + t.id)) {
+                dock.insertAdjacentHTML('afterbegin', _bgCardHtml(t));
+            }
+        });
+    }
+
+    function _bgRenderBell() {
+        var badge = document.getElementById('bgBellBadge');
+        var running = _bgTasks.filter(function(t) { return t.status === 'running'; }).length;
+        if (badge) {
+            badge.style.display = running ? 'flex' : 'none';
+            badge.textContent = running;
+        }
+        if (document.getElementById('bgBellPanel') && document.getElementById('bgBellPanel').style.display === 'block') {
+            _bgRenderBellPanelBody();
+        }
+    }
+
+    function bgToggleBellPanel() {
+        var panel = document.getElementById('bgBellPanel');
+        if (!panel) return;
+        var opening = panel.style.display !== 'block';
+        panel.style.display = opening ? 'block' : 'none';
+        if (opening) _bgRenderBellPanelBody();
+    }
+    document.addEventListener('click', function(e) {
+        var wrap = document.getElementById('bgBellWrap');
+        var panel = document.getElementById('bgBellPanel');
+        if (wrap && panel && panel.style.display === 'block' && !wrap.contains(e.target)) panel.style.display = 'none';
+    });
+
+    function _bgRenderBellPanelBody() {
+        var body = document.getElementById('bgBellPanelBody');
+        if (!body) return;
+        if (!_bgTasks.length) { body.innerHTML = '<div class="bg-bell-empty">No background tasks yet.<\/div>'; return; }
+        body.innerHTML = _bgTasks.map(function(t) {
+            var icon = t.status === 'running' ? '<i class="fas fa-spinner fa-spin" style="color:#6366f1;"><\/i>'
+                     : '<i class="fas fa-check-circle" style="color:#22c55e;"><\/i>';
+            var dur = t.doneAt ? _formatDuration(t.doneAt - t.startedAt) : _formatDuration(Date.now() - t.startedAt);
+            return '<div class="bg-bell-row">' +
+                '<span class="bg-bell-icon">' + icon + '<\/span>' +
+                '<div class="bg-bell-text"><div class="bg-bell-msg">' + escapeHtml(t.message) + '<\/div>' +
+                '<div class="bg-bell-time">' + dur + (t.status === 'running' ? ' so far' : '') + ' · ' + _bgRelTime(t.startedAt) + '<\/div><\/div>' +
+            '<\/div>';
+        }).join('');
+    }
+
+    function bgClearHistory() {
+        _bgTasks = _bgTasks.filter(function(t) { return t.status === 'running'; });
+        _bgRenderBellPanelBody();
+        _bgRenderBell();
+    }
+
+    function bgDismissCard(id) {
+        var t = _bgTaskById(id);
+        if (t) t.dismissed = true;
+        var card = document.getElementById('bgCard_' + id);
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+    }
 
     function renderLoadingTimeline(steps) {
-        var list = document.getElementById('loadingTimeline');
+        var id = _bgActiveId();
+        if (!id) return;
+        var t = _bgTaskById(id);
+        var list = document.getElementById('bgTimeline_' + id);
         if (!list) return;
         steps = steps || [];
+        if (t) t.steps = steps;
         if (!steps.length) {
             list.classList.remove('active');
             list.innerHTML = '';
@@ -1578,50 +1692,75 @@ function bkcDoCancel() {
     }
 
     function showLoading(message = 'Processing...', steps) {
-        const modal = document.getElementById('loadingModal');
-        const msg = document.getElementById('loadingMessage');
-        const elapsed = document.getElementById('loadingElapsed');
-        if (msg) msg.textContent = message;
-        _loadingTimelineStartedAt = Date.now();
-        if (_loadingTimelineTimer) clearInterval(_loadingTimelineTimer);
-        if (elapsed) elapsed.textContent = 'Elapsed 0s';
-        _loadingTimelineTimer = setInterval(function() {
-            if (elapsed) elapsed.textContent = 'Elapsed ' + _formatDuration(Date.now() - _loadingTimelineStartedAt);
-        }, 500);
-        renderLoadingTimeline(steps || []);
-        if (modal) modal.classList.add('active');
+        var id = ++_bgSeq;
+        var t = { id: id, message: message, steps: steps || [], status: 'running', startedAt: Date.now(), doneAt: null, timer: null, dismissed: false };
+        _bgTasks.unshift(t);
+        // Cap history — never drop a running task, only trim old finished ones.
+        if (_bgTasks.length > 40) {
+            for (var i = _bgTasks.length - 1; i >= 0 && _bgTasks.length > 40; i--) {
+                if (_bgTasks[i].status !== 'running') _bgTasks.splice(i, 1);
+            }
         }
+        _bgStack.push(id);
+        _bgRenderDock();
+        renderLoadingTimeline(steps || []);
+        t.timer = setInterval(function() {
+            var elapsedEl = document.getElementById('bgElapsed_' + id);
+            if (elapsedEl) elapsedEl.textContent = 'Elapsed ' + _formatDuration(Date.now() - t.startedAt);
+            else clearInterval(t.timer);
+        }, 500);
+        _bgRenderBell();
+        return id; // callers MAY capture this and pass it to hideLoading(id) for precise matching
+    }
 
-
-    function hideLoading() {
-        const modal = document.getElementById('loadingModal');
-        if (_loadingTimelineTimer) { clearInterval(_loadingTimelineTimer); _loadingTimelineTimer = null; }
-        if (modal) modal.classList.remove('active');
-        // Reset done state for next use
-        var spinner = document.getElementById('loadingSpinner');
-        var doneIcon = document.getElementById('loadingDoneIcon');
-        var doneBar = document.getElementById('loadingDoneBar');
-        if (spinner) spinner.style.display = '';
-        if (doneIcon) doneIcon.style.display = 'none';
+    function hideLoading(taskId) {
+        var id = taskId || _bgStack.pop();
+        if (!id) return;
+        // If an explicit id was passed and it's sitting somewhere other than
+        // the top of the stack (out-of-order finish), remove it from there too.
+        if (taskId) {
+            var idx = _bgStack.lastIndexOf(taskId);
+            if (idx > -1) _bgStack.splice(idx, 1);
+        }
+        var t = _bgTaskById(id);
+        if (!t) return;
+        if (t.timer) { clearInterval(t.timer); t.timer = null; }
+        t.status = 'done';
+        t.doneAt = Date.now();
+        var spinner = document.getElementById('bgSpin_' + id);
+        var doneIcon = document.getElementById('bgDone_' + id);
+        var doneBar = document.getElementById('bgDoneBar_' + id);
+        if (spinner) spinner.style.display = 'none';
+        if (doneIcon) doneIcon.style.display = '';
         if (doneBar) doneBar.style.display = 'none';
+        _bgRenderBell();
+        // Auto-fade the dock card shortly after completion — history stays in the bell panel regardless.
+        setTimeout(function() { bgDismissCard(id); }, 3200);
     }
 
     function finalizeLoadingTimeline(result, fallbackSteps) {
+        var id = _bgActiveId();
+        if (!id) return;
+        var t = _bgTaskById(id);
         var timeline = (result && result.timeline && result.timeline.length) ? result.timeline : (fallbackSteps || []);
-        if (_loadingTimelineTimer) { clearInterval(_loadingTimelineTimer); _loadingTimelineTimer = null; }
+        if (t && t.timer) { clearInterval(t.timer); t.timer = null; }
         if (timeline.length) renderLoadingTimeline(timeline);
-        var elapsed = document.getElementById('loadingElapsed');
+        var elapsed = document.getElementById('bgElapsed_' + id);
         if (elapsed) {
             var total = timeline.reduce(function(sum, s) { return sum + (Number(s.durationMs) || 0); }, 0);
-            elapsed.textContent = 'Completed in ' + _formatDuration(total || (Date.now() - (_loadingTimelineStartedAt || Date.now())));
+            elapsed.textContent = 'Completed in ' + _formatDuration(total || (Date.now() - (t ? t.startedAt : Date.now())));
         }
-        // Show done state — spinner → checkmark, show Close button
-        var spinner = document.getElementById('loadingSpinner');
-        var doneIcon = document.getElementById('loadingDoneIcon');
-        var doneBar = document.getElementById('loadingDoneBar');
+        if (t) { t.status = 'done'; t.doneAt = Date.now(); }
+        // Show done state — spinner → checkmark, show Close button. Stays
+        // open (no auto-fade) until the user clicks Close, since this path
+        // is used by flows meant to be reviewed, not glanced past.
+        var spinner = document.getElementById('bgSpin_' + id);
+        var doneIcon = document.getElementById('bgDone_' + id);
+        var doneBar = document.getElementById('bgDoneBar_' + id);
         if (spinner) spinner.style.display = 'none';
         if (doneIcon) doneIcon.style.display = '';
         if (doneBar) doneBar.style.display = '';
+        _bgRenderBell();
     }
 
     function getMigrationTimelineSteps(data) {
