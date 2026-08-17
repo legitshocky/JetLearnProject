@@ -1947,16 +1947,24 @@ function handleKitReply(waId, buttonText) {
 
     var rows = sheet.getRange(2, 1, lastRow - 1, KIT_COL.PHONE_SENT_TO).getValues();
 
-    // Collect ALL pending rows for this phone (siblings share same parent phone)
+    // Collect pending rows for this phone (siblings share same parent phone) —
+    // but ONLY ones that actually had a "did you receive it?" follow-up sent
+    // (FOLLOWUP_SENT='TRUE'). Bug found 2026-08-16: matching on phone + empty
+    // deliveryDate alone would sweep up a BRAND NEW kit (just ordered, ETA
+    // days out, no follow-up sent yet) into a "Kit Received" reply that was
+    // actually about an older sibling kit on the same phone — auto-marking it
+    // delivered the same day it was ordered. Requiring FOLLOWUP_SENT scopes
+    // the reply to rows a confirmation prompt was genuinely sent for.
     var matchedRows = [];
     rows.forEach(function(row, idx) {
       var phone        = _normalisePhone(String(row[KIT_COL.PHONE_SENT_TO - 1] || ''));
       var deliveryDate = String(row[KIT_COL.DELIVERY_DATE - 1] || '').trim();
-      if (phone && phone === normPhone && !deliveryDate) matchedRows.push(idx + 2);
+      var followupSent = String(row[KIT_COL.FOLLOWUP_SENT - 1] || '').trim().toUpperCase() === 'TRUE';
+      if (phone && phone === normPhone && !deliveryDate && followupSent) matchedRows.push(idx + 2);
     });
 
     if (!matchedRows.length) {
-      Logger.log('[KitTracking] No matching pending row for phone ' + normPhone);
+      Logger.log('[KitTracking] No matching (follow-up-sent) pending row for phone ' + normPhone);
       return;
     }
     Logger.log('[KitTracking] Found ' + matchedRows.length + ' pending row(s) for phone ' + normPhone);

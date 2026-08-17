@@ -2,6 +2,16 @@
 
 ---
 
+## [2026-08-16] — Real Bug: WATI "Kit Received" Reply Was Sweeping Up Unrelated Sibling Kits (V8.57)
+
+### `handleKitReply()` (`KitTrackingService.js`) — false auto-deliveries
+- User found real cases (e.g. row for Deborah Akanni, JLID JL15909557795C) where a kit got marked delivered the SAME DAY it was ordered, days before its ETA — parent hadn't actually confirmed it.
+- Root cause: the WATI "Kit Received" button-reply webhook matched **every** Kit Tracking row sharing that parent's phone number with an empty Delivery Date — no check that a delivery-confirmation prompt had actually been sent for that specific kit. A reply meant for an older sibling kit got applied to a brand-new kit ordered the same day, marking it delivered before it could possibly have arrived.
+- Fixed: matching now also requires `FOLLOWUP_SENT='TRUE'` on the row — i.e. only kits that were genuinely sent a "did you receive it?" prompt can be marked received by a reply. A fresh same-day order with no follow-up sent yet is no longer eligible.
+- **Not yet fixed**: the row(s) already wrongly marked need manual correction (clear Delivery Date / Time Taken / Parent Response on the affected row) — this only stops it from happening again, it doesn't retroactively repair past rows.
+
+---
+
 ## [2026-08-10] — Mark Order Placed Auto-Fill Now Uses the Same Line-Item-Count Logic as Add Kit Entry (V8.56)
 
 ### `JavaScript.html`
