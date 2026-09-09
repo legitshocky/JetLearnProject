@@ -161,7 +161,12 @@ function doGet(e) {
   // --- Teacher Portal: active teachers list ---
   if (e && e.parameter && e.parameter.api === 'activeTeachers') {
     try {
-      var atData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
+      var atSS   = SpreadsheetApp.openById(CONFIG.MIGRATION_SHEET_ID);
+      var atSheet = atSS.getSheetByName(CONFIG.SHEETS.TEACHER_HS_DATA);
+      if (!atSheet) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Sheet not found: ' + CONFIG.SHEETS.TEACHER_HS_DATA })).setMimeType(ContentService.MimeType.JSON);
+      }
+      var atData = atSheet.getDataRange().getValues();
       var atNames = [];
       if (atData && atData.length > 1) {
         var atHdr = atData[0].map(function(h) { return String(h).trim().toLowerCase(); });
@@ -171,7 +176,9 @@ function doGet(e) {
           var row = atData[i];
           var status = statusIdx >= 0 ? String(row[statusIdx] || '').trim().toLowerCase() : '';
           var name   = nameIdx   >= 0 ? String(row[nameIdx]   || '').trim()               : '';
-          if (name && status === 'active') atNames.push(name);
+          var isActive = statusIdx < 0
+            || status === 'active' || status === 'true' || status === 'yes' || status === '1';
+          if (name && isActive) atNames.push(name);
         }
       }
       atNames.sort();

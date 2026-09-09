@@ -811,7 +811,7 @@ function getTeacherLabel(hubspotValue) {
 function getTeacherHsId(displayName) {
   if (!displayName) return null;
   var name = displayName.trim().toLowerCase();
-  var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
+  var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
   for (var i = 1; i < teacherHsData.length; i++) {
     var label = String(teacherHsData[i][2] || '').trim().toLowerCase();
     if (label === name) return String(teacherHsData[i][1]).trim();
