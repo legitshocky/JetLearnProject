@@ -5146,3 +5146,116 @@ function getTeacherDashboard(teacherName) {
     return { success: false, message: e.message, learners: [] };
   }
 }
+
+// ── Admin Portal: all active CCTC migrations across all teachers ──────────────
+function getAdminMigrationDashboard() {
+  try {
+    var token     = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+
+    var STAGE_LABELS = {
+      '128913747': 'Migration Triggered', '128913748': 'In Progress',
+      '128913750': 'TP Approval Pending', '128913752': 'CLS Approval Pending',
+      '1030980247': 'Rejected by CLS',   '133755411': 'Approved by CLS',
+      '1065336836': 'Execution Pending',  '128913749': 'Parent Approval Pending',
+      '128913753': 'Migration Completed'
+    };
+    var STAGE_STATUS = {
+      '128913747': 'pending', '128913748': 'active',
+      '128913750': 'waiting', '128913752': 'waiting',
+      '1030980247': 'rejected', '133755411': 'approved',
+      '1065336836': 'executing', '128913749': 'waiting',
+      '128913753': 'completed'
+    };
+    var CANCELLED = ['133821818', '153457301'];
+
+    var allTickets = [];
+    var after = undefined;
+    for (var page = 0; page < 10; page++) {
+      var body = {
+        filterGroups: [{ filters: [
+          { propertyName: 'hs_pipeline',       operator: 'EQ',     value: '66161281' },
+          { propertyName: 'hs_pipeline_stage', operator: 'NOT_IN', values: CANCELLED }
+        ]}],
+        properties: ['subject','learner_uid','learner_full_name','reason_of_migration__t_',
+                     'hs_pipeline_stage','createdate','new_teacher','current_teacher__t_'],
+        sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+        limit: 100
+      };
+      if (after) body.after = after;
+
+      var resp = monitoredFetch(searchUrl, {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(body), muteHttpExceptions: true
+      });
+      if (resp.getResponseCode() !== 200) break;
+      var parsed  = JSON.parse(resp.getContentText());
+      allTickets  = allTickets.concat(parsed.results || []);
+      if (parsed.paging && parsed.paging.next && parsed.paging.next.after) {
+        after = parsed.paging.next.after;
+      } else { break; }
+    }
+
+    // Filter CCTC client-side
+    var now   = new Date().getTime();
+    var cctc  = allTickets.filter(function(t) {
+      var r = (t.properties.reason_of_migration__t_ || '').toLowerCase();
+      return r.indexOf('course change') !== -1 || r.indexOf('cctc') !== -1;
+    });
+
+    // Stage counts
+    var stageCounts = {};
+    Object.keys(STAGE_LABELS).forEach(function(k) { stageCounts[k] = 0; });
+
+    var tickets = cctc.map(function(t) {
+      var p       = t.properties || {};
+      var stage   = p.hs_pipeline_stage || '';
+      var created = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      var daysAgo = created ? Math.floor((now - created) / 86400000) : null;
+      stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+
+      var newTeacher = p.new_teacher ? (getTeacherLabel(p.new_teacher) || p.new_teacher) : '';
+      var oldTeacher = p.current_teacher__t_ ? (getTeacherLabel(p.current_teacher__t_) || p.current_teacher__t_) : '';
+      var learner    = p.learner_full_name || p.subject || 'Unknown';
+
+      return {
+        id:          t.id,
+        learner:     learner,
+        jlid:        p.learner_uid || '',
+        stage:       stage,
+        stageLabel:  STAGE_LABELS[stage] || 'Unknown',
+        stageStatus: STAGE_STATUS[stage] || 'pending',
+        daysAgo:     daysAgo,
+        isCompleted: stage === '128913753',
+        newTeacher:  newTeacher,
+        oldTeacher:  oldTeacher,
+        reason:      p.reason_of_migration__t_ || ''
+      };
+    });
+
+    // Stats
+    var active    = tickets.filter(function(t) { return !t.isCompleted; });
+    var completed = tickets.filter(function(t) { return t.isCompleted; });
+
+    return {
+      success: true,
+      stats: {
+        total:         tickets.length,
+        active:        active.length,
+        completed:     completed.length,
+        execPending:   stageCounts['1065336836'] || 0,
+        clsPending:    stageCounts['128913752']  || 0,
+        clsApproved:   stageCounts['133755411']  || 0
+      },
+      stageCounts:   stageCounts,
+      stageLabels:   STAGE_LABELS,
+      stageStatuses: STAGE_STATUS,
+      tickets:       tickets
+    };
+  } catch(e) {
+    Logger.log('[getAdminMigrationDashboard] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+

@@ -233,6 +233,35 @@ main { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
 .jlid-ex.wrong   { background: var(--danger-pale);  color: var(--danger); }
 .alert-strip { display: flex; align-items: flex-start; gap: 0.6rem; background: var(--amber-pale); border: 1px solid rgba(217,119,6,.2); border-radius: 8px; padding: 0.75rem 0.875rem; font-size: 0.82rem; color: var(--amber); margin-top: 0.75rem; }
 
+/* ── Admin dashboard ── */
+.admin-role-badge { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; margin-left: 0.4rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.75rem; }
+.stat-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; box-shadow: var(--shadow); }
+.stat-num { font-family: 'DM Sans', sans-serif; font-size: 2rem; font-weight: 700; color: var(--text); letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; font-weight: 500; }
+.stat-card.highlight-amber .stat-num { color: var(--amber); }
+.stat-card.highlight-purple .stat-num { color: var(--purple); }
+.stat-card.highlight-green .stat-num { color: var(--success); }
+.stat-card.highlight-accent .stat-num { color: var(--accent); }
+
+.filter-strip { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.filter-chip { padding: 0.3rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; border: 1.5px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; white-space: nowrap; }
+.filter-chip:hover { border-color: var(--accent-light); color: var(--accent); }
+.filter-chip.active { background: var(--accent-pale); border-color: var(--accent); color: var(--accent); }
+
+.mig-table-wrap { overflow-x: auto; }
+.mig-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.mig-table th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+.mig-table th:hover { color: var(--accent); }
+.mig-table td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.mig-table tr:last-child td { border-bottom: none; }
+.mig-table tr:hover td { background: var(--surface-2); }
+.td-learner { font-weight: 600; color: var(--text); }
+.td-jlid { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-muted); }
+.td-teacher { color: var(--text); }
+.td-days { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.days-hot { color: var(--danger); font-weight: 600; }
+
 /* ── Refresh btn ── */
 .refresh-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
 .refresh-label { font-size: 0.78rem; color: var(--text-muted); }
@@ -269,7 +298,7 @@ main { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
 <main id="loginScreen">
   <div class="login-card">
     <div class="login-logo">🎓</div>
-    <div class="login-title">Teacher Portal</div>
+    <div class="login-title">JetLearn Portal</div>
     <div class="login-sub">Sign in with your JetLearn Google account to view your learners and migration status.</div>
     <button class="btn-google" onclick="signInWithGoogle()">
       <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
@@ -393,6 +422,45 @@ main { max-width: 900px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
   </div>
 </main>
 
+<!-- Admin Dashboard screen -->
+<main id="adminScreen" style="display:none;">
+  <div class="dash-header">
+    <div class="dash-greeting" id="adminGreeting">Migration Overview <span class="admin-role-badge">Admin</span></div>
+    <div class="dash-sub" id="adminSub">All active CCTC migrations across all teachers.</div>
+  </div>
+
+  <div class="stats-grid" id="adminStats">
+    <div class="stat-card highlight-accent"><div class="stat-num" id="statTotal">—</div><div class="stat-label">Total CCTC</div></div>
+    <div class="stat-card highlight-amber"><div class="stat-num" id="statActive">—</div><div class="stat-label">Active</div></div>
+    <div class="stat-card highlight-purple"><div class="stat-num" id="statExecPending">—</div><div class="stat-label">Execution Pending</div></div>
+    <div class="stat-card"><div class="stat-num" id="statClsPending">—</div><div class="stat-label">CLS Pending</div></div>
+    <div class="stat-card highlight-green"><div class="stat-num" id="statCompleted">—</div><div class="stat-label">Completed</div></div>
+  </div>
+
+  <div class="refresh-row">
+    <div class="filter-strip" id="stageFilters"></div>
+    <button class="btn-refresh" onclick="refreshAdmin()">↻ Refresh</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div class="mig-table-wrap">
+      <table class="mig-table">
+        <thead>
+          <tr>
+            <th onclick="sortTable('learner')">Learner ↕</th>
+            <th onclick="sortTable('jlid')">JLID ↕</th>
+            <th onclick="sortTable('stage')">Stage ↕</th>
+            <th onclick="sortTable('oldTeacher')">From Teacher ↕</th>
+            <th onclick="sortTable('newTeacher')">To Teacher ↕</th>
+            <th onclick="sortTable('daysAgo')">Days ↕</th>
+          </tr>
+        </thead>
+        <tbody id="adminTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
 <!-- Firebase SDK -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
@@ -430,15 +498,19 @@ function toggleTheme() {
 auth.onAuthStateChanged(function(user) {
   if (user) {
     var email = user.email || '';
-    if (!email.toLowerCase().includes('.jetlearn@gmail.com')) {
-      setLoginError('Please sign in with your JetLearn email (e.g. yourname.jetlearn@gmail.com).');
+    var lower = email.toLowerCase();
+    var isAdmin   = lower.endsWith('@jet-learn.com');
+    var isTeacher = lower.includes('.jetlearn@gmail.com');
+    if (!isAdmin && !isTeacher) {
+      setLoginError('Please sign in with your JetLearn account (teacher: yourname.jetlearn@gmail.com, admin: name@jet-learn.com).');
       auth.signOut();
       showScreen('login');
       return;
     }
     showScreen('loading');
     setLoadingMsg('Verifying your account…');
-    verifyAndLoad(user);
+    if (isAdmin) verifyAndLoadAdmin(user);
+    else         verifyAndLoad(user);
   } else {
     showScreen('login');
   }
@@ -609,11 +681,120 @@ function toggleFaq(btn) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Admin auth + dashboard ────────────────────────────────────────────────────
+var _adminTickets = [];
+var _activeFilter = 'all';
+var _sortKey = 'daysAgo', _sortDir = 1;
+
+function verifyAndLoadAdmin(user) {
+  _teacherName  = user.displayName || user.email.split('@')[0];
+  _teacherEmail = user.email;
+  updateNavUser(user, _teacherName);
+  loadAdminDashboard();
+}
+
+function loadAdminDashboard() {
+  showScreen('loading');
+  setLoadingMsg('Loading migration pipeline…');
+  fetch(GAS_URL + '?api=adminDashboard')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        showScreen('admin');
+        document.getElementById('adminTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem;">Error: ' + esc(data.message) + '</td></tr>';
+        return;
+      }
+      _adminTickets = data.tickets || [];
+
+      // Stats
+      document.getElementById('statTotal').textContent       = data.stats.total;
+      document.getElementById('statActive').textContent      = data.stats.active;
+      document.getElementById('statExecPending').textContent = data.stats.execPending;
+      document.getElementById('statClsPending').textContent  = data.stats.clsPending;
+      document.getElementById('statCompleted').textContent   = data.stats.completed;
+      document.getElementById('adminSub').textContent        = data.stats.active + ' active migrations · ' + data.stats.completed + ' completed';
+
+      // Stage filter chips
+      var ACTIVE_STAGES = [
+        '128913748','128913750','128913752','133755411','1065336836','128913749','1030980247'
+      ];
+      var filtersHtml = '<button class="filter-chip active" data-filter="all" onclick="setFilter(\'all\',this)">All active (' + data.stats.active + ')</button>';
+      ACTIVE_STAGES.forEach(function(sid) {
+        var count = data.stageCounts[sid] || 0;
+        if (!count) return;
+        filtersHtml += '<button class="filter-chip" data-filter="' + sid + '" onclick="setFilter(\'' + sid + '\',this)">'
+          + esc(data.stageLabels[sid] || sid) + ' (' + count + ')</button>';
+      });
+      filtersHtml += '<button class="filter-chip" data-filter="completed" onclick="setFilter(\'completed\',this)">Completed (' + data.stats.completed + ')</button>';
+      document.getElementById('stageFilters').innerHTML = filtersHtml;
+
+      renderAdminTable();
+      showScreen('admin');
+    })
+    .catch(function(err) {
+      document.getElementById('adminTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:2rem;">Network error. Please refresh.</td></tr>';
+      showScreen('admin');
+    });
+}
+
+function refreshAdmin() { loadAdminDashboard(); }
+
+function setFilter(val, btn) {
+  _activeFilter = val;
+  document.querySelectorAll('.filter-chip').forEach(function(c) { c.classList.remove('active'); });
+  btn.classList.add('active');
+  renderAdminTable();
+}
+
+function sortTable(key) {
+  if (_sortKey === key) _sortDir *= -1;
+  else { _sortKey = key; _sortDir = 1; }
+  renderAdminTable();
+}
+
+function renderAdminTable() {
+  var filtered = _adminTickets.filter(function(t) {
+    if (_activeFilter === 'all')       return !t.isCompleted;
+    if (_activeFilter === 'completed') return t.isCompleted;
+    return t.stage === _activeFilter;
+  });
+
+  filtered.sort(function(a, b) {
+    var av = a[_sortKey] || '', bv = b[_sortKey] || '';
+    if (_sortKey === 'daysAgo') { av = a.daysAgo || 0; bv = b.daysAgo || 0; }
+    if (av < bv) return -_sortDir;
+    if (av > bv) return  _sortDir;
+    return 0;
+  });
+
+  var tbody = document.getElementById('adminTableBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem;">No migrations for this filter.</td></tr>';
+    return;
+  }
+
+  var html = '';
+  filtered.forEach(function(t) {
+    var daysClass = (t.daysAgo !== null && t.daysAgo > 14) ? ' days-hot' : '';
+    var age = t.daysAgo !== null ? t.daysAgo + 'd' : '—';
+    html += '<tr>'
+      + '<td><div class="td-learner">' + esc(t.learner) + '</div></td>'
+      + '<td><span class="td-jlid">' + esc(t.jlid) + '</span></td>'
+      + '<td><span class="stage-badge badge-' + (t.stageStatus || 'pending') + '">' + esc(t.stageLabel) + '</span></td>'
+      + '<td class="td-teacher">' + esc(t.oldTeacher || '—') + '</td>'
+      + '<td class="td-teacher">' + (t.newTeacher ? '<strong>' + esc(t.newTeacher) + '</strong>' : '<span style="color:var(--text-muted)">Not yet assigned</span>') + '</td>'
+      + '<td class="td-days' + daysClass + '">' + age + '</td>'
+      + '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
 function showScreen(name) {
   document.getElementById('loginScreen').style.display     = name === 'login'     ? '' : 'none';
   document.getElementById('loadingScreen').style.display   = name === 'loading'   ? '' : 'none';
   document.getElementById('dashboardScreen').style.display = name === 'dashboard' ? '' : 'none';
-  if (name !== 'dashboard') document.getElementById('navUser').style.display = 'none';
+  document.getElementById('adminScreen').style.display     = name === 'admin'     ? '' : 'none';
+  if (name !== 'dashboard' && name !== 'admin') document.getElementById('navUser').style.display = 'none';
 }
 function setLoadingMsg(msg) { document.getElementById('loadingMsg').textContent = msg; }
 function setLoginError(msg) { var el = document.getElementById('loginError'); el.textContent = msg; el.style.display = ''; }

@@ -170,6 +170,19 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify(getTeacherDashboard(tdTeacher))).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // --- Admin Portal: all CCTC migrations across all teachers ---
+  if (e && e.parameter && e.parameter.api === 'adminDashboard') {
+    return ContentService.createTextOutput(JSON.stringify(getAdminMigrationDashboard())).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // --- Admin Portal: resolve admin email ---
+  if (e && e.parameter && e.parameter.api === 'adminByEmail') {
+    var aeEmail = String(e.parameter.email || '').trim().toLowerCase();
+    var isAdmin = aeEmail.endsWith('@jet-learn.com');
+    if (isAdmin) return ContentService.createTextOutput(JSON.stringify({ success: true, role: 'admin', name: aeEmail.split('@')[0].replace('.', ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }) })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Not an admin email' })).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // --- Teacher Portal: active teachers list ---
   if (e && e.parameter && e.parameter.api === 'activeTeachers') {
     try {
