@@ -154,7 +154,31 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.api === 'teacherMigrations') {
     var tmTeacher = String(e.parameter.teacher || '').trim();
     var tmData    = getTeacherCctcMigrations(tmTeacher);
-    return ContentService.createTextOutput(JSON.stringify(tmData)).setMimeType(ContentService.MimeType.JSON);
+    var tmOut     = ContentService.createTextOutput(JSON.stringify(tmData)).setMimeType(ContentService.MimeType.JSON);
+    return tmOut;
+  }
+
+  // --- Teacher Portal: active teachers list ---
+  if (e && e.parameter && e.parameter.api === 'activeTeachers') {
+    try {
+      var atData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
+      var atNames = [];
+      if (atData && atData.length > 1) {
+        var atHdr = atData[0].map(function(h) { return String(h).trim().toLowerCase(); });
+        var nameIdx   = atHdr.indexOf('name');
+        var statusIdx = atHdr.indexOf('teacher_active_status');
+        for (var i = 1; i < atData.length; i++) {
+          var row = atData[i];
+          var status = statusIdx >= 0 ? String(row[statusIdx] || '').trim().toLowerCase() : '';
+          var name   = nameIdx   >= 0 ? String(row[nameIdx]   || '').trim()               : '';
+          if (name && status === 'active') atNames.push(name);
+        }
+      }
+      atNames.sort();
+      return ContentService.createTextOutput(JSON.stringify({ success: true, teachers: atNames })).setMimeType(ContentService.MimeType.JSON);
+    } catch(atErr) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: atErr.message })).setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   // --- Teacher Portal: page route ---

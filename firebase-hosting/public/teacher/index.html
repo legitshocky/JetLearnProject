@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JetLearn — Teacher Migration Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg:           #F4F6FF;
+  --surface:      #FFFFFF;
+  --surface-2:    #F0F3FF;
+  --nav-bg:       #1C2040;
+  --nav-text:     #E8EAFF;
+  --accent:       #4F46E5;
+  --accent-pale:  #EEF2FF;
+  --accent-light: #818CF8;
+  --text:         #1C2040;
+  --text-muted:   #6B7299;
+  --border:       #DDE2F5;
+  --amber:        #D97706;
+  --amber-pale:   #FFFBEB;
+  --success:      #059669;
+  --success-pale: #ECFDF5;
+  --danger:       #DC2626;
+  --danger-pale:  #FEF2F2;
+  --purple:       #7C3AED;
+  --purple-pale:  #F5F3FF;
+  --blue:         #2563EB;
+  --blue-pale:    #EFF6FF;
+  --radius:       10px;
+  --shadow:       0 1px 3px rgba(28,32,64,.08), 0 4px 16px rgba(28,32,64,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:           #0B0D1A;
+    --surface:      #131628;
+    --surface-2:    #1A1D30;
+    --nav-bg:       #080A14;
+    --nav-text:     #C8CCEE;
+    --accent:       #818CF8;
+    --accent-pale:  #1E2040;
+    --accent-light: #A5B4FC;
+    --text:         #E2E4F5;
+    --text-muted:   #8B8FA8;
+    --border:       #252840;
+    --amber:        #FCD34D;
+    --amber-pale:   #1C1700;
+    --success:      #34D399;
+    --success-pale: #022C22;
+    --danger:       #F87171;
+    --danger-pale:  #2C1010;
+    --purple:       #A78BFA;
+    --purple-pale:  #1E1230;
+    --blue:         #60A5FA;
+    --blue-pale:    #0C1A30;
+    --shadow:       0 1px 3px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.2);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:           #0B0D1A;
+  --surface:      #131628;
+  --surface-2:    #1A1D30;
+  --nav-bg:       #080A14;
+  --nav-text:     #C8CCEE;
+  --accent:       #818CF8;
+  --accent-pale:  #1E2040;
+  --accent-light: #A5B4FC;
+  --text:         #E2E4F5;
+  --text-muted:   #8B8FA8;
+  --border:       #252840;
+  --amber:        #FCD34D;
+  --amber-pale:   #1C1700;
+  --success:      #34D399;
+  --success-pale: #022C22;
+  --danger:       #F87171;
+  --danger-pale:  #2C1010;
+  --purple:       #A78BFA;
+  --purple-pale:  #1E1230;
+  --blue:         #60A5FA;
+  --blue-pale:    #0C1A30;
+  --shadow:       0 1px 3px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.2);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ── Nav ── */
+nav {
+  background: var(--nav-bg);
+  padding: 0 2rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 0 rgba(255,255,255,.05);
+}
+.nav-logo {
+  width: 30px; height: 30px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700; font-size: 0.85rem;
+  color: #fff; letter-spacing: -0.5px;
+  flex-shrink: 0;
+}
+.nav-brand {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700; font-size: 1rem;
+  color: var(--nav-text);
+  letter-spacing: -0.3px;
+}
+.nav-sep { color: #3A3F60; margin: 0 0.25rem; }
+.nav-sub {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 500; font-size: 0.85rem;
+  color: #7880A8;
+}
+.nav-spacer { flex: 1; }
+.theme-btn {
+  background: none; border: 1px solid #2E3358;
+  color: #7880A8; border-radius: 6px;
+  padding: 0.3rem 0.65rem; font-size: 0.78rem;
+  cursor: pointer; transition: all .2s;
+}
+.theme-btn:hover { border-color: var(--accent-light); color: var(--accent-light); }
+
+/* ── Main ── */
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+.section-eyebrow {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+.section-title {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1.35rem; font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.4px;
+  margin-bottom: 0.25rem;
+  text-wrap: balance;
+}
+.section-desc {
+  font-size: 0.875rem; color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+/* ── Search ── */
+.search-row {
+  display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap;
+}
+.search-field { flex: 1; min-width: 200px; }
+.search-field label {
+  display: block; font-size: 0.8rem; font-weight: 600;
+  color: var(--text-muted); margin-bottom: 0.35rem;
+  letter-spacing: 0.02em;
+}
+.search-field select {
+  width: 100%; height: 42px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: 'Inter', sans-serif; font-size: 0.9rem;
+  padding: 0 2rem 0 0.875rem;
+  appearance: none; -webkit-appearance: none;
+  outline: none;
+  transition: border-color .2s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7299' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
+.search-field select:focus { border-color: var(--accent); }
+.btn-check {
+  height: 42px; padding: 0 1.5rem;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px;
+  font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 0.9rem;
+  cursor: pointer; transition: opacity .2s, transform .1s;
+  white-space: nowrap; flex-shrink: 0;
+}
+.btn-check:hover { opacity: 0.88; }
+.btn-check:active { transform: scale(0.98); }
+.btn-check:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Results ── */
+#results { margin-top: 1.25rem; }
+.result-empty {
+  text-align: center; padding: 2.5rem 1rem;
+  color: var(--text-muted); font-size: 0.9rem;
+}
+.result-empty .empty-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.result-count {
+  font-size: 0.8rem; color: var(--text-muted);
+  margin-bottom: 0.75rem; font-weight: 500;
+}
+.result-count strong { color: var(--text); }
+.ticket-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.ticket-row {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0.875rem 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: 8px; background: var(--surface-2);
+  transition: border-color .2s;
+}
+.ticket-row:hover { border-color: var(--accent-light); }
+.ticket-row.completed { opacity: 0.6; }
+.ticket-info { flex: 1; min-width: 0; }
+.ticket-learner {
+  font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 0.95rem;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ticket-jlid {
+  font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+  color: var(--text-muted); margin-top: 0.15rem;
+}
+.ticket-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
+.stage-badge {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.65rem; border-radius: 20px;
+  font-size: 0.75rem; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+}
+.stage-badge::before {
+  content: ''; width: 6px; height: 6px;
+  border-radius: 50%; background: currentColor; opacity: 0.7;
+}
+.badge-active    { background: var(--blue-pale);    color: var(--blue); }
+.badge-waiting   { background: var(--amber-pale);   color: var(--amber); }
+.badge-approved  { background: var(--success-pale); color: var(--success); }
+.badge-rejected  { background: var(--danger-pale);  color: var(--danger); }
+.badge-executing { background: var(--purple-pale);  color: var(--purple); }
+.badge-completed { background: var(--success-pale); color: var(--success); }
+.badge-pending   { background: var(--surface-2);    color: var(--text-muted); border: 1px solid var(--border); }
+.spinner {
+  display: inline-block; width: 18px; height: 18px;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  color: var(--text-muted); font-size: 0.875rem; padding: 1.5rem 0;
+}
+.error-msg {
+  background: var(--danger-pale); color: var(--danger);
+  border-radius: 8px; padding: 0.75rem 1rem;
+  font-size: 0.875rem; font-weight: 500;
+}
+.divider { border: none; border-top: 1px solid var(--border); margin: 0.5rem 0; }
+
+/* ── FAQ ── */
+.guide-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+}
+.guide-header { padding: 1.5rem; border-bottom: 1px solid var(--border); }
+.faq-item { border-bottom: 1px solid var(--border); }
+.faq-item:last-child { border-bottom: none; }
+.faq-btn {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: none; border: none; cursor: pointer; text-align: left;
+  transition: background .15s;
+}
+.faq-btn:hover { background: var(--surface-2); }
+.faq-q {
+  font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 0.925rem;
+  color: var(--text);
+}
+.faq-icon { font-size: 1.1rem; color: var(--text-muted); transition: transform .25s; flex-shrink: 0; }
+.faq-item.open .faq-icon { transform: rotate(45deg); color: var(--accent); }
+.faq-item.open .faq-btn { background: var(--accent-pale); }
+.faq-item.open .faq-q { color: var(--accent); }
+.faq-body {
+  display: none; padding: 0 1.5rem 1.25rem;
+  font-size: 0.875rem; color: var(--text-muted); line-height: 1.7;
+}
+.faq-item.open .faq-body { display: block; }
+.faq-body p { margin-bottom: 0.6rem; }
+.faq-body p:last-child { margin-bottom: 0; }
+.faq-body ul { padding-left: 1.25rem; margin: 0.4rem 0; }
+.faq-body li { margin-bottom: 0.3rem; }
+.faq-body strong { color: var(--text); font-weight: 600; }
+
+.timing-strip {
+  display: flex; margin: 0.75rem 0;
+  border-radius: 8px; overflow: hidden; border: 1px solid var(--border);
+}
+.timing-step {
+  flex: 1; padding: 0.6rem 0.75rem;
+  font-size: 0.75rem; line-height: 1.4;
+  border-right: 1px solid var(--border);
+}
+.timing-step:last-child { border-right: none; }
+.timing-step .ts-label { font-weight: 700; color: var(--text); display: block; margin-bottom: 0.15rem; }
+.timing-step .ts-desc { color: var(--text-muted); }
+.timing-step.highlight { background: var(--amber-pale); }
+.timing-step.highlight .ts-label { color: var(--amber); }
+
+.mistake-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; }
+@media (max-width: 500px) { .mistake-grid { grid-template-columns: 1fr; } }
+.mistake-item {
+  background: var(--danger-pale); border-radius: 6px;
+  padding: 0.5rem 0.75rem; font-size: 0.8rem; color: var(--danger);
+  display: flex; gap: 0.4rem; align-items: flex-start;
+}
+.mistake-item::before { content: '✕'; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+
+.jlid-compare { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.6rem 0; }
+.jlid-ex {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.4rem 0.75rem; border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 500;
+}
+.jlid-ex.correct { background: var(--success-pale); color: var(--success); }
+.jlid-ex.wrong   { background: var(--danger-pale);  color: var(--danger); }
+
+.upskill-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; }
+@media (max-width: 500px) { .upskill-grid { grid-template-columns: 1fr; } }
+.upskill-item {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.8rem;
+}
+.upskill-item .ui-label { font-weight: 600; color: var(--text); display: block; margin-bottom: 0.1rem; }
+.upskill-item .ui-desc { color: var(--text-muted); }
+
+.alert-strip {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  background: var(--amber-pale); border: 1px solid rgba(217,119,6,.2);
+  border-radius: 8px; padding: 0.875rem 1rem;
+  font-size: 0.85rem; color: var(--amber); margin-top: 1rem;
+}
+
+@media (max-width: 600px) {
+  nav { padding: 0 1rem; }
+  main { padding: 1.25rem 1rem 3rem; }
+  .card, .guide-header { padding: 1.25rem; }
+  .faq-btn { padding: 0.875rem 1.25rem; }
+  .faq-body { padding: 0 1.25rem 1rem; }
+  .timing-strip { flex-direction: column; }
+  .timing-step { border-right: none; border-bottom: 1px solid var(--border); }
+  .timing-step:last-child { border-bottom: none; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">JL</div>
+  <span class="nav-brand">JetLearn</span>
+  <span class="nav-sep">·</span>
+  <span class="nav-sub">Teacher Portal</span>
+  <div class="nav-spacer"></div>
+  <button class="theme-btn" onclick="toggleTheme()">⏾ Theme</button>
+</nav>
+
+<main>
+
+  <!-- Status Tracker -->
+  <section>
+    <div class="section-eyebrow">Live Status</div>
+    <div class="section-title">Your CCTC Migration Tracker</div>
+    <div class="section-desc">Select your name to see the current stage of all course-change migrations triggered for your learners.</div>
+
+    <div class="card">
+      <div class="search-row">
+        <div class="search-field">
+          <label for="teacherSelect">Your Name</label>
+          <select id="teacherSelect">
+            <option value="">— Loading teachers… —</option>
+          </select>
+        </div>
+        <button class="btn-check" id="checkBtn" onclick="checkStatus()">Check Status</button>
+      </div>
+      <div id="results"></div>
+    </div>
+  </section>
+
+  <!-- Training Guide -->
+  <section>
+    <div class="section-eyebrow">Training Guide</div>
+    <div class="section-title">Migration Form — How to Get It Right</div>
+    <div class="section-desc">Common questions and mistakes. Read this before filling any migration form.</div>
+
+    <div class="guide-card">
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">When should I submit the migration form?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>Submit the migration form <strong>4 weeks (or 4 classes) before the course ends</strong> — right after Class 8 in a 12-class course.</p>
+          <div class="timing-strip">
+            <div class="timing-step highlight">
+              <span class="ts-label">Class 8</span>
+              <span class="ts-desc">Submit migration form NOW</span>
+            </div>
+            <div class="timing-step">
+              <span class="ts-label">Classes 9–11</span>
+              <span class="ts-desc">Kit processing &amp; teacher assignment</span>
+            </div>
+            <div class="timing-step">
+              <span class="ts-label">Class 12</span>
+              <span class="ts-desc">Final class · Certificate ready</span>
+            </div>
+          </div>
+          <p>This is especially critical for <strong>kit-based courses</strong> like Microbit and Robotics — the kit needs time to ship before Day 1 of the next course.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">What is the correct JLID format?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>Type the Learner UID <strong>exactly as it appears in the system</strong> — no additions, no formatting changes.</p>
+          <div class="jlid-compare">
+            <div class="jlid-ex correct"><span>✓</span> JL39611449152C2</div>
+            <div class="jlid-ex wrong"><span>✕</span> (JL39611449152C2)</div>
+            <div class="jlid-ex wrong"><span>✕</span> &lt;JL39611449152C2&gt;</div>
+            <div class="jlid-ex wrong"><span>✕</span> JL 396 114 491 52C2</div>
+          </div>
+          <p>A wrong format <strong>breaks HubSpot workflows</strong> and delays everything — kits, teacher assignment, and certificates.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">How do I choose the right upskilling status?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>Always check your training status in <strong>Athena (PRM Prep)</strong> before selecting. Your selection determines whether you or another teacher gets assigned to the next course.</p>
+          <div class="upskill-grid">
+            <div class="upskill-item">
+              <span class="ui-label">0–30%</span>
+              <span class="ui-desc">Basic familiarity</span>
+            </div>
+            <div class="upskill-item">
+              <span class="ui-label">30–50%</span>
+              <span class="ui-desc">Moderate proficiency</span>
+            </div>
+            <div class="upskill-item">
+              <span class="ui-label">Above 50%</span>
+              <span class="ui-desc">Strong command</span>
+            </div>
+            <div class="upskill-item" style="border-color:var(--danger);background:var(--danger-pale);">
+              <span class="ui-label" style="color:var(--danger);">Not Onboarded</span>
+              <span class="ui-desc">Select if NOT trained in the next course</span>
+            </div>
+          </div>
+          <p>Selecting <strong>Not Onboarded</strong> triggers proper teacher assignment and ensures the learner gets an expert instructor.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">When does a CCTC migration get triggered?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>CCTC (Course Change, Teacher Change) is triggered when a learner completes their current course and moves to the next — and the next course requires a different teacher or a kit.</p>
+          <p><strong>What triggers it:</strong></p>
+          <ul>
+            <li>Learner is in their last 4 classes of the current course</li>
+            <li>Next course is confirmed in PRM Prep on Athena</li>
+            <li>You submit the migration form on time (after Class 8)</li>
+          </ul>
+          <p><strong>What does NOT trigger it:</strong></p>
+          <ul>
+            <li>Submitting after the course has ended</li>
+            <li>Submitting without checking PRM Prep first</li>
+            <li>Incorrect JLID format blocking the HubSpot workflow</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">What should I always check before filling any form?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>Always open <strong>PRM Prep in Athena</strong> first.</p>
+          <ul>
+            <li><strong>Current course end date</strong> — confirm the exact last class date</li>
+            <li><strong>Next 3 courses</strong> — review the learner's upcoming sequence and kit requirements</li>
+            <li><strong>Your upskilling status</strong> — check your training for upcoming courses</li>
+          </ul>
+          <div class="alert-strip">
+            <span>⚠️</span>
+            <span><strong>Skipping PRM Prep</strong> causes cascading errors across kit delivery, teacher assignment, and certificate timing.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">What are the most common mistakes?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <div class="mistake-grid">
+            <div class="mistake-item">Incorrect JLID format (brackets, spaces, symbols)</div>
+            <div class="mistake-item">Wrong last class date — not verifying PRM Prep first</div>
+            <div class="mistake-item">Late submission — filling after the 4-week window</div>
+            <div class="mistake-item">Wrong migration reason selected</div>
+            <div class="mistake-item">Skipping Athena check before submission</div>
+            <div class="mistake-item">Wrong upskilling level for next course</div>
+          </div>
+          <p style="margin-top:0.6rem;">Each mistake requires manual ops intervention, delays kit delivery, and can leave a learner with no teacher on Day 1 of their next course.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">When do I fill the Last Class Form?</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <p>Fill the Last Class Form <strong>immediately after the final class</strong> of the current course — if you are upskilled and will continue teaching the learner.</p>
+          <ul>
+            <li>Form triggers certificate generation</li>
+            <li>Certificate is processed and sent</li>
+            <li>Learner receives it on Day 1 of the next course</li>
+          </ul>
+          <p>Perfect timing means the certificate arrives on the new course start — celebrating completion and building excitement.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-btn" onclick="toggleFaq(this)">
+          <span class="faq-q">Quick checklist before every form submission</span>
+          <span class="faq-icon">+</span>
+        </button>
+        <div class="faq-body">
+          <ul>
+            <li>✅ Verified PRM Prep in Athena — know last class date and next courses</li>
+            <li>✅ Exact JLID format — no brackets, spaces, or symbols</li>
+            <li>✅ Submitting at least 4 weeks early — critical for kit-based courses</li>
+            <li>✅ Correct upskilling status — "Not Onboarded" if untrained</li>
+            <li>✅ Migration reason matches the actual situation</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<script>
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzYXnVGNxTclM0Z6qrCuNUwkHDxRZzGqgfsf55tmGegZ_vxUhaL08T3k0MXnz2cM0hVOA/exec';
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('jl-portal-theme', next); } catch(e) {}
+}
+(function() {
+  try {
+    var saved = localStorage.getItem('jl-portal-theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch(e) {}
+})();
+
+// ── Load teacher list ─────────────────────────────────────────────────────────
+(function loadTeachers() {
+  var sel = document.getElementById('teacherSelect');
+  fetch(GAS_URL + '?api=activeTeachers')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      sel.innerHTML = '<option value="">— Select your name —</option>';
+      if (data.success && data.teachers && data.teachers.length) {
+        data.teachers.forEach(function(name) {
+          var opt = document.createElement('option');
+          opt.value = name; opt.textContent = name;
+          sel.appendChild(opt);
+        });
+      } else {
+        sel.innerHTML = '<option value="">— Could not load list —</option>';
+      }
+    })
+    .catch(function() {
+      sel.innerHTML = '<option value="">— Network error —</option>';
+    });
+})();
+
+// ── FAQ accordion ─────────────────────────────────────────────────────────────
+function toggleFaq(btn) {
+  var item = btn.closest('.faq-item');
+  var isOpen = item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(function(el) { el.classList.remove('open'); });
+  if (!isOpen) item.classList.add('open');
+}
+
+// ── Status check ──────────────────────────────────────────────────────────────
+function checkStatus() {
+  var sel     = document.getElementById('teacherSelect');
+  var teacher = sel.value.trim();
+  if (!teacher) { sel.focus(); return; }
+
+  var results = document.getElementById('results');
+  var btn     = document.getElementById('checkBtn');
+  btn.disabled = true;
+  results.innerHTML = '<div class="loading-row"><span class="spinner"></span> Fetching your migrations…</div>';
+
+  fetch(GAS_URL + '?api=teacherMigrations&teacher=' + encodeURIComponent(teacher))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      if (!data.success) {
+        results.innerHTML = '<div class="error-msg">' + esc(data.message || 'Could not load data.') + '</div>';
+        return;
+      }
+      renderResults(data.tickets, teacher);
+    })
+    .catch(function() {
+      btn.disabled = false;
+      results.innerHTML = '<div class="error-msg">Network error. Please try again.</div>';
+    });
+}
+
+function renderResults(tickets, teacher) {
+  var results = document.getElementById('results');
+  if (!tickets || !tickets.length) {
+    results.innerHTML = '<div class="result-empty"><div class="empty-icon">🎓</div>No active CCTC migrations found for ' + esc(teacher) + '.</div>';
+    return;
+  }
+
+  var active    = tickets.filter(function(t) { return !t.isCompleted; });
+  var completed = tickets.filter(function(t) { return t.isCompleted; });
+
+  var html = '<div class="result-count">Showing <strong>' + tickets.length + '</strong> CCTC migration'
+    + (tickets.length !== 1 ? 's' : '') + ' — ' + active.length + ' active</div>';
+  html += '<div class="ticket-list">';
+
+  active.forEach(function(t) { html += ticketRow(t); });
+
+  if (completed.length) {
+    if (active.length) html += '<hr class="divider">';
+    html += '<div class="result-count" style="margin-top:0.25rem;">Completed (' + completed.length + ')</div>';
+    completed.forEach(function(t) { html += ticketRow(t); });
+  }
+
+  html += '</div>';
+  results.innerHTML = html;
+}
+
+function ticketRow(t) {
+  var badgeClass = 'badge-' + (t.stageStatus || 'pending');
+  var age = t.daysAgo !== null && t.daysAgo !== undefined
+    ? (t.daysAgo === 0 ? 'Today' : t.daysAgo + ' day' + (t.daysAgo !== 1 ? 's' : '') + ' ago')
+    : '';
+  return '<div class="ticket-row' + (t.isCompleted ? ' completed' : '') + '">'
+    + '<div class="ticket-info">'
+    +   '<div class="ticket-learner">' + esc(t.learner) + '</div>'
+    +   (t.jlid ? '<div class="ticket-jlid">' + esc(t.jlid) + '</div>' : '')
+    +   (age ? '<div class="ticket-meta">' + age + '</div>' : '')
+    + '</div>'
+    + '<span class="stage-badge ' + badgeClass + '">' + esc(t.stageLabel) + '</span>'
+    + '</div>';
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
