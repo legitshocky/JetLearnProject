@@ -4894,3 +4894,87 @@ function _fmtTaskDate(d) {
 }
 
 
+
+// ── Teacher Portal: fetch CCTC migrations for a given teacher ────────────────
+function getTeacherCctcMigrations(teacherName) {
+  if (!teacherName) return { success: false, message: 'Teacher name required', tickets: [] };
+  var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var searchUrl = 'https://api.hubapi.com/crm/v3/objects/tickets/search';
+
+  var STAGE_LABELS = {
+    '128913747': 'Migration Triggered',
+    '128913748': 'In Progress',
+    '128913750': 'TP Approval Pending',
+    '128913752': 'CLS Approval Pending',
+    '1030980247': 'Rejected by CLS',
+    '133755411': 'Approved by CLS',
+    '1065336836': 'Execution Pending',
+    '128913749': 'Parent Approval Pending',
+    '128913753': 'Migration Completed'
+  };
+
+  var STAGE_STATUS = {
+    '128913747': 'pending', '128913748': 'active',
+    '128913750': 'waiting', '128913752': 'waiting',
+    '1030980247': 'rejected', '133755411': 'approved',
+    '1065336836': 'executing', '128913749': 'waiting',
+    '128913753': 'completed'
+  };
+
+  // Resolve teacher name to HubSpot internal ID
+  var hsId = getTeacherHsId(teacherName);
+  if (!hsId) return { success: false, message: 'Teacher "' + teacherName + '" not found in system.', tickets: [] };
+
+  var requestBody = {
+    filterGroups: [{ filters: [
+      { propertyName: 'hs_pipeline',       operator: 'EQ',     value: '66161281' },
+      { propertyName: 'new_teacher',        operator: 'EQ',     value: hsId },
+      { propertyName: 'hs_pipeline_stage', operator: 'NOT_IN', values: ['133821818','153457301'] }
+    ]}],
+    properties: ['subject','learner_uid','reason_of_migration__t_','hs_pipeline_stage','createdate','learner_full_name'],
+    sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
+    limit: 100
+  };
+
+  try {
+    var resp = monitoredFetch(searchUrl, {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(requestBody),
+      muteHttpExceptions: true
+    });
+    if (resp.getResponseCode() !== 200) return { success: false, message: 'HubSpot error', tickets: [] };
+    var data    = JSON.parse(resp.getContentText());
+    var results = (data.results || []);
+
+    // Filter CCTC client-side (reason contains "course change")
+    var cctc = results.filter(function(t) {
+      var r = (t.properties.reason_of_migration__t_ || '').toLowerCase();
+      return r.indexOf('course change') !== -1 || r.indexOf('cctc') !== -1;
+    });
+
+    var now = new Date().getTime();
+    var tickets = cctc.map(function(t) {
+      var p     = t.properties || {};
+      var stage = p.hs_pipeline_stage || '';
+      var created = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+      var daysAgo = created ? Math.floor((now - created) / 86400000) : null;
+      var learner = p.learner_full_name || p.subject || 'Unknown Learner';
+      return {
+        id:          t.id,
+        learner:     learner,
+        jlid:        p.learner_uid || '',
+        stage:       stage,
+        stageLabel:  STAGE_LABELS[stage] || 'Unknown Stage',
+        stageStatus: STAGE_STATUS[stage] || 'pending',
+        daysAgo:     daysAgo,
+        isCompleted: stage === '128913753'
+      };
+    });
+
+    return { success: true, teacherName: teacherName, tickets: tickets };
+  } catch(e) {
+    Logger.log('[getTeacherCctcMigrations] Error: ' + e.message);
+    return { success: false, message: e.message, tickets: [] };
+  }
+}

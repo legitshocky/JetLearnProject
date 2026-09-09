@@ -150,6 +150,30 @@ function doGet(e) {
     return ContentService.createTextOutput(JSON.stringify(certCtx)).setMimeType(ContentService.MimeType.JSON);
   }
 
+  // --- Teacher Portal: JSON API for CCTC migration status ---
+  if (e && e.parameter && e.parameter.api === 'teacherMigrations') {
+    var tmTeacher = String(e.parameter.teacher || '').trim();
+    var tmData    = getTeacherCctcMigrations(tmTeacher);
+    return ContentService.createTextOutput(JSON.stringify(tmData)).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // --- Teacher Portal: page route ---
+  if (e && e.parameter && e.parameter.page === 'teacherPortal') {
+    var tpTemplate = HtmlService.createTemplateFromFile('TeacherPortal');
+    tpTemplate.deploymentUrl = ScriptApp.getService().getUrl();
+    try {
+      var tpTeachers = getTeacherData()
+        .filter(function(t) { return t.active; })
+        .map(function(t) { return t.name; })
+        .sort();
+      tpTemplate.teachers = JSON.stringify(tpTeachers);
+    } catch(tpErr) { tpTemplate.teachers = '[]'; }
+    return tpTemplate.evaluate()
+      .setTitle('JetLearn — Teacher Migration Portal')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   // --- Public Learner Address Form Route (no login required) ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
     var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
