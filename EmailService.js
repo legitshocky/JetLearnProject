@@ -481,16 +481,20 @@ function sendMigrationEmail(data, attachments = []) {
           const tcResult = fetchLatestMigrationTicket(data.jlid);
           if (tcResult.found) {
             const rp = tcResult.rawProperties || {};
+            const _isNa = function(v) { var s = String(v||'').trim().toLowerCase(); return !s||s==='na'||s==='n/a'||s==='not applicable'||s==='-'; };
+            const isCCTC = (data.reasonOfMigration || '').toLowerCase().indexOf('course change') !== -1; // covers CCTC + "Course change after PRM"
+            // Non-CCTC: current course counts too (4 total); CCTC: current is being replaced, skip it
+            if (!isCCTC && data.course && !_isNa(data.course)) futureCourseLabels.push(data.course);
             [rp.future_course_1, rp.future_course_2, rp.future_course_3].forEach(function(raw) {
-              if (!raw) return;
+              if (!raw || _isNa(raw)) return;
               try { futureCourseLabels.push(getCourseLabel(raw) || raw); } catch(e) { futureCourseLabels.push(raw); }
             });
             // Check upskill gaps for TP Manager email
             const loadResult = getTeacherSpecificLoad(data.newTeacher);
             const teacherCourses = (loadResult && loadResult.success) ? (loadResult.courses || []) : [];
-            const upskilledNames = teacherCourses.map(c => (c.course || '').toLowerCase().trim());
+            const upskilledNames = teacherCourses.map(c => normalizeCourseNameForMatch(c.course || ''));
             futureCourseLabels.forEach(function(label) {
-              if (upskilledNames.indexOf(label.toLowerCase().trim()) === -1) upskillGaps.push(label);
+              if (upskilledNames.indexOf(normalizeCourseNameForMatch(label)) === -1) upskillGaps.push(label);
             });
           }
         } catch(te) { Logger.log('[sendMigrationEmail] Ticket enrich failed: ' + te.message); }
@@ -556,7 +560,8 @@ function sendMigrationEmail(data, attachments = []) {
               data.learner,
               tpManagerHsId,
               upskillGaps,
-              dealId
+              dealId,
+              data.course || ''
             );
             notes.push('HubSpot Upskill Task Created for TP Manager: ' + (tpManagerName || 'unknown'));
           } catch(hte) {
@@ -719,24 +724,52 @@ function sendMigrationEmail(data, attachments = []) {
 
     // ── Write upskill note to HubSpot ticket ──────────────────────────────────
     try {
-      checkAndWriteUpskillNote(data.jlid, data.newTeacher, data.confirmedFutureCourses || []);
+      checkAndWriteUpskillNote(data.jlid, data.newTeacher, data.confirmedFutureCourses || [], data.course || '', data.reasonOfMigration || '');
     } catch(upErr) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
-    // ── Attrition: write "2 Classes added" note on the learner's HubSpot deal ─
-    try {
-      var reason = String(data.reasonOfMigration || '').toLowerCase();
-      if (reason.indexOf('attrition') !== -1 && data.oldTeacher) {
-        var hsRes = fetchHubspotByJlid(data.jlid);
-        if (hsRes.success && hsRes.data.dealId) {
-          var attrNote = '2 Classes added for \'' + data.oldTeacher + '\' Reason Attrition';
-          addNoteToHubSpotDeal(hsRes.data.dealId, attrNote);
-          Logger.log('[sendMigrationEmail] Attrition deal note written for ' + data.jlid + ' deal ' + hsRes.data.dealId);
+    // ── Attrition/Compliance: add 2 complimentary classes to latest line item ──
+    // Auto-attrition is driven by reasonOfMigration (not watiTemplateName which is blank when WhatsApp is off)
+    var _ATTRITION_REASONS = ['attrition', 'teacher on leave', 'maternity', 'higher studies', 'leave'];
+    var _TOGGLE_TEMPLATES  = ['migration_teacher_performance_issue', 'migration_teacher_complieance_issue_1'];
+    var _watiTemplate      = String(data.watiTemplateName || '');
+    var _reason            = String(data.reasonOfMigration || '').toLowerCase();
+    var _isAttrition       = _ATTRITION_REASONS.some(function(r) { return _reason.indexOf(r) !== -1; });
+    var _isPerfToggle      = (_TOGGLE_TEMPLATES.indexOf(_watiTemplate) !== -1 || data.addComplimentaryClasses) && data.addComplimentaryClasses;
+    var _compStart    = new Date().getTime();
+    if ((_isAttrition || _isPerfToggle) && data.jlid) {
+      try {
+        var compRes = addAttritionComplimentaryClasses(data.jlid, data.oldTeacher || '');
+        if (compRes.success && !compRes.skipped) {
+          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes +2 Added', 'success', _compStart,
+            '2 classes added, Teacher Attrition added to offer type');
+        } else if (compRes.success && compRes.skipped) {
+          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes — Already Tagged', 'success', _compStart,
+            'Teacher Attrition already present — skipped');
+        } else {
+          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compRes.message);
         }
+      } catch(compErr) {
+        Logger.log('[sendMigrationEmail] Comp classes error: ' + compErr.message);
+        _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compErr.message);
       }
-    } catch(attrErr) {
-      Logger.log('[sendMigrationEmail] Attrition note failed: ' + attrErr.message);
+    }
+
+    // ── Update deal properties: current_teacher, previous_teachers, migration_request_count ──
+    try {
+      var dealPropStart = new Date().getTime();
+      var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '');
+      if (dealPropRes.success) {
+        notes.push('Deal props updated: current_teacher, previous_teachers, migration_request_count');
+        _timelineAdd(timeline, 'deal_props', 'Deal Properties Updated', 'success', dealPropStart, '');
+      } else {
+        notes.push('Deal props update failed: ' + dealPropRes.message);
+        _timelineAdd(timeline, 'deal_props', 'Deal Properties Update Failed', 'failed', dealPropStart, dealPropRes.message);
+      }
+    } catch(dpErr) {
+      Logger.log('[sendMigrationEmail] Deal props update error: ' + dpErr.message);
+      notes.push('Deal props update error: ' + dpErr.message);
     }
 
     // ── Send course completion certificate to parent ───────────────────────────
@@ -1089,62 +1122,8 @@ function sendMigrationParentFallbackEmail(jlid, migrationContext, performedBy, e
 // ctx.*            = structured fields used only when messageText is null
 // ─────────────────────────────────────────────────────────────────────────────
 function getMigrationParentFallbackEmailHTML(ctx) {
-  var learner   = ctx.learnerName || 'Learner';
-  var classLink = ctx.classLink || '';
-
-  // ── PRIMARY PATH: exact WATI template body ────────────────────────────────
-  if (ctx.messageText) {
-    // Convert WhatsApp line breaks / *bold* to basic HTML
-    var bodyHtml = ctx.messageText
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*(.*?)\*/g, '<strong>$1</strong>')   // *bold*
-      .replace(/_(.*?)_/g, '<em>$1</em>')             // _italic_
-      .replace(/\n/g, '<br/>');
-
-    return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>JetLearn - ${learner} - Class Update</title>
-</head>
-<body style="margin:0;padding:0;background:#f0ede8;font-family:Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="100%" cellpadding="0" cellspacing="0"
-      style="max-width:520px;background:#ffffff;border-radius:14px;border:1px solid #e4e1dc;overflow:hidden;">
-
-      <!-- Minimal header -->
-      <tr>
-        <td style="background:linear-gradient(135deg,#2d2a6e,#4c3a9e);padding:18px 28px;">
-          <span style="color:#fff;font-size:1.1rem;font-weight:700;">✈ JetLearn</span>
-        </td>
-      </tr>
-
-      <!-- Exact template body -->
-      <tr>
-        <td style="padding:28px 28px 24px;font-size:0.93rem;color:#222;line-height:1.75;">
-          ${bodyHtml}
-        </td>
-      </tr>
-
-      ${classLink ? `<!-- CTA -->
-      <tr>
-        <td style="padding:0 28px 28px;text-align:center;">
-          <a href="${classLink}"
-            style="display:inline-block;background:linear-gradient(135deg,#2d2a6e,#4c3a9e);
-              color:#ffffff;text-decoration:none;padding:11px 28px;border-radius:9px;
-              font-weight:600;font-size:0.88rem;">
-            Join Class →
-          </a>
-        </td>
-      </tr>` : ''}
-
-    </table>
-  </td></tr>
-</table>
-</body></html>`;
-  }
-
-  // ── FALLBACK PATH: WATI API unreachable, render key fields ────────────────
+  var learner    = ctx.learnerName || 'Learner';
+  var classLink  = ctx.classLink  || '';
   var newTeacher = ctx.newTeacher  || '';
   var oldTeacher = ctx.oldTeacher  || '';
   var course     = ctx.course      || '';
@@ -1152,38 +1131,107 @@ function getMigrationParentFallbackEmailHTML(ctx) {
   var time       = ctx.time        || '';
   var startDate  = ctx.startDate   || '';
 
-  var rows = '';
-  if (newTeacher) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;width:120px;">New Teacher</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;font-weight:600;">${newTeacher}</td></tr>`;
-  if (oldTeacher) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Previous Teacher</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#555;">${oldTeacher}</td></tr>`;
-  if (course)     rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Course</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;">${course}</td></tr>`;
-  if (weekday||time) rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Schedule</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;font-weight:600;">${weekday}${weekday&&time?' · ':''}${time}</td></tr>`;
-  if (startDate)  rows += `<tr><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#888;font-size:0.83rem;">Effective From</td><td style="padding:8px 0;border-bottom:1px solid #f0ede8;color:#111;">${startDate}</td></tr>`;
-  if (classLink)  rows += `<tr><td style="padding:8px 0;color:#888;font-size:0.83rem;">Class Link</td><td style="padding:8px 0;"><a href="${classLink}" style="color:#5546d4;">${classLink}</a></td></tr>`;
+  var _header = `
+  <tr>
+    <td style="background:linear-gradient(135deg,#1e1b5e 0%,#3d2d8e 100%);padding:0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:22px 32px 18px;">
+            <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">JetLearn</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.65);margin-top:2px;letter-spacing:0.5px;">LEARNING · REIMAGINED</div>
+          </td>
+          <td style="padding:22px 32px 18px;text-align:right;vertical-align:middle;">
+            <span style="background:rgba(255,255,255,0.15);color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;letter-spacing:0.3px;">Class Update</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+
+  var _footer = `
+  <tr>
+    <td style="background:#f8f7ff;border-top:1px solid #ede9ff;padding:20px 32px;text-align:center;">
+      <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">Questions? Reply to this email or WhatsApp us anytime.</p>
+      <p style="margin:0;font-size:11px;color:#c4b5fd;">© JetLearn · hello@jet-learn.com</p>
+    </td>
+  </tr>`;
+
+  var _ctaBtn = classLink ? `
+  <tr>
+    <td style="padding:4px 32px 28px;text-align:center;">
+      <a href="${classLink}" style="display:inline-block;background:linear-gradient(135deg,#1e1b5e,#3d2d8e);color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:10px;font-weight:700;font-size:14px;letter-spacing:0.2px;">
+        🎓 Join Class
+      </a>
+    </td>
+  </tr>` : '';
+
+  // ── PRIMARY PATH: exact WATI template body ───────────────────────────────
+  if (ctx.messageText) {
+    var bodyHtml = ctx.messageText
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+      .replace(/_(.*?)_/g, '<em>$1</em>')
+      .replace(/📅/g, '📅').replace(/\n/g, '<br/>');
+
+    return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>JetLearn · ${learner} · Class Update</title></head>
+<body style="margin:0;padding:0;background:#f0ede8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:36px 16px 48px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,27,94,0.10);">
+  ${_header}
+  <tr>
+    <td style="padding:32px 32px 8px;">
+      <p style="margin:0;font-size:15px;color:#374151;line-height:1.8;">${bodyHtml}</p>
+    </td>
+  </tr>
+  ${_ctaBtn}
+  ${_footer}
+</table>
+</td></tr></table>
+</body></html>`;
+  }
+
+  // ── FALLBACK PATH: structured fields ─────────────────────────────────────
+  var infoRows = '';
+  var _row = (icon, label, val, bold) =>
+    `<tr>
+      <td style="padding:11px 0;border-bottom:1px solid #f3f0ff;width:36px;font-size:18px;vertical-align:middle;">${icon}</td>
+      <td style="padding:11px 12px 11px 0;border-bottom:1px solid #f3f0ff;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;vertical-align:middle;width:130px;">${label}</td>
+      <td style="padding:11px 0;border-bottom:1px solid #f3f0ff;font-size:14px;color:#1f2937;font-weight:${bold?'700':'500'};vertical-align:middle;">${val}</td>
+    </tr>`;
+
+  if (newTeacher) infoRows += _row('👩‍🏫', 'New Teacher', newTeacher, true);
+  if (oldTeacher) infoRows += _row('🔄', 'Previous Teacher', `<span style="color:#6b7280;">${oldTeacher}</span>`, false);
+  if (course)     infoRows += _row('📚', 'Course', course, false);
+  if (weekday||time) infoRows += _row('📅', 'Schedule', `${weekday}${weekday&&time?' · ':''}${time}`, true);
+  if (startDate)  infoRows += _row('🗓️', 'Starts From', startDate, false);
+  if (classLink)  infoRows += _row('🔗', 'Class Link', `<a href="${classLink}" style="color:#4f46e5;font-weight:600;text-decoration:none;">Join Meeting →</a>`, false);
 
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/>
-<title>JetLearn - ${learner} - Class Update</title>
-</head>
-<body style="margin:0;padding:0;background:#f0ede8;font-family:Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="100%" cellpadding="0" cellspacing="0"
-      style="max-width:520px;background:#fff;border-radius:14px;border:1px solid #e4e1dc;overflow:hidden;">
-      <tr><td style="background:linear-gradient(135deg,#2d2a6e,#4c3a9e);padding:18px 28px;">
-        <span style="color:#fff;font-size:1.1rem;font-weight:700;">✈ JetLearn</span>
-      </td></tr>
-      <tr><td style="padding:24px 28px 8px;font-size:0.93rem;color:#333;">
-        Here is an update regarding <strong>${learner}</strong>'s upcoming classes.
-      </td></tr>
-      <tr><td style="padding:12px 28px 24px;">
-        <table width="100%" cellpadding="0" cellspacing="0"
-          style="background:#f8f7ff;border:1px solid #ddd8fa;border-radius:8px;padding:4px 14px;">
-          ${rows}
-        </table>
-      </td></tr>
-    </table>
-  </td></tr>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>JetLearn · ${learner} · Class Update</title></head>
+<body style="margin:0;padding:0;background:#f0ede8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0ede8;padding:36px 16px 48px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,27,94,0.10);">
+  ${_header}
+  <tr>
+    <td style="padding:28px 32px 6px;">
+      <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#1e1b5e;">Class Update for ${learner}</p>
+      <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.6;">Here's a summary of the changes to ${learner}'s upcoming classes.</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:16px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0">${infoRows}</table>
+    </td>
+  </tr>
+  ${_ctaBtn}
+  ${_footer}
 </table>
+</td></tr></table>
 </body></html>`;
 }
 

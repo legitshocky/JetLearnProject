@@ -1,3 +1,12 @@
+// Normalize course name for comparison — maps known app↔sheet aliases to canonical form.
+function normalizeCourseNameForMatch(name) {
+  var s = (name || '').toLowerCase().trim();
+  // "game development and ai with scratch" ↔ "game dev and ai with scratch"
+  s = s.replace(/\bgame development\b/, 'game dev');
+  // "python edublocks" / "python eduBlocks" → uniform (toLowerCase already handles case)
+  return s;
+}
+
 function safeParseHubspotNumber(value, defaultValue = 0) {
   if (value === null || value === undefined) return defaultValue;
   if (typeof value === 'number') return value;
@@ -42,7 +51,8 @@ function fetchHubspotByJlid(jlid, skipChurnCheck) {
     'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date',
     'current_subscription_taken_classes', 'learner_health', 'learner_health_reason_code',
     'country', 'learning_kit_cost',
-    'current_subscription___total_classes_offered', 'current_subscription_taken_classes_till_date'
+    'current_subscription___total_classes_offered', 'current_subscription_taken_classes_till_date',
+    'previous_teachers', 'migration_request_count'
   ];
 
   const requestBody = {
@@ -276,6 +286,8 @@ function fetchLatestMigrationTicket(jlid) {
 
   const PIPELINE_ID = '66161281';
   
+  const CANCELLED_STAGES = ['133821818', '153457301'];
+
   const properties = [
     'current_teacher__t_',
     'new_teacher',
@@ -287,6 +299,8 @@ function fetchLatestMigrationTicket(jlid) {
     'future_course_3',
     'regular_class_day__t_',
     'regular_class_time__in_cet_',
+    'pre_migration_last_class_conducted_date__t_',
+    'hs_pipeline_stage',
     'subject',
     'createdate' // Asking for it, but will fallback to root
   ];
@@ -295,11 +309,12 @@ function fetchLatestMigrationTicket(jlid) {
     filterGroups: [{
       filters: [
         { propertyName: "hs_pipeline", operator: "EQ", value: PIPELINE_ID },
-        { propertyName: "learner_uid", operator: "EQ", value: jlid }
+        { propertyName: "learner_uid", operator: "EQ", value: jlid },
+        { propertyName: "hs_pipeline_stage", operator: "NOT_IN", values: CANCELLED_STAGES }
       ]
     }],
     properties: properties,
-    limit: 10 
+    limit: 10
   };
 
   try {
@@ -349,6 +364,7 @@ function fetchLatestMigrationTicket(jlid) {
         ticketCourse: props.current_course__t_ ? (getCourseLabel(props.current_course__t_) || props.current_course__t_) : '',
         classDay: props.regular_class_day__t_ || '',
         classTime: props.regular_class_time__in_cet_ || '',
+        preLastClassDate: props.pre_migration_last_class_conducted_date__t_ || '',
         rawProperties: props
       };
     }
@@ -392,6 +408,9 @@ function fetchMigrationHybridData(jlid) {
             time: ticketResult.classTime
         };
     }
+
+    // 5. Pre-migration last class date (CCTC warning)
+    if (ticketResult.preLastClassDate) finalData.preLastClassDate = ticketResult.preLastClassDate;
 
     finalData.source = "Hybrid (Deal + Ticket)";
   } else {
@@ -2140,12 +2159,12 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
           Logger.log('[checkNewTeacherForLearner] getTeacherSpecificLoad error: ' + te.message);
         }
         var teacherCourseList = (teacherLoadResult && teacherLoadResult.success) ? (teacherLoadResult.courses || []) : [];
-        teacherUpskilledNames = teacherCourseList.map(function(tc) { return (tc.course || '').toLowerCase().trim(); });
+        teacherUpskilledNames = teacherCourseList.map(function(tc) { return normalizeCourseNameForMatch(tc.course); });
         [rawProps.future_course_1, rawProps.future_course_2, rawProps.future_course_3].forEach(function(raw, idx) {
           if (!raw) return;
           var label = '';
           try { label = getCourseLabel(raw) || raw; } catch(ce) { label = raw; }
-          var upskilled = teacherUpskilledNames.indexOf(label.toLowerCase().trim()) > -1;
+          var upskilled = teacherUpskilledNames.indexOf(normalizeCourseNameForMatch(label)) > -1;
           futureCourses.push({ index: idx + 1, courseLabel: label, rawValue: raw, isUpskilled: upskilled });
         });
       }
@@ -2542,7 +2561,7 @@ function findUpskillAlternatives(courseLabels, excludeTeacher, jlid, learnerAge)
     var headers = sheetData[headerRowIndex];
     var COURSE_START = 4; // Teacher, Email, Manager, Health
 
-    var requiredLow = (courseLabels || []).map(function(c) { return c.toLowerCase().trim(); });
+    var requiredLow = (courseLabels || []).map(function(c) { return normalizeCourseNameForMatch(c); });
     var excludeLow  = normalizeTeacherName(resolveTeacherName(excludeTeacher || ''));
 
     var alternatives = [];
@@ -2559,7 +2578,7 @@ function findUpskillAlternatives(courseLabels, excludeTeacher, jlid, learnerAge)
         var colName     = String(headers[c] || '').trim();
         var proficiency = String(row[c]     || '').trim();
         if (colName && proficiency && proficiency.toLowerCase() !== 'not onboarded') {
-          upskilledMap[colName.toLowerCase().trim()] = { course: colName, proficiency: proficiency };
+          upskilledMap[normalizeCourseNameForMatch(colName)] = { course: colName, proficiency: proficiency };
         }
       }
 
@@ -2769,7 +2788,7 @@ function getHubSpotOwnerIdByEmail(email) {
  * @param {string[]} gapCourses
  * @param {string} dealId   — HubSpot deal object ID (hs_object_id)
  */
-function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsId, gapCourses, dealId) {
+function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsId, gapCourses, dealId, currentCourse) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     if (!token) { Logger.log('[createUpskillTask] No API token'); return; }
@@ -2783,6 +2802,7 @@ function createUpskillTaskOnHubSpot(jlid, teacherName, learnerName, tpManagerHsI
 
     var subject = 'Upskilling Required: ' + teacherName + ' → ' + gapCourses.join(', ');
     var body = 'Teacher ' + teacherName + ' has been assigned learner ' + learnerName + ' (' + jlid + ').\n\n'
+      + (currentCourse ? 'Current Course: ' + currentCourse + '\n\n' : '')
       + 'Upskilling needed before learner reaches the following courses:\n'
       + gapCourses.map(function(c, i) { return '• Future ' + (i + 1) + ': ' + c; }).join('\n')
       + '\n\nPlease arrange upskilling sessions promptly.';
@@ -2974,13 +2994,162 @@ function assignTeacherForOnboarding(jlid, teacherName) {
 }
 
 /**
+ * Updates deal properties after a migration:
+ *   - current_teacher: set to new teacher
+ *   - previous_teachers: append old teacher (semicolon-separated, no duplicates)
+ *   - migration_request_count: increment by 1 (dropdown internal value 1,2,3,4...)
+ */
+function updateMigrationDealProperties(jlid, oldTeacher, newTeacher) {
+  try {
+    var hsResult = fetchHubspotByJlid(jlid);
+    if (!hsResult.success || !hsResult.data || !hsResult.data.dealId) {
+      Logger.log('[updateMigrationDealProps] No deal found for ' + jlid);
+      return { success: false, message: 'No deal found.' };
+    }
+    var dealId = hsResult.data.dealId;
+    var token  = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+
+    // Direct GET to read raw current values — fetchHubspotByJlid doesn't map these properties
+    var getRaw = monitoredFetch(
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=previous_teachers,migration_request_count',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    var rawProps = {};
+    if (getRaw.getResponseCode() === 200) {
+      rawProps = JSON.parse(getRaw.getContentText()).properties || {};
+    }
+
+    // Build previous_teachers — append old teacher, no duplicates
+    var existing = String(rawProps.previous_teachers || '').trim();
+    var prevList  = existing ? existing.split(';').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+    if (oldTeacher && prevList.indexOf(oldTeacher) === -1) prevList.push(oldTeacher);
+    var previousTeachersVal = prevList.join('; ');
+
+    // Increment migration_request_count — read live value, not stale cache
+    var currentCount = parseInt(rawProps.migration_request_count || '0', 10);
+    if (isNaN(currentCount)) currentCount = 0;
+    var newCount = String(Math.min(currentCount + 1, 20));
+
+    // current_teacher is a HubSpot enum — only update if internal ID found; display name causes 400
+    var _resolvedNewTeacher = (typeof resolveTeacherName === 'function') ? resolveTeacherName(newTeacher) : newTeacher;
+    var currentTeacherId = (typeof getTeacherHsId === 'function') ? (getTeacherHsId(_resolvedNewTeacher) || getTeacherHsId(newTeacher)) : null;
+
+    var payload = { properties: { migration_request_count: newCount } };
+    if (previousTeachersVal) payload.properties.previous_teachers = previousTeachersVal;
+    if (currentTeacherId)    payload.properties.current_teacher   = currentTeacherId;
+
+    Logger.log('[updateMigrationDealProps] deal=' + dealId + ' current_teacher_id=' + (currentTeacherId || 'SKIPPED-no-id') + ' previous_teachers=' + (previousTeachersVal || 'SKIPPED-empty') + ' count=' + newCount);
+
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    });
+
+    var code = resp.getResponseCode();
+    Logger.log('[updateMigrationDealProps] PATCH → HTTP ' + code);
+    if (code === 200 || code === 204) return { success: true };
+    return { success: false, message: 'PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
+  } catch(e) {
+    Logger.log('[updateMigrationDealProps] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+/**
+ * Adds 2 complimentary classes (Teacher Attrition) to the latest line item on the deal.
+ * Skips silently if Teacher Attrition is already present in jetlearn_offer_type.
+ * Logs a HubSpot deal note on success.
+ */
+function addAttritionComplimentaryClasses(jlid, oldTeacherName) {
+  try {
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var hsResult = fetchHubspotByJlid(jlid);
+    if (!hsResult.success || !hsResult.data || !hsResult.data.dealId) {
+      return { success: false, message: 'No deal found for ' + jlid };
+    }
+    var dealId = hsResult.data.dealId;
+
+    // 1. Get line item IDs on the deal
+    var assocRes = monitoredFetch(
+      'https://api.hubapi.com/crm/v4/objects/deals/' + dealId + '/associations/line_items',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    if (assocRes.getResponseCode() !== 200) return { success: false, message: 'Could not fetch line item associations.' };
+    var assocJson = JSON.parse(assocRes.getContentText());
+    var lineItemIds = (assocJson.results || []).map(function(r) { return { id: r.toObjectId }; });
+    if (!lineItemIds.length) return { success: false, message: 'No line items on deal.' };
+
+    // 2. Batch-read to get latest line item (highest ID = most recent)
+    var batchRes = monitoredFetch('https://api.hubapi.com/crm/v3/objects/line_items/batch/read', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({
+        properties: ['no__of_complementary_classes_offered', 'jetlearn_offer_type', 'hs_createdate'],
+        inputs: lineItemIds
+      }),
+      muteHttpExceptions: true
+    });
+    if (batchRes.getResponseCode() !== 200) return { success: false, message: 'Could not fetch line item details.' };
+    var items = JSON.parse(batchRes.getContentText()).results || [];
+    items.sort(function(a, b) { return parseInt(b.id) - parseInt(a.id); });
+    var latest = items[0];
+    if (!latest) return { success: false, message: 'No line item found.' };
+
+    var latestId = latest.id;
+    var props = latest.properties || {};
+    var offerType = String(props.jetlearn_offer_type || '');
+    var offerValues = offerType ? offerType.split(';').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+
+    // 3. Skip if Teacher Attrition already present
+    if (offerValues.indexOf('Teacher Attrition') !== -1) {
+      Logger.log('[addAttritionClasses] Teacher Attrition already present on line item ' + latestId + ' — skipping.');
+      return { success: true, skipped: true, message: 'Teacher Attrition already present — no change made.' };
+    }
+
+    // 4. Compute new values
+    var currentComp = parseInt(props.no__of_complementary_classes_offered || '0', 10);
+    if (isNaN(currentComp)) currentComp = 0;
+    var newComp = currentComp + 2;
+    offerValues.push('Teacher Attrition');
+    var newOfferType = offerValues.join(';');
+
+    // 5. PATCH the line item
+    var patchRes = monitoredFetch('https://api.hubapi.com/crm/v3/objects/line_items/' + latestId, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ properties: {
+        no__of_complementary_classes_offered: String(newComp),
+        jetlearn_offer_type: newOfferType
+      }}),
+      muteHttpExceptions: true
+    });
+    var patchCode = patchRes.getResponseCode();
+    Logger.log('[addAttritionClasses] PATCH line item ' + latestId + ' → HTTP ' + patchCode);
+    if (patchCode !== 200 && patchCode !== 204) {
+      return { success: false, message: 'PATCH failed (' + patchCode + '): ' + patchRes.getContentText().substring(0, 200) };
+    }
+
+    // 6. Log note on deal
+    addNoteToHubSpotDeal(dealId, '2 Classes Added Attrition — ' + (oldTeacherName || 'Unknown Teacher'));
+    Logger.log('[addAttritionClasses] Done — comp classes now ' + newComp + ', offer type: ' + newOfferType);
+    return { success: true, skipped: false, newComp: newComp };
+  } catch(e) {
+    Logger.log('[addAttritionClasses] Error: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+
+/**
  * Checks new teacher upskilling across future courses and writes a note to the ticket.
  * Called after a successful migration submission.
  * @param {string} jlid
  * @param {string} newTeacherName
  * @param {Array}  confirmedCourses  [{courseLabel, isUpskilled}] from client-side popup confirms
  */
-function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
+function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, currentCourse, reasonOfMigration) {
   try {
     var ticketResult = fetchLatestMigrationTicket(jlid);
     if (!ticketResult.found || !ticketResult.ticketId) {
@@ -2989,21 +3158,27 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
     }
     var ticketId = ticketResult.ticketId;
 
-    // Build list of course labels to check
+    var _isNaVal = function(v) { var s = String(v || '').trim().toLowerCase(); return !s || s === 'na' || s === 'n/a' || s === 'not applicable' || s === '-'; };
+    var _reasonLow = (reasonOfMigration || '').toLowerCase();
+    var isCCTC = _reasonLow.indexOf('course change') !== -1;
+
+    // Build list of course labels to check — skip NA/blank values
     var courseLabels = [];
+    // Non-CCTC: include current course (4 total); CCTC: current is being replaced, skip it
+    if (!isCCTC && currentCourse && !_isNaVal(currentCourse)) courseLabels.push(currentCourse);
     if (confirmedCourses && confirmedCourses.length > 0) {
-      confirmedCourses.forEach(function(c) { if (c && c.courseLabel) courseLabels.push(c.courseLabel); });
+      confirmedCourses.forEach(function(c) { if (c && c.courseLabel && !_isNaVal(c.courseLabel)) courseLabels.push(c.courseLabel); });
     }
     if (courseLabels.length === 0) {
       // Fall back to HubSpot ticket data
       var props = ticketResult.rawProperties || {};
       [props.future_course_1, props.future_course_2, props.future_course_3].forEach(function(raw) {
-        if (!raw) return;
+        if (!raw || _isNaVal(raw)) return;
         try { courseLabels.push(getCourseLabel(raw) || raw); } catch(e) { courseLabels.push(raw); }
       });
     }
     if (courseLabels.length === 0) {
-      Logger.log('[upskillNote] No future courses for ' + jlid);
+      Logger.log('[upskillNote] No future courses (all NA/blank) for ' + jlid + ' — skipping note');
       return;
     }
 
@@ -3015,9 +3190,9 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
     var teacherCourseList = (teacherLoadResult2 && teacherLoadResult2.success) ? (teacherLoadResult2.courses || []) : [];
 
     var results = courseLabels.map(function(label) {
-      var labelLow = label.toLowerCase().trim();
+      var labelNorm = normalizeCourseNameForMatch(label);
       var upskilled = teacherCourseList.some(function(tc) {
-        return (tc.course || '').toLowerCase().trim() === labelLow;
+        return normalizeCourseNameForMatch(tc.course) === labelNorm;
       });
       return { label: label, upskilled: upskilled };
     });
@@ -3038,15 +3213,18 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses) {
     }
 
     var gapped = results.filter(function(r) { return !r.upskilled; });
+    var currentCourseLine = currentCourse ? 'Current Course: ' + currentCourse + '\n' : '';
     var note;
     if (gapped.length === 0) {
       note = '✅ Teacher Upskilling Check\n'
+        + currentCourseLine
         + resolvedNew + ' is fully upskilled in all future courses:\n'
         + results.map(function(r) { return '• ' + r.label; }).join('\n')
         + '\n\nNo upskilling action required.';
     } else {
       var allList = results.map(function(r) { return (r.upskilled ? '✓ ' : '✗ ') + r.label; }).join('\n');
       note = '⚠️ Teacher Upskilling Gap — Action Required\n'
+        + currentCourseLine
         + resolvedNew + ' needs upskilling:\n' + allList
         + '\n\nGap courses: ' + gapped.map(function(r) { return r.label; }).join(', ')
         + '\n\n@' + tpManagerTag + ' — please arrange upskilling before new sessions begin.';

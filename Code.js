@@ -42,7 +42,8 @@ const CONFIG = {
     ONBOARDING_TRACKER: 'Onboarding Tracker',
     CERTIFICATE_LOG: 'Certificate Log',
     API_FAILURE_LOG: 'API Failure Log',
-    API_DAILY_SUMMARY: 'API Daily Summary'
+    API_DAILY_SUMMARY: 'API Daily Summary',
+    JETGUIDE_DETAILS: 'JetGuide Details'
   },
   EMAIL: {
     FROM: 'hello@jet-learn.com',
@@ -560,7 +561,7 @@ function getCommunicationPageData() {
       courses: courses,
       tpManagers: tpManagers,
       clsManagers: Array.from(clsManagers).sort(),
-      jetGuides: ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Satyam Mehra', 'Salima Chhatriwala', 'Sana Rais', ],
+      jetGuides: getJetGuideNames(),
       invoiceProducts: invoiceProducts,
       timezones: timezones,
       bookingTimezones: [
@@ -751,7 +752,81 @@ function getSystemHealth() {
     return { error: error.message };
   }
 }
-const APP_VERSION = "8.59";
+// ── JetGuide Sheet Helpers ────────────────────────────────────────────────────
+function _getJetGuideRows() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.APP_DATA_SHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.APP_DATA_SHEETS.JETGUIDE_DETAILS);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return [];
+    // Header: Name | Email | HubSpot ID | Active | Add to Class
+    return data.slice(1).map(r => ({
+      name:       String(r[0] || '').trim(),
+      email:      String(r[1] || '').trim(),
+      hubspotId:  String(r[2] || '').trim(),
+      active:     String(r[3] || '').toLowerCase() === 'yes' || String(r[3] || '').toLowerCase() === 'true',
+      addToClass: String(r[4] || '').toLowerCase() === 'yes' || String(r[4] || '').toLowerCase() === 'true'
+    })).filter(r => r.name);
+  } catch(e) {
+    Logger.log('JetGuide sheet error: ' + e.message);
+    return [];
+  }
+}
+
+function getJetGuideNames() {
+  const rows = _getJetGuideRows();
+  const active = rows.filter(r => r.active).map(r => r.name).sort();
+  return active.length ? active : ['Abhishek Nayak', 'Aishwarya Jain', 'Anamika Parmar', 'Satyam Mehra', 'Salima Chhatriwala', 'Sana Rais'];
+}
+
+function getJetGuideEmailMap() {
+  const rows = _getJetGuideRows();
+  const map = {};
+  rows.forEach(r => { if (r.name && r.email) map[r.name] = r.email; });
+  return map;
+}
+
+function getJetGuideDetails() {
+  return _getJetGuideRows();
+}
+
+function saveJetGuide(data) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.APP_DATA_SHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.APP_DATA_SHEETS.JETGUIDE_DETAILS);
+    if (!sheet) return { success: false, message: 'JetGuide Details sheet not found.' };
+    sheet.appendRow([
+      data.name || '',
+      data.email || '',
+      data.hubspotId || '',
+      data.active ? 'Yes' : 'No',
+      data.addToClass ? 'Yes' : 'No'
+    ]);
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function updateJetGuideByIndex(rowIndex, updates) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.APP_DATA_SHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.APP_DATA_SHEETS.JETGUIDE_DETAILS);
+    if (!sheet) return { success: false, message: 'JetGuide Details sheet not found.' };
+    const sheetRow = rowIndex + 2; // +1 for header, +1 for 1-based index
+    if ('active' in updates) sheet.getRange(sheetRow, 4).setValue(updates.active ? 'Yes' : 'No');
+    if ('addToClass' in updates) sheet.getRange(sheetRow, 5).setValue(updates.addToClass ? 'Yes' : 'No');
+    if ('email' in updates) sheet.getRange(sheetRow, 2).setValue(updates.email);
+    if ('hubspotId' in updates) sheet.getRange(sheetRow, 3).setValue(updates.hubspotId);
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+const APP_VERSION = "9.01";
 
 function getAppVersion() {
   return APP_VERSION;
