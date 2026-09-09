@@ -7327,6 +7327,8 @@ google.script.run
     appContainer.style.display = 'grid';
     var bgBell = document.getElementById('bgBellWrap');
     if (bgBell) bgBell.style.display = '';
+    var bgDock = document.getElementById('bgDock');
+    if (bgDock) bgDock.style.display = '';
 
     startPolling();
     startSessionTimer();
@@ -7440,6 +7442,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // Hide bell/task tray on logout
           var bgBell = document.getElementById('bgBellWrap');
           if (bgBell) bgBell.style.display = 'none';
+          var bgDock = document.getElementById('bgDock');
+          if (bgDock) bgDock.style.display = 'none';
           // Reset avatar back to initials placeholder
           if (userAvatar) userAvatar.innerHTML = '';
         }
