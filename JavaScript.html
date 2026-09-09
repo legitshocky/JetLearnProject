@@ -2357,7 +2357,7 @@ function updateDashboardReasons(result) {
                 showToast('success', 'Email Sent', result.message);
                 onboardingForm.reset();
                 onboardingClassSessionsContainer.innerHTML = '';
-                onboardingClassSessionsContainer.appendChild(createClassSessionGroup(true, 'onboarding'));
+                onboardingClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboarding'));
                 onboardingSessionCounter = 0;
                 initDateInputs();
               } else {
@@ -2533,7 +2533,7 @@ function submitMigrationForm(e) {
                 migrationForm.reset();
                 _resetWatiContactPicker();
                 classSessionsContainer.innerHTML = '';
-                classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
+                classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration'));
                 sessionCounter = 0;
                 initDateInputs();
               } else {
@@ -2969,8 +2969,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                     if (targetSessionContainer && data.classSessions && data.classSessions.length > 0) {
                         targetSessionContainer.innerHTML = '';
                         data.classSessions.forEach((session, index) => {
-                            const isInitial = index === 0;
-                            const newSession = createClassSessionGroup(isInitial, formPrefix);
+                            const newSession = createClassSessionGroup(false, formPrefix);
                             targetSessionContainer.appendChild(newSession);
 
                             // Case-insensitive day match
@@ -2995,7 +2994,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                             }
                         });
                     } else if (targetSessionContainer && targetSessionContainer.children.length === 0) {
-                        targetSessionContainer.appendChild(createClassSessionGroup(true, formPrefix));
+                        targetSessionContainer.appendChild(createClassSessionGroup(false, formPrefix));
                     }
 
                     // --- 7. Invoice-specific: recalculate end date from fetched start+tenure ---
@@ -3056,13 +3055,13 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
             });
             if (formPrefix === 'onboarding') {
                 onboardingClassSessionsContainer.innerHTML = '';
-                onboardingClassSessionsContainer.appendChild(createClassSessionGroup(true, 'onboarding'));
+                onboardingClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboarding'));
             } else if (formPrefix === 'migration') {
                 classSessionsContainer.innerHTML = '';
-                classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
+                classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration'));
             } else if (formPrefix === 'onboardingParent') {
                 onboardingParentClassSessionsContainer.innerHTML = '';
-                onboardingParentClassSessionsContainer.appendChild(createClassSessionGroup(true, 'onboardingParent'));
+                onboardingParentClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboardingParent'));
                 updateParentOnboardingPlanDetails();
             }
         }
@@ -8485,7 +8484,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (containerId && prefix) {
                 const container = document.getElementById(containerId);
                 if (container && container.children.length === 0) {
-                    container.appendChild(createClassSessionGroup(true, prefix));
+                    container.appendChild(createClassSessionGroup(false, prefix));
                 }
             }
             initDateInputs();
@@ -10110,7 +10109,7 @@ function fetchMigrationSpecificData() {
                         var _converted = convertCetToTimezone(data.ticketSchedule.day, data.ticketSchedule.time, _migTzForConv, _cetOff);
                         var _sched = _converted || { day: data.ticketSchedule.day, time: '' };
 
-                        const newGroup = createClassSessionGroup(true, 'migration');
+                        const newGroup = createClassSessionGroup(false, 'migration');
                         classSessionsContainer.appendChild(newGroup);
 
                         // Day — case-insensitive
@@ -10131,7 +10130,7 @@ function fetchMigrationSpecificData() {
                         }
                         _updateSessionGroupCET(newGroup, 'migration');
                     } else {
-                        classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration'));
+                        classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration'));
                     }
 
                     // Universal timezone field already set above — nothing more needed here
