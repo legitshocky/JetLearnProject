@@ -4990,3 +4990,159 @@ function getTeacherCctcMigrations(teacherName) {
     return { success: false, message: e.message, tickets: [] };
   }
 }
+
+// ── Teacher Portal: resolve JetLearn email → teacher identity ────────────────
+// Looks up the Email Address column in the Teacher Data sheet (MIGRATION_SHEET_ID).
+// Column layout: Teacher ID | Teacher Name | Gender | Status | ... | Email Address (col I = idx 8) | ...
+function resolveTeacherByEmail(email) {
+  try {
+    if (!email) return { success: false, message: 'Email required' };
+    var lower = email.toLowerCase().trim();
+    if (!lower) return { success: false, message: 'Email required' };
+
+    var ss    = SpreadsheetApp.openById(CONFIG.MIGRATION_SHEET_ID);
+    var sheet = ss.getSheetByName(CONFIG.SHEETS.TEACHER_DATA);
+    if (!sheet) return { success: false, message: 'Teacher Data sheet not found' };
+
+    // Sheet starts at row 2 per CONFIG.RANGES (A2:L), but getDataRange includes row 1 (header)
+    var data = sheet.getDataRange().getValues();
+    if (!data || data.length < 2) return { success: false, message: 'No teacher data' };
+
+    // Detect column indices from header row
+    var hdr       = data[0].map(function(h) { return String(h).trim().toLowerCase(); });
+    var idxEmail  = hdr.indexOf('email address');
+    var idxName   = hdr.indexOf('teacher name');
+    var idxStatus = hdr.indexOf('status');
+    var idxId     = hdr.indexOf('teacher id');
+
+    if (idxEmail < 0) return { success: false, message: 'Email Address column not found in Teacher Data' };
+    if (idxName  < 0) return { success: false, message: 'Teacher Name column not found in Teacher Data' };
+
+    for (var i = 1; i < data.length; i++) {
+      var rowEmail = String(data[i][idxEmail] || '').trim().toLowerCase();
+      if (!rowEmail || rowEmail !== lower) continue;
+
+      var name    = String(data[i][idxName]   || '').trim();
+      var status  = idxStatus >= 0 ? String(data[i][idxStatus] || '').trim() : '';
+      var tid     = idxId     >= 0 ? String(data[i][idxId]     || '').trim() : '';
+      var isActive = status.toLowerCase() === 'active';
+
+      if (!isActive) {
+        return { success: false, message: 'Your account is not active. Contact your manager.' };
+      }
+
+      return { success: true, name: name, teacherId: tid, isActive: true };
+    }
+
+    return { success: false, message: 'Email not recognized as an active JetLearn teacher' };
+  } catch(e) {
+    Logger.log('[resolveTeacherByEmail] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Teacher Portal: full dashboard — active learners + CCTC migration status ─
+function getTeacherDashboard(teacherName) {
+  if (!teacherName) return { success: false, message: 'Teacher name required', learners: [] };
+  try {
+    var token      = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var searchUrl  = 'https://api.hubapi.com/crm/v3/objects/deals/search';
+    var hsId       = (typeof getTeacherHsId === 'function') ? getTeacherHsId(teacherName) : null;
+    var ACTIVE_STATUSES = ['Active Learner', 'Friendly Learner', 'VIP', 'Break & Return'];
+
+    // Build teacher filter — try internal ID first, fall back to display name
+    var teacherFilters = [];
+    if (hsId) teacherFilters.push({ propertyName: 'current_teacher', operator: 'EQ', value: hsId });
+    teacherFilters.push({ propertyName: 'current_teacher', operator: 'EQ', value: teacherName });
+
+    var allDeals = [];
+    var after    = undefined;
+    var maxPages = 10;
+    for (var page = 0; page < maxPages; page++) {
+      var body = {
+        filterGroups: teacherFilters.map(function(f) {
+          return { filters: [f, { propertyName: 'learner_status', operator: 'IN', values: ACTIVE_STATUSES }] };
+        }),
+        properties: [
+          'dealname','jetlearner_id','current_course','learner_status',
+          'current_teacher','class_timings','regular_class_day','frequency_of_classes',
+          'classes_completed','total_classes_committed_through_learner_s_journey',
+          'module_start_date','module_end_date'
+        ],
+        sorts: [{ propertyName: 'dealname', direction: 'ASCENDING' }],
+        limit: 100
+      };
+      if (after) body.after = after;
+
+      var resp = monitoredFetch(searchUrl, {
+        method: 'post',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify(body),
+        muteHttpExceptions: true
+      });
+      if (resp.getResponseCode() !== 200) break;
+      var parsed = JSON.parse(resp.getContentText());
+      var results = parsed.results || [];
+      allDeals = allDeals.concat(results);
+      if (parsed.paging && parsed.paging.next && parsed.paging.next.after) {
+        after = parsed.paging.next.after;
+      } else {
+        break;
+      }
+    }
+
+    // Deduplicate by deal ID (two filterGroups can return same deal twice)
+    var seen = {};
+    allDeals = allDeals.filter(function(d) {
+      if (seen[d.id]) return false;
+      seen[d.id] = true;
+      return true;
+    });
+
+    // Fetch CCTC tickets for this teacher (active only)
+    var cctcResult = getTeacherCctcMigrations(teacherName);
+    var cctcByJlid = {};
+    if (cctcResult.success) {
+      cctcResult.tickets.forEach(function(t) {
+        if (t.jlid && !t.isCompleted) cctcByJlid[t.jlid] = t;
+      });
+    }
+
+    var learners = allDeals.map(function(deal) {
+      var p    = deal.properties || {};
+      var jlid = p.jetlearner_id || '';
+
+      // Class progress
+      var done  = parseInt(p.classes_completed || '0', 10) || 0;
+      var total = parseInt(p.total_classes_committed_through_learner_s_journey || '0', 10) || 0;
+
+      // Course label
+      var course = p.current_course ? (getCourseLabel(p.current_course) || p.current_course) : '';
+
+      // CCTC migration if any
+      var migration = cctcByJlid[jlid] || null;
+
+      return {
+        name:     (p.dealname || 'Unknown').trim(),
+        jlid:     jlid,
+        status:   p.learner_status || '',
+        course:   course,
+        schedule: [p.regular_class_day, p.class_timings].filter(Boolean).join(' · '),
+        classesDone:  done,
+        classesTotal: total,
+        migration: migration ? {
+          ticketId:    migration.id,
+          stage:       migration.stage,
+          stageLabel:  migration.stageLabel,
+          stageStatus: migration.stageStatus,
+          daysAgo:     migration.daysAgo
+        } : null
+      };
+    });
+
+    return { success: true, teacherName: teacherName, learners: learners };
+  } catch(e) {
+    Logger.log('[getTeacherDashboard] ' + e.message);
+    return { success: false, message: e.message, learners: [] };
+  }
+}

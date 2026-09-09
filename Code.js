@@ -158,6 +158,18 @@ function doGet(e) {
     return tmOut;
   }
 
+  // --- Teacher Portal: resolve email → teacher identity ---
+  if (e && e.parameter && e.parameter.api === 'teacherByEmail') {
+    var teEmail = String(e.parameter.email || '').trim().toLowerCase();
+    return ContentService.createTextOutput(JSON.stringify(resolveTeacherByEmail(teEmail))).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // --- Teacher Portal: full dashboard (active learners + CCTC status) ---
+  if (e && e.parameter && e.parameter.api === 'teacherDashboard') {
+    var tdTeacher = String(e.parameter.teacher || '').trim();
+    return ContentService.createTextOutput(JSON.stringify(getTeacherDashboard(tdTeacher))).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // --- Teacher Portal: active teachers list ---
   if (e && e.parameter && e.parameter.api === 'activeTeachers') {
     try {
