@@ -826,7 +826,7 @@ function updateJetGuideByIndex(rowIndex, updates) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "9.02";
+const APP_VERSION = "9.03";
 
 function getAppVersion() {
   return APP_VERSION;
@@ -1558,4 +1558,21 @@ function _verifySlackSignature(e) {
     Logger.log('[Slack] _verifySlackSignature error: ' + err.message);
     return false;
   }
+}
+
+// ── Migration Automation Trigger Setup ───────────────────────────────────────
+// Run once manually in GAS editor to install the 10-min polling trigger.
+function setupMigrationAutomationTrigger() {
+  // Remove any existing triggers for runMigrationAutomation
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'runMigrationAutomation') {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  // Create new every-10-minute trigger
+  ScriptApp.newTrigger('runMigrationAutomation')
+    .timeBased()
+    .everyMinutes(10)
+    .create();
+  Logger.log('Migration automation trigger installed: every 10 minutes');
 }
