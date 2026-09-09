@@ -4921,16 +4921,28 @@ function getTeacherCctcMigrations(teacherName) {
     '128913753': 'completed'
   };
 
-  // Resolve teacher name to HubSpot internal ID
-  var hsId = getTeacherHsId(teacherName);
-  if (!hsId) return { success: false, message: 'Teacher "' + teacherName + '" not found in system.', tickets: [] };
+  // Resolve teacher name to HubSpot internal ID (may be null if not in sheet)
+  var hsId = (typeof getTeacherHsId === 'function') ? getTeacherHsId(teacherName) : null;
 
-  var requestBody = {
-    filterGroups: [{ filters: [
+  // Build filter: search by internal ID if available, else by display name.
+  // Use two filterGroups (OR) to catch tickets stored either way.
+  var filterGroups = [];
+  if (hsId) {
+    filterGroups.push({ filters: [
       { propertyName: 'hs_pipeline',       operator: 'EQ',     value: '66161281' },
       { propertyName: 'new_teacher',        operator: 'EQ',     value: hsId },
       { propertyName: 'hs_pipeline_stage', operator: 'NOT_IN', values: ['133821818','153457301'] }
-    ]}],
+    ]});
+  }
+  // Always add display-name filter group as fallback
+  filterGroups.push({ filters: [
+    { propertyName: 'hs_pipeline',       operator: 'EQ',     value: '66161281' },
+    { propertyName: 'new_teacher',        operator: 'EQ',     value: teacherName },
+    { propertyName: 'hs_pipeline_stage', operator: 'NOT_IN', values: ['133821818','153457301'] }
+  ]});
+
+  var requestBody = {
+    filterGroups: filterGroups,
     properties: ['subject','learner_uid','reason_of_migration__t_','hs_pipeline_stage','createdate','learner_full_name'],
     sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
     limit: 100
