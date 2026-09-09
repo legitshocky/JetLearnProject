@@ -2913,7 +2913,7 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
  */
 function _getTeacherInternalId(displayName) {
   try {
-    var data = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var data = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
     var nameLow = String(displayName || '').toLowerCase().trim();
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][2] || '').toLowerCase().trim() === nameLow) {
@@ -3276,7 +3276,7 @@ function getTeacherAttritionReport(teacherName) {
   // Look up the ID from Teacher HS values sheet first.
   var hsId = null;
   try {
-    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
     var resolvedLower = resolvedName.trim().toLowerCase();
     for (var hi = 1; hi < teacherHsData.length; hi++) {
       var rowName = String(teacherHsData[hi][2] || '').trim().toLowerCase();
@@ -3440,7 +3440,7 @@ function getMigrationHistoryStatsByTeacher(teacherName) {
   // current_teacher__t_ stores HS internal ID — look it up first
   var hsId = null;
   try {
-    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
     var resolvedLower = resolvedName.trim().toLowerCase();
     for (var hi = 1; hi < teacherHsData.length; hi++) {
       if (String(teacherHsData[hi][2] || '').trim().toLowerCase() === resolvedLower) {
@@ -3623,7 +3623,7 @@ function getTeacherEscalationHistory(teacherName) {
   Logger.log('[getTeacherEscalationHistory] "' + teacherName + '" → "' + resolvedName + '"');
   var hsId = null;
   try {
-    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+    var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA, CONFIG.APP_DATA_SHEET_ID);
     var resolvedLower = resolvedName.trim().toLowerCase();
     for (var hi = 1; hi < teacherHsData.length; hi++) {
       if (String(teacherHsData[hi][2] || '').trim().toLowerCase() === resolvedLower) {
