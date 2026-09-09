@@ -866,6 +866,33 @@
                   <select id="watiTemplateSelect" class="form-control form-select" style="font-size: 0.9rem;">
                       <!-- Options populated by JS -->
                   </select>
+                  <!-- Prefix selectors for old & new teacher -->
+                  <div style="display:flex; gap:16px; margin-top:8px; flex-wrap:wrap;">
+                    <div id="oldTeacherPrefixContainer" style="display: none;">
+                        <label class="form-label" style="font-size: 0.85rem;">Old Teacher Prefix:</label>
+                        <select id="oldTeacherPrefix" class="form-control form-select" style="font-size: 0.9rem; width: auto;">
+                            <option value="">None</option>
+                            <option value="Ms">Ms</option>
+                            <option value="Mr">Mr</option>
+                        </select>
+                    </div>
+                    <div id="newTeacherPrefixContainer" style="display: none;">
+                        <label class="form-label" style="font-size: 0.85rem;">New Teacher Prefix:</label>
+                        <select id="newTeacherPrefix" class="form-control form-select" style="font-size: 0.9rem; width: auto;">
+                            <option value="">None</option>
+                            <option value="Ms">Ms</option>
+                            <option value="Mr">Mr</option>
+                        </select>
+                    </div>
+                  </div>
+                  <!-- Complimentary classes toggle — performance issue only -->
+                  <div id="addComplimentaryContainer" style="display:none; margin-top:10px;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.875rem;color:#374151;">
+                      <input type="checkbox" id="addComplimentaryClasses" style="width:16px;height:16px;cursor:pointer;">
+                      <span>Add 2 complimentary classes <span style="color:#6366f1;font-weight:600;">(Teacher Attrition)</span></span>
+                    </label>
+                    <div style="font-size:0.75rem;color:#94a3b8;margin-top:3px;margin-left:24px;">Increments line item complimentary count +2 and tags Teacher Attrition</div>
+                  </div>
               </div>
           </div>
       </div>
@@ -2976,6 +3003,7 @@
         <div class="page-tabs">
             <button class="tab-button active" data-tab="generalSettings">General</button>
             <button class="tab-button" data-tab="userManagement" id="userManagementTabBtn" style="display: none;">User Management</button>
+            <button class="tab-button" data-tab="jetGuideSettings">JetGuides</button>
             <button class="tab-button" data-tab="systemMaintenance">Maintenance</button>
         </div>
 
@@ -3012,6 +3040,108 @@
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- JetGuide Management Tab -->
+        <div id="jetGuideSettingsTab" class="tab-content">
+
+          <!-- Add JetGuide Panel -->
+          <div class="audit-log-container" style="margin-bottom:1.5rem;">
+            <div class="audit-header">
+              <h2 class="chart-title"><i class="fas fa-user-shield" style="color:var(--primary);margin-right:0.5rem;"></i>Add New JetGuide</h2>
+            </div>
+            <div style="padding:1.25rem 1.5rem;">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Full Name <span style="color:var(--danger);">*</span></label>
+                  <input type="text" id="newJgName" class="form-control" placeholder="e.g. Priya Sharma">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">Email</label>
+                  <input type="email" id="newJgEmail" class="form-control" placeholder="priya.sharma@jet-learn.com">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label class="form-label">HubSpot Owner ID</label>
+                  <input type="text" id="newJgHsId" class="form-control" placeholder="e.g. 77803642">
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:2rem;margin-bottom:1.25rem;">
+                <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;user-select:none;">
+                  <div class="jg-toggle-wrap">
+                    <input type="checkbox" id="newJgActive" class="jg-toggle-input" checked>
+                    <span class="jg-toggle-track"></span>
+                  </div>
+                  <span style="font-size:0.875rem;font-weight:500;color:var(--text);">Active</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;user-select:none;">
+                  <div class="jg-toggle-wrap">
+                    <input type="checkbox" id="newJgAddToClass" class="jg-toggle-input">
+                    <span class="jg-toggle-track"></span>
+                  </div>
+                  <span style="font-size:0.875rem;font-weight:500;color:var(--text);">Add to Class Calendar</span>
+                </label>
+              </div>
+              <button class="btn btn-primary" onclick="addJetGuide()">
+                <i class="fas fa-user-plus"></i> Add JetGuide
+              </button>
+            </div>
+          </div>
+
+          <!-- JetGuide Table -->
+          <div class="audit-log-container">
+            <div class="audit-header">
+              <h2 class="chart-title"><i class="fas fa-users" style="color:var(--primary);margin-right:0.5rem;"></i>JetGuide Directory</h2>
+              <div class="header-actions">
+                <button class="btn btn-outline" onclick="loadJetGuideTable()" style="font-size:0.82rem;padding:6px 14px;">
+                  <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+              </div>
+            </div>
+            <div class="table-container">
+              <table class="data-table" id="jetGuideTable" style="width:100%;">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>HubSpot ID</th>
+                    <th style="text-align:center;">Active</th>
+                    <th style="text-align:center;">Add to Class</th>
+                    <th style="text-align:center;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="jetGuideTableBody">
+                  <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Toggle switch styles scoped to JetGuide tab -->
+          <style>
+            .jg-toggle-wrap { position:relative; display:inline-flex; align-items:center; }
+            .jg-toggle-input { position:absolute; opacity:0; width:0; height:0; }
+            .jg-toggle-track {
+              display:inline-block; width:38px; height:20px; border-radius:999px;
+              background:var(--gray-300); transition:background 0.2s;
+              position:relative; cursor:pointer;
+            }
+            .jg-toggle-track::after {
+              content:''; position:absolute; top:2px; left:2px;
+              width:16px; height:16px; border-radius:50%;
+              background:white; transition:transform 0.2s;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            }
+            .jg-toggle-input:checked + .jg-toggle-track { background:var(--primary); }
+            .jg-toggle-input:checked + .jg-toggle-track::after { transform:translateX(18px); }
+            .jg-status-badge {
+              display:inline-flex; align-items:center; gap:4px;
+              padding:3px 10px; border-radius:999px; font-size:0.76rem; font-weight:600;
+            }
+            .jg-status-badge.active   { background:#d1fae5; color:#065f46; }
+            .jg-status-badge.inactive { background:#fee2e2; color:#991b1b; }
+            .jg-status-badge.yes      { background:#dbeafe; color:#1e40af; }
+            .jg-status-badge.no       { background:var(--gray-100); color:var(--gray-500); }
+          </style>
         </div>
 
         <!-- System Maintenance Tab -->
@@ -5099,7 +5229,7 @@
      finalizeLoadingTimeline() keep the exact same call signature so every
      existing call site works unchanged, they just now create/update a task
      card here instead of one global modal. ── -->
-<div id="bgBellWrap" style="position:fixed;top:18px;right:26px;z-index:9500;">
+<div id="bgBellWrap" style="position:fixed;top:18px;right:26px;z-index:9500;display:none;">
   <button id="bgBellBtn" onclick="bgToggleBellPanel()" title="Background tasks"
     style="width:40px;height:40px;border-radius:50%;background:#fff;border:1.5px solid #e2e8f0;box-shadow:0 2px 10px rgba(0,0,0,0.10);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569;position:relative;">
     <i class="fas fa-bell"></i>

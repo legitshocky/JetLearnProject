@@ -112,8 +112,11 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
 
   const parentName = hubspotData.parentName || "Parent";
   const learnerName = migrationData.learner || "Student";
-  const teacherName = migrationData.newTeacher || "New Teacher"; 
-  const oldTeacherName = migrationData.oldTeacher || "Previous Teacher"; 
+  const teacherName = migrationData.newTeacher || "New Teacher";
+  const oldTeacherName = migrationData.oldTeacher || "Previous Teacher";
+  const oldTeacherPrefix = migrationData.oldTeacherPrefix || "Ms";
+  const newTeacherPrefix = migrationData.newTeacherPrefix || "";
+  const newTeacherFull   = (newTeacherPrefix ? newTeacherPrefix + ' ' : '') + teacherName;
   const courseName = migrationData.course || "Course";
   const classLink = migrationData.classLink || "https://live.jetlearn.com/login";
   let requiredParams = [];
@@ -127,7 +130,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "Parent", value: parentName },       // {{Parent}}
         { name: "Learner", value: learnerName },     // {{Learner}}
         { name: "teacher", value: oldTeacherName },  // {{teacher}} (Old Teacher)
-        { name: "new_teacher", value: teacherName }, // {{new_teacher}} (New Teacher)
+        { name: "new_teacher", value: newTeacherFull }, // {{new_teacher}} (New Teacher)
         { name: "Weekday", value: weekdayStr },      // {{Weekday}}
         { name: "Time", value: timeStr },            // {{Time}}
         { name: "Meeting_Link", value: classLink }   // {{Meeting_Link}}
@@ -142,7 +145,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "name", value: parentName },         // {{name}}
         { name: "Learner", value: learnerName },     // {{Learner}}
         { name: "teacher", value: oldTeacherName },  // {{teacher}} (Old Teacher)
-        { name: "new_teacher", value: teacherName }, // {{new_teacher}} (New Teacher)
+        { name: "new_teacher", value: newTeacherFull }, // {{new_teacher}} (New Teacher)
         { name: "Weekday", value: weekdayStr },      // {{Weekday}}
         { name: "Time", value: timeStr },            // {{Time}}
         { name: "Link", value: classLink }           // {{Link}}
@@ -157,7 +160,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "name", value: parentName },         // {{name}}
         { name: "Learner", value: learnerName },     // {{Learner}}
         { name: "teacher", value: oldTeacherName },  // {{teacher}} (Old Teacher)
-        { name: "new_teacher", value: teacherName }, // {{new_teacher}} (New Teacher)
+        { name: "new_teacher", value: newTeacherFull }, // {{new_teacher}} (New Teacher)
         { name: "Weekday", value: weekdayStr },      // {{Weekday}}
         { name: "Time", value: timeStr },            // {{Time}}
         { name: "Link", value: classLink }           // {{Link}}
@@ -172,7 +175,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "Parent", value: parentName },
         { name: "Teacher", value: oldTeacherName }, // "Teacher X is leaving"
         { name: "Learner", value: learnerName },
-        { name: "New_Teacher", value: teacherName }, // "New instructor Y"
+        { name: "New_Teacher", value: newTeacherFull }, // "New instructor Y"
         { name: "Weekday", value: weekdayStr },
         { name: "Time", value: timeStr },
         { name: "Link", value: classLink }
@@ -186,7 +189,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
       requiredParams = [
         { name: "Parent", value: parentName },
         { name: "Teacher", value: oldTeacherName }, // "Teacher X promoted"
-        { name: "new_teacher", value: teacherName }, // "New teacher Y" (lowercase variable in template)
+        { name: "new_teacher", value: newTeacherFull }, // "New teacher Y" (lowercase variable in template)
         { name: "Learner", value: learnerName },
         { name: "Weekday", value: weekdayStr },
         { name: "Time", value: timeStr },
@@ -266,7 +269,7 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
         { name: "Parent", value: parentName },       // {{Parent}} (Capital P)
         { name: "Learner", value: learnerName },     // {{Learner}} (Capital L)
         { name: "teacher", value: oldTeacherName },  // {{teacher}} (Old teacher)
-        { name: "new_teacher", value: teacherName }, // {{new_teacher}} (New teacher)
+        { name: "new_teacher", value: newTeacherFull }, // {{new_teacher}} (New teacher)
         { name: "Weekday", value: weekdayStr },      // {{Weekday}} (Capital W)
         { name: "Time", value: timeStr },            // {{Time}} (Capital T)
         { name: "Link", value: classLink }           // {{Link}} (Capital L)
@@ -314,8 +317,26 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
       break;
 
     //----------------------------------------------------
-    // 10. TEACHER CHANGE AFTER PRM
-    //----------------------------------------------------  
+    // 10. TEACHER COMPLIANCE ISSUE
+    //----------------------------------------------------
+
+    case "migration_teacher_complieance_issue_1":
+      requiredParams = [
+        { name: "Parent", value: parentName },
+        { name: "Learner", value: learnerName },
+        { name: "Teacher", value: (oldTeacherPrefix ? oldTeacherPrefix + ' ' : '') + oldTeacherName.split(' ')[0] },
+        { name: "new_teacher", value: (newTeacherPrefix ? newTeacherPrefix + ' ' : '') + teacherName.split(' ')[0] },
+        { name: "Course", value: migrationData.course || '' },
+        { name: "Date", value: dateStr },
+        { name: "Weekday", value: weekdayStr },
+        { name: "Time", value: timeStr },
+        { name: "Link", value: classLink }
+      ];
+      break;
+
+    //----------------------------------------------------
+    // 11. TEACHER CHANGE AFTER PRM
+    //----------------------------------------------------
 
     case "migration_teacher_change_after_prm":
       requiredParams = [
@@ -778,7 +799,8 @@ const WATI_REASON_MAPPING = {
     { id: "migration_teacher_change_after_prm", label: "Teacher Change Post-PRM" }
   ],
   "Teacher Performance Issue": [
-    { id: "migration_teacher_performance_issue", label: "Performance Issue" }
+    { id: "migration_teacher_performance_issue", label: "Performance Issue" },
+    { id: "migration_teacher_complieance_issue_1", label: "Compliance Issue" }
   ],
   "Teacher Affinity": [
     { id: "migration_teacher_affinity", label: "Teacher Affinity" }

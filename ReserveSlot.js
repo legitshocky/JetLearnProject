@@ -241,12 +241,9 @@ function _splitEvenly(total, parts) {
   return out;
 }
 
-var _JETGUIDE_EMAILS = {
-  'Abhishek Nayak':  'abhishek.nayak@jet-learn.com',
-  'Anamika Parmar':  'anamika.parmar@jet-learn.com',
-  'Sana Rais':       'sana.rais@jet-learn.com',
-  'Satyam Mehra':    'satyam.mehra@jet-learn.com'
-};
+function _getJetGuideEmailMap() {
+  try { return getJetGuideEmailMap(); } catch(e) { return {}; }
+}
 
 // Columns: A Timestamp, B JLID, C Learner, D Teacher, E Course, F Sessions, G Weeks(total),
 // H Start Date, I Timezone, J Performed By, K Class Link, L Event Title,
@@ -322,7 +319,9 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     var guests = [];
     if (info.email) guests.push(info.email);
     (extraEmails || []).forEach(function(e) { if (e && guests.indexOf(e) === -1) guests.push(e); });
-    var jetGuideEmail = jetGuideName ? _JETGUIDE_EMAILS[jetGuideName] : null;
+    var _jgRows = (typeof _getJetGuideRows === 'function') ? _getJetGuideRows() : [];
+    var _jgRecord = _jgRows.find(function(r) { return r.name === jetGuideName; });
+    var jetGuideEmail = (_jgRecord && _jgRecord.addToClass && _jgRecord.email) ? _jgRecord.email : null;
     if (jetGuideEmail && guests.indexOf(jetGuideEmail) === -1) guests.push(jetGuideEmail);
 
     // gmtTimezoneLabel is now an IANA id (e.g. "Asia/Kolkata") passed directly from the booking picker

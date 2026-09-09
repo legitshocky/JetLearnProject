@@ -2,6 +2,14 @@
 
 ---
 
+## [2026-09-09] — Course name normalization + current_teacher fix (V9.01)
+
+### `HubSpotService.js`, `EmailService.js`, `Code.js`
+- **Course name normalization**: Added `normalizeCourseNameForMatch()` — maps "Game development and AI with Scratch" → "Game Dev and AI with Scratch" and handles case-insensitive "Python Edublocks"/"Python EduBlocks" matching. Applied everywhere teacher upskill status is checked: `checkNewTeacherForLearner`, `checkAndWriteUpskillNote`, `findAlternativeTeachers`, and `sendMigrationEmail`. Teachers upskilled on Game Dev/EduBlocks no longer get false TP upskill tasks.
+- **`current_teacher` deal update**: `updateMigrationDealProperties` now tries `resolveTeacherName()` first before `getTeacherHsId()` lookup, so teachers whose display name has minor formatting differences are still matched to their HubSpot enum ID and the `current_teacher` field is updated correctly on the deal.
+
+---
+
 ## [2026-08-17] — Proper Multi-Task Background Engine + Bell/History (V8.59)
 
 ### `Index.html`, `Styles.html`, `JavaScript.html`

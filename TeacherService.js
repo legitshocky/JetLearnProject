@@ -808,6 +808,17 @@ function getTeacherLabel(hubspotValue) {
   return hubspotValue; 
 }
 
+function getTeacherHsId(displayName) {
+  if (!displayName) return null;
+  var name = displayName.trim().toLowerCase();
+  var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+  for (var i = 1; i < teacherHsData.length; i++) {
+    var label = String(teacherHsData[i][2] || '').trim().toLowerCase();
+    if (label === name) return String(teacherHsData[i][1]).trim();
+  }
+  return null;
+}
+
 function getCourseLabel(internalValue){
   const data = _getCachedSheetData(CONFIG.SHEETS.COURSE_HS_DATA);
 

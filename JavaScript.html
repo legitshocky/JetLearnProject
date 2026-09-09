@@ -1319,7 +1319,11 @@ function bkcOpenDrawer(teacherName, startUtc, endUtc) {
     document.getElementById('bkcDFetchResult2').style.display = 'none';
     document.getElementById('bkcDClassLink').value = '';
     bkcSetClassType('single');
-    document.getElementById('bkcDSlotLabel').textContent = bkcCurrentSlot.day + ', ' + bkcCurrentSlot.time + ' (' + tzId + ')';
+    var _slotDate = new Date(startUtc);
+    var _cetFmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+    var _cetParts = _cetFmt.formatToParts(_slotDate).reduce(function(o, p) { o[p.type] = p.value; return o; }, {});
+    var _cetLabel = _cetParts.weekday + ' ' + _cetParts.hour + ':' + _cetParts.minute + ' CET';
+    document.getElementById('bkcDSlotLabel').textContent = bkcCurrentSlot.day + ', ' + bkcCurrentSlot.time + ' (' + tzId + ')  ·  ' + _cetLabel;
     document.getElementById('bkcDConflictLabel').textContent = 'Not checked yet';
     document.getElementById('bkcDStatus').textContent = '';
     document.getElementById('bkcDrawerTitle').textContent = 'Book Classes — ' + teacherName;
@@ -2480,6 +2484,9 @@ function submitMigrationForm(e) {
           watiPhoneTargets: Array.from(document.querySelectorAll('input[name="watiContactTarget"]:checked')).map(cb => cb.value).filter(Boolean),
 
           watiTemplateName: selectedWatiTemplate,
+          oldTeacherPrefix: (document.getElementById('oldTeacherPrefix') && document.getElementById('oldTeacherPrefix').value) || '',
+          newTeacherPrefix: (document.getElementById('newTeacherPrefix') && document.getElementById('newTeacherPrefix').value) || '',
+          addComplimentaryClasses: !!(document.getElementById('addComplimentaryClasses') && document.getElementById('addComplimentaryClasses').checked),
           confirmedFutureCourses: window.mipConfirmedCourses || [],
 
           // Also-email-parent (fallback while WhatsApp is down)
@@ -2491,6 +2498,20 @@ function submitMigrationForm(e) {
       if (!validation.isValid) {
           showToast('error', 'Validation Error', validation.errors.join('<br>'));
           return;
+      }
+
+      // ── CCTC pre-migration date guard ──────────────────────────────────────
+      var _preDate = window._migPreLastClassDate || '';
+      var _preReason = window._migReason || migrationData.reasonOfMigration || '';
+      if (_preDate && _preReason.toLowerCase().indexOf('course change') !== -1) {
+        var _preMs = new Date(_preDate).getTime();
+        var _todayMs = new Date().setHours(0,0,0,0);
+        if (!isNaN(_preMs) && _preMs > _todayMs) {
+          var _preFmt = new Date(_preMs).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+          showToast('error', 'Course Not Completed', 'Pre-migration last class date is ' + _preFmt + '. Complete the current course before migrating.');
+          _showCctcEndDateWarn(_preReason, _preDate);
+          return;
+        }
       }
 
       showConfirm('Confirm Migration', "Migrate " + (migrationData.learner) + " to " + (migrationData.newTeacher) + "?", confirmed => {
@@ -5282,7 +5303,9 @@ function mipApplyOverride(idx, newCourse) {
 function mipRefreshSummary() {
   var confirmed = window.mipConfirmedCourses || [];
   if (confirmed.length === 0) return;
-  var allUpskilled = confirmed.every(function(fc) { return fc.isUpskilled; });
+  var _isNaLbl = function(v) { var s = String(v||'').trim().toLowerCase(); return !s||s==='na'||s==='n/a'||s==='not applicable'||s==='-'; };
+  var realConfirmed = confirmed.filter(function(fc) { return !_isNaLbl(fc.courseLabel); });
+  var allUpskilled = realConfirmed.length === 0 || realConfirmed.every(function(fc) { return fc.isUpskilled; });
 
   // Update summary text
   var summaryEl = document.getElementById('mip_fc_summary');
@@ -5292,7 +5315,7 @@ function mipRefreshSummary() {
         ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text : '';
       summaryEl.innerHTML = '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"><\/i>New teacher &ldquo;' + escapeHtml(name) + '&rdquo; is upskilled in current and future courses<\/span>';
     } else {
-      summaryEl.innerHTML = '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"><\/i>Upskilling gaps found \u2014 note will be added to ticket on submission<\/span>';
+      summaryEl.innerHTML = '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"><\/i>Upskilling gaps found for &ldquo;' + escapeHtml(name) + '&rdquo; \u2014 note will be added to ticket on submission<\/span>';
     }
   }
 
@@ -7302,6 +7325,8 @@ google.script.run
     // 2. HIDE LOGIN PAGE & SHOW APP
     loginPage.style.display = 'none';
     appContainer.style.display = 'grid';
+    var bgBell = document.getElementById('bgBellWrap');
+    if (bgBell) bgBell.style.display = '';
 
     startPolling();
     startSessionTimer();
@@ -7378,8 +7403,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      // Refresh / close tab / navigate to new URL
+      // Refresh / close tab / navigate to new URL — only warn when logged in
       window.addEventListener('beforeunload', function(e) {
+        if (!currentUser) return; // no warning on login page
         e.preventDefault();
         e.returnValue = 'Leave JetLearn Platform? You may need to log in again.';
         return e.returnValue;
@@ -7411,6 +7437,9 @@ document.addEventListener('DOMContentLoaded', () => {
           appContainer.style.display = 'none';
           loginPage.style.display = 'flex';
           switchLoginView('loginView');
+          // Hide bell/task tray on logout
+          var bgBell = document.getElementById('bgBellWrap');
+          if (bgBell) bgBell.style.display = 'none';
           // Reset avatar back to initials placeholder
           if (userAvatar) userAvatar.innerHTML = '';
         }
@@ -7686,6 +7715,100 @@ function _loadUsersTable() {
             showToast('error', 'Error', (result && result.message) ? result.message : 'Unknown error saving user.');
         }
     }
+
+    // ── JetGuide Management ───────────────────────────────────────────────────
+    function loadJetGuideTable() {
+        const tbody = document.getElementById('jetGuideTableBody');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        google.script.run
+            .withSuccessHandler(rows => {
+                if (!rows || rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">No JetGuides found. Add one above.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map((r, i) => {
+                    const initials = (r.name || '').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+                    const activeBadge = r.active
+                        ? '<span class="jg-status-badge active"><i class="fas fa-check-circle"></i> Active</span>'
+                        : '<span class="jg-status-badge inactive"><i class="fas fa-times-circle"></i> Inactive</span>';
+                    const classBadge = r.addToClass
+                        ? '<span class="jg-status-badge yes"><i class="fas fa-calendar-check"></i> Yes</span>'
+                        : '<span class="jg-status-badge no">No</span>';
+                    const toggleActiveLabel = r.active ? 'Deactivate' : 'Activate';
+                    const toggleActiveClass = r.active ? 'btn-outline' : 'btn-primary';
+                    const toggleClassLabel  = r.addToClass ? 'Remove from Class' : 'Add to Class';
+                    return `<tr>
+                        <td>
+                          <div style="display:flex;align-items:center;gap:0.65rem;">
+                            <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--primary-light),var(--primary-dark));color:white;display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;flex-shrink:0;">${initials}</div>
+                            <strong style="font-size:0.875rem;">${escapeHtml(r.name)}</strong>
+                          </div>
+                        </td>
+                        <td style="color:var(--text-light);font-size:0.85rem;">${escapeHtml(r.email) || '<span style="color:var(--text-muted);">—</span>'}</td>
+                        <td><code style="font-size:0.78rem;background:var(--gray-100);padding:2px 6px;border-radius:4px;">${escapeHtml(r.hubspotId) || '—'}</code></td>
+                        <td style="text-align:center;">${activeBadge}</td>
+                        <td style="text-align:center;">${classBadge}</td>
+                        <td style="text-align:center;">
+                          <div style="display:flex;gap:6px;justify-content:center;">
+                            <button class="btn ${toggleActiveClass}" style="padding:4px 12px;font-size:0.78rem;" onclick="toggleJetGuideField(${i}, 'active', ${r.active})">${toggleActiveLabel}</button>
+                            <button class="btn btn-outline" style="padding:4px 12px;font-size:0.78rem;" onclick="toggleJetGuideField(${i}, 'addToClass', ${r.addToClass})">${toggleClassLabel}</button>
+                          </div>
+                        </td>
+                    </tr>`;
+                }).join('');
+            })
+            .withFailureHandler(err => {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--danger);">Error: ${escapeHtml(err.message)}</td></tr>`;
+            })
+            .getJetGuideDetails();
+    }
+
+    function addJetGuide() {
+        const name   = document.getElementById('newJgName').value.trim();
+        const email  = document.getElementById('newJgEmail').value.trim();
+        const hsId   = document.getElementById('newJgHsId').value.trim();
+        const active = document.getElementById('newJgActive').checked;
+        const addToClass = document.getElementById('newJgAddToClass').checked;
+        if (!name) { showToast('error', 'JetGuide', 'Name is required.'); return; }
+        showLoading('Adding JetGuide...');
+        google.script.run
+            .withSuccessHandler(res => {
+                hideLoading();
+                if (res && res.success) {
+                    showToast('success', 'JetGuide Added', name + ' has been added.');
+                    document.getElementById('newJgName').value = '';
+                    document.getElementById('newJgEmail').value = '';
+                    document.getElementById('newJgHsId').value = '';
+                    document.getElementById('newJgActive').checked = true;
+                    document.getElementById('newJgAddToClass').checked = false;
+                    loadJetGuideTable();
+                } else {
+                    showToast('error', 'JetGuide', (res && res.message) || 'Failed to add.');
+                }
+            })
+            .withFailureHandler(err => { hideLoading(); showToast('error', 'JetGuide', err.message); })
+            .saveJetGuide({ name, email, hubspotId: hsId, active, addToClass });
+    }
+
+    function toggleJetGuideField(rowIndex, field, currentVal) {
+        showLoading('Updating...');
+        const updates = {};
+        updates[field] = !currentVal;
+        google.script.run
+            .withSuccessHandler(res => {
+                hideLoading();
+                if (res && res.success) {
+                    showToast('success', 'JetGuide', 'Updated successfully.');
+                    loadJetGuideTable();
+                } else {
+                    showToast('error', 'JetGuide', (res && res.message) || 'Failed to update.');
+                }
+            })
+            .withFailureHandler(err => { hideLoading(); showToast('error', 'JetGuide', err.message); })
+            .updateJetGuideByIndex(rowIndex, updates);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     function loadSettingsPage() {
         document.querySelectorAll('#settingsPage .tab-button').forEach(btn => {
@@ -8203,6 +8326,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Reload settings if needed
             loadSettingsPage();
+            if (tabId === 'jetGuideSettings') loadJetGuideTable();
         });
     });
 
@@ -8248,6 +8372,25 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    // Shared helper — show/hide the CCTC pre-migration date warning
+    window._showCctcEndDateWarn = function(reason, preLastClassDate) {
+      var existingWarn = document.getElementById('cctcEndDateWarn');
+      if (existingWarn) existingWarn.remove();
+      var isCourseChange = (reason || '').toLowerCase().indexOf('course change') !== -1;
+      if (!isCourseChange || !preLastClassDate) return;
+      var endMs = new Date(preLastClassDate).getTime();
+      if (isNaN(endMs)) return;
+      var today = new Date(); today.setHours(0,0,0,0);
+      if (endMs < today.getTime()) return;
+      var endFmt = new Date(endMs).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+      var warn = document.createElement('div');
+      warn.id = 'cctcEndDateWarn';
+      warn.style.cssText = 'margin:10px 0;padding:12px 14px;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:8px;color:#92400e;font-size:0.85rem;display:flex;align-items:flex-start;gap:10px;';
+      warn.innerHTML = '<span style="font-size:1.2rem;flex-shrink:0;">⚠️</span><div><strong>Course Not Completed</strong> — Pre-migration last class date is <strong>' + endFmt + '</strong>. Migrating before this date may be premature. Confirm the learner has completed the current course before proceeding.</div>';
+      var insertAnchor = document.getElementById('cctcCourseFields') || (reasonOfMigrationSelect && reasonOfMigrationSelect.parentElement);
+      if (insertAnchor && insertAnchor.parentElement) insertAnchor.parentElement.insertBefore(warn, insertAnchor);
+    };
+
     // ── CCTC course fields: show/hide on reason change ────────────────
     if (reasonOfMigrationSelect) {
       reasonOfMigrationSelect.addEventListener('change', function() {
@@ -8255,6 +8398,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!cctcFields) return;
         var isCCTC = this.value === 'Course Change Teacher Change';
         cctcFields.style.display = isCCTC ? 'block' : 'none';
+        // Re-evaluate warning with current stored date (persists across reason toggle)
+        window._migReason = this.value;
+        _showCctcEndDateWarn(this.value, window._migPreLastClassDate || '');
       });
     }
 
@@ -8793,12 +8939,14 @@ document.getElementById('renewalForm').addEventListener('submit', (e) => {
     (function() {
       var mipDebounce = null;
 
+    window._mipReqVersion = window._mipReqVersion || 0;
+
 function triggerMigrationIntelligence() {
         var jlid        = jlidInput ? jlidInput.value.trim() : '';
         var newTeacher  = newTeacherSelect ? newTeacherSelect.value.trim() : '';
         var modal       = document.getElementById('migrationIntelModal');
         if (!modal) return;
-        
+
         // FIX: Only trigger if both fields are filled
         if (!jlid || !newTeacher) {
           return; // Do nothing if form isn't ready
@@ -8806,6 +8954,7 @@ function triggerMigrationIntelligence() {
 
         clearTimeout(mipDebounce);
         mipDebounce = setTimeout(function() {
+          var myReqVersion = ++window._mipReqVersion;
           // Show the modal
           modal.classList.add('active');
 
@@ -8860,8 +9009,12 @@ function triggerMigrationIntelligence() {
           } catch(spErr) {}
 
           google.script.run
-            .withSuccessHandler(renderMigrationIntelPanel)
+            .withSuccessHandler(function(result) {
+              if (window._mipReqVersion !== myReqVersion) return; // stale response — newer request superseded this
+              renderMigrationIntelPanel(result);
+            })
             .withFailureHandler(function(err) {
+              if (window._mipReqVersion !== myReqVersion) return;
               document.getElementById('migrationAlertBanners').innerHTML =
                 '<div style="padding:0.6rem 1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;font-size:0.83rem;">'
                 + '<i class="fas fa-times-circle" style="margin-right:6px;"><\/i>Intelligence check failed: ' + escapeHtml(String(err)) + '<\/div>';
@@ -9209,14 +9362,16 @@ function triggerMigrationIntelligence() {
       } else {
         if (fcSection) fcSection.style.display = 'block';
         if (fcContent) {
-          var allUpskilled = fcs.every(function(fc) { return fc.isUpskilled; });
+          var _isNaLabel = function(v) { var s = String(v||'').trim().toLowerCase(); return !s||s==='na'||s==='n/a'||s==='not applicable'||s==='-'; };
+          var realFcs = fcs.filter(function(fc) { return !_isNaLabel(fc.courseLabel); });
+          var allUpskilled = realFcs.length === 0 || realFcs.every(function(fc) { return fc.isUpskilled; });
           var summaryColor = allUpskilled ? '#15803d' : '#b91c1c';
           var displayedTeacherName = (newTeacherSelect && newTeacherSelect.selectedIndex >= 0)
             ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text
             : (result.newTeacherName || '');
           var summaryText  = allUpskilled
             ? '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"><\/i>New teacher &ldquo;' + escapeHtml(displayedTeacherName) + '&rdquo; is upskilled in current and future courses<\/span>'
-            : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"><\/i>Upskilling gaps found \u2014 note will be added to ticket on submission<\/span>';
+            : '<span style="color:#b91c1c;font-size:0.8rem;font-weight:600;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"><\/i>Upskilling gaps found for &ldquo;' + escapeHtml(displayedTeacherName) + '&rdquo; \u2014 note will be added to ticket on submission<\/span>';
           var fcHtml = '<div id="mip_fc_summary" style="margin-bottom:0.6rem;">' + summaryText + '<\/div>'
             + '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
 
@@ -9465,10 +9620,29 @@ function triggerMigrationIntelligence() {
                         });
                         
                         watiContainer.style.display = 'block';
-                        
+
                         // Visual cue
                         watiContainer.style.backgroundColor = "#e6fffa";
                         setTimeout(() => { watiContainer.style.backgroundColor = "transparent"; }, 500);
+
+                        // Show/hide prefix selectors based on selected template
+                        const _TEMPLATES_WITH_NEW_TEACHER = [
+                          'migration_teacher_on_leaves_studies','migration_teacher_on_leave_matenity',
+                          'teacher_leave_migration','migration_attrition_tr_change',
+                          'migration_attrition_tr_promoted_new','migration_psw',
+                          'migration_releasing_teacher_bandwith_','migration_teacher_complieance_issue_1'
+                        ];
+                        const _togglePrefix = () => {
+                            var val = watiSelect.value;
+                            var oldC = document.getElementById('oldTeacherPrefixContainer');
+                            var newC = document.getElementById('newTeacherPrefixContainer');
+                            var compC = document.getElementById('addComplimentaryContainer');
+                            if (oldC) oldC.style.display = val === 'migration_teacher_complieance_issue_1' ? 'block' : 'none';
+                            if (newC) newC.style.display = _TEMPLATES_WITH_NEW_TEACHER.indexOf(val) !== -1 ? 'block' : 'none';
+                            if (compC) compC.style.display = (val === 'migration_teacher_performance_issue' || val === 'migration_teacher_complieance_issue_1') ? 'block' : 'none';
+                        };
+                        _togglePrefix();
+                        watiSelect.addEventListener('change', _togglePrefix);
 
                     } else {
                         // Fallback
@@ -9898,6 +10072,11 @@ function fetchMigrationSpecificData() {
                         reasonOfMigrationSelect.dispatchEvent(new Event('change'));
                     }
 
+                    // ── CCTC: warn if course hasn't ended yet ──────────────────────────
+                    window._migPreLastClassDate = data.preLastClassDate || '';
+                    window._migReason = data.migrationReason || '';
+                    _showCctcEndDateWarn(data.migrationReason, data.preLastClassDate);
+
                     if (clsManagerSelect) clsManagerSelect.value = data.clsManagerName || '';
                     if (jetGuideSelect) jetGuideSelect.value = data.jetGuideName || '';
 
@@ -9999,7 +10178,9 @@ function fetchMigrationSpecificData() {
             reasonOfMigration: reasonOfMigrationSelect.value,
             classSessions: classSessions,
             manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
-
+            oldTeacherPrefix: (document.getElementById('oldTeacherPrefix') && document.getElementById('oldTeacherPrefix').value) || '',
+            newTeacherPrefix: (document.getElementById('newTeacherPrefix') && document.getElementById('newTeacherPrefix').value) || '',
+            addComplimentaryClasses: !!(document.getElementById('addComplimentaryClasses') && document.getElementById('addComplimentaryClasses').checked),
         };
     }
 
@@ -13355,6 +13536,29 @@ function _remainingClassesStatusText(res) {
     + (res.currentCourse ? ', ' + res.currentCourse : '') + ') — from ' + srcLabel + '.';
 }
 
+function _sessionToCET(day, time12, ianaTimezone) {
+  var days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var dayIdx = days.indexOf(day);
+  if (dayIdx < 0) return '';
+  var m = (time12 || '').match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return '';
+  var h = parseInt(m[1]), min = parseInt(m[2]);
+  if (/PM/i.test(m[3]) && h !== 12) h += 12;
+  if (/AM/i.test(m[3]) && h === 12) h = 0;
+  // Jan 1 2024 = Monday; offset so each weekday maps to the right date
+  var dayOffset = dayIdx === 0 ? 7 : dayIdx;
+  var approx = new Date(Date.UTC(2024, 0, dayOffset, h, min, 0));
+  try {
+    var lp = new Intl.DateTimeFormat('en-CA', { timeZone: ianaTimezone, hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(approx).reduce(function(o,p){o[p.type]=p.value;return o;},{});
+    var diffMs = ((h - parseInt(lp.hour)) * 60 + (min - parseInt(lp.minute))) * 60000;
+    var utcTime = new Date(approx.getTime() + diffMs);
+    var cetParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      .formatToParts(utcTime).reduce(function(o,p){o[p.type]=p.value;return o;},{});
+    return cetParts.weekday + ' ' + cetParts.hour + ':' + cetParts.minute + ' CET';
+  } catch(e) { return ''; }
+}
+
 function _splitPreviewText(total, dayLabels) {
   if (!total || !dayLabels.length) return '';
   var base = Math.floor(total / dayLabels.length);
@@ -13648,6 +13852,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function _showBookingConfirm(warnHtml, reserveRows) {
     var splitDesc = _splitPreviewText(numEvents, classSessions.map(function(s) { return s.day; }));
+    var cetParts = classSessions.map(function(s) { return _sessionToCET(s.day, s.time, gmtTzLabel); }).filter(Boolean);
+    var cetHtml = cetParts.length ? '<span style="font-size:0.8rem;color:#0891b2;">🕐 ' + cetParts.join('  ·  ') + '<\/span><br>' : '';
     var reserveHtml = '';
     if (reserveRows && reserveRows.length) {
       reserveHtml = '<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:8px 12px;margin-top:8px;text-align:left;">'
@@ -13664,6 +13870,7 @@ document.addEventListener('DOMContentLoaded', function() {
       'Book Classes with New Teacher',
       'Book <strong>' + numEvents + ' total classes<\/strong> across ' + classSessions.length + ' weekly session(s) with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName) + '<\/strong> (' + escapeHtml(gmtTzLabel) + ')?<br>'
         + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
+        + cetHtml
         + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + warnHtml + reserveHtml,
       function(confirmed) {
         if (!confirmed) return;
