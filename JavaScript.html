@@ -8357,7 +8357,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 6. DYNAMIC FORM ELEMENTS (ADD SESSIONS)
     // ==========================================
     if (addOnboardingClassSessionBtn) addOnboardingClassSessionBtn.addEventListener('click', () => onboardingClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboarding')));
-    if (addClassSessionBtn) addClassSessionBtn.addEventListener('click', () => classSessionsContainer.appendChild(createClassSessionGroup(true, 'migration')));
+    if (addClassSessionBtn) addClassSessionBtn.addEventListener('click', () => classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration')));
     if (addOnboardingParentClassSessionBtn) addOnboardingParentClassSessionBtn.addEventListener('click', () => onboardingParentClassSessionsContainer.appendChild(createClassSessionGroup(false, 'onboardingParent')));
 
     // ── Toggle parent email picker visibility ──────────────────────────
