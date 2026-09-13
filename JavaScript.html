@@ -2006,8 +2006,10 @@ function switchPage(pageId, context = null) {
                 populateSelect(document.getElementById('onboardingParentClsManager'), globalClsManagers, false, "Select CLS");
                 populateSelect(document.getElementById('onboardingParentTpManager'), globalTpManagers, false, "Select TP Manager");
                 populateSelect(document.getElementById('tpManagerSelect'), globalTpManagers, false, "\u2014 Select TP Manager \u2014");
-                populateSelect(minecraftCourse, globalCourses, false, "Select a course");
-                populateSelect(robloxCourse, globalCourses, false, "Select a course");
+                var minecraftCourses = globalCourses.filter(function(c) { return /minecraft/i.test(c.name || c); });
+                var robloxCourses   = globalCourses.filter(function(c) { return /roblox/i.test(c.name || c); });
+                populateSelect(minecraftCourse, minecraftCourses, false, "Select a course");
+                populateSelect(robloxCourse,   robloxCourses,   false, "Select a course");
 
                 // Populate migration timezone universal field
                 var migTzField = document.getElementById('migrationTimezone');
