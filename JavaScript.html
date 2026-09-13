@@ -3101,8 +3101,23 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
         initDateInputs();
     }
 
+    function selectInstallGame(game) {
+        var mcSection  = document.getElementById('installMinecraftSection');
+        var rbxSection = document.getElementById('installRobloxSection');
+        var mcBtn  = document.getElementById('installPickerMc');
+        var rbxBtn = document.getElementById('installPickerRbx');
+        if (!mcSection) return;
+        var isMc = game === 'minecraft';
+        mcSection.style.display  = isMc ? '' : 'none';
+        rbxSection.style.display = isMc ? 'none' : '';
+        if (mcBtn)  { mcBtn.style.background  = isMc ? '#16a34a' : 'transparent'; mcBtn.style.color  = isMc ? '#fff' : '#64748b'; mcBtn.style.boxShadow  = isMc ? '0 2px 6px rgba(22,163,74,0.25)' : 'none'; }
+        if (rbxBtn) { rbxBtn.style.background = isMc ? 'transparent' : '#ea580c'; rbxBtn.style.color = isMc ? '#64748b' : '#fff'; rbxBtn.style.boxShadow = isMc ? 'none' : '0 2px 6px rgba(234,88,12,0.25)'; }
+    }
+
     // Communication Tab Switching
     function switchCommunicationTab(tabId) {
+        var installGame = null;
+        if (tabId === 'minecraft' || tabId === 'roblox') { installGame = tabId; tabId = 'installation'; }
     const communicationTabButtons = document.querySelectorAll('#communicationPage .tab-button');
     // **FIX**: Find ALL tab content elements across the entire document.
     // This will find the orphaned tabs that are no longer inside #communicationPage.
@@ -3138,6 +3153,9 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
 
     // Load scheduled emails when that tab is activated
     if (tabId === 'scheduled') loadEmailQueueTab();
+
+    // Select correct game form when installation tab is activated
+    if (tabId === 'installation') selectInstallGame(installGame || 'minecraft');
 
     commOpenPanel(tabId);
 }
