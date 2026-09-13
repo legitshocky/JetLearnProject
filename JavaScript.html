@@ -10960,9 +10960,9 @@ document.addEventListener('DOMContentLoaded', () => {
           + '<i class="fas fa-user" style="margin-right:4px;font-size:0.68rem;"><\/i>Profile<\/button>'
           + '<button class="find-replacement-btn" style="flex:1.7;padding:7px 0;background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;border-radius:9px;font-size:0.74rem;color:#fff;cursor:pointer;font-weight:600;transition:opacity .15s;box-shadow:0 2px 8px rgba(99,102,241,0.28);" onmouseover="this.style.opacity=\'0.85\'" onmouseout="this.style.opacity=\'1\'">'
           + '<i class="fas fa-robot" style="margin-right:4px;font-size:0.68rem;"><\/i>Find Replacement<\/button>'
-          + '<button class="toggle-visibility-btn" style="flex:0.55;padding:7px 0;border-radius:9px;border:1.5px solid;font-size:0.76rem;cursor:pointer;'
+          + '<button class="toggle-visibility-btn" style="flex:0.9;padding:7px 6px;border-radius:9px;border:1.5px solid;font-size:0.72rem;cursor:pointer;font-weight:600;'
           + (isHidden ? 'background:#dcfce7;color:#15803d;border-color:#86efac;' : 'background:#fff0f0;color:#b91c1c;border-color:#fca5a5;') + '">'
-          + (isHidden ? '<i class="fas fa-eye"><\/i>' : '<i class="fas fa-eye-slash"><\/i>')
+          + (isHidden ? '<i class="fas fa-eye" style="margin-right:3px;"><\/i>Unhide' : '<i class="fas fa-eye-slash" style="margin-right:3px;"><\/i>Hide')
           + '<\/button>'
         + '<\/div>'
 
@@ -10981,7 +10981,7 @@ document.addEventListener('DOMContentLoaded', () => {
     card.querySelector('.toggle-visibility-btn').dataset.teacherName = teacher.name;
     card.querySelector('.toggle-visibility-btn').dataset.hidden = isHidden ? 'Yes' : '';
     card.querySelector('.toggle-visibility-btn').addEventListener('click', function() {
-        var btn = this; var cardEl = btn.closest('div[style*="border-radius:12px"]');
+        var btn = this; var cardEl = btn.closest('.teacher-browse-card');
         var tName = btn.dataset.teacherName;
         var nowHidden = btn.dataset.hidden === 'Yes';
         var makeHidden = !nowHidden;
@@ -10992,13 +10992,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     btn.dataset.hidden = makeHidden ? 'Yes' : '';
                     btn.disabled = false;
                     if (makeHidden) {
-                        btn.innerHTML = '<i class="fas fa-eye"><\/i>';
-                        btn.style.cssText = 'flex:0.6;font-size:0.78rem;background:#dcfce7;color:#15803d;border:1px solid #86efac;';
-                        cardEl.style.opacity = '0.55';
+                        btn.innerHTML = '<i class="fas fa-eye" style="margin-right:3px;"><\/i>Unhide';
+                        btn.style.cssText = 'flex:0.9;font-size:0.72rem;font-weight:600;padding:7px 6px;border-radius:9px;background:#dcfce7;color:#15803d;border:1.5px solid #86efac;cursor:pointer;';
+                        if (cardEl) cardEl.style.opacity = '0.55';
                     } else {
-                        btn.innerHTML = '<i class="fas fa-eye-slash"><\/i>';
-                        btn.style.cssText = 'flex:0.6;font-size:0.78rem;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;';
-                        cardEl.style.opacity = '1';
+                        btn.innerHTML = '<i class="fas fa-eye-slash" style="margin-right:3px;"><\/i>Hide';
+                        btn.style.cssText = 'flex:0.9;font-size:0.72rem;font-weight:600;padding:7px 6px;border-radius:9px;background:#fff0f0;color:#b91c1c;border:1.5px solid #fca5a5;cursor:pointer;';
+                        if (cardEl) cardEl.style.opacity = '1';
                     }
                     if (allTeacherDetailsCache) {
                         var cached = allTeacherDetailsCache.find(function(t) { return t.name === tName; });

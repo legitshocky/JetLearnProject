@@ -3151,9 +3151,14 @@ function setTeacherVisibility(teacherName, isHidden) {
     var needle = teacherName.trim().toLowerCase();
     var updated = false;
 
+    var updatedBy = '';
+    try { updatedBy = Session.getActiveUser().getEmail(); } catch(se) {}
+    var auditVal = updatedBy ? updatedBy + ' | ' + new Date().toLocaleString() : new Date().toLocaleString();
+
     for (var r = 1; r < data.length; r++) { // row 0 = header
       if (String(data[r][1] || '').trim().toLowerCase() === needle) {
         sheet.getRange(r + 1, 12).setValue(isHidden ? 'Yes' : ''); // col L = 12
+        sheet.getRange(r + 1, 13).setValue(auditVal);              // col M = last updated by
         updated = true;
         break;
       }
