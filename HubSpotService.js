@@ -2906,13 +2906,12 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
     }
     var noteId = JSON.parse(createResp.getContentText()).id;
 
-    // Step 2: Associate note with deal via v4 API
+    // Step 2: Associate note with deal using default association
     var assocResp = monitoredFetch(
-      'https://api.hubapi.com/crm/v4/objects/notes/' + noteId + '/associations/deals/' + dealId,
+      'https://api.hubapi.com/crm/v4/objects/notes/' + noteId + '/associations/default/deals/' + dealId,
       {
         method: 'put',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        payload: JSON.stringify([{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]),
+        headers: { 'Authorization': 'Bearer ' + token },
         muteHttpExceptions: true
       }
     );
