@@ -3020,7 +3020,7 @@ function assignTeacherForOnboarding(jlid, teacherName) {
  *   - previous_teachers: append old teacher (semicolon-separated, no duplicates)
  *   - migration_request_count: increment by 1 (dropdown internal value 1,2,3,4...)
  */
-function updateMigrationDealProperties(jlid, oldTeacher, newTeacher) {
+function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody) {
   try {
     var hsResult = fetchHubspotByJlid(jlid);
     if (!hsResult.success || !hsResult.data || !hsResult.data.dealId) {
@@ -3070,7 +3070,12 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher) {
 
     var code = resp.getResponseCode();
     Logger.log('[updateMigrationDealProps] PATCH → HTTP ' + code);
-    if (code === 200 || code === 204) return { success: true };
+    if (code === 200 || code === 204) {
+      if (noteBody) {
+        try { addNoteToHubSpotDeal(dealId, noteBody); } catch(ne) { Logger.log('[updateMigrationDealProps] Note error: ' + ne.message); }
+      }
+      return { success: true };
+    }
     return { success: false, message: 'PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
   } catch(e) {
     Logger.log('[updateMigrationDealProps] Error: ' + e.message);

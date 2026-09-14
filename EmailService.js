@@ -752,26 +752,17 @@ function sendMigrationEmail(data, attachments = []) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
-    // ── Attrition note on deal ──
+    // ── Update deal properties: current_teacher, previous_teachers, migration_request_count ──
+    // Attrition note is written inside updateMigrationDealProperties reusing the same dealId fetch.
     var _ATTRITION_REASONS = ['attrition', 'teacher on leave', 'maternity', 'higher studies', 'leave'];
     var _reason = String(data.reasonOfMigration || '').toLowerCase();
     var _isAttrition = _ATTRITION_REASONS.some(function(r) { return _reason.indexOf(r) !== -1; });
-    if (_isAttrition && data.jlid) {
-      try {
-        var hsResultForNote = fetchHubspotByJlid(data.jlid);
-        if (hsResultForNote.success && hsResultForNote.data && hsResultForNote.data.dealId) {
-          var attrNoteBody = 'Teacher Attrition migration performed. Old teacher: ' + (data.oldTeacher || 'Unknown') + '. New teacher: ' + (data.newTeacher || 'Unknown') + '.';
-          addNoteToHubSpotDeal(hsResultForNote.data.dealId, attrNoteBody);
-        }
-      } catch(attrNoteErr) {
-        Logger.log('[sendMigrationEmail] Attrition note error: ' + attrNoteErr.message);
-      }
-    }
-
-    // ── Update deal properties: current_teacher, previous_teachers, migration_request_count ──
+    var _attrNoteBody = _isAttrition
+      ? 'Teacher Attrition migration performed. Old teacher: ' + (data.oldTeacher || 'Unknown') + '. New teacher: ' + (data.newTeacher || 'Unknown') + '.'
+      : null;
     try {
       var dealPropStart = new Date().getTime();
-      var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '');
+      var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '', _attrNoteBody);
       if (dealPropRes.success) {
         notes.push('Deal props updated: current_teacher, previous_teachers, migration_request_count');
         _timelineAdd(timeline, 'deal_props', 'Deal Properties Updated', 'success', dealPropStart, '', {
