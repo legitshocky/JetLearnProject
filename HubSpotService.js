@@ -2914,11 +2914,15 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
       'https://api.hubapi.com/crm/v4/objects/notes/' + noteId + '/associations/default/deals/' + dealId,
       {
         method: 'put',
-        headers: { 'Authorization': 'Bearer ' + token },
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         muteHttpExceptions: true
       }
     );
-    Logger.log('[addNoteDeal] Associate note ' + noteId + ' → deal ' + dealId + ' HTTP ' + assocResp.getResponseCode());
+    var assocCode = assocResp.getResponseCode();
+    Logger.log('[addNoteDeal] Associate note ' + noteId + ' → deal ' + dealId + ' HTTP ' + assocCode);
+    if (assocCode !== 200 && assocCode !== 201 && assocCode !== 204) {
+      Logger.log('[addNoteDeal] Association failed: ' + assocResp.getContentText().substring(0, 300));
+    }
   } catch(e) {
     Logger.log('[addNoteDeal] Error: ' + e.message);
   }
