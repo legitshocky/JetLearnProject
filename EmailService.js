@@ -758,7 +758,7 @@ function sendMigrationEmail(data, attachments = []) {
     var _reason = String(data.reasonOfMigration || '').toLowerCase();
     var _isAttrition = _ATTRITION_REASONS.some(function(r) { return _reason.indexOf(r) !== -1; });
     var _attrNoteBody = _isAttrition
-      ? 'Teacher Attrition migration performed. Old teacher: ' + (data.oldTeacher || 'Unknown') + '. New teacher: ' + (data.newTeacher || 'Unknown') + '.'
+      ? '2 Classes Reason Attrition "' + (data.oldTeacher || 'Unknown') + '"'
       : null;
     try {
       var dealPropStart = new Date().getTime();
