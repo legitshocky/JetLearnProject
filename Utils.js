@@ -14,26 +14,77 @@ function _getSpreadsheet(id) {
   return _spreadsheetCache[id];
 }
 
+// Sheets listed here are also stored in GAS CacheService (survives across executions).
+// TTL: 10 minutes. This lets a warm-up in one GAS call benefit the next call.
+var _GAS_CACHE_SHEETS = ['Teacher Courses'];
+var _GAS_CACHE_TTL    = 600; // seconds
+
 function _getCachedSheetData(sheetName, spreadsheetId = CONFIG.MIGRATION_SHEET_ID) {
   const cacheKey = `${spreadsheetId}_${sheetName}`;
-  if (!_sheetDataCache[cacheKey]) {
+
+  // 1. In-memory cache (within same execution)
+  if (_sheetDataCache[cacheKey]) return _sheetDataCache[cacheKey];
+
+  // 2. GAS CacheService (across executions, up to 10 min)
+  if (_GAS_CACHE_SHEETS.indexOf(sheetName) !== -1) {
     try {
-      const spreadsheet = _getSpreadsheet(spreadsheetId);
-      if (!spreadsheet) { _sheetDataCache[cacheKey] = []; return []; }
-      const sheet = spreadsheet.getSheetByName(sheetName);
-      if (!sheet) {
-        Logger.log(`Warning: Sheet '${sheetName}' not found in spreadsheet ID: ${spreadsheetId}. Returning empty array.`);
-        _sheetDataCache[cacheKey] = []; // Cache empty result to avoid repeated lookups
-        return [];
+      var gasCache = CacheService.getScriptCache();
+      var cached   = gasCache.get(cacheKey);
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        _sheetDataCache[cacheKey] = parsed;
+        Logger.log('[_getCachedSheetData] GAS cache HIT for ' + sheetName);
+        return parsed;
       }
-      _sheetDataCache[cacheKey] = sheet.getDataRange().getValues();
-    } catch (e) {
-      Logger.log(`Error fetching cached data for ${sheetName}: ${e.message}`);
-      _sheetDataCache[cacheKey] = []; 
-      return []; // Return empty array to prevent "No data returned" crash
+    } catch(ce) {
+      Logger.log('[_getCachedSheetData] GAS cache read error: ' + ce.message);
     }
   }
-  return _sheetDataCache[cacheKey];
+
+  // 3. Cold sheet read
+  try {
+    const spreadsheet = _getSpreadsheet(spreadsheetId);
+    if (!spreadsheet) { _sheetDataCache[cacheKey] = []; return []; }
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      Logger.log(`Warning: Sheet '${sheetName}' not found in spreadsheet ID: ${spreadsheetId}. Returning empty array.`);
+      _sheetDataCache[cacheKey] = [];
+      return [];
+    }
+    var data = sheet.getDataRange().getValues();
+    _sheetDataCache[cacheKey] = data;
+
+    // Store in GAS CacheService if applicable (max value size 100KB; skip if too large)
+    if (_GAS_CACHE_SHEETS.indexOf(sheetName) !== -1) {
+      try {
+        var serialized = JSON.stringify(data);
+        if (serialized.length < 90000) {
+          CacheService.getScriptCache().put(cacheKey, serialized, _GAS_CACHE_TTL);
+          Logger.log('[_getCachedSheetData] GAS cache SET for ' + sheetName + ' (' + serialized.length + ' bytes)');
+        } else {
+          Logger.log('[_getCachedSheetData] ' + sheetName + ' too large for GAS cache (' + serialized.length + ' bytes) — skipped');
+        }
+      } catch(se) {
+        Logger.log('[_getCachedSheetData] GAS cache write error: ' + se.message);
+      }
+    }
+    return data;
+  } catch (e) {
+    Logger.log(`Error fetching cached data for ${sheetName}: ${e.message}`);
+    _sheetDataCache[cacheKey] = [];
+    return [];
+  }
+}
+
+// Call this during JLID load to pre-warm the Teacher Courses cache so the
+// upskilling check on teacher selection is instant (no cold sheet read).
+function warmTeacherCoursesCache() {
+  try {
+    _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
+    Logger.log('[warmTeacherCoursesCache] Done.');
+  } catch(e) {
+    Logger.log('[warmTeacherCoursesCache] Error: ' + e.message);
+  }
 }
 
 function getOrCreateSheet(sheetName) {

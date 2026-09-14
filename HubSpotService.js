@@ -427,6 +427,9 @@ function fetchMigrationHybridData(jlid) {
     finalData.suggestedIana = '';
   }
 
+  // Pre-warm Teacher Courses cache so upskilling check on teacher selection is instant.
+  try { warmTeacherCoursesCache(); } catch(wce) {}
+
   return { success: true, data: finalData };
 }
 
