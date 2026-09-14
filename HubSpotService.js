@@ -3052,7 +3052,7 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher) {
     if (previousTeachersVal) payload.properties.previous_teachers = previousTeachersVal;
     if (currentTeacherId)    payload.properties.current_teacher   = currentTeacherId;
 
-    Logger.log('[updateMigrationDealProps] deal=' + dealId + ' current_teacher_id=' + (currentTeacherId || 'SKIPPED-no-id') + ' previous_teachers=' + (previousTeachersVal || 'SKIPPED-empty') + ' count=' + newCount);
+    Logger.log('[updateMigrationDealProps] deal=' + dealId + ' newTeacher="' + newTeacher + '" resolved="' + _resolvedNewTeacher + '" current_teacher_id=' + (currentTeacherId || 'SKIPPED-no-id') + ' previous_teachers=' + (previousTeachersVal || 'SKIPPED-empty') + ' count=' + newCount);
 
     var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
       method: 'PATCH',

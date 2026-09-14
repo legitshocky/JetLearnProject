@@ -810,12 +810,27 @@ function getTeacherLabel(hubspotValue) {
 
 function getTeacherHsId(displayName) {
   if (!displayName) return null;
-  var name = displayName.trim().toLowerCase();
+  var name = displayName.trim().toLowerCase().replace(/\s+/g, ' ');
   var teacherHsData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_HS_DATA);
+  // Pass 1: exact normalized match
   for (var i = 1; i < teacherHsData.length; i++) {
-    var label = String(teacherHsData[i][2] || '').trim().toLowerCase();
+    var label = String(teacherHsData[i][2] || '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (label === name) return String(teacherHsData[i][1]).trim();
   }
+  // Pass 2: first-word + last-word match (handles middle name differences)
+  var parts = name.split(' ');
+  if (parts.length >= 2) {
+    var first = parts[0], last = parts[parts.length - 1];
+    for (var j = 1; j < teacherHsData.length; j++) {
+      var lbl = String(teacherHsData[j][2] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      var lparts = lbl.split(' ');
+      if (lparts.length >= 2 && lparts[0] === first && lparts[lparts.length - 1] === last) {
+        Logger.log('[getTeacherHsId] Fuzzy match: "' + displayName + '" → "' + teacherHsData[j][2] + '" id=' + teacherHsData[j][1]);
+        return String(teacherHsData[j][1]).trim();
+      }
+    }
+  }
+  Logger.log('[getTeacherHsId] No match found for: "' + displayName + '"');
   return null;
 }
 
