@@ -3144,12 +3144,18 @@ function addAttritionComplimentaryClasses(jlid, oldTeacherName) {
     });
     var patchCode = patchRes.getResponseCode();
     Logger.log('[addAttritionClasses] PATCH line item ' + latestId + ' → HTTP ' + patchCode);
+
+    var noteBody = '2 Classes added for \'' + (oldTeacherName || 'Unknown Teacher') + '\' Reason Attrition';
     if (patchCode !== 200 && patchCode !== 204) {
-      return { success: false, message: 'PATCH failed (' + patchCode + '): ' + patchRes.getContentText().substring(0, 200) };
+      // PATCH failed (likely missing scope) — still write the note so it's visible on the deal
+      var patchErr = patchRes.getContentText().substring(0, 300);
+      Logger.log('[addAttritionClasses] PATCH failed — writing note anyway. Error: ' + patchErr);
+      try { addNoteToHubSpotDeal(dealId, noteBody + '\n[Complimentary class count update failed — check HubSpot app scopes]'); } catch(ne) {}
+      return { success: false, message: 'PATCH failed (' + patchCode + '): ' + patchErr };
     }
 
     // 6. Log note on deal
-    addNoteToHubSpotDeal(dealId, '2 Classes Added Attrition — ' + (oldTeacherName || 'Unknown Teacher'));
+    try { addNoteToHubSpotDeal(dealId, noteBody); } catch(ne) { Logger.log('[addAttritionClasses] Note error: ' + ne.message); }
     Logger.log('[addAttritionClasses] Done — comp classes now ' + newComp + ', offer type: ' + newOfferType);
     return { success: true, skipped: false, newComp: newComp };
   } catch(e) {
