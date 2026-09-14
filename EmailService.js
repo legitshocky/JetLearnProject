@@ -752,6 +752,22 @@ function sendMigrationEmail(data, attachments = []) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
+    // ── Attrition note on deal ──
+    var _ATTRITION_REASONS = ['attrition', 'teacher on leave', 'maternity', 'higher studies', 'leave'];
+    var _reason = String(data.reasonOfMigration || '').toLowerCase();
+    var _isAttrition = _ATTRITION_REASONS.some(function(r) { return _reason.indexOf(r) !== -1; });
+    if (_isAttrition && data.jlid) {
+      try {
+        var hsResultForNote = fetchHubspotByJlid(data.jlid);
+        if (hsResultForNote.success && hsResultForNote.data && hsResultForNote.data.dealId) {
+          var attrNoteBody = 'Teacher Attrition migration performed. Old teacher: ' + (data.oldTeacher || 'Unknown') + '. New teacher: ' + (data.newTeacher || 'Unknown') + '.';
+          addNoteToHubSpotDeal(hsResultForNote.data.dealId, attrNoteBody);
+        }
+      } catch(attrNoteErr) {
+        Logger.log('[sendMigrationEmail] Attrition note error: ' + attrNoteErr.message);
+      }
+    }
+
     // ── Update deal properties: current_teacher, previous_teachers, migration_request_count ──
     try {
       var dealPropStart = new Date().getTime();
