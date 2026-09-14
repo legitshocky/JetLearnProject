@@ -2890,18 +2890,33 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
     if (!token || !dealId || !noteBody) return;
-    var payload = {
-      engagement: { active: true, type: 'NOTE', timestamp: new Date().getTime() },
-      associations: { dealIds: [parseInt(dealId, 10)] },
-      metadata: { body: noteBody }
-    };
-    var resp = monitoredFetch('https://api.hubapi.com/engagements/v1/engagements', {
+
+    // Step 1: Create note via v3 API
+    var createResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/notes', {
       method: 'post',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify({ properties: { hs_note_body: noteBody, hs_timestamp: String(new Date().getTime()) } }),
       muteHttpExceptions: true
     });
-    Logger.log('[addNoteDeal] Deal ' + dealId + ' → HTTP ' + resp.getResponseCode());
+    var createCode = createResp.getResponseCode();
+    Logger.log('[addNoteDeal] Create note → HTTP ' + createCode);
+    if (createCode !== 201 && createCode !== 200) {
+      Logger.log('[addNoteDeal] Create failed: ' + createResp.getContentText().substring(0, 200));
+      return;
+    }
+    var noteId = JSON.parse(createResp.getContentText()).id;
+
+    // Step 2: Associate note with deal via v4 API
+    var assocResp = monitoredFetch(
+      'https://api.hubapi.com/crm/v4/objects/notes/' + noteId + '/associations/deals/' + dealId,
+      {
+        method: 'put',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify([{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 }]),
+        muteHttpExceptions: true
+      }
+    );
+    Logger.log('[addNoteDeal] Associate note ' + noteId + ' → deal ' + dealId + ' HTTP ' + assocResp.getResponseCode());
   } catch(e) {
     Logger.log('[addNoteDeal] Error: ' + e.message);
   }
