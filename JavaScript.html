@@ -2521,7 +2521,6 @@ function submitMigrationForm(e) {
           watiTemplateName: selectedWatiTemplate,
           oldTeacherPrefix: (document.getElementById('oldTeacherPrefix') && document.getElementById('oldTeacherPrefix').value) || '',
           newTeacherPrefix: (document.getElementById('newTeacherPrefix') && document.getElementById('newTeacherPrefix').value) || '',
-          addComplimentaryClasses: !!(document.getElementById('addComplimentaryClasses') && document.getElementById('addComplimentaryClasses').checked),
           confirmedFutureCourses: window.mipConfirmedCourses || [],
 
           // Also-email-parent (fallback while WhatsApp is down)
@@ -9715,10 +9714,8 @@ function triggerMigrationIntelligence() {
                             var val = watiSelect.value;
                             var oldC = document.getElementById('oldTeacherPrefixContainer');
                             var newC = document.getElementById('newTeacherPrefixContainer');
-                            var compC = document.getElementById('addComplimentaryContainer');
                             if (oldC) oldC.style.display = val === 'migration_teacher_complieance_issue_1' ? 'block' : 'none';
                             if (newC) newC.style.display = _TEMPLATES_WITH_NEW_TEACHER.indexOf(val) !== -1 ? 'block' : 'none';
-                            if (compC) compC.style.display = (val === 'migration_teacher_performance_issue' || val === 'migration_teacher_complieance_issue_1') ? 'block' : 'none';
                         };
                         _togglePrefix();
                         watiSelect.addEventListener('change', _togglePrefix);
@@ -10259,7 +10256,6 @@ function fetchMigrationSpecificData() {
             manualPhone: document.getElementById('manualWhatsappNumber').value.trim(),
             oldTeacherPrefix: (document.getElementById('oldTeacherPrefix') && document.getElementById('oldTeacherPrefix').value) || '',
             newTeacherPrefix: (document.getElementById('newTeacherPrefix') && document.getElementById('newTeacherPrefix').value) || '',
-            addComplimentaryClasses: !!(document.getElementById('addComplimentaryClasses') && document.getElementById('addComplimentaryClasses').checked),
         };
     }
 

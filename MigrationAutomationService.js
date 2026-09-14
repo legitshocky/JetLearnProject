@@ -178,7 +178,6 @@ var MIG_AUTO = (function() {
       sendEmailToTeacher:     true,
       sendWhatsappToParent:   true,
       sendEmailToParentAlso:  false,
-      addComplimentaryClasses: false,
       performedBy:            'MigrationAutomation',
       _ticketId:              ticket.id
     };

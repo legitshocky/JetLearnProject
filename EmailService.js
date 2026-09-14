@@ -752,46 +752,6 @@ function sendMigrationEmail(data, attachments = []) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }
 
-    // ── Attrition/Compliance: add 2 complimentary classes to latest line item ──
-    // Auto-attrition is driven by reasonOfMigration (not watiTemplateName which is blank when WhatsApp is off)
-    var _ATTRITION_REASONS = ['attrition', 'teacher on leave', 'maternity', 'higher studies', 'leave'];
-    var _TOGGLE_TEMPLATES  = ['migration_teacher_performance_issue', 'migration_teacher_complieance_issue_1'];
-    var _watiTemplate      = String(data.watiTemplateName || '');
-    var _reason            = String(data.reasonOfMigration || '').toLowerCase();
-    var _isAttrition       = _ATTRITION_REASONS.some(function(r) { return _reason.indexOf(r) !== -1; });
-    var _isPerfToggle      = (_TOGGLE_TEMPLATES.indexOf(_watiTemplate) !== -1 || data.addComplimentaryClasses) && data.addComplimentaryClasses;
-    var _compStart    = new Date().getTime();
-    if ((_isAttrition || _isPerfToggle) && data.jlid) {
-      try {
-        var compRes = addAttritionComplimentaryClasses(data.jlid, data.oldTeacher || '');
-        if (compRes.success && !compRes.skipped) {
-          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes +2 Added', 'success', _compStart,
-            '2 classes added, Teacher Attrition added to offer type', {
-            'Classes Added': '2',
-            'Offer Type Tagged': 'Teacher Attrition',
-            'JLID': data.jlid || '—',
-            'Triggered By': _isAttrition ? 'Attrition reason' : 'addComplimentaryClasses flag'
-          });
-        } else if (compRes.success && compRes.skipped) {
-          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes — Already Tagged', 'success', _compStart,
-            'Teacher Attrition already present — skipped', {
-            'Status': 'Skipped — already tagged',
-            'JLID': data.jlid || '—'
-          });
-        } else {
-          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compRes.message, {
-            'Error': compRes.message,
-            'JLID': data.jlid || '—'
-          });
-        }
-      } catch(compErr) {
-        Logger.log('[sendMigrationEmail] Comp classes error: ' + compErr.message);
-        _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compErr.message, {
-          'Error': compErr.message
-        });
-      }
-    }
-
     // ── Update deal properties: current_teacher, previous_teachers, migration_request_count ──
     try {
       var dealPropStart = new Date().getTime();
