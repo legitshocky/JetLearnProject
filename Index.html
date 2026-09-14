@@ -258,6 +258,14 @@
       </div>
   </div>
 
+  <!-- Version update banner -->
+  <div id="versionUpdateBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(90deg,#4f46e5,#7c3aed);color:#fff;padding:10px 20px;display:none;align-items:center;justify-content:center;gap:12px;font-size:0.85rem;font-weight:600;box-shadow:0 2px 12px rgba(79,70,229,0.4);">
+    <i class="fas fa-rocket" style="font-size:0.9rem;"></i>
+    <span>New version available — reload to get the latest updates.</span>
+    <button onclick="window.location.reload()" style="background:#fff;color:#4f46e5;border:none;border-radius:6px;padding:5px 14px;font-size:0.8rem;font-weight:700;cursor:pointer;">Reload Now</button>
+    <button onclick="document.getElementById('versionUpdateBanner').style.display='none'" style="background:rgba(255,255,255,0.15);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.78rem;cursor:pointer;margin-left:4px;">Dismiss</button>
+  </div>
+
   <!-- Main App (hidden by default) -->
   <div id="appContainer" class="app-container" style="display: none;">
     <!-- Sidebar -->

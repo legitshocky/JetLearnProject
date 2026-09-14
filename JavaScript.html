@@ -7307,6 +7307,28 @@ google.script.run
 
 
     var CURRENT_APP_VERSION = 'V6.14';
+    var _versionPollId = null;
+    var _loadedVersion = null; // set on first successful check
+
+    function startVersionPolling() {
+      if (_versionPollId) return;
+      _versionPollId = setInterval(function() {
+        if (!currentUser) return;
+        google.script.run
+          .withSuccessHandler(function(v) {
+            if (!v) return;
+            if (!_loadedVersion) { _loadedVersion = v; return; }
+            if (v !== _loadedVersion) {
+              var banner = document.getElementById('versionUpdateBanner');
+              if (banner) banner.style.display = 'flex';
+              clearInterval(_versionPollId);
+              _versionPollId = null;
+            }
+          })
+          .withFailureHandler(function() {}) // silent
+          .getAppVersion();
+      }, 150000); // 2.5 minutes
+    }
 
     function checkChangelog() {
         var storedVersion = localStorage.getItem('appVersion');
@@ -7351,6 +7373,7 @@ google.script.run
 
     startPolling();
     startSessionTimer();
+    startVersionPolling();
     
     if (user.mustChangePassword) {
         document.getElementById('forcePasswordModal').style.display = 'block';
