@@ -445,11 +445,17 @@ function sendMigrationEmail(data, attachments = []) {
         const pdUpdateRes = _updateExistingPracticeDocTeacher(existingDocLink, data.newTeacher);
         if (!pdUpdateRes.success) notes.push('Practice doc access transfer failed: ' + pdUpdateRes.error);
       }
-      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'success', practiceStarted, existingDocLink ? '' : 'No existing practice doc link found');
+      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'success', practiceStarted, existingDocLink ? '' : 'No existing practice doc link found', {
+        'Doc Link': existingDocLink || 'None found',
+        'Access Updated For': existingDocLink ? (data.newTeacher || '—') : '—',
+        'Previous Teacher Removed': existingDocLink ? (data.oldTeacher || '—') : '—'
+      });
     } catch(pde) {
       Logger.log('[sendMigrationEmail] Practice doc transfer error: ' + pde.message);
       notes.push('Practice doc access transfer error: ' + pde.message);
-      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'failed', practiceStarted, pde.message);
+      _timelineAdd(timeline, 'practice_doc', 'Practice Doc Access Checked', 'failed', practiceStarted, pde.message, {
+        'Error': pde.message
+      });
     }
 
     // ==========================================
@@ -524,6 +530,12 @@ function sendMigrationEmail(data, attachments = []) {
             attachments: attachments
           });
         });
+        timeline[timeline.length - 1].meta = {
+          'To': newTeacherInfo.email,
+          'Teacher': data.newTeacher || '—',
+          'CC': finalClsEmailForCC || 'None',
+          'Tracking ID': newTeacherResult.trackingId || '—'
+        };
         notes.push(`Teacher Email Sent (TID: ${newTeacherResult.trackingId})`);
 
         // --- TP MANAGER UPSKILLING GAP EMAIL + HUBSPOT TASK ---
@@ -582,6 +594,11 @@ function sendMigrationEmail(data, attachments = []) {
                 jlid: data.jlid
               });
             });
+            timeline[timeline.length - 1].meta = {
+              'To': oldTeacherInfo.email,
+              'Teacher': data.oldTeacher || '—',
+              'CC': finalClsEmailForCC || 'None'
+            };
             notes.push("Old Teacher Email Sent.");
            } catch(e) {
              Logger.log("Old Teacher Email Failed: " + e.message);
@@ -666,20 +683,23 @@ function sendMigrationEmail(data, attachments = []) {
           }
         });
 
+        var _waMeta = { 'Template': templateId || '—', 'Phone(s)': targetPhones.join(', ') || '—', 'Sent': String(watiSentCount) };
         if (failedTargets.length > 0 && watiSentCount === 0) {
           watiSuccess = false;
           watiErrorMessage = failedTargets.map(f => f.phone + ': ' + f.reason).join('; ');
-          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage);
+          _waMeta['Failed'] = failedTargets.map(f => f.phone).join(', ');
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage, _waMeta);
         } else if (failedTargets.length > 0) {
           // Partial — some sent, some failed
           notes.push(`WATI Partial: ${failedTargets.length} of ${targetPhones.length} failed`);
-          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} sent, ${failedTargets.length} failed`);
+          _waMeta['Failed'] = failedTargets.map(f => f.phone).join(', ');
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} sent, ${failedTargets.length} failed`, _waMeta);
         } else {
           notes.push(`WATI OK → all ${watiSentCount} sent [DATA: ${logDetail}]`);
         }
 
         if (!timeline.some(function(step) { return step.key === 'parent_whatsapp'; })) {
-          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} recipient(s)`);
+          _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Sent', 'success', whatsappStarted, `${watiSentCount} recipient(s)`, _waMeta);
         }
 
       } catch(e) {
@@ -687,11 +707,11 @@ function sendMigrationEmail(data, attachments = []) {
         watiErrorMessage = e.message.substring(0, 200);
         Logger.log("WATI Block Error: " + e.message);
         notes.push("WATI Error: " + watiErrorMessage);
-        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage);
+        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Failed', 'failed', whatsappStarted, watiErrorMessage, { 'Error': watiErrorMessage });
       }
     } else {
         notes.push("WhatsApp Skipped.");
-        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Skipped', 'skipped', new Date().getTime(), 'Checkbox unchecked');
+        _timelineAdd(timeline, 'parent_whatsapp', 'Parent WhatsApp Skipped', 'skipped', new Date().getTime(), 'Checkbox unchecked', { 'Reason': 'Checkbox unchecked' });
     }
 
     // ==========================================
@@ -703,15 +723,18 @@ function sendMigrationEmail(data, attachments = []) {
         var emailRes = sendMigrationParentFallbackEmail(data.jlid, data, data.performedBy, data.parentEmailTargets || []);
         if (emailRes.success) {
           notes.push('Parent Email Sent (TID: ' + emailRes.trackingId + ')');
-          _timelineAdd(timeline, 'parent_email', 'Parent Email Sent', 'success', parentEmailStarted, '');
+          _timelineAdd(timeline, 'parent_email', 'Parent Email Sent', 'success', parentEmailStarted, '', {
+            'To': (data.parentEmailTargets || []).join(', ') || '—',
+            'Tracking ID': emailRes.trackingId || '—'
+          });
         } else {
           notes.push('Parent Email Skipped: ' + emailRes.message);
-          _timelineAdd(timeline, 'parent_email', 'Parent Email Skipped', 'skipped', parentEmailStarted, emailRes.message);
+          _timelineAdd(timeline, 'parent_email', 'Parent Email Skipped', 'skipped', parentEmailStarted, emailRes.message, { 'Reason': emailRes.message });
         }
       } catch(pe) {
         Logger.log('[sendMigrationEmail] Parent email failed: ' + pe.message);
         notes.push('Parent Email Failed: ' + pe.message);
-        _timelineAdd(timeline, 'parent_email', 'Parent Email Failed', 'failed', parentEmailStarted, pe.message);
+        _timelineAdd(timeline, 'parent_email', 'Parent Email Failed', 'failed', parentEmailStarted, pe.message, { 'Error': pe.message });
       }
     }
 
@@ -743,16 +766,29 @@ function sendMigrationEmail(data, attachments = []) {
         var compRes = addAttritionComplimentaryClasses(data.jlid, data.oldTeacher || '');
         if (compRes.success && !compRes.skipped) {
           _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes +2 Added', 'success', _compStart,
-            '2 classes added, Teacher Attrition added to offer type');
+            '2 classes added, Teacher Attrition added to offer type', {
+            'Classes Added': '2',
+            'Offer Type Tagged': 'Teacher Attrition',
+            'JLID': data.jlid || '—',
+            'Triggered By': _isAttrition ? 'Attrition reason' : 'addComplimentaryClasses flag'
+          });
         } else if (compRes.success && compRes.skipped) {
           _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes — Already Tagged', 'success', _compStart,
-            'Teacher Attrition already present — skipped');
+            'Teacher Attrition already present — skipped', {
+            'Status': 'Skipped — already tagged',
+            'JLID': data.jlid || '—'
+          });
         } else {
-          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compRes.message);
+          _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compRes.message, {
+            'Error': compRes.message,
+            'JLID': data.jlid || '—'
+          });
         }
       } catch(compErr) {
         Logger.log('[sendMigrationEmail] Comp classes error: ' + compErr.message);
-        _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compErr.message);
+        _timelineAdd(timeline, 'comp_classes', 'Complimentary Classes Update Failed', 'failed', _compStart, compErr.message, {
+          'Error': compErr.message
+        });
       }
     }
 
@@ -762,10 +798,17 @@ function sendMigrationEmail(data, attachments = []) {
       var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '');
       if (dealPropRes.success) {
         notes.push('Deal props updated: current_teacher, previous_teachers, migration_request_count');
-        _timelineAdd(timeline, 'deal_props', 'Deal Properties Updated', 'success', dealPropStart, '');
+        _timelineAdd(timeline, 'deal_props', 'Deal Properties Updated', 'success', dealPropStart, '', {
+          'current_teacher': data.newTeacher || '—',
+          'previous_teacher': data.oldTeacher || '—',
+          'migration_request_count': 'Incremented by 1'
+        });
       } else {
         notes.push('Deal props update failed: ' + dealPropRes.message);
-        _timelineAdd(timeline, 'deal_props', 'Deal Properties Update Failed', 'failed', dealPropStart, dealPropRes.message);
+        _timelineAdd(timeline, 'deal_props', 'Deal Properties Update Failed', 'failed', dealPropStart, dealPropRes.message, {
+          'Error': dealPropRes.message,
+          'Attempted current_teacher': data.newTeacher || '—'
+        });
       }
     } catch(dpErr) {
       Logger.log('[sendMigrationEmail] Deal props update error: ' + dpErr.message);
@@ -880,7 +923,14 @@ function sendMigrationEmail(data, attachments = []) {
         data.reasonOfMigration, 
         intervenedStr // <--- THIS WAS MISSING!
     );
-    _timelineAdd(timeline, 'audit_log', 'Audit Log Updated', 'success', auditStarted, '');
+    _timelineAdd(timeline, 'audit_log', 'Audit Log Updated', 'success', auditStarted, '', {
+      'Performed By': data.performedBy || '—',
+      'Intervened By': intervenedStr || '—',
+      'Learner': data.learner || data.jlid || '—',
+      'Old Teacher': data.oldTeacher || '—',
+      'New Teacher': data.newTeacher || '—',
+      'Reason': data.reasonOfMigration || '—'
+    });
   }
 }
 

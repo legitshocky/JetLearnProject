@@ -1667,6 +1667,33 @@ function bkcDoCancel() {
         if (card && card.parentNode) card.parentNode.removeChild(card);
     }
 
+    function _renderMetaPanel(step) {
+        var parts = [];
+        if (step.detail) {
+            parts.push('<div class="loading-timeline-meta-grid"><div class="loading-timeline-meta-key">Info<\/div><div class="loading-timeline-meta-val">' + escapeHtml(step.detail) + '<\/div><\/div>');
+        }
+        if (step.meta && typeof step.meta === 'object') {
+            var rows = Object.keys(step.meta).map(function(k) {
+                var v = step.meta[k] || '—';
+                // Linkify URLs
+                var valHtml = /^https?:\/\//.test(v)
+                    ? '<a href="' + escapeHtml(v) + '" target="_blank">' + escapeHtml(v) + '<\/a>'
+                    : escapeHtml(v);
+                return '<div class="loading-timeline-meta-key">' + escapeHtml(k) + '<\/div><div class="loading-timeline-meta-val">' + valHtml + '<\/div>';
+            }).join('');
+            parts.push('<div class="loading-timeline-meta-grid">' + rows + '<\/div>');
+        }
+        return parts.join('');
+    }
+
+    function _toggleTimelineRow(rowEl) {
+        var panel = rowEl.nextElementSibling;
+        if (!panel || !panel.classList.contains('loading-timeline-expanded')) return;
+        var open = panel.classList.contains('open');
+        panel.classList.toggle('open', !open);
+        rowEl.classList.toggle('expanded', !open);
+    }
+
     function renderLoadingTimeline(steps) {
         var id = _bgActiveId();
         if (!id) return;
@@ -1683,15 +1710,21 @@ function bkcDoCancel() {
         list.classList.add('active');
         list.innerHTML = steps.map(function(step, idx) {
             var status = step.status || (idx === 0 ? 'running' : 'pending');
-            var detail = step.detail ? '<div class="loading-timeline-detail">' + escapeHtml(step.detail) + '<\/div>' : '';
+            var hasMeta = (step.meta && Object.keys(step.meta).length > 0) || !!step.detail;
+            var chevron = hasMeta ? '<span class="loading-timeline-chevron"><i class="fas fa-chevron-down"><\/i><\/span>' : '';
             var time = (status === 'success' || status === 'failed' || status === 'skipped')
                 ? _formatDuration(step.durationMs || 0)
                 : '';
-            return '<div class="loading-timeline-row ' + status + '">' +
+            var rowClick = hasMeta ? ' onclick="_toggleTimelineRow(this)"' : '';
+            var rowHtml = '<div class="loading-timeline-row ' + status + (hasMeta ? ' has-meta' : '') + '"' + rowClick + '>' +
                 '<span class="loading-timeline-icon"><i class="fas ' + _timelineIcon(status) + '"><\/i><\/span>' +
-                '<div><div class="loading-timeline-label">' + escapeHtml(step.label || step.key || 'Step') + '<\/div>' + detail + '<\/div>' +
+                '<div><div class="loading-timeline-label">' + escapeHtml(step.label || step.key || 'Step') + chevron + '<\/div><\/div>' +
                 '<div class="loading-timeline-time">' + time + '<\/div>' +
             '<\/div>';
+            var panelHtml = hasMeta
+                ? '<div class="loading-timeline-expanded">' + _renderMetaPanel(step) + '<\/div>'
+                : '';
+            return rowHtml + panelHtml;
         }).join('');
     }
 

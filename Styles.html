@@ -3349,6 +3349,53 @@
       background: #f1f5f9;
       color: #94a3b8;
     }
+    .loading-timeline-row.has-meta {
+      cursor: pointer;
+    }
+    .loading-timeline-row.has-meta:hover {
+      background: #f8fafc;
+    }
+    .loading-timeline-chevron {
+      font-size: 0.62rem;
+      color: #94a3b8;
+      margin-left: 4px;
+      transition: transform 0.18s;
+      display: inline-block;
+    }
+    .loading-timeline-row.expanded .loading-timeline-chevron {
+      transform: rotate(180deg);
+    }
+    .loading-timeline-expanded {
+      display: none;
+      grid-column: 2 / 4;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      padding: 8px 10px 10px;
+      border-radius: 0 0 6px 6px;
+    }
+    .loading-timeline-row.expanded + .loading-timeline-expanded,
+    .loading-timeline-expanded.open {
+      display: block;
+    }
+    .loading-timeline-meta-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 3px 10px;
+      font-size: 0.72rem;
+    }
+    .loading-timeline-meta-key {
+      color: #64748b;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .loading-timeline-meta-val {
+      color: #1e293b;
+      word-break: break-all;
+    }
+    .loading-timeline-meta-val a {
+      color: #6366f1;
+      text-decoration: underline;
+    }
 
     @keyframes spin {
       to { transform: rotate(360deg); }

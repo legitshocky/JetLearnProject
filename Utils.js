@@ -55,12 +55,9 @@ function _timelineStep(timeline, key, label, fn) {
   var started = new Date().getTime();
   try {
     var value = fn();
-    timeline.push({
-      key: key,
-      label: label,
-      status: 'success',
-      durationMs: new Date().getTime() - started
-    });
+    var step = { key: key, label: label, status: 'success', durationMs: new Date().getTime() - started };
+    timeline.push(step);
+    // caller can set step.meta after we return — expose the step via timeline[timeline.length-1]
     return value;
   } catch (e) {
     timeline.push({
@@ -74,13 +71,14 @@ function _timelineStep(timeline, key, label, fn) {
   }
 }
 
-function _timelineAdd(timeline, key, label, status, started, detail) {
+function _timelineAdd(timeline, key, label, status, started, detail, meta) {
   timeline.push({
     key: key,
     label: label,
     status: status || 'success',
     durationMs: started ? (new Date().getTime() - started) : 0,
-    detail: detail || ''
+    detail: detail || '',
+    meta: meta || null
   });
 }
 
