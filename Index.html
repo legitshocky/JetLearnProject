@@ -7391,11 +7391,16 @@
     draw();
   }
 
-  /* run when login page is visible */
+  /* run when login page is visible — defer one frame so layout is flushed */
+  function _tryInitLoginAnim() {
+    var canvas = document.getElementById('loginAnimCanvas');
+    if (canvas && canvas.offsetWidth > 0) { initLoginAnim(); return; }
+    requestAnimationFrame(_tryInitLoginAnim);
+  }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initLoginAnim);
+    document.addEventListener('DOMContentLoaded', function() { requestAnimationFrame(_tryInitLoginAnim); });
   } else {
-    initLoginAnim();
+    requestAnimationFrame(_tryInitLoginAnim);
   }
 })();
 </script>
