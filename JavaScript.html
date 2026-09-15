@@ -15860,17 +15860,32 @@ function ktSaveOrderPlaced() {
 
   const toDMY = (iso) => { if (!iso) return ''; const p = iso.split('-'); return p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : ''; };
 
+  const _v = (id) => (document.getElementById(id).value || '').trim();
+
+  // Validate mandatory fields
+  const missing = [];
+  if (!_v('ktOpPrice'))        missing.push('Price');
+  if (!_v('ktOpEta'))          missing.push('Expected Delivery (ETA)');
+  if (!_v('ktOpStore'))        missing.push('Store');
+  if (!_v('ktOpReason'))       missing.push('Reason to Send');
+  if (!_v('ktOpSubscription')) missing.push('Current Subscription');
+  if (!_v('ktOpRoadmap'))      missing.push('Roadmap');
+  if (missing.length) {
+    showToast('error', 'Required Fields Missing', missing.join(', '));
+    return;
+  }
+
   const payload = {
-    orderDate:    toDMY((document.getElementById('ktOpOrderDate').value || '').trim()),
-    eta:          toDMY((document.getElementById('ktOpEta').value || '').trim()),
-    store:        (document.getElementById('ktOpStore').value || '').trim(),
-    trackingNo:   (document.getElementById('ktOpTrackingNo').value || '').trim(),
-    trackingUrl:  (document.getElementById('ktOpTrackingUrl').value || '').trim(),
-    price:        (document.getElementById('ktOpPrice').value || '').trim(),
-    reason:       (document.getElementById('ktOpReason').value || '').trim(),
-    subscription: (document.getElementById('ktOpSubscription').value || '').trim(),
-    roadmap:      (document.getElementById('ktOpRoadmap').value || '').trim(),
-    sentBy:       (document.getElementById('ktOpSentBy').value || '').trim()
+    orderDate:    toDMY(_v('ktOpOrderDate')),
+    eta:          toDMY(_v('ktOpEta')),
+    store:        _v('ktOpStore'),
+    trackingNo:   _v('ktOpTrackingNo'),
+    trackingUrl:  _v('ktOpTrackingUrl'),
+    price:        _v('ktOpPrice'),
+    reason:       _v('ktOpReason'),
+    subscription: _v('ktOpSubscription'),
+    roadmap:      _v('ktOpRoadmap'),
+    sentBy:       _v('ktOpSentBy')
   };
 
   const origHTML = saveBtn.innerHTML;

@@ -3433,18 +3433,45 @@ function markKitOrderPlaced(rowIndex, payload) {
       Logger.log('[KitTracking] markKitOrderPlaced HS note failed: ' + ne.message);
     }
 
-    // Kit-status property patch — best-effort. Not every kit type/property
-    // combo is guaranteed to have an "Ordered" picklist option in HubSpot,
-    // so a failure here is logged but never blocks the rest of the flow.
+    // Kit-status property patch — set to "Sent" (same as addKitEntry direct flow).
     var hsStatusStatus = 'not_attempted';
     try {
       if (jlid) {
-        _updateHubspotKitStatus(jlid, kitName, 'Ordered');
+        _updateHubspotKitStatus(jlid, kitName, 'Sent');
         hsStatusStatus = 'attempted';
       }
     } catch(se) {
       hsStatusStatus = 'failed: ' + se.message;
       Logger.log('[KitTracking] markKitOrderPlaced kit-status patch failed: ' + se.message);
+    }
+
+    // Subscription PATCH — same mapping as addKitEntry
+    if (payload.subscription && hsData && hsData.dealId) {
+      try {
+        var _SUB_HS_MAP = {
+          'yearly': 'Annual', 'annual': 'Annual', '1 year': 'Annual',
+          '2 yearly': '2 Years', '2 years': '2 Years',
+          '3 yearly': '3 years', '3 years': '3 years',
+          '4 yearly': '4 years', '4 years': '4 years',
+          'half yearly': 'Half-Yearly', 'half-yearly': 'Half-Yearly',
+          'quarterly': 'Quarterly', 'monthly': 'Monthly',
+          'credit transfer': 'Credit Transfer'
+        };
+        var _token2 = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+        var subKey = String(payload.subscription).toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+        var hsSub  = _SUB_HS_MAP[subKey] || (String(payload.subscription).indexOf('GCSE') === 0 ? payload.subscription : null);
+        if (hsSub) {
+          var subResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + hsData.dealId, {
+            method: 'PATCH',
+            headers: { 'Authorization': 'Bearer ' + _token2, 'Content-Type': 'application/json' },
+            payload: JSON.stringify({ properties: { subscription: hsSub } }),
+            muteHttpExceptions: true
+          });
+          Logger.log('[KitTracking] markKitOrderPlaced subscription PATCH "' + hsSub + '" HTTP ' + subResp.getResponseCode());
+        }
+      } catch(subErr) {
+        Logger.log('[KitTracking] markKitOrderPlaced subscription PATCH failed: ' + subErr.message);
+      }
     }
 
     // Notify the parent their kit is on the way. Two separate templates,
