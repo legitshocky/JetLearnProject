@@ -1,11 +1,22 @@
-// Normalize course name for comparison — maps known app↔sheet aliases to canonical form.
+// HubSpot course label → canonical sheet course name
+var COURSE_HS_TO_SHEET = {
+  'python edublocks'                          : 'Python EduBlocks',
+  'game development and ai with scratch'      : 'Game Dev and AI with Scratch',
+  'design, code and create with roblox'       : 'Design Code and create with Roblox',
+  'design code and create with roblox'        : 'Design Code and create with Roblox'
+};
+
+// Returns sheet-canonical course name for display (falls back to original if no alias).
+function canonicalCourseName(name) {
+  var key = (name || '').toLowerCase().trim();
+  return COURSE_HS_TO_SHEET[key] || name;
+}
+
+// Normalize course name for comparison only — strips punctuation/abbreviations so both sides match.
 function normalizeCourseNameForMatch(name) {
   var s = (name || '').toLowerCase().trim();
-  // "game development and ai with scratch" ↔ "game dev and ai with scratch"
   s = s.replace(/\bgame development\b/, 'game dev');
-  // strip commas: "design, code and create" ↔ "design code and create"
   s = s.replace(/,/g, '');
-  // collapse extra spaces left by comma removal
   s = s.replace(/\s+/g, ' ').trim();
   return s;
 }
@@ -2174,7 +2185,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
           teacherCourseList.some(function(tc) {
             if (normalizeCourseNameForMatch(tc.course) === hsNorm) { matchedTc2 = tc; return true; }
           });
-          var displayLabel = matchedTc2 ? matchedTc2.course : hsLabel;
+          var displayLabel = matchedTc2 ? matchedTc2.course : canonicalCourseName(hsLabel);
           futureCourses.push({ index: idx + 1, courseLabel: displayLabel, rawValue: raw, isUpskilled: !!matchedTc2 });
         });
       }
@@ -3145,8 +3156,8 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
       teacherCourseList.some(function(tc) {
         if (normalizeCourseNameForMatch(tc.course) === labelNorm) { matchedTc = tc; return true; }
       });
-      // display name: prefer sheet name (canonical) over HubSpot label
-      var displayLabel = matchedTc ? matchedTc.course : label;
+      // display: sheet name from match, else alias map, else HubSpot label
+      var displayLabel = matchedTc ? matchedTc.course : canonicalCourseName(label);
       return { label: displayLabel, upskilled: !!matchedTc };
     });
 
