@@ -263,7 +263,11 @@ var MIG_AUTO = (function() {
         if (ts && ts.day && ts.time) return [{ day: _normalizeDay(ts.day), time: _cetTo12h(ts.time) }];
         // 2. Deal sessions that have a time (normalize to 12h AM/PM)
         var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
-        if (ds.length) return ds.map(function(s) { return { day: _normalizeDay(s.day), time: _toAmPm(s.time) }; });
+        if (ds.length) return ds.map(function(s) {
+          // time may be "6 PM;3 PM UK Time" — take only the first part (CET)
+          var t = String(s.time).split(';')[0].trim();
+          return { day: _normalizeDay(s.day), time: _toAmPm(t) };
+        });
         // 3. Derive day + time from existing calendar event start datetime
         if (_evStart && _evTz) {
           try {
@@ -589,13 +593,28 @@ var MIG_AUTO = (function() {
     var _intervention = _getTicketIntervention(ticketId);
     var _slotStatus   = (_intervention && _intervention.slotStatus)   || 'Matched by Ops';
     var _intervenedBy = (_intervention && _intervention.intervenedBy) || 'Ops Intervention';
-    _addTicketNote(ticketId, '✅ Migration auto-executed (manual trigger).\n' + bookingMsg);
-    _patchTicketStage(ticketId, STAGE.COMPLETED);
+    Logger.log('[MIG_AUTO] slotStatus=' + _slotStatus + ' intervenedBy=' + _intervenedBy);
+
+    // Patch required dependent props BEFORE moving stage (HubSpot validates on stage change)
     _patchTicketProps(ticketId, {
       mig_auto_error: '',
       migration_slot_status__t_: _slotStatus,
       migration_intervened_by: _intervenedBy
     });
+
+    var noteLines = [
+      '✅ Auto Migration Executed',
+      'JLID: ' + data.jlid,
+      'New Teacher: ' + data.newTeacher,
+      'Course: ' + (data.course || '—'),
+      'Sessions: ' + JSON.stringify(data.classSessions || []),
+      'Timezone: ' + (data.classBookingIana || '—'),
+      bookingMsg,
+      'Slot Status: ' + _slotStatus,
+      'Intervened By: ' + _intervenedBy
+    ];
+    _addTicketNote(ticketId, noteLines.join('\n'));
+    _patchTicketStage(ticketId, STAGE.COMPLETED);
 
     // Build timeline for UI progress popup
     var timeline = (result && result.timeline) ? result.timeline.slice() : [];

@@ -795,16 +795,12 @@ function getTeacherLabel(hubspotValue) {
     // The display name is in the third column (index 2).
     const displayName = teacherHsData[i][2];
 
-    if (internalId === hubspotValue) { 
-      // Found a match! Return the proper name.
-      Logger.log(`Teacher ID '${hubspotValue}' was successfully mapped to name '${displayName}'.`);
-      return displayName; 
+    if (internalId === hubspotValue) {
+      if (displayName !== hubspotValue) Logger.log(`Teacher ID '${hubspotValue}' → '${displayName}'.`);
+      return displayName;
     }
   }
 
-  // 2. If no match was found, it means HubSpot likely sent a NAME directly.
-  // In this case, we just return the original value because it's already the name we want.
-  Logger.log(`Teacher lookup did not find an ID matching '${hubspotValue}'. Assuming this is already the correct name and returning it directly.`);
   return hubspotValue; 
 }
 
@@ -837,13 +833,13 @@ function getTeacherHsId(displayName) {
 function getCourseLabel(internalValue){
   const data = _getCachedSheetData(CONFIG.SHEETS.COURSE_HS_DATA);
 
-  for (let i = 1; i < data.length; i++) { 
+  for (let i = 1; i < data.length; i++) {
     if (data[i][0] === internalValue) {
-      console.log(`Course internal: ${internalValue}, label: ${data[i][1]}`);
-      return data[i][1]; 
+      var label = data[i][1];
+      if (label !== internalValue) Logger.log(`Course: '${internalValue}' → '${label}'`);
+      return label;
     }
   }
-  Logger.log(`Course label not found for internal value: ${internalValue}`);
   return internalValue; 
 }
 
