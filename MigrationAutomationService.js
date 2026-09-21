@@ -57,6 +57,18 @@ var MIG_AUTO = (function() {
     return h12 + ':' + mn + ' ' + ap;
   }
 
+  // Normalize abbreviated or lowercased day names to full title-case
+  // e.g. "tue" / "Tue" / "TUESDAY" → "Tuesday"
+  var _DAY_FULL = {
+    sun: 'Sunday', mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday',
+    thu: 'Thursday', fri: 'Friday', sat: 'Saturday'
+  };
+  function _normalizeDay(d) {
+    if (!d) return d;
+    var key = String(d).toLowerCase().slice(0, 3);
+    return _DAY_FULL[key] || d;
+  }
+
   function _token() {
     return PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   }
@@ -209,10 +221,10 @@ var MIG_AUTO = (function() {
       classSessions:          (function() {
         // 1. Ticket schedule (has both day + CET time)
         var ts = deal.ticketSchedule;
-        if (ts && ts.day && ts.time) return [{ day: ts.day, time: _cetTo12h(ts.time) }];
+        if (ts && ts.day && ts.time) return [{ day: _normalizeDay(ts.day), time: _cetTo12h(ts.time) }];
         // 2. Deal sessions that have a time
         var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
-        if (ds.length) return ds;
+        if (ds.length) return ds.map(function(s) { return { day: _normalizeDay(s.day), time: s.time }; });
         // 3. Derive day + time from existing calendar event start datetime
         if (_evStart && _evTz) {
           try {
