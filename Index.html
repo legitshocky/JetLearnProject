@@ -629,7 +629,9 @@
                     <div style="display: flex; gap: 0.5rem;">
                         <input type="text" id="jlid" class="form-control" placeholder="Enter JLID" required>
                         <button type="button" class="btn btn-outline btn-sm" id="fetchMigrationDataBtn" title="Fetch data from HubSpot"><i class="fas fa-cloud-download-alt"></i></button>
+                        <button type="button" class="btn btn-sm" id="autoMigrateBtn" title="Auto-migrate: send emails + book classes + update ticket" style="background:#6366f1;color:#fff;border:none;white-space:nowrap;display:none;"><i class="fas fa-bolt"></i> Auto Migrate</button>
                     </div>
+                    <div id="autoMigrateStatus" style="display:none;margin-top:6px;font-size:0.78rem;padding:6px 10px;border-radius:6px;"></div>
                 </div>
                 <div class="form-group"><label for="learner" class="form-label">Learner Name</label><input type="text" id="learner" class="form-control" placeholder="Enter learner name" required></div>
 
@@ -2753,6 +2755,40 @@
 
         <!-- TAB: Migration Activity -->
         <div id="lopsMigration" class="lops-tab-content" style="display:none;">
+          <!-- Automation Stats Strip -->
+          <div id="migAutoStatsStrip" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+              <div style="display:flex;align-items:center;gap:0.5rem;">
+                <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 0 2px #d1fae5;"></span>
+                <span style="font-size:0.78rem;font-weight:700;color:#1e293b;letter-spacing:0.02em;text-transform:uppercase;">Migration Automation</span>
+                <span id="migAutoLastRun" style="font-size:0.7rem;color:#94a3b8;margin-left:0.5rem;"></span>
+              </div>
+              <button onclick="_lopsLoadAutoStats()" style="border:none;background:none;cursor:pointer;color:#6366f1;font-size:0.75rem;font-weight:600;padding:2px 8px;border-radius:6px;transition:background 0.15s;" onmouseover="this.style.background='#f0f0ff'" onmouseout="this.style.background='none'"><i class="fas fa-sync-alt" style="margin-right:4px;"></i>Refresh</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem;">
+              <div style="background:#fff;border-radius:10px;padding:0.75rem 1rem;border:1px solid #e2e8f0;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:700;color:#6366f1;" id="migAutoStatExec">—</div>
+                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">Auto-Executed</div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:0.75rem 1rem;border:1px solid #e2e8f0;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:700;color:#f59e0b;" id="migAutoStatQueue">—</div>
+                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">Queued</div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:0.75rem 1rem;border:1px solid #fca5a5;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:700;color:#dc2626;" id="migAutoStatFailed">—</div>
+                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">Failed</div>
+              </div>
+              <div style="background:#fff;border-radius:10px;padding:0.75rem 1rem;border:1px solid #fde68a;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:700;color:#b45309;" id="migAutoStatSkipped">—</div>
+                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">Skipped</div>
+              </div>
+            </div>
+            <!-- Needs manual review list -->
+            <div id="migAutoNeedsManual" style="margin-top:0.75rem;display:none;">
+              <div style="font-size:0.75rem;font-weight:700;color:#dc2626;margin-bottom:0.4rem;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>Needs Manual Review</div>
+              <div id="migAutoNeedsManualList" style="display:flex;flex-direction:column;gap:0.3rem;max-height:200px;overflow-y:auto;"></div>
+            </div>
+          </div>
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem;">
             <div class="main-metric-card"><h3 class="main-metric-title">Total (30d)</h3><p class="main-metric-value" id="lopsMigTotal" style="color:#6366f1;">—</p></div>
             <div class="main-metric-card"><h3 class="main-metric-title">Completed</h3><p class="main-metric-value" id="lopsMigCompleted" style="color:#10b981;">—</p></div>
@@ -4870,11 +4906,23 @@
       <div>
         <label class="form-label" style="font-size:0.65rem; color:#64748b; text-transform:uppercase;">Current Teacher</label>
         <select id="pCurrentTeacherDropdown" class="form-control form-select" style="height:32px; font-size:0.85rem; padding:2px 8px;"></select>
+        <div id="pCtUpskillBadge" style="display:none; margin-top:4px; font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:4px; border:1px solid; display:inline-flex; align-items:center; gap:4px;"></div>
       </div>
       <div>
         <label class="form-label" style="font-size:0.65rem; color:#64748b; text-transform:uppercase;">Age</label>
         <div id="pDispAge" style="font-weight:700;">---</div>
       </div>
+    </div>
+  </div>
+
+  <!-- TIC Ticket Action Strip — shown only when ticket is in Migration Triggered stage -->
+  <div id="ticTicketActionStrip" style="display:none; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:1rem 1.5rem; margin-top:0;">
+    <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+      <span style="font-size:0.72rem; text-transform:uppercase; color:#64748b; font-weight:600; letter-spacing:0.04em;">Move Ticket:</span>
+      <button id="ticBtnExecPending" onclick="ticMoveStage('1065336836','Execution Pending')" class="btn btn-sm" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:0.8rem; padding:4px 14px; border-radius:6px; cursor:pointer;">⚡ Execution Pending</button>
+      <button id="ticBtnClsPending"  onclick="ticMoveStage('128913752','CLS Pending')"       class="btn btn-sm" style="background:#fef9c3; color:#854d0e; border:1px solid #fde047; font-size:0.8rem; padding:4px 14px; border-radius:6px; cursor:pointer;">🔄 CLS Pending</button>
+      <button id="ticBtnTpPending"   onclick="ticMoveStage('128913750','TP Pending')"         class="btn btn-sm" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-size:0.8rem; padding:4px 14px; border-radius:6px; cursor:pointer;">🔍 TP Pending</button>
+      <span id="ticActionMsg" style="font-size:0.8rem; color:#64748b; margin-left:4px;"></span>
     </div>
   </div>
 
@@ -7267,20 +7315,27 @@
 <!-- ── Login Page Canvas Animation ── -->
 <script>
 (function() {
+  var _animRafId = null;
+  var _animInited = false;
+
   function initLoginAnim() {
-    const canvas = document.getElementById('loginAnimCanvas');
+    if (_animInited) return;
+    var canvas = document.getElementById('loginAnimCanvas');
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    _animInited = true;
 
     function resize() {
-      canvas.width  = canvas.offsetWidth  || window.innerWidth;
-      canvas.height = canvas.offsetHeight || window.innerHeight;
+      /* use window dimensions directly — canvas is position:absolute covering 100vw/100vh */
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
     }
     resize();
     window.addEventListener('resize', resize);
 
     /* ── Orbs ── */
-    const orbs = Array.from({length: 6}, (_, i) => ({
+    var orbs = Array.from({length: 6}, function(_, i) { return {
       x: Math.random() * canvas.width * 0.65,
       y: Math.random() * canvas.height,
       r: 80 + Math.random() * 160,
@@ -7289,20 +7344,20 @@
       hue: [260, 245, 270, 255, 280, 250][i],
       alpha: 0.10 + Math.random() * 0.12,
       phase: Math.random() * Math.PI * 2
-    }));
+    }; });
 
     /* ── Stars ── */
-    const stars = Array.from({length: 90}, () => ({
+    var stars = Array.from({length: 90}, function() { return {
       x: Math.random() * canvas.width * 0.75,
       y: Math.random() * canvas.height,
       r: 0.4 + Math.random() * 1.2,
       alpha: 0.2 + Math.random() * 0.6,
       twinkleSpeed: 0.008 + Math.random() * 0.018,
       phase: Math.random() * Math.PI * 2
-    }));
+    }; });
 
     /* ── Shooting stars ── */
-    const shoots = [];
+    var shoots = [];
     function spawnShoot() {
       shoots.push({
         x: Math.random() * canvas.width * 0.7,
@@ -7317,90 +7372,94 @@
     setInterval(spawnShoot, 2800);
 
     /* ── Floating grid lines ── */
-    let gridOffset = 0;
+    var gridOffset = 0;
+    var t = 0;
 
-    let t = 0;
     function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      t += 0.008;
-      gridOffset = (gridOffset + 0.3) % 60;
+      try {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        t += 0.008;
+        gridOffset = (gridOffset + 0.3) % 60;
 
-      /* grid */
-      ctx.save();
-      ctx.strokeStyle = 'rgba(129,140,248,0.045)';
-      ctx.lineWidth = 0.5;
-      const spacing = 60;
-      for (let x = -spacing + (gridOffset % spacing); x < canvas.width * 0.72; x += spacing) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        /* grid */
+        ctx.save();
+        ctx.strokeStyle = 'rgba(129,140,248,0.045)';
+        ctx.lineWidth = 0.5;
+        var spacing = 60;
+        for (var x = -spacing + (gridOffset % spacing); x < canvas.width * 0.72; x += spacing) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (var y = (gridOffset % spacing); y < canvas.height; y += spacing) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width * 0.72, y); ctx.stroke();
+        }
+        ctx.restore();
+
+        /* orbs */
+        orbs.forEach(function(o) {
+          o.x += o.vx; o.y += o.vy;
+          if (o.x < -o.r) o.x = canvas.width * 0.65 + o.r;
+          if (o.x > canvas.width * 0.65 + o.r) o.x = -o.r;
+          if (o.y < -o.r) o.y = canvas.height + o.r;
+          if (o.y > canvas.height + o.r) o.y = -o.r;
+          var pulse = 1 + 0.12 * Math.sin(t * 1.5 + o.phase);
+          var r = Math.max(1, o.r * pulse);
+          var g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, r);
+          g.addColorStop(0, 'hsla(' + o.hue + ',70%,60%,' + o.alpha + ')');
+          g.addColorStop(1, 'hsla(' + o.hue + ',70%,40%,0)');
+          ctx.beginPath();
+          ctx.arc(o.x, o.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = g;
+          ctx.fill();
+        });
+
+        /* stars */
+        stars.forEach(function(s) {
+          s.phase += s.twinkleSpeed;
+          var a = s.alpha * (0.5 + 0.5 * Math.sin(s.phase));
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(200,210,255,' + a + ')';
+          ctx.fill();
+        });
+
+        /* shooting stars */
+        for (var i = shoots.length - 1; i >= 0; i--) {
+          var s = shoots[i];
+          s.life += s.speed;
+          s.alpha = Math.max(0, 1 - s.life / (s.len * 2.5));
+          var ex = s.x + Math.cos(s.angle) * s.life;
+          var ey = s.y + Math.sin(s.angle) * s.life;
+          var sx = ex - Math.cos(s.angle) * Math.min(s.life, s.len);
+          var sy = ey - Math.sin(s.angle) * Math.min(s.life, s.len);
+          var grad = ctx.createLinearGradient(sx, sy, ex, ey);
+          grad.addColorStop(0, 'rgba(180,190,255,0)');
+          grad.addColorStop(1, 'rgba(200,210,255,' + (s.alpha * 0.9) + ')');
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          if (s.alpha <= 0) shoots.splice(i, 1);
+        }
+      } catch(e) {
+        /* swallow draw errors — never let an exception kill the loop */
       }
-      for (let y = (gridOffset % spacing); y < canvas.height; y += spacing) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width * 0.72, y); ctx.stroke();
-      }
-      ctx.restore();
-
-      /* orbs */
-      orbs.forEach(o => {
-        o.x += o.vx; o.y += o.vy;
-        if (o.x < -o.r) o.x = canvas.width * 0.65 + o.r;
-        if (o.x > canvas.width * 0.65 + o.r) o.x = -o.r;
-        if (o.y < -o.r) o.y = canvas.height + o.r;
-        if (o.y > canvas.height + o.r) o.y = -o.r;
-        const pulse = 1 + 0.12 * Math.sin(t * 1.5 + o.phase);
-        const g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r * pulse);
-        g.addColorStop(0, `hsla(${o.hue},70%,60%,${o.alpha})`);
-        g.addColorStop(1, `hsla(${o.hue},70%,40%,0)`);
-        ctx.beginPath();
-        ctx.arc(o.x, o.y, o.r * pulse, 0, Math.PI * 2);
-        ctx.fillStyle = g;
-        ctx.fill();
-      });
-
-      /* stars */
-      stars.forEach(s => {
-        s.phase += s.twinkleSpeed;
-        const a = s.alpha * (0.5 + 0.5 * Math.sin(s.phase));
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(200,210,255,${a})`;
-        ctx.fill();
-      });
-
-      /* shooting stars */
-      for (let i = shoots.length - 1; i >= 0; i--) {
-        const s = shoots[i];
-        s.life += s.speed;
-        s.alpha = Math.max(0, 1 - s.life / (s.len * 2.5));
-        const ex = s.x + Math.cos(s.angle) * s.life;
-        const ey = s.y + Math.sin(s.angle) * s.life;
-        const sx = ex - Math.cos(s.angle) * Math.min(s.life, s.len);
-        const sy = ey - Math.sin(s.angle) * Math.min(s.life, s.len);
-        const grad = ctx.createLinearGradient(sx, sy, ex, ey);
-        grad.addColorStop(0, `rgba(180,190,255,0)`);
-        grad.addColorStop(1, `rgba(200,210,255,${s.alpha * 0.9})`);
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        if (s.alpha <= 0) shoots.splice(i, 1);
-      }
-
-      requestAnimationFrame(draw);
+      _animRafId = requestAnimationFrame(draw);
     }
     draw();
   }
 
-  /* run when login page is visible — defer one frame so layout is flushed */
-  function _tryInitLoginAnim() {
-    var canvas = document.getElementById('loginAnimCanvas');
-    if (canvas && canvas.offsetWidth > 0) { initLoginAnim(); return; }
-    requestAnimationFrame(_tryInitLoginAnim);
+  /* start animation — use window.load so layout is guaranteed flushed */
+  function _startAnim() {
+    /* small timeout ensures GAS sandbox layout is fully settled */
+    setTimeout(initLoginAnim, 50);
   }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() { requestAnimationFrame(_tryInitLoginAnim); });
+
+  if (document.readyState === 'complete') {
+    _startAnim();
   } else {
-    requestAnimationFrame(_tryInitLoginAnim);
+    window.addEventListener('load', _startAnim);
   }
 })();
 </script>

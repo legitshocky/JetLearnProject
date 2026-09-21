@@ -3857,6 +3857,8 @@ function fetchPersonaSmartData(jlid) {
     contextData.currentCourse = ticketResult.ticketCourse || '';
     contextData.currentTeacher = ticketResult.oldTeacher || d.currentTeacher;
     contextData.migrationReason = ticketResult.reason || "";
+    contextData.ticketId    = ticketResult.ticketId || '';
+    contextData.ticketStage = (ticketResult.rawProperties || {}).hs_pipeline_stage || '';
 
     const props = ticketResult.rawProperties || {};
     contextData.futureCourse1 = getCourseLabel(props.future_course_1) || "";
@@ -3869,6 +3871,52 @@ function fetchPersonaSmartData(jlid) {
     contextData.suggestedIana = _resolveIanaFromTimezoneOrCountry(d.timezone, d.country);
   } catch(tzErr) {
     contextData.suggestedIana = '';
+  }
+
+  // ── Current teacher upskill on next course ──────────────────────────────────
+  // "Next course" = futureCourse1 when a migration ticket exists, else futureCourse1 from deal
+  // This lets the caller decide whether migration is actually needed.
+  try {
+    var _ctName   = contextData.currentTeacher;
+    var _nextCourse = contextData.futureCourse1 || '';
+    if (_ctName && _nextCourse) {
+      var _tcMap = getTeacherCourses();
+      // Normalise for fuzzy matching
+      function _normCourse(s) { return String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+      var _normNext = _normCourse(_nextCourse);
+      // Try exact teacher name first, then normalised
+      var _courses = _tcMap[_ctName] || _tcMap[_ctName.trim()] || null;
+      if (!_courses) {
+        // fuzzy name match
+        var _normCt = _ctName.trim().toLowerCase();
+        Object.keys(_tcMap).forEach(function(k) {
+          if (!_courses && k.trim().toLowerCase() === _normCt) _courses = _tcMap[k];
+        });
+      }
+      if (_courses) {
+        var _match = null;
+        _courses.forEach(function(c) {
+          if (!_match && _normCourse(c.course) === _normNext) _match = c;
+        });
+        if (!_match) {
+          // partial fuzzy: both must share ≥60% of words longer than 3 chars
+          _courses.forEach(function(c) {
+            if (_match) return;
+            var aw = _normNext.match(/[a-z]{4,}/g) || [];
+            var bw = _normCourse(c.course).match(/[a-z]{4,}/g) || [];
+            var shared = aw.filter(function(w) { return bw.indexOf(w) !== -1; }).length;
+            if (shared >= Math.ceil(Math.min(aw.length, bw.length) * 0.6)) _match = c;
+          });
+        }
+        contextData.currentTeacherNextCourseUpskill = _match
+          ? { upskilled: true,  course: _nextCourse, status: _match.status || '', progress: _match.progress || '' }
+          : { upskilled: false, course: _nextCourse };
+      } else {
+        contextData.currentTeacherNextCourseUpskill = { upskilled: false, course: _nextCourse, noData: true };
+      }
+    }
+  } catch(upErr) {
+    Logger.log('[fetchPersonaSmartData] upskill check error: ' + upErr.message);
   }
 
   return {
@@ -5202,3 +5250,26 @@ function getAdminMigrationDashboard() {
   }
 }
 
+
+// ── Move migration ticket to a target stage from TIC page ────────────────────
+function moveTicketStageForJlid(jlid, targetStage) {
+  if (!jlid || !targetStage) return { success: false, message: 'JLID and target stage required.' };
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var ticketResult = fetchLatestMigrationTicket(jlid);
+  if (!ticketResult.found || !ticketResult.ticketId) {
+    return { success: false, message: 'No open migration ticket found for ' + jlid + '.' };
+  }
+  var ticketId = ticketResult.ticketId;
+  var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    payload: JSON.stringify({ properties: { hs_pipeline_stage: targetStage } }),
+    muteHttpExceptions: true
+  });
+  var code = resp.getResponseCode();
+  if (code !== 200 && code !== 204) {
+    return { success: false, message: 'HubSpot error ' + code + ': ' + resp.getContentText().substring(0, 200) };
+  }
+  Logger.log('[moveTicketStageForJlid] Ticket ' + ticketId + ' → stage ' + targetStage);
+  return { success: true, ticketId: ticketId };
+}

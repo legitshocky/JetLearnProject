@@ -93,6 +93,9 @@ let _personaCtxLearner = '';
 let _personaCtxOldTeacher = '';
 let _personaCtxMode = '';
 let _personaCtxRequestedSlots = []; // current teacher at time of search — used for match log
+let _ticTicketId      = '';  // set by Smart Context Fetch — used for TIC ticket stage movement
+let _ticTicketStage   = '';
+let _ticMigrationReason = '';
 let pollIntervalId = null; // For live refresh
 let globalTeachers = []; // Store teachers data for reuse
 let globalCourses = []; // Store courses data for reuse
@@ -2670,6 +2673,60 @@ function submitMigrationForm(e) {
         })
         .withFailureHandler(function() { listEl.innerHTML = ''; })
         .getWatiContactsForJlid(jlid);
+    }
+
+    var CLS_REQUIRED_REASONS = [
+      'escalation on teacher',
+      'teacher performance issue',
+      'course change after prm',
+      'teacher change after prm',
+      'escalation on teacher post migration',
+      'misalignment of teacher due to ops intervention only'
+    ];
+
+    function _renderTicActionStrip() {
+      var strip = document.getElementById('ticTicketActionStrip');
+      if (!strip) return;
+      // Only show when ticket is in Migration Triggered stage (128913747)
+      var isTriggered = _ticTicketStage === '128913747';
+      strip.style.display = isTriggered ? '' : 'none';
+      if (!isTriggered) return;
+
+      var msg = document.getElementById('ticActionMsg');
+      if (msg) msg.textContent = '';
+
+      // Auto-highlight CLS button if reason requires CLS
+      var reasonLow = (_ticMigrationReason || '').toLowerCase();
+      var needsCls = CLS_REQUIRED_REASONS.some(function(r) { return reasonLow.indexOf(r) !== -1; });
+      var clsBtn = document.getElementById('ticBtnClsPending');
+      if (clsBtn) {
+        clsBtn.style.fontWeight = needsCls ? '700' : '';
+        clsBtn.style.boxShadow  = needsCls ? '0 0 0 2px #fde047' : '';
+      }
+    }
+
+    function ticMoveStage(targetStage, stageName) {
+      var jlid = _personaCtxJlid;
+      if (!jlid) { showToast('error', 'No JLID', 'Fetch learner first.'); return; }
+      var msg = document.getElementById('ticActionMsg');
+      if (msg) msg.textContent = 'Moving…';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            showToast('success', 'Ticket Moved', 'Ticket moved to ' + stageName + '.');
+            if (msg) msg.textContent = '✓ Moved to ' + stageName;
+            _ticTicketStage = targetStage;
+            _renderTicActionStrip(); // hide strip after move
+          } else {
+            showToast('error', 'Move Failed', (res && res.message) || 'Unknown error.');
+            if (msg) msg.textContent = '';
+          }
+        })
+        .withFailureHandler(function(e) {
+          showToast('error', 'Error', e.message || 'Unknown error.');
+          if (msg) msg.textContent = '';
+        })
+        .moveTicketStageForJlid(jlid, targetStage);
     }
 
     function _loadPersonaReserveEmailContacts(jlid) {
@@ -8547,6 +8604,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ── Auto Migrate button ──────────────────────────────────────────────────
+    var _autoMigrateBtn = document.getElementById('autoMigrateBtn');
+    if (_autoMigrateBtn) {
+      _autoMigrateBtn.addEventListener('click', function() {
+        var jlid = (jlidInput && jlidInput.value.trim()) || '';
+        if (!jlid) { showToast('error', 'No JLID', 'Fetch a learner first.'); return; }
+
+        var statusEl = document.getElementById('autoMigrateStatus');
+        function _setStatus(msg, color) {
+          if (!statusEl) return;
+          statusEl.style.display = 'block';
+          statusEl.style.background = color === 'green' ? '#f0fdf4' : color === 'red' ? '#fef2f2' : '#f8fafc';
+          statusEl.style.color     = color === 'green' ? '#15803d' : color === 'red' ? '#b91c1c' : '#374151';
+          statusEl.style.border    = '1px solid ' + (color === 'green' ? '#86efac' : color === 'red' ? '#fca5a5' : '#e2e8f0');
+          statusEl.innerHTML = msg;
+        }
+
+        showConfirm(
+          'Auto Migrate',
+          'Run full automation for <strong>' + escapeHtml(jlid) + '</strong>?<br>'
+          + '<span style="font-size:0.8rem;color:#64748b;">Sends migration emails, books classes, updates HubSpot ticket → Completed.</span>',
+          function(confirmed) {
+            if (!confirmed) return;
+            _autoMigrateBtn.disabled = true;
+            _autoMigrateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
+            _setStatus('<i class="fas fa-spinner fa-spin"></i> Running…', 'neutral');
+
+            var autoSteps = [
+              { key: 'practice_doc',    label: 'Practice Doc Access Updated',  status: 'running' },
+              { key: 'teacher_email',   label: 'New Teacher Email Sent',        status: 'pending' },
+              { key: 'old_teacher_email', label: 'Old Teacher Email Sent',      status: 'pending' },
+              { key: 'parent_whatsapp', label: 'Parent WhatsApp Sent',          status: 'pending' },
+              { key: 'class_booking',   label: 'Classes Booked with New Teacher', status: 'pending' },
+              { key: 'ticket_complete', label: 'HubSpot Ticket → Completed',    status: 'pending' }
+            ];
+            showLoading('Auto migrating ' + jlid + '…', autoSteps);
+
+            google.script.run
+              .withSuccessHandler(function(res) {
+                _autoMigrateBtn.disabled = false;
+                _autoMigrateBtn.innerHTML = '<i class="fas fa-bolt"></i> Auto Migrate';
+                if (res && res.success) {
+                  _setStatus('<i class="fas fa-check-circle"></i> ' + escapeHtml(res.message || 'Done.'), 'green');
+                  finalizeLoadingTimeline(res, autoSteps);
+                  hideLoading();
+                } else {
+                  _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((res && res.message) || 'Failed.'), 'red');
+                  finalizeLoadingTimeline(res, autoSteps);
+                  hideLoading();
+                  showToast('error', 'Auto Migration Failed', (res && res.message) || 'Check HubSpot ticket.');
+                }
+              })
+              .withFailureHandler(function(err) {
+                _autoMigrateBtn.disabled = false;
+                _autoMigrateBtn.innerHTML = '<i class="fas fa-bolt"></i> Auto Migrate';
+                _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((err && err.message) || String(err)), 'red');
+                hideLoading();
+              })
+              .runAutoMigrateForJlid(jlid);
+          }
+        );
+      });
+    }
+
     // Reset Buttons
     document.querySelectorAll('.reset-form-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -10210,6 +10331,12 @@ function fetchMigrationSpecificData() {
 
                     showToast('success', 'Data Loaded', "Fetched from " + (data.source));
 
+                    // Show Auto Migrate button now that data is loaded
+                    var _amBtn = document.getElementById('autoMigrateBtn');
+                    var _amStatus = document.getElementById('autoMigrateStatus');
+                    if (_amBtn) { _amBtn.style.display = 'inline-flex'; _amBtn.style.alignItems = 'center'; _amBtn.style.gap = '5px'; }
+                    if (_amStatus) { _amStatus.style.display = 'none'; _amStatus.textContent = ''; }
+
                     // Load WhatsApp contacts after successful fetch
                     _loadWatiContacts(jlid);
 
@@ -11538,6 +11665,12 @@ function handleSmartFetchAction() {
                 _personaCtxMode       = res.mode || '';
                 _loadPersonaReserveEmailContacts(_personaCtxJlid);
 
+                // Store ticket data for TIC stage movement
+                _ticTicketId        = d.ticketId || '';
+                _ticTicketStage     = d.ticketStage || '';
+                _ticMigrationReason = d.migrationReason || '';
+                _renderTicActionStrip();
+
                 // \u2500\u2500 Current Teacher dropdown \u2500\u2500
                 const tDrop = document.getElementById('pCurrentTeacherDropdown');
                 if (tDrop) {
@@ -11549,6 +11682,36 @@ function handleSmartFetchAction() {
                         tDrop.appendChild(opt);
                     }
                 }
+
+                // ── Current Teacher upskill badge on next course ──
+                (function() {
+                  var badge = document.getElementById('pCtUpskillBadge');
+                  if (!badge) return;
+                  var u = d.currentTeacherNextCourseUpskill;
+                  if (!u || !u.course) { badge.style.display = 'none'; return; }
+                  badge.style.display = 'inline-flex';
+                  var teacherName = d.currentTeacher || 'Current teacher';
+                  if (u.upskilled) {
+                    var prog = u.progress ? ' · ' + u.progress : (u.status ? ' · ' + u.status : '');
+                    badge.textContent = '✓ Upskilled on next course' + prog;
+                    badge.style.color = '#15803d';
+                    badge.style.background = '#f0fdf4';
+                    badge.style.borderColor = '#86efac';
+                    badge.title = teacherName + ' is upskilled on ' + u.course + (u.progress ? ' (' + u.progress + ')' : '');
+                  } else if (u.noData) {
+                    badge.textContent = '— Upskill data unavailable';
+                    badge.style.color = '#92400e';
+                    badge.style.background = '#fffbeb';
+                    badge.style.borderColor = '#fcd34d';
+                    badge.title = 'No course data found for ' + teacherName + ' in Teacher Courses sheet';
+                  } else {
+                    badge.textContent = '✗ Not upskilled on next course';
+                    badge.style.color = '#b91c1c';
+                    badge.style.background = '#fef2f2';
+                    badge.style.borderColor = '#fca5a5';
+                    badge.title = teacherName + ' is NOT upskilled on ' + u.course + ' — migration likely needed';
+                  }
+                })();
 
                 // ── Reserve Slot timezone — auto-select from server-resolved IANA
                 // (explicit deal timezone, or country fallback e.g. Sri Lanka → Asia/Colombo) ──
@@ -12788,6 +12951,7 @@ var _lopsMigrationData = [];
 function loadLearnerOpsPage() {
   _lopsLoadOnboarding();
   _lopsLoadMigration();
+  _lopsLoadAutoStats();
   _lopsLoadPause();
 }
 
@@ -12893,6 +13057,64 @@ function _lopsLoadMigration() {
       if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="padding:2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '</td></tr>';
     })
     .getMigrationRegistry();
+}
+
+// ── Automation stats (Migration tab sub-panel) ──────────────────────────────
+function _lopsLoadAutoStats() {
+  var strip = document.getElementById('migAutoStatsStrip');
+  if (!strip) return;
+  strip.style.display = 'block';
+  ['migAutoStatExec','migAutoStatQueue','migAutoStatFailed','migAutoStatSkipped'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size:0.9rem;color:#94a3b8;"></i>';
+  });
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) return;
+      var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
+      set('migAutoStatExec',    res.autoExecuted);
+      set('migAutoStatQueue',   res.pendingQueue);
+      set('migAutoStatFailed',  res.failed);
+      set('migAutoStatSkipped', res.skipped);
+
+      var lastRun = document.getElementById('migAutoLastRun');
+      if (lastRun && res.fetchedAt) {
+        try { lastRun.textContent = 'as of ' + new Date(res.fetchedAt).toLocaleTimeString(); } catch(e) {}
+      }
+
+      var manualTickets = (res.failedTickets || []).concat(res.skippedTickets || []);
+      var manualWrap = document.getElementById('migAutoNeedsManual');
+      var manualList = document.getElementById('migAutoNeedsManualList');
+      if (manualWrap && manualList) {
+        if (manualTickets.length > 0) {
+          manualWrap.style.display = 'block';
+          manualList.innerHTML = manualTickets.map(function(t) {
+            var isFailed = !t.error || t.error !== (res.skippedTickets || []).find ? true : false;
+            var color  = '#dc2626';
+            var bg     = '#fef2f2';
+            var border = '#fca5a5';
+            var label  = 'Failed';
+            // if ticket is in skipped list
+            var isSkipped = (res.skippedTickets || []).some(function(s) { return s.id === t.id; });
+            if (isSkipped) { color = '#b45309'; bg = '#fffbeb'; border = '#fde68a'; label = 'Skipped'; }
+            var hsLink = 'https://app.hubspot.com/contacts/20515701/ticket/' + t.id;
+            return '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:7px;padding:6px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">'
+              + '<div style="flex:1;min-width:0;">'
+              + '<span style="font-size:0.72rem;font-weight:700;color:' + color + ';margin-right:5px;padding:1px 6px;background:' + border + '20;border-radius:4px;">' + label + '</span>'
+              + '<a href="' + hsLink + '" target="_blank" style="font-size:0.78rem;font-weight:600;color:#1e293b;text-decoration:none;">' + escapeHtml(t.subject || t.jlid || t.id) + '</a>'
+              + (t.error ? '<div style="font-size:0.69rem;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escapeHtml(t.error) + '">' + escapeHtml(t.error) + '</div>' : '')
+              + '</div>'
+              + '<a href="' + hsLink + '" target="_blank" style="font-size:0.7rem;color:#6366f1;white-space:nowrap;text-decoration:none;padding-top:2px;">View →</a>'
+              + '</div>';
+          }).join('');
+        } else {
+          manualWrap.style.display = 'none';
+        }
+      }
+    })
+    .withFailureHandler(function() {})
+    .getMigrationAutomationStats();
 }
 
 // ── Tab 3: Pause & Retention ────────────────────────────────────────────────

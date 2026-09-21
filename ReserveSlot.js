@@ -291,7 +291,7 @@ function _logBooking(jlid, learnerName, teacherName, courseName, booked, numEven
   }
 }
 
-function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, gmtTimezoneLabel, numEvents, extraEmails, performedBy, classLink, jetGuideName, eventDescription) {
+function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions, courseName, startDate, gmtTimezoneLabel, numEvents, extraEmails, performedBy, classLink, jetGuideName, eventDescription, migrationPrefix) {
   try {
     if (!teacherName) return { success: false, message: 'New teacher required.' };
     if (!classSessions || !classSessions.length) return { success: false, message: 'No class sessions to book.' };
@@ -307,14 +307,22 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
     var TOTAL_EVENTS = (numEvents > 0) ? numEvents : 12;
     var perSessionCounts = _splitEvenly(TOTAL_EVENTS, classSessions.length);
     var courseType = _courseTypeLabel(courseName, jlid);
-    var title = (learnerName || 'Learner') + ' (' + (jlid || 'N/A') + ') : Jetlearn ' + courseType + ' Lesson'
+    var _baseTitle = (learnerName || 'Learner') + ' (' + (jlid || 'N/A') + ') : Jetlearn ' + courseType + ' Lesson'
       + (info.teacherId ? (' (' + info.teacherId + ')') : '');
+    // Title is set after _isGmeet is known — placeholder for now
+    var title = _baseTitle;
+
+    // Detect GMeet link — extract meeting code for conferenceData
+    var _gmeetCode = (function() {
+      if (!classLink) return '';
+      var m = classLink.match(/meet\.google\.com\/([a-z0-9\-]+)/i);
+      return m ? m[1] : '';
+    })();
+    var _isGmeet = !!_gmeetCode;
+    // All events get GMEET prefix when it's a GMeet class
+    if (_isGmeet) title = 'GMEET : ' + _baseTitle;
 
     var eventOptions = {};
-    if (classLink) {
-      eventOptions.location = classLink;
-      eventOptions.description = 'Join Zoom Meeting : ' + classLink;
-    }
 
     var guests = [];
     if (info.email) guests.push(info.email);
@@ -378,12 +386,30 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
         sendUpdates: 'all'
       };
       var descParts = [];
-      if (classLink) descParts.push('Join Zoom Meeting : ' + classLink);
+      if (classLink && !_isGmeet) descParts.push('Join Zoom Meeting : ' + classLink);
+      if (classLink &&  _isGmeet) descParts.push('Join Google Meet : ' + classLink);
       if (eventDescription) descParts.push(eventDescription);
       if (descParts.length) eventBody.description = descParts.join('\n\n');
       if (classLink) eventBody.location = classLink;
 
-      var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID);
+      // Wire up "Join with Google Meet" button using the existing meeting code
+      if (_isGmeet) {
+        eventBody.conferenceData = {
+          conferenceId: _gmeetCode,
+          conferenceSolution: {
+            key: { type: 'hangoutsMeet' },
+            name: 'Google Meet'
+          },
+          entryPoints: [{
+            entryPointType: 'video',
+            uri: 'https://meet.google.com/' + _gmeetCode,
+            label: 'meet.google.com/' + _gmeetCode
+          }]
+        };
+      }
+
+      var insertOpts = { conferenceDataVersion: _isGmeet ? 1 : 0 };
+      var created = Calendar.Events.insert(eventBody, CONFIG.CLASS_SCHEDULE_CALENDAR_ID, insertOpts);
       if (created && created.id) {
         _hideGuestList(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id);
         masterEventIds.push({ eventId: created.id, calendarId: CONFIG.CLASS_SCHEDULE_CALENDAR_ID, day: sess.day, time: sess.time });
@@ -393,6 +419,8 @@ function bookClassesWithNewTeacher(jlid, learnerName, teacherName, classSessions
             var instances = Calendar.Events.instances(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, created.id, { maxResults: 1 });
             if (instances && instances.items && instances.items.length) {
               var firstInst = instances.items[0];
+              // First occurrence always gets "Migration : " prefix
+              // title already has "GMEET : " prefix if it's a GMeet class
               Calendar.Events.patch({ summary: 'Migration : ' + title }, CONFIG.CLASS_SCHEDULE_CALENDAR_ID, firstInst.id);
             }
           } catch(me) {
@@ -748,16 +776,22 @@ function getExistingEventDescription(jlid) {
     // Use Advanced Calendar API to search by title — much faster than getEvents over a range
     var jlidUpper = String(jlid).toUpperCase().trim();
     var now = new Date();
-    var results = Calendar.Events.list(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, {
-      q: jlidUpper,
-      timeMin: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      timeMax: new Date(now.getTime() + 7  * 24 * 60 * 60 * 1000).toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-      maxResults: 3
-    });
 
-    var items = (results && results.items) || [];
+    function _searchEvents(timeMin, timeMax) {
+      var r = Calendar.Events.list(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, {
+        q: jlidUpper, timeMin: timeMin, timeMax: timeMax,
+        singleEvents: true, orderBy: 'startTime', maxResults: 5
+      });
+      return (r && r.items) || [];
+    }
+
+    // Prefer upcoming events (now → +60 days) — reflects the active class type (Zoom vs GMeet)
+    var items = _searchEvents(now.toISOString(), new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString());
+    // Fall back to recent past if nothing upcoming
+    if (!items.length) {
+      items = _searchEvents(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(), now.toISOString());
+    }
+
     var match = null;
     for (var i = 0; i < items.length; i++) {
       var desc = (items[i].description || '').trim();
