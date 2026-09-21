@@ -211,9 +211,9 @@ function checkBookingConflicts(teacherName, classSessions, startDate, iana) {
 
 // Parses "HH:MM AM/PM" (12-hour) into {h, m} 24-hour.
 function _parse12hTime(timeStr) {
-  var m = String(timeStr || '').match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  var m = String(timeStr || '').match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
   if (!m) return null;
-  var h = parseInt(m[1], 10), mn = parseInt(m[2], 10), ap = m[3].toUpperCase();
+  var h = parseInt(m[1], 10), mn = m[2] ? parseInt(m[2], 10) : 0, ap = m[3].toUpperCase();
   if (ap === 'PM' && h !== 12) h += 12;
   if (ap === 'AM' && h === 12) h = 0;
   return { h: h, m: mn };
