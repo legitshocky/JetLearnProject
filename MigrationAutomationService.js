@@ -152,12 +152,14 @@ var MIG_AUTO = (function() {
   }
 
   function _patchTicketProps(ticketId, props) {
-    monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
       method: 'PATCH',
       headers: { 'Authorization': 'Bearer ' + _token(), 'Content-Type': 'application/json' },
       payload: JSON.stringify({ properties: props }),
       muteHttpExceptions: true
     });
+    var code = resp ? resp.getResponseCode() : 0;
+    Logger.log('[MIG_AUTO] _patchTicketProps ' + ticketId + ' → HTTP ' + code + (code !== 200 ? ' body=' + (resp ? resp.getContentText().slice(0, 300) : '') : ''));
   }
 
   // ── Fetch all tickets ready for automation ──────────────────────────────────

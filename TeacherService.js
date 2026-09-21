@@ -796,12 +796,11 @@ function getTeacherLabel(hubspotValue) {
     const displayName = teacherHsData[i][2];
 
     if (internalId === hubspotValue) {
-      if (displayName !== hubspotValue) Logger.log(`Teacher ID '${hubspotValue}' → '${displayName}'.`);
       return displayName;
     }
   }
 
-  return hubspotValue; 
+  return hubspotValue;
 }
 
 function getTeacherHsId(displayName) {
@@ -836,7 +835,6 @@ function getCourseLabel(internalValue){
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === internalValue) {
       var label = data[i][1];
-      if (label !== internalValue) Logger.log(`Course: '${internalValue}' → '${label}'`);
       return label;
     }
   }

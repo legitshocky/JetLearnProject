@@ -424,9 +424,95 @@ const TIMEZONE_FRIENDLY_LABELS = {
   'Pacific/Auckland': 'NZT'
 };
 
+// Maps HubSpot timezone dropdown text → IANA timezone ID
+function _resolveIana(tzString) {
+  var tz = tzString || '';
+  if (tz.includes('India') || tz.includes('Kolkata') || tz.includes('Chennai') || tz.includes('Mumbai') || tz.includes('New Delhi')) return 'Asia/Kolkata';
+  if (tz.includes('Dubai') || tz.includes('Muscat') || tz.includes('Abu Dhabi')) return 'Asia/Dubai';
+  if (tz.includes('Singapore') || tz.includes('Kuala Lumpur')) return 'Asia/Singapore';
+  if (tz.includes('Bangkok') || tz.includes('Hanoi') || tz.includes('Jakarta')) return 'Asia/Bangkok';
+  if (tz.includes('Hong Kong') || tz.includes('Beijing')) return 'Asia/Hong_Kong';
+  if (tz.includes('Tokyo') || tz.includes('Osaka')) return 'Asia/Tokyo';
+  if (tz.includes('Seoul')) return 'Asia/Seoul';
+  if (tz.includes('London') || tz.includes('Dublin') || tz.includes('Edinburgh') || tz.includes('Lisbon')) return 'Europe/London';
+  if (tz.includes('Brussels') || tz.includes('Paris') || tz.includes('Amsterdam') || tz.includes('Berlin') || tz.includes('Madrid') || tz.includes('Rome') || tz.includes('Vienna') || tz.includes('Stockholm')) return 'Europe/Paris';
+  if (tz.includes('Athens') || tz.includes('Bucharest') || tz.includes('Cairo') || tz.includes('Jerusalem')) return 'Europe/Athens';
+  if (tz.includes('Moscow')) return 'Europe/Moscow';
+  if (tz.includes('Eastern') || tz.includes('New York') || tz.includes('Indiana')) return 'America/New_York';
+  if (tz.includes('Central Time') || tz.includes('Chicago') || tz.includes('Mexico City')) return 'America/Chicago';
+  if (tz.includes('Mountain') || tz.includes('Denver') || tz.includes('Arizona')) return 'America/Denver';
+  if (tz.includes('Pacific') || tz.includes('Los Angeles') || tz.includes('Tijuana')) return 'America/Los_Angeles';
+  if (tz.includes('Alaska')) return 'America/Anchorage';
+  if (tz.includes('Hawaii')) return 'Pacific/Honolulu';
+  if (tz.includes('Brasilia') || tz.includes('Buenos Aires')) return 'America/Sao_Paulo';
+  if (tz.includes('Sydney') || tz.includes('Melbourne') || tz.includes('Canberra') || tz.includes('Brisbane')) return 'Australia/Sydney';
+  if (tz.includes('Adelaide') || tz.includes('Darwin')) return 'Australia/Adelaide';
+  if (tz.includes('Perth')) return 'Australia/Perth';
+  if (tz.includes('Auckland') || tz.includes('Wellington')) return 'Pacific/Auckland';
+  return null;
+}
+
+function _tzLabel(tzString) {
+  var iana = _resolveIana(tzString);
+  if (!iana) return '';
+  var map = {
+    'Asia/Kolkata': 'IST', 'Asia/Dubai': 'GST', 'Asia/Singapore': 'SGT',
+    'Asia/Bangkok': 'ICT', 'Asia/Hong_Kong': 'HKT', 'Asia/Tokyo': 'JST', 'Asia/Seoul': 'KST',
+    'Europe/London': 'UK Time', 'Europe/Paris': 'CET', 'Europe/Athens': 'EET', 'Europe/Moscow': 'MSK',
+    'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT',
+    'America/Los_Angeles': 'PT', 'America/Anchorage': 'AKT', 'Pacific/Honolulu': 'HST',
+    'America/Sao_Paulo': 'BRT',
+    'Australia/Sydney': 'AEST', 'Australia/Adelaide': 'ACST', 'Australia/Perth': 'AWST',
+    'Pacific/Auckland': 'NZT'
+  };
+  return map[iana] || '';
+}
+
 function convertCetToLocal(timeStr, targetTzString) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
+
+    // Strip secondary suffix e.g. "6 PM;3 PM UK Time" -> "6 PM"
+    timeStr = String(timeStr).split(';')[0].trim();
+
+    // --- Actual time conversion using a reference date in CET ---
+    // Parse the 12h AM/PM time string into hours+minutes
+    var m12 = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (m12 && targetTzString) {
+      var h = parseInt(m12[1], 10);
+      var mn = m12[2] ? parseInt(m12[2], 10) : 0;
+      var ap = m12[3].toUpperCase();
+      if (ap === 'PM' && h !== 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
+
+      // Build a reference date (any non-DST-ambiguous date) at this CET time
+      // CET = UTC+1 (standard), CEST = UTC+2 (summer, March-Oct)
+      // Use today's date so DST is handled correctly
+      var now = new Date();
+      // Create ISO string in CET by subtracting offset and converting
+      // We'll use GAS Utilities.formatDate to do the heavy lifting
+      var cetIana = 'Europe/Paris';
+      var refDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0));
+      // refDate is "h:mn UTC" — adjust: find what UTC time gives h:mn in CET
+      // Simpler: format a UTC date through CET and check the offset
+      var cetStr = Utilities.formatDate(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)), cetIana, 'Z');
+      var cetOffsetMin = 0;
+      var offMatch = String(cetStr).match(/([+-])(\d{2}):?(\d{2})/);
+      if (offMatch) {
+        cetOffsetMin = (parseInt(offMatch[2]) * 60 + parseInt(offMatch[3])) * (offMatch[1] === '+' ? 1 : -1);
+      }
+      // UTC time when CET shows h:mn
+      var utcMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0) - cetOffsetMin * 60000;
+
+      // Now format in target IANA timezone
+      var targetIana = _resolveIana(targetTzString);
+      if (targetIana) {
+        var localStr = Utilities.formatDate(new Date(utcMs), targetIana, 'h:mm a');
+        // Also get the timezone abbreviation
+        var tzLabel = _tzLabel(targetTzString);
+        return localStr + (tzLabel ? ' ' + tzLabel : '');
+      }
+    }
 
     // 1. Get the friendly label based on the dropdown selection text
     let label = ""; // Default to empty if no match found
