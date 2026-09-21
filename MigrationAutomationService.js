@@ -69,6 +69,13 @@ var MIG_AUTO = (function() {
     return _DAY_FULL[key] || d;
   }
 
+  // Convert time to 12h AM/PM — handles both "13:00" (24h) and "1:00 PM" (already 12h)
+  function _toAmPm(t) {
+    if (!t) return '';
+    if (/[AP]M/i.test(t)) return t.trim();
+    return _cetTo12h(t);
+  }
+
   function _token() {
     return PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   }
@@ -223,9 +230,9 @@ var MIG_AUTO = (function() {
         var ts = deal.ticketSchedule;
         Logger.log('[MIG_AUTO] ticketSchedule=' + JSON.stringify(ts) + ' dealSessions=' + JSON.stringify(deal.classSessions));
         if (ts && ts.day && ts.time) return [{ day: _normalizeDay(ts.day), time: _cetTo12h(ts.time) }];
-        // 2. Deal sessions that have a time
+        // 2. Deal sessions that have a time (normalize to 12h AM/PM)
         var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
-        if (ds.length) return ds.map(function(s) { return { day: _normalizeDay(s.day), time: s.time }; });
+        if (ds.length) return ds.map(function(s) { return { day: _normalizeDay(s.day), time: _toAmPm(s.time) }; });
         // 3. Derive day + time from existing calendar event start datetime
         if (_evStart && _evTz) {
           try {
