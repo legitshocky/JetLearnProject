@@ -2807,7 +2807,7 @@ function getTeacherNameAliases() {
     'love sogarwal'             : 'Love Sogarwal',    // normalize casing
     'lovepreetkaur chadha'      : 'LovepreetKaur Chadha',
 
-    'saloni jain'               : 'Saloni Sharma',    // confirm with team
+
     'soni'                      : 'Akanksha Soni',    // confirm with team
     'komal'                     : 'Komal',
     'sakina jaorawala'          : 'Sakina Jaorawala', // normalize casing
