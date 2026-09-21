@@ -2806,7 +2806,7 @@ function getTeacherNameAliases() {
     'kim jeoffrey cuevas'       : 'Kim Jeoffrey Cuevass', // HS has double s
     'love sogarwal'             : 'Love Sogarwal',    // normalize casing
     'lovepreetkaur chadha'      : 'LovepreetKaur Chadha',
-    'sakshi chillar'            : 'Sakshi Badgujjar', // confirm with team
+
     'saloni jain'               : 'Saloni Sharma',    // confirm with team
     'soni'                      : 'Akanksha Soni',    // confirm with team
     'komal'                     : 'Komal',
