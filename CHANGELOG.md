@@ -30,6 +30,107 @@
 
 ---
 
+## [2026-09-21] — v9.39: Fix login canvas animation (V9.39)
+
+### `Code.js`
+- Canvas `offsetWidth` was 0 before layout flushed — deferred init via `requestAnimationFrame` until element has real size before starting animation.
+
+---
+
+## [2026-09-21] — Mark Order Placed fixes (V9.38)
+
+### `Code.js`, `JavaScript.html`
+- Added validation for Price, ETA, Store, Reason, Subscription, Roadmap before submit.
+- Kit status now set to `Sent` (was `Ordered`) to match `addKitEntry` direct flow.
+- Added subscription PATCH to HubSpot on order placed.
+
+---
+
+## [2026-09-21] — Fix attrition note body format (V9.37)
+
+### `Code.js`
+- Fixed attrition note format to: `2 Classes Reason Attrition "Old Teacher"`.
+
+---
+
+## [2026-09-20] — Expandable migration timeline steps (V9.35–9.36)
+
+### `JavaScript.html`
+- Each step in the migration progress popup now has a clickable chevron that expands to show structured metadata: practice doc link, teacher email + tracking IDs, WhatsApp phones + template, deal properties updated, audit log details, comp class info.
+
+---
+
+## [2026-09-20] — Attrition note fixes (V9.32–9.35)
+
+### `Code.js`, `HubSpotService.js`
+- Restored attrition deal note (was lost when `addAttritionComplimentaryClasses` was removed) — now written directly in `sendMigrationEmail` for attrition reasons.
+- Removed duplicate `fetchHubspotByJlid` for attrition note — reuse `dealId` already fetched in `updateMigrationDealProperties`.
+- Fixed 403 on comp-class line item PATCH (missing `crm.objects.line_items.write` scope) — deal note now always written regardless; includes warning when PATCH fails.
+
+---
+
+## [2026-09-19] — Teacher Courses GAS cache (V9.27)
+
+### `Code.js`, `HubSpotService.js`
+- `_getCachedSheetData` now checks GAS `CacheService` (10-min TTL) before hitting the sheet for `TEACHER_COURSES` — eliminates cold-start slowness on upskill checks.
+- `fetchHubspotByJlid` calls `warmTeacherCoursesCache()` on JLID load so cache is hot by the time user picks a teacher.
+
+---
+
+## [2026-09-18] — Version update banner + HubSpot Notes API fixes (V9.18–9.24)
+
+### `Index.html`, `HubSpotService.js`
+- **Version update banner**: polls `getAppVersion()` every 2.5 min; shows a purple reload prompt when a new GAS deployment is detected.
+- **HubSpot deal notes**: switched from deprecated `v1 /engagements` to `v3 Notes + v4 association` API. Fixed 415 error by adding `Content-Type` header. Fixed wrong `typeId 214` — now uses `/default/` association endpoint.
+- **`getTeacherHsId` fuzzy match**: two-pass lookup — exact normalized match first, then first+last word match for teachers with middle name variations. Better logging when no match found.
+
+---
+
+## [2026-09-15] — Installation Email course filter + version bump (V9.06)
+
+### `JavaScript.html`
+- Course dropdowns in the Installation Email tab now filter to Minecraft-only and Roblox-only courses respectively instead of showing all courses.
+
+---
+
+## [2026-09-14] — Admin dashboard for teacher portal (V9.05)
+
+### `HubSpotService.js`, `Code.js`, `firebase-hosting/public/teacher/index.html`
+- `getAdminMigrationDashboard()` — fetches all CCTC tickets across all teachers with stage counts and stats.
+- `adminDashboard` and `adminByEmail` doGet routes added.
+- Teacher portal detects `@jet-learn.com` accounts as admin role — shows stats strip + filterable migration pipeline table with sort.
+
+---
+
+## [2026-09-13] — Firebase teacher portal (V9.04)
+
+### `Code.js`, `HubSpotService.js`, `firebase-hosting/`
+- Standalone Firebase-hosted teacher portal (`/teacher/`) — teachers check their CCTC migration status and read training FAQ via Google Sign-In.
+- `activeTeachers` API endpoint reads `TEACHER_HS_DATA` and returns sorted list of active teacher names.
+- `getTeacherCctcMigrations` server function added.
+- `doGet` routes for `teacherPortal` page and `teacherMigrations` API.
+
+---
+
+## [2026-09-12] — Migration automation engine (V9.03)
+
+### `MigrationAutomationService.js`, `Code.js`
+- Background GAS time-trigger (every 10 min) polls HubSpot migration pipeline, picks up Execution Pending tickets and auto-executes full migration: emails, WhatsApp, deal update, practice doc, ticket stage move to Completed.
+- CLS-gated reasons wait for CLS Approved stage before executing.
+- CCTC blocked if pre-migration last class date is in the future.
+- `mig_auto_attempted` flag prevents double-processing.
+- Failures logged as ticket notes; stage left unchanged for retry.
+- Run `setupMigrationAutomationTrigger()` once in GAS editor to install trigger.
+
+---
+
+## [2026-09-11] — Fix TEACHER_HS_DATA spreadsheet ID (V9.02)
+
+### `Code.js`, `HubSpotService.js`, `TeacherService.js`
+- All `_getCachedSheetData(TEACHER_HS_DATA)` calls were defaulting to `MIGRATION_SHEET_ID` but the sheet lives in `APP_DATA_SHEET_ID` — caused `getTeacherHsId` / `_getTeacherInternalId` to always return null, sending display name to HubSpot enum fields → 400 errors.
+
+---
+
 ## [2026-09-09] — Course name normalization + current_teacher fix (V9.01)
 
 ### `HubSpotService.js`, `EmailService.js`, `Code.js`
