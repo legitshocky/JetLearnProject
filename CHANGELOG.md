@@ -1,35 +1,6 @@
-﻿# JetLearn Platform — Changelog
+# JetLearn Platform — Changelog
 
 ---
-
-## [2026-09-21] — v9.51: GMeet Booking, TIC Stage Movement, Auto Migrate
-
-### Migration Automation (`MigrationAutomationService.js`, `ReserveSlot.js`)
-- **Class booking fix**: Now fetches existing calendar event for the learner and extracts the class link (Zoom or GMeet) from its description. Previously only used `zoom_masked_link` from HubSpot contact — GMeet learners had classes skipped entirely.
-- **Upcoming-event priority**: `getExistingEventDescription` searches upcoming events (now +60 days) before falling back to recent past, so active class type is detected correctly.
-- **GMeet support**: When existing event is GMeet, `conferenceData` is set on new events — creates the "Join with Google Meet" button. Existing meeting code is reused.
-- **Event title prefixing**: All recurring events get class-type prefix (e.g. `GMEET : Learner (JLID) : Jetlearn ... Lesson`). First occurrence gets `Migration :` prepended (e.g. `Migration : GMEET : ...`).
-- **Event description carry-over**: Existing event description (GMeet dial-in info, Zoom link) copied into newly booked events.
-- **CCTC**: On course-change migrations, deal `current_course` updated to new course (future_course_1). Ticket course fields left as-is. Certificate sent automatically.
-- **CET time conversion**: Ticket class time in CET (e.g. "17:00") converted to 12h AM/PM before booking.
-
-### Teacher Intelligence Center (`HubSpotService.js`, `Index.html`, `JavaScript.html`)
-- **Ticket stage movement**: After Smart Context Fetch, if ticket is in Migration Triggered stage, action strip appears with 3 buttons: Execution Pending, CLS Pending, TP Pending.
-- **CLS auto-highlight**: CLS Pending button highlighted when migration reason matches a CLS-required reason.
-- **`moveTicketStageForJlid(jlid, targetStage)`** added to `HubSpotService.js`.
-- **Smart Context Fetch** now returns `ticketId` and `ticketStage`.
-
-### Migration Page (`Index.html`, `JavaScript.html`)
-- **Auto Migrate button**: After fetching a learner by JLID, runs full automation (emails + class booking + ticket update) for one ticket with a progress popup.
-
-### Learner Ops — Migration Activity Tab
-- **Automation stats panel**: Shows auto-executed / queued / failed / skipped counts and lists tickets needing manual review.
-
-### General
-- Version bumped to **9.51** (GAS @953).
-
----
-
 ## [2026-09-21] — v9.39: Fix login canvas animation (V9.39)
 
 ### `Code.js`
