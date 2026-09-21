@@ -3,7 +3,10 @@ function normalizeCourseNameForMatch(name) {
   var s = (name || '').toLowerCase().trim();
   // "game development and ai with scratch" ↔ "game dev and ai with scratch"
   s = s.replace(/\bgame development\b/, 'game dev');
-  // "python edublocks" / "python eduBlocks" → uniform (toLowerCase already handles case)
+  // strip commas: "design, code and create" ↔ "design code and create"
+  s = s.replace(/,/g, '');
+  // collapse extra spaces left by comma removal
+  s = s.replace(/\s+/g, ' ').trim();
   return s;
 }
 
@@ -2162,13 +2165,17 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
           Logger.log('[checkNewTeacherForLearner] getTeacherSpecificLoad error: ' + te.message);
         }
         var teacherCourseList = (teacherLoadResult && teacherLoadResult.success) ? (teacherLoadResult.courses || []) : [];
-        teacherUpskilledNames = teacherCourseList.map(function(tc) { return normalizeCourseNameForMatch(tc.course); });
         [rawProps.future_course_1, rawProps.future_course_2, rawProps.future_course_3].forEach(function(raw, idx) {
           if (!raw) return;
-          var label = '';
-          try { label = getCourseLabel(raw) || raw; } catch(ce) { label = raw; }
-          var upskilled = teacherUpskilledNames.indexOf(normalizeCourseNameForMatch(label)) > -1;
-          futureCourses.push({ index: idx + 1, courseLabel: label, rawValue: raw, isUpskilled: upskilled });
+          var hsLabel = '';
+          try { hsLabel = getCourseLabel(raw) || raw; } catch(ce) { hsLabel = raw; }
+          var hsNorm = normalizeCourseNameForMatch(hsLabel);
+          var matchedTc2 = null;
+          teacherCourseList.some(function(tc) {
+            if (normalizeCourseNameForMatch(tc.course) === hsNorm) { matchedTc2 = tc; return true; }
+          });
+          var displayLabel = matchedTc2 ? matchedTc2.course : hsLabel;
+          futureCourses.push({ index: idx + 1, courseLabel: displayLabel, rawValue: raw, isUpskilled: !!matchedTc2 });
         });
       }
     } catch(fcErr) {
@@ -3134,10 +3141,13 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
 
     var results = courseLabels.map(function(label) {
       var labelNorm = normalizeCourseNameForMatch(label);
-      var upskilled = teacherCourseList.some(function(tc) {
-        return normalizeCourseNameForMatch(tc.course) === labelNorm;
+      var matchedTc = null;
+      teacherCourseList.some(function(tc) {
+        if (normalizeCourseNameForMatch(tc.course) === labelNorm) { matchedTc = tc; return true; }
       });
-      return { label: label, upskilled: upskilled };
+      // display name: prefer sheet name (canonical) over HubSpot label
+      var displayLabel = matchedTc ? matchedTc.course : label;
+      return { label: displayLabel, upskilled: !!matchedTc };
     });
 
     // Resolve TP manager name for this teacher
