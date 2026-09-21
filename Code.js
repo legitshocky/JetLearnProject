@@ -906,7 +906,7 @@ function updateJetGuideByIndex(rowIndex, updates) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "9.66";
+const APP_VERSION = "9.67";
 
 function getAppVersion() {
   return APP_VERSION;

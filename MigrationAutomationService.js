@@ -295,12 +295,13 @@ var MIG_AUTO = (function() {
         return deal.suggestedIana || deal.timezone || 'Europe/London';
       })(),
       zoomLink:               _evClassLink,
+      classLink:              _evClassLink,   // used by WATI params + parent email
       existingEventDesc:      _evDesc,
       migrationPrefix:        _evPrefix,
       watiPhoneTargets:       deal.parentPhone ? [deal.parentPhone] : [],
       parentName:             deal.parentName || '',
       parentEmail:            deal.parentEmail || '',
-      sendEmailToTeacher:     true,
+      sendEmailToTeacher:     false,          // disabled — re-enable after testing
       sendWhatsappToParent:   true,
       sendEmailToParentAlso:  false,
       sendCertificate:        (reason.toLowerCase().indexOf('course change') !== -1),
