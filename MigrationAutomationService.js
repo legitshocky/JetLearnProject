@@ -479,7 +479,7 @@ var MIG_AUTO = (function() {
   }
 
   // ── Single-ticket manual trigger (from UI) ───────────────────────────────
-  function runForJlid(jlid) {
+  function runForJlid(jlid, overrideNewTeacher) {
     if (!jlid) return { success: false, message: 'JLID required.' };
 
     var token = _token();
@@ -516,6 +516,12 @@ var MIG_AUTO = (function() {
 
     var data = _buildExecutionData(ticket);
     if (!data) return { success: false, message: 'Could not build execution data — deal/ticket mismatch for ' + jlid + '.' };
+
+    // UI-selected teacher overrides whatever was fetched from ticket/deal
+    if (overrideNewTeacher && overrideNewTeacher.trim()) {
+      Logger.log('[MIG_AUTO] UI teacher override: ' + data.newTeacher + ' → ' + overrideNewTeacher.trim());
+      data.newTeacher = overrideNewTeacher.trim();
+    }
 
     var validationError = _validate(data, ticket);
     if (validationError) {
@@ -610,8 +616,8 @@ function runMigrationAutomation() {
 }
 
 // ── Manual single-ticket auto migration — called from migration page UI ───────
-function runAutoMigrateForJlid(jlid) {
-  return MIG_AUTO.runForJlid(jlid);
+function runAutoMigrateForJlid(jlid, overrideNewTeacher) {
+  return MIG_AUTO.runForJlid(jlid, overrideNewTeacher);
 }
 
 // ── Automation stats — called from client dashboard ──────────────────────────

@@ -8610,6 +8610,7 @@ document.addEventListener('DOMContentLoaded', () => {
       _autoMigrateBtn.addEventListener('click', function() {
         var jlid = (jlidInput && jlidInput.value.trim()) || '';
         if (!jlid) { showToast('error', 'No JLID', 'Fetch a learner first.'); return; }
+        var _uiNewTeacher = (newTeacherSelect && newTeacherSelect.value.trim()) || '';
 
         var statusEl = document.getElementById('autoMigrateStatus');
         function _setStatus(msg, color) {
@@ -8662,7 +8663,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((err && err.message) || String(err)), 'red');
                 hideLoading();
               })
-              .runAutoMigrateForJlid(jlid);
+              .runAutoMigrateForJlid(jlid, _uiNewTeacher);
           }
         );
       });
