@@ -221,6 +221,7 @@ var MIG_AUTO = (function() {
       classSessions:          (function() {
         // 1. Ticket schedule (has both day + CET time)
         var ts = deal.ticketSchedule;
+        Logger.log('[MIG_AUTO] ticketSchedule=' + JSON.stringify(ts) + ' dealSessions=' + JSON.stringify(deal.classSessions));
         if (ts && ts.day && ts.time) return [{ day: _normalizeDay(ts.day), time: _cetTo12h(ts.time) }];
         // 2. Deal sessions that have a time
         var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
@@ -506,6 +507,7 @@ var MIG_AUTO = (function() {
 
     var bookingMsg = '';
     try {
+      Logger.log('[MIG_AUTO] booking check: zoomLink=' + (data.zoomLink ? 'Y' : 'N') + ' sessions=' + JSON.stringify(data.classSessions) + ' iana=' + data.classBookingIana);
       if (!data.zoomLink) {
         bookingMsg = 'No class link found (event or contact) — book classes manually.';
       } else if (!data.classSessions || !data.classSessions.length) {
@@ -525,9 +527,12 @@ var MIG_AUTO = (function() {
           data.existingEventDesc || '',
           data.migrationPrefix || 'Migration'
         );
-        bookingMsg = (bk && bk.success !== false)
-          ? (bk.booked || n) + ' classes booked with ' + data.newTeacher + '.'
-          : 'Class booking failed: ' + ((bk && bk.message) || 'Unknown') + '. Book manually.';
+        if (bk && bk.success !== false) {
+          var bookedCount = bk.occurrences || n;
+          bookingMsg = 'Classes Booked: ' + bookedCount + ' | Timezone: ' + iana + ' | Booked with ' + data.newTeacher + '.';
+        } else {
+          bookingMsg = 'Class booking failed: ' + ((bk && bk.message) || 'Unknown') + '. Book manually.';
+        }
       }
     } catch(be) {
       bookingMsg = 'Class booking error: ' + be.message + '. Book manually.';
@@ -537,9 +542,15 @@ var MIG_AUTO = (function() {
     // CCTC: update future_course_1 to current course
     _updateCctcFutureCourse(data, ticket);
 
+    var _slotStatus = 'Matched by Ops';
+    var _intervenedBy = 'Ops Intervention';
     _addTicketNote(ticketId, '✅ Migration auto-executed (manual trigger).\n' + bookingMsg);
     _patchTicketStage(ticketId, STAGE.COMPLETED);
-    _patchTicketProps(ticketId, { mig_auto_error: '' });
+    _patchTicketProps(ticketId, {
+      mig_auto_error: '',
+      migration_slot_status__t_: _slotStatus,
+      migration_intervened_by: _intervenedBy
+    });
 
     // Build timeline for UI progress popup
     var timeline = (result && result.timeline) ? result.timeline.slice() : [];
