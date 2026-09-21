@@ -85,6 +85,37 @@ var MIG_AUTO = (function() {
     return CLS_REQUIRED_REASONS.some(function(cr) { return r.indexOf(cr) !== -1; });
   }
 
+  // Fetch hs_pipeline_stage history to determine who intervened on this ticket
+  function _getTicketIntervention(ticketId) {
+    try {
+      var resp = monitoredFetch(
+        'https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId + '?propertiesWithHistory=hs_pipeline_stage',
+        { method: 'GET', headers: { 'Authorization': 'Bearer ' + _token() }, muteHttpExceptions: true }
+      );
+      if (resp.getResponseCode() !== 200) return null;
+      var data = JSON.parse(resp.getContentText());
+      var history = (data.propertiesWithHistory && data.propertiesWithHistory.hs_pipeline_stage) || [];
+      var stages = history.map(function(h) { return h.value; });
+      Logger.log('[MIG_AUTO] stage history: ' + JSON.stringify(stages));
+
+      var hadTP  = stages.indexOf('128913750') !== -1;
+      var hadCLS = stages.indexOf('133755411') !== -1 || stages.indexOf('128913752') !== -1;
+
+      var intervenedBy;
+      if (hadCLS && hadTP)    intervenedBy = 'CLS Intervention;TP Intervention';
+      else if (hadCLS)        intervenedBy = 'CLS Intervention';
+      else if (hadTP)         intervenedBy = 'TP Intervention';
+      else                    intervenedBy = 'Ops Intervention';
+
+      var slotStatus = hadTP ? 'Matched by TP' : 'Matched by Ops';
+
+      return { intervenedBy: intervenedBy, slotStatus: slotStatus };
+    } catch(e) {
+      Logger.log('[MIG_AUTO] _getTicketIntervention error: ' + e.message);
+      return null;
+    }
+  }
+
   function _patchTicketStage(ticketId, stageId) {
     monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + ticketId, {
       method: 'PATCH',
@@ -549,8 +580,9 @@ var MIG_AUTO = (function() {
     // CCTC: update future_course_1 to current course
     _updateCctcFutureCourse(data, ticket);
 
-    var _slotStatus = 'Matched by Ops';
-    var _intervenedBy = 'Ops Intervention';
+    var _intervention = _getTicketIntervention(ticketId);
+    var _slotStatus   = (_intervention && _intervention.slotStatus)   || 'Matched by Ops';
+    var _intervenedBy = (_intervention && _intervention.intervenedBy) || 'Ops Intervention';
     _addTicketNote(ticketId, '✅ Migration auto-executed (manual trigger).\n' + bookingMsg);
     _patchTicketStage(ticketId, STAGE.COMPLETED);
     _patchTicketProps(ticketId, {
