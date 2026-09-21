@@ -173,12 +173,16 @@ var MIG_AUTO = (function() {
       try { confirmedFutureCourses.push(getCourseLabel(raw) || raw); } catch(e) { confirmedFutureCourses.push(raw); }
     });
 
-    // Fetch existing calendar event once — extract class link, description, and title prefix
+    // Fetch existing calendar event once — extract class link, description, title prefix, and start time
     var _evClassLink = deal.zoomLink || '';
     var _evDesc      = '';
     var _evPrefix    = 'Migration';
+    var _evStart     = '';
+    var _evTz        = '';
     try {
       var _evRes = getExistingEventDescription(jlid);
+      _evStart = _evRes.eventStart     || '';
+      _evTz    = _evRes.eventTimeZone  || '';
       if (_evRes && _evRes.success && _evRes.description) {
         var _evLinkMatch = _evRes.description.match(/https?:\/\/\S+/);
         if (_evLinkMatch) _evClassLink = _evLinkMatch[0].replace(/[)\]>]+$/, '');
@@ -187,6 +191,7 @@ var MIG_AUTO = (function() {
         if (_prefixMatch) _evPrefix = _prefixMatch[1].trim();
         Logger.log('[MIG_AUTO] Existing event: title=' + _evRes.eventTitle + ' link=' + _evClassLink + ' prefix=' + _evPrefix);
       }
+      if (_evStart) Logger.log('[MIG_AUTO] Event start=' + _evStart + ' tz=' + _evTz);
     } catch(_evErr) {
       Logger.log('[MIG_AUTO] getExistingEventDescription error: ' + _evErr.message);
     }
@@ -202,17 +207,37 @@ var MIG_AUTO = (function() {
       timezone:               deal.timezone || '',
       manualTimezone:         deal.suggestedIana || '',
       classSessions:          (function() {
-        // Prefer ticket schedule (has both day + CET time) over deal classSessions (often time-less)
+        // 1. Ticket schedule (has both day + CET time)
         var ts = deal.ticketSchedule;
         if (ts && ts.day && ts.time) return [{ day: ts.day, time: _cetTo12h(ts.time) }];
-        // Fall back to deal sessions — filter out ones with no time
+        // 2. Deal sessions that have a time
         var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
-        return ds.length ? ds : (deal.classSessions || []);
+        if (ds.length) return ds;
+        // 3. Derive day + time from existing calendar event start datetime
+        if (_evStart && _evTz) {
+          try {
+            var evDt  = new Date(_evStart);
+            var evDay  = Utilities.formatDate(evDt, _evTz, 'EEEE');   // e.g. "Tuesday"
+            var evTime = Utilities.formatDate(evDt, _evTz, 'h:mm a'); // e.g. "2:00 PM"
+            if (evDay && evTime) {
+              Logger.log('[MIG_AUTO] classSessions derived from event: ' + evDay + ' ' + evTime + ' (' + _evTz + ')');
+              return [{ day: evDay, time: evTime }];
+            }
+          } catch(_evTzErr) {
+            Logger.log('[MIG_AUTO] Event time parse error: ' + _evTzErr.message);
+          }
+        }
+        return (deal.classSessions || []);
       })(),
       classBookingIana:       (function() {
         // If using CET ticket time, book in CET so Calendar API interprets it correctly
         var ts = deal.ticketSchedule;
-        return (ts && ts.day && ts.time) ? 'Europe/Paris' : (deal.suggestedIana || deal.timezone || 'Europe/London');
+        if (ts && ts.day && ts.time) return 'Europe/Paris';
+        var ds = (deal.classSessions || []).filter(function(s) { return s.time && s.time.trim(); });
+        if (ds.length) return deal.suggestedIana || deal.timezone || 'Europe/London';
+        // If falling back to event time, use the event's own timezone
+        if (_evStart && _evTz) return _evTz;
+        return deal.suggestedIana || deal.timezone || 'Europe/London';
       })(),
       zoomLink:               _evClassLink,
       existingEventDesc:      _evDesc,

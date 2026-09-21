@@ -793,12 +793,17 @@ function getExistingEventDescription(jlid) {
     }
 
     var match = null;
+    var firstItem = items.length ? items[0] : null;
     for (var i = 0; i < items.length; i++) {
       var desc = (items[i].description || '').trim();
-      if (desc) { match = { desc: desc, title: items[i].summary || '' }; break; }
+      if (desc) { match = { desc: desc, title: items[i].summary || '', item: items[i] }; break; }
     }
 
-    if (!match) return { success: false, message: 'No event with notes found for ' + jlid + '.' };
+    // Even if no description found, return event time info from first matched event
+    var eventStart    = firstItem ? (firstItem.start.dateTime || firstItem.start.date || '') : '';
+    var eventTimeZone = firstItem ? (firstItem.start.timeZone || '') : '';
+
+    if (!match) return { success: false, message: 'No event with notes found for ' + jlid + '.', eventStart: eventStart, eventTimeZone: eventTimeZone };
 
     // Strip HTML tags, convert <br> to newlines
     var clean = match.desc
@@ -809,7 +814,7 @@ function getExistingEventDescription(jlid) {
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
-    return { success: true, description: clean, eventTitle: match.title };
+    return { success: true, description: clean, eventTitle: match.title, eventStart: eventStart, eventTimeZone: eventTimeZone };
   } catch(e) {
     Logger.log('[getExistingEventDescription] ' + e.message);
     return { success: false, message: e.message };
