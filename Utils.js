@@ -468,50 +468,52 @@ function _tzLabel(tzString) {
   return map[iana] || '';
 }
 
-function convertCetToLocal(timeStr, targetTzString) {
+// convertCetToLocal(timeStr, targetTzString, sourceIana)
+// Converts a 12h AM/PM time from sourceIana (default Europe/Paris) to the
+// parent's timezone (targetTzString = HubSpot dropdown text).
+// Falls back to label-only if parsing fails.
+function convertCetToLocal(timeStr, targetTzString, sourceIana) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
 
     // Strip secondary suffix e.g. "6 PM;3 PM UK Time" -> "6 PM"
     timeStr = String(timeStr).split(';')[0].trim();
 
-    // 1. Get the friendly label based on the dropdown selection text
-    let label = ""; // Default to empty if no match found
-    const tz = targetTzString || "";
+    var targetIana = _resolveIana(targetTzString);
+    var srcIana    = sourceIana || 'Europe/Paris';
 
-    // --- Asia ---
-    if (tz.includes("India") || tz.includes("Kolkata") || tz.includes("Chennai") || tz.includes("Mumbai") || tz.includes("New Delhi")) label = "IST";
-    else if (tz.includes("Dubai") || tz.includes("Muscat") || tz.includes("Abu Dhabi")) label = "GST";
-    else if (tz.includes("Singapore") || tz.includes("Kuala Lumpur")) label = "SGT";
-    else if (tz.includes("Bangkok") || tz.includes("Hanoi") || tz.includes("Jakarta")) label = "ICT";
-    else if (tz.includes("Hong Kong") || tz.includes("Beijing")) label = "HKT";
-    else if (tz.includes("Tokyo") || tz.includes("Osaka")) label = "JST";
-    else if (tz.includes("Seoul")) label = "KST";
+    var m12 = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (m12 && targetIana) {
+      var h  = parseInt(m12[1], 10);
+      var mn = m12[2] ? parseInt(m12[2], 10) : 0;
+      var ap = m12[3].toUpperCase();
+      if (ap === 'PM' && h !== 12) h += 12;
+      if (ap === 'AM' && h === 12) h = 0;
 
-    // --- Europe ---
-    else if (tz.includes("London") || tz.includes("Dublin") || tz.includes("Edinburgh") || tz.includes("Lisbon")) label = "UK Time";
-    else if (tz.includes("Brussels") || tz.includes("Paris") || tz.includes("Amsterdam") || tz.includes("Berlin") || tz.includes("Madrid") || tz.includes("Rome") || tz.includes("Vienna") || tz.includes("Stockholm")) label = "CET";
-    else if (tz.includes("Athens") || tz.includes("Bucharest") || tz.includes("Cairo") || tz.includes("Jerusalem")) label = "EET";
-    else if (tz.includes("Moscow")) label = "MSK";
+      // Find UTC offset of source timezone at today's date
+      var now = new Date();
+      var srcOffStr = Utilities.formatDate(
+        new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)),
+        srcIana, 'Z'
+      );
+      var srcOffMin = 0;
+      var srcMatch = String(srcOffStr).match(/([+-])(\d{2}):?(\d{2})/);
+      if (srcMatch) {
+        srcOffMin = (parseInt(srcMatch[2]) * 60 + parseInt(srcMatch[3])) * (srcMatch[1] === '+' ? 1 : -1);
+      }
 
-    // --- US/Americas ---
-    else if (tz.includes("Eastern") || tz.includes("New York") || tz.includes("Indiana")) label = "EST";
-    else if (tz.includes("Central Time") || tz.includes("Chicago") || tz.includes("Mexico City")) label = "CST";
-    else if (tz.includes("Mountain") || tz.includes("Denver") || tz.includes("Arizona")) label = "MST";
-    else if (tz.includes("Pacific") || tz.includes("Los Angeles") || tz.includes("Tijuana")) label = "PST";
-    else if (tz.includes("Alaska")) label = "AKST";
-    else if (tz.includes("Hawaii")) label = "HST";
-    else if (tz.includes("Brasilia") || tz.includes("Buenos Aires")) label = "BRT";
+      // UTC ms when source timezone shows h:mn
+      var utcMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0) - srcOffMin * 60000;
 
-    // --- Australia/Pacific ---
-    else if (tz.includes("Sydney") || tz.includes("Melbourne") || tz.includes("Canberra") || tz.includes("Brisbane")) label = "AEST";
-    else if (tz.includes("Adelaide") || tz.includes("Darwin")) label = "ACST";
-    else if (tz.includes("Perth")) label = "AWST";
-    else if (tz.includes("Auckland") || tz.includes("Wellington")) label = "NZT";
+      // Format in target timezone
+      var localStr = Utilities.formatDate(new Date(utcMs), targetIana, 'h:mm a');
+      var tzLabel  = _tzLabel(targetTzString);
+      return localStr + (tzLabel ? ' ' + tzLabel : '');
+    }
 
-    // 2. Return Input + Label (NO MATH)
-    // If we found a label, append it. If not, just return the time.
-    return label ? `${timeStr} ${label}` : timeStr;
+    // Fallback: label-only if time can't be parsed
+    var tzLabel2 = _tzLabel(targetTzString);
+    return tzLabel2 ? timeStr + ' ' + tzLabel2 : timeStr;
 
   } catch (e) {
     return timeStr;
