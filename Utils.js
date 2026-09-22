@@ -468,52 +468,18 @@ function _tzLabel(tzString) {
   return map[iana] || '';
 }
 
-// convertCetToLocal(timeStr, targetTzString, sourceIana)
-// Converts a 12h AM/PM time from sourceIana (default Europe/Paris) to the
-// parent's timezone (targetTzString = HubSpot dropdown text).
-// Falls back to label-only if parsing fails.
-function convertCetToLocal(timeStr, targetTzString, sourceIana) {
+// convertCetToLocal(timeStr, targetTzString)
+// Appends the parent's timezone label to the time string.
+// Time is already stored in the parent's local timezone — no conversion needed.
+function convertCetToLocal(timeStr, targetTzString) {
   try {
     if (!timeStr || timeStr === "TBD") return "TBD";
 
     // Strip secondary suffix e.g. "6 PM;3 PM UK Time" -> "6 PM"
     timeStr = String(timeStr).split(';')[0].trim();
 
-    var targetIana = _resolveIana(targetTzString);
-    var srcIana    = sourceIana || 'Europe/Paris';
-
-    var m12 = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
-    if (m12 && targetIana) {
-      var h  = parseInt(m12[1], 10);
-      var mn = m12[2] ? parseInt(m12[2], 10) : 0;
-      var ap = m12[3].toUpperCase();
-      if (ap === 'PM' && h !== 12) h += 12;
-      if (ap === 'AM' && h === 12) h = 0;
-
-      // Find UTC offset of source timezone at today's date
-      var now = new Date();
-      var srcOffStr = Utilities.formatDate(
-        new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)),
-        srcIana, 'Z'
-      );
-      var srcOffMin = 0;
-      var srcMatch = String(srcOffStr).match(/([+-])(\d{2}):?(\d{2})/);
-      if (srcMatch) {
-        srcOffMin = (parseInt(srcMatch[2]) * 60 + parseInt(srcMatch[3])) * (srcMatch[1] === '+' ? 1 : -1);
-      }
-
-      // UTC ms when source timezone shows h:mn
-      var utcMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0) - srcOffMin * 60000;
-
-      // Format in target timezone
-      var localStr = Utilities.formatDate(new Date(utcMs), targetIana, 'h:mm a');
-      var tzLabel  = _tzLabel(targetTzString);
-      return localStr + (tzLabel ? ' ' + tzLabel : '');
-    }
-
-    // Fallback: label-only if time can't be parsed
-    var tzLabel2 = _tzLabel(targetTzString);
-    return tzLabel2 ? timeStr + ' ' + tzLabel2 : timeStr;
+    var tzLabel = _tzLabel(targetTzString);
+    return tzLabel ? timeStr + ' ' + tzLabel : timeStr;
 
   } catch (e) {
     return timeStr;
