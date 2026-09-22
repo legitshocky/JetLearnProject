@@ -98,10 +98,9 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
   if (migrationData.classSessions && migrationData.classSessions.length > 0) {
     weekdayStr = migrationData.classSessions.map(s => s.day).join(' & ');
     const parentTimezone = migrationData.manualTimezone || hubspotData.timezone || "Europe/London";    
-    var bookingIana = migrationData.classBookingIana || 'Europe/Paris';
     timeStr = migrationData.classSessions.map(s => {
       var t = String(s.time || '').split(';')[0].trim();
-      return convertCetToLocal(t, parentTimezone, bookingIana);
+      return convertCetToLocal(t, parentTimezone); // source always CET (Europe/Paris)
     }).join(' & ');
   }
   let dateStr = "TBD";
