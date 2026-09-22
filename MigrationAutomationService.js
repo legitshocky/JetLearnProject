@@ -303,7 +303,7 @@ var MIG_AUTO = (function() {
       watiPhoneTargets:       deal.parentPhone ? [deal.parentPhone] : [],
       parentName:             deal.parentName || '',
       parentEmail:            deal.parentEmail || '',
-      sendEmailToTeacher:     false,          // disabled — re-enable after testing
+      sendEmailToTeacher:     true,
       sendWhatsappToParent:   true,
       sendEmailToParentAlso:  false,
       sendCertificate:        (reason.toLowerCase().indexOf('course change') !== -1),
