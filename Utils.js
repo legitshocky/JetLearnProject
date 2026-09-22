@@ -475,45 +475,6 @@ function convertCetToLocal(timeStr, targetTzString) {
     // Strip secondary suffix e.g. "6 PM;3 PM UK Time" -> "6 PM"
     timeStr = String(timeStr).split(';')[0].trim();
 
-    // --- Actual time conversion using a reference date in CET ---
-    // Parse the 12h AM/PM time string into hours+minutes
-    var m12 = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
-    if (m12 && targetTzString) {
-      var h = parseInt(m12[1], 10);
-      var mn = m12[2] ? parseInt(m12[2], 10) : 0;
-      var ap = m12[3].toUpperCase();
-      if (ap === 'PM' && h !== 12) h += 12;
-      if (ap === 'AM' && h === 12) h = 0;
-
-      // Build a reference date (any non-DST-ambiguous date) at this CET time
-      // CET = UTC+1 (standard), CEST = UTC+2 (summer, March-Oct)
-      // Use today's date so DST is handled correctly
-      var now = new Date();
-      // Create ISO string in CET by subtracting offset and converting
-      // We'll use GAS Utilities.formatDate to do the heavy lifting
-      var cetIana = 'Europe/Paris';
-      var refDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0));
-      // refDate is "h:mn UTC" — adjust: find what UTC time gives h:mn in CET
-      // Simpler: format a UTC date through CET and check the offset
-      var cetStr = Utilities.formatDate(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)), cetIana, 'Z');
-      var cetOffsetMin = 0;
-      var offMatch = String(cetStr).match(/([+-])(\d{2}):?(\d{2})/);
-      if (offMatch) {
-        cetOffsetMin = (parseInt(offMatch[2]) * 60 + parseInt(offMatch[3])) * (offMatch[1] === '+' ? 1 : -1);
-      }
-      // UTC time when CET shows h:mn
-      var utcMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), h, mn, 0) - cetOffsetMin * 60000;
-
-      // Now format in target IANA timezone
-      var targetIana = _resolveIana(targetTzString);
-      if (targetIana) {
-        var localStr = Utilities.formatDate(new Date(utcMs), targetIana, 'h:mm a');
-        // Also get the timezone abbreviation
-        var tzLabel = _tzLabel(targetTzString);
-        return localStr + (tzLabel ? ' ' + tzLabel : '');
-      }
-    }
-
     // 1. Get the friendly label based on the dropdown selection text
     let label = ""; // Default to empty if no match found
     const tz = targetTzString || "";
