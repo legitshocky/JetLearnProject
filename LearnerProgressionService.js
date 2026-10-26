@@ -1265,7 +1265,8 @@ function triggerSmartMigration(jlid, preMatchedTeachers) {
       hs_pipeline_stage      : '128913747',
       content                : filteredNotes.join('\n'),
       learner_uid            : jlid,
-      reason_of_migration__t_: 'Course Change Teacher Change'
+      reason_of_migration__t_: 'Course Change Teacher Change',
+      hubspot_owner_id       : '594932888'
     };
     if (curCourseVal)   ticketProps['current_course__t_']                      = curCourseVal;
     if (fc1Val)         ticketProps['future_course_1']                         = fc1Val;
@@ -2057,6 +2058,61 @@ function sendCLSMigrationRequest(jlid, triggeredBy) {
 }
 
 // ── Ticket creation diagnostic — run in GAS editor to test HubSpot ────
+// Run once in GAS editor to assign all unowned Migration Triggered tickets to Sourav
+function setupBackfillTicketOwnerTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'backfillTicketOwner') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('backfillTicketOwner')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('Trigger created: backfillTicketOwner every 1 hour');
+}
+
+function backfillTicketOwner() {
+  var token   = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  var ownerId = '594932888';
+  var after   = undefined;
+  var total   = 0, patched = 0, errors = 0;
+
+  do {
+    var body = {
+      filterGroups: [{ filters: [
+        { propertyName: 'hs_pipeline_stage', operator: 'EQ', value: '128913747' },
+        { propertyName: 'hubspot_owner_id',  operator: 'NOT_HAS_PROPERTY' }
+      ]}],
+      properties: ['subject','hubspot_owner_id'],
+      limit: 100
+    };
+    if (after) body.after = after;
+
+    var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/search', {
+      method: 'post',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(body),
+      muteHttpExceptions: true
+    });
+    var data = JSON.parse(resp.getContentText());
+    var results = data.results || [];
+    total += results.length;
+    after = (data.paging && data.paging.next) ? data.paging.next.after : null;
+
+    results.forEach(function(t) {
+      var pr = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + t.id, {
+        method: 'PATCH',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ properties: { hubspot_owner_id: ownerId } }),
+        muteHttpExceptions: true
+      });
+      if (pr.getResponseCode() === 200) { patched++; }
+      else { errors++; Logger.log('[backfill] PATCH failed ' + t.id + ': ' + pr.getContentText().substring(0,200)); }
+    });
+  } while (after);
+
+  Logger.log('[backfillTicketOwner] Found=' + total + ' Patched=' + patched + ' Errors=' + errors);
+}
+
 function diagTicket() {
   var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
   if (!token) { Logger.log('[DIAG] ❌ HUBSPOT_API_KEY not set'); return; }

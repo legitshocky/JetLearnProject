@@ -92,13 +92,26 @@ var KIT_COL = {
   // automated NUDGE_STAGE cadence: ops can send an extra reminder any time,
   // and this alternates urgency copy (odd count = normal, even = urgent).
   MANUAL_REMINDER_COUNT:   49,
-  MANUAL_REMINDER_LAST_AT: 50
+  MANUAL_REMINDER_LAST_AT: 50,
+  // HubSpot deal ID — written lazily on first open/add so UI can link directly
+  HS_DEAL_ID:              51,
+  // Parent contact fields — written when address is received so Order Details
+  // never needs a HubSpot call (AZ, BA, BB)
+  PARENT_NAME:             52,
+  PARENT_PHONE:            53,
+  PARENT_EMAIL:            54,
+  // Structured address fields — written when address is received so Order
+  // Details never needs a second sheet/HubSpot call (BC, BD, BE, BF)
+  ADDR_LINE:               55,
+  ADDR_CITY:               56,
+  ADDR_STATE:              57,
+  ADDR_POSTAL:             58
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
 // KIT_COL.REFUNDED) for any full-row range read, since REFUNDED is no
 // longer the last column.
-var KIT_LAST_COL = KIT_COL.MANUAL_REMINDER_LAST_AT;
+var KIT_LAST_COL = KIT_COL.ADDR_POSTAL;
 
 // ── HubSpot kit property map ──────────────────────────────────────────────────
 // Fetch current learning_kit_cost directly from deal GET — bypasses search cache
@@ -450,14 +463,17 @@ function _getStructuredAddressForJlid(jlid) {
       if (String(jlidCol[i][0] || '').trim().toUpperCase() === jlidUpper) { matchRow = i + 2; break; }
     }
     if (matchRow < 0) return null;
-    var row = sheet.getRange(matchRow, 4, 1, 6).getValues()[0]; // D:I — Email, Address..Country
+    // Cols 3-14: Parent Name, Contact, Learner, Email, Address, City, State, PostalCode, Country, Deal ID, HS Notes, PATCH Status
+    var row = sheet.getRange(matchRow, 3, 1, 9).getValues()[0]; // C:K
     return {
-      email: String(row[0] || '').trim(),
-      address: String(row[1] || '').trim(),
-      city: String(row[2] || '').trim(),
-      state: String(row[3] || '').trim(),
-      postalCode: String(row[4] || '').trim(),
-      country: String(row[5] || '').trim()
+      parentName:    String(row[0] || '').trim(),
+      parentContact: String(row[1] || '').trim(),
+      email:         String(row[3] || '').trim(),
+      address:       String(row[4] || '').trim(),
+      city:          String(row[5] || '').trim(),
+      state:         String(row[6] || '').trim(),
+      postalCode:    String(row[7] || '').trim(),
+      country:       String(row[8] || '').trim()
     };
   } catch(e) {
     Logger.log('[KitTracking] _getStructuredAddressForJlid error: ' + e.message);
@@ -472,6 +488,12 @@ function _getStructuredAddressForJlid(jlid) {
 function getKitOrderDetails(rowIndex) {
   if (!rowIndex) return { success: false, message: 'No rowIndex' };
   try {
+    var _odCacheKey = 'kitOD_' + rowIndex;
+    var _odCache = CacheService.getScriptCache();
+    var _odCached = _odCache.get(_odCacheKey);
+    if (_odCached) {
+      try { return JSON.parse(_odCached); } catch(_) {}
+    }
     var sheet = _getKitSheet();
     var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
     var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
@@ -484,29 +506,37 @@ function getKitOrderDetails(rowIndex) {
       return { success: false, message: 'No delivery address on file for this row yet — request/verify the address first.' };
     }
 
-    var parentName = '', parentPhone = '', parentEmail = '', country = sheetCountry;
-    if (jlid) {
-      // skipChurnCheck=true — this panel never displays churn-risk data,
-      // and that extra HubSpot ticket search was most of why this modal
-      // took 2-3s to open (same fix as the public address page, V8.35).
+    // Read cached parent contact from Kit sheet (written when address was received)
+    var parentName  = String(row[KIT_COL.PARENT_NAME  - 1] || '').trim();
+    var parentPhone = String(row[KIT_COL.PARENT_PHONE - 1] || '').trim();
+    var parentEmail = String(row[KIT_COL.PARENT_EMAIL - 1] || '').trim();
+    var country = sheetCountry;
+
+    // Also check Learner Address Submissions sheet — has parentName/Contact from v9.87+
+    var structured = jlid ? _getStructuredAddressForJlid(jlid) : null;
+    if (structured) {
+      parentName  = parentName  || structured.parentName    || '';
+      parentPhone = parentPhone || structured.parentContact || '';
+    }
+
+    // Only call HubSpot if both Kit sheet and submissions sheet are empty (old rows)
+    if (jlid && (!parentName || !parentPhone)) {
       var hs = fetchHubspotByJlid(jlid, true);
       if (hs && hs.success && hs.data) {
-        parentName = hs.data.parentName || '';
-        parentPhone = hs.data.parentContact || '';
-        parentEmail = hs.data.parentEmail || '';
+        parentName  = parentName  || hs.data.parentName    || '';
+        parentPhone = parentPhone || hs.data.parentContact || '';
+        parentEmail = parentEmail || hs.data.parentEmail   || '';
         country = hs.data.country || sheetCountry;
+        // Backfill Kit sheet so next open is instant
+        try {
+          if (hs.data.parentName)    sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).setValue(hs.data.parentName);
+          if (hs.data.parentContact) sheet.getRange(rowIndex, KIT_COL.PARENT_PHONE).setValue(hs.data.parentContact);
+          if (hs.data.parentEmail)   sheet.getRange(rowIndex, KIT_COL.PARENT_EMAIL).setValue(hs.data.parentEmail);
+        } catch(_bf) {}
       }
     }
 
-    // Prefer the structured fields from the original submission (Learner
-    // Address Submissions sheet) over re-splitting the flattened
-    // DELIVERY_ADDRESS string — parsing an arbitrary comma-joined address
-    // back into line/city/state/postcode is unreliable across countries,
-    // but the real structured values are sitting right there from when the
-    // parent actually submitted the form.
-    var structured = jlid ? _getStructuredAddressForJlid(jlid) : null;
-
-    return {
+    var _odResult = {
       success: true,
       jlid: jlid,
       learnerName: learnerName,
@@ -522,6 +552,8 @@ function getKitOrderDetails(rowIndex) {
       postalCode: structured ? structured.postalCode : '',
       amazonDomain: _kitAmazonDomainForCountry((structured && structured.country) || country)
     };
+    try { _odCache.put(_odCacheKey, JSON.stringify(_odResult), 300); } catch(_) {}
+    return _odResult;
   } catch(e) {
     Logger.log('[KitTracking] getKitOrderDetails ERROR: ' + e.message);
     return { success: false, message: e.message };
@@ -1012,6 +1044,18 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
     // caused a confusing duplicate message with the old wording/link.
 
     Logger.log('[KitTracking] Address request sent via WATI for ' + jlid + ' phone=' + phone);
+
+    // Pre-warm the address form context cache so the parent's first page load
+    // hits cache instead of paying the HubSpot round-trip latency.
+    try {
+      var _ctx = getAddressFormContext(jlid);
+      if (_ctx && _ctx.success) {
+        var _cache = CacheService.getScriptCache();
+        _cache.put('addrFormCtx_' + jlid.toUpperCase(), JSON.stringify(_ctx), 21600);
+        Logger.log('[KitTracking] Pre-warmed addrFormCtx cache for ' + jlid);
+      }
+    } catch(_ce) { Logger.log('[KitTracking] Cache pre-warm failed: ' + _ce.message); }
+
     return { success: true, addressSource: 'wati_requested',
              phone: phone, needsWati: true, watiSent: true, rowIndex: rowIndex };
 
@@ -2305,8 +2349,11 @@ function getKitTrackingData() {
       } else if (orderRaw) {
         orderDate = _parseDMY(String(orderRaw));
       }
+      // Skip old rows — EXCEPT address-pipeline rows (no order yet, OR still
+      // waiting on address), which must always be visible regardless of date.
+      var isAddressPipelineRow = !orderPlaced && (addrStatus === 'Requested' || addrStatus === 'Received');
       var isAddressFirstRow = !orderRaw && addrStatus && !orderPlaced;
-      if (!isAddressFirstRow && (!orderDate || orderDate < cutoff)) return;
+      if (!isAddressPipelineRow && !isAddressFirstRow && (!orderDate || orderDate < cutoff)) return;
 
       // Build orderMonth label e.g. �April 2026� � always from parsed orderDate (never col H formula)
       var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -2345,14 +2392,12 @@ function getKitTrackingData() {
       var isRefunded = String(r[26] || '').trim().toUpperCase() === 'TRUE';
       var needsCall = (nudgeStage === 'call_nudge_sent' && addrStatus !== 'Received');
 
-      // A row only belongs to the NEW address-request pipeline if it was
-      // actually stamped by requestKitDeliveryAddress() (ADDR_REQUESTED_AT
-      // set). Legacy rows created via the old Add Kit Entry form can have
-      // ADDR_STATUS='Verified' just because an address was typed in at
-      // creation time — that is NOT the same thing and must never be treated
-      // as "still asking" (it already has an order/delivery in most cases).
+      // 'Requested' or 'Received' status is sufficient proof the row is in the
+      // address pipeline — no need to gate on ADDR_REQUESTED_AT being stamped,
+      // since that excludes rows where the request was sent outside the app or
+      // where the stamp failed. Legacy rows only have 'Verified' (not these two).
       var addrRequestedAtRaw = r[KIT_COL.ADDR_REQUESTED_AT - 1];
-      var inAddressPipeline = !!addrRequestedAtRaw && !orderPlaced &&
+      var inAddressPipeline = !orderPlaced &&
         (addrStatus === 'Requested' || addrStatus === 'Received');
 
       var status = 'pending';
@@ -2419,13 +2464,23 @@ function getKitTrackingData() {
         subscription: String(r[12] || '').trim(),   // M: Subscription
         roadmap:      String(r[13] || '').trim(),   // N: Roadmap
         sentBy:       String(r[14] || '').trim(),   // O: Sent By
-        phone:        String(r[19] || '').replace(/\D/g, ''),  // T: Phone Sent To
+        phone:        (function() { var p = String(r[19]||'').split(',').map(function(x){return x.replace(/\D/g,'');}).filter(Boolean); return p[0]||''; })(),
+        phones:       String(r[19]||'').split(',').map(function(x){return x.replace(/\D/g,'');}).filter(Boolean),  // T: Phone Sent To (may be multi)
         // Reimbursement (parent-purchased kits)
         isReimbursement:      String(r[KIT_COL.REIMBURSEMENT - 1] || '').trim().toUpperCase() === 'TRUE',
         reimbursementAmount:  String(r[KIT_COL.REIMBURSEMENT_AMOUNT - 1] || '').trim(),
         reimbursementInvoiceLink: String(r[KIT_COL.REIMBURSEMENT_INVOICE_LINK - 1] || '').trim(),
         reimbursementReason:  String(r[KIT_COL.REIMBURSEMENT_REASON - 1] || '').trim(),
-        reimbursementStatus:  String(r[KIT_COL.REIMBURSEMENT_STATUS - 1] || '').trim()
+        reimbursementStatus:  String(r[KIT_COL.REIMBURSEMENT_STATUS - 1] || '').trim(),
+        hsDealId:     String(r[KIT_COL.HS_DEAL_ID    - 1] || '').trim(),
+        parentName:      String(r[KIT_COL.PARENT_NAME      - 1] || '').trim(),
+        parentPhone:     String(r[KIT_COL.PARENT_PHONE     - 1] || '').trim(),
+        parentEmail:     String(r[KIT_COL.PARENT_EMAIL     - 1] || '').trim(),
+        deliveryAddress: String(r[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim(),
+        addrLine:        String(r[KIT_COL.ADDR_LINE        - 1] || '').trim(),
+        addrCity:        String(r[KIT_COL.ADDR_CITY        - 1] || '').trim(),
+        addrState:       String(r[KIT_COL.ADDR_STATE       - 1] || '').trim(),
+        addrPostal:      String(r[KIT_COL.ADDR_POSTAL      - 1] || '').trim()
       });
     });
 
@@ -2469,6 +2524,18 @@ function getKitBadgeStats() {
   } catch(e) {
     Logger.log('[KitTracking] getKitBadgeStats ERROR: ' + e.message);
     return { success: false, stats: {} };
+  }
+}
+
+// Persist a HubSpot deal ID for a kit row so future UI renders can direct-link
+function ktSaveDealId(rowIndex, hsDealId) {
+  try {
+    if (!rowIndex || !hsDealId) return { success: false };
+    var sheet = _getKitSheet();
+    sheet.getRange(rowIndex, KIT_COL.HS_DEAL_ID).setValue(String(hsDealId));
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.message };
   }
 }
 
@@ -2634,6 +2701,8 @@ function addKitEntry(data) {
         if (hs && hs.success && hs.data && hs.data.dealId) {
           var token    = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
           var dealId   = hs.data.dealId;
+          // Persist dealId so UI can direct-link without an async lookup
+          sheet.getRange(writeRow, KIT_COL.HS_DEAL_ID).setValue(dealId);
           var kitProp  = _kitPropertyForType(data.kit || '');
           var hsProps  = {};
 
@@ -3283,15 +3352,34 @@ function markKitAddressReceivedManual(rowIndex, rawLine, parts) {
     sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(rawLine);
     sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
     try { sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date()); } catch(ne) {}
-    if (parts.country) { try { sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(parts.country); } catch(ce) {} }
+    if (parts.country)     { try { sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(parts.country); } catch(ce) {} }
+    if (parts.address)     { try { sheet.getRange(rowIndex, KIT_COL.ADDR_LINE).setValue(parts.address); } catch(ae) {} }
+    if (parts.city)        { try { sheet.getRange(rowIndex, KIT_COL.ADDR_CITY).setValue(parts.city); } catch(ae) {} }
+    if (parts.state)       { try { sheet.getRange(rowIndex, KIT_COL.ADDR_STATE).setValue(parts.state); } catch(ae) {} }
+    if (parts.postalCode)  { try { sheet.getRange(rowIndex, KIT_COL.ADDR_POSTAL).setValue(parts.postalCode); } catch(ae) {} }
+    // Cache parent contact so Order Details never calls HubSpot
+    if (jlid) {
+      try {
+        var _hsManual = fetchHubspotByJlid(jlid, true);
+        if (_hsManual && _hsManual.success && _hsManual.data) {
+          if (_hsManual.data.parentName)    sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).setValue(_hsManual.data.parentName);
+          if (_hsManual.data.parentContact) sheet.getRange(rowIndex, KIT_COL.PARENT_PHONE).setValue(_hsManual.data.parentContact);
+          if (_hsManual.data.parentEmail)   sheet.getRange(rowIndex, KIT_COL.PARENT_EMAIL).setValue(_hsManual.data.parentEmail);
+        }
+      } catch(_hse) { Logger.log('[KitTracking] parent contact cache failed: ' + _hse.message); }
+    }
 
     // Log to Learner Address Submissions so structured Address/City/State/
     // Postcode are available everywhere else that reads them (Order
     // Details, the public page's own prefill on reopen).
     try {
       var logSheet = _lafGetLogSheet();
+      var _manParentName  = String(sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).getValue()  || '').trim();
+      var _manParentPhone = String(sheet.getRange(rowIndex, KIT_COL.PARENT_PHONE).getValue() || '').trim();
       logSheet.appendRow([
-        new Date(), jlid, learnerName, '',
+        new Date(), jlid,
+        _manParentName, _manParentPhone,
+        learnerName, '',
         parts.address || rawLine, parts.city || '', parts.state || '', parts.postalCode || '', parts.country || '',
         '', 'manual_entry_by_ops', 'not_attempted'
       ]);

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="color-scheme" content="light only" />
+  <title>Your <?= data.amountDisplay ?> Amazon gift card — JetLearn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { border: 0; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #f4f4f2; font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+    @media only screen and (max-width: 600px) {
+      .wrapper     { padding: 16px 12px !important; }
+      .panel       { padding: 18px 14px !important; }
+      .amount      { font-size: 38px !important; }
+      .hero-title  { font-size: 17px !important; }
+      .body-pad    { padding: 22px 20px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f4f2;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f2;">
+  <tr>
+    <td align="center" class="wrapper" style="padding:40px 16px;">
+
+      <!-- Top label -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin-bottom:14px;">
+        <tr>
+          <td style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:#8a8a8a;">
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:#f5c400; margin-right:8px;"></span>JetLearn &mdash; <?= data.isSales ? 'A gift for you' : 'Referral reward' ?>
+          </td>
+        </tr>
+      </table>
+
+      <!-- THE GIFT BOX -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="max-width:600px; background-color:#111111; border-radius:16px; overflow:hidden;">
+        <!-- row A: top panels either side of the ribbon -->
+        <tr>
+          <td class="panel" valign="middle" style="padding:28px 24px 22px; width:46%;">
+            <img src="https://cdn.jsdelivr.net/gh/legitshocky/Jet-learn-Images@main/Logo.png" alt="JetLearn" height="24" style="height:24px; width:auto; display:block; margin:0 0 18px;">
+            <p class="hero-title" style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:21px; line-height:1.3; font-weight:700; color:#ffffff;">A little<br>thank-you.</p>
+          </td>
+          <td class="ribbon-v" width="8%" bgcolor="#f5c400" style="background-color:#f5c400; width:8%; font-size:0; line-height:0;">&nbsp;</td>
+          <td class="panel" valign="bottom" style="padding:28px 24px 22px; width:46%;">
+            <p style="margin:0 0 6px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#f5c400;"><?= data.isSales ? 'From the JetLearn team' : 'For introducing a friend' ?></p>
+            <p style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:13px; line-height:1.6; color:#d4d4d4;">Hand-picked for <strong style="color:#ffffff;"><?= data.parentName || 'you' ?></strong> and the <?= data.learnerName ? data.learnerName + ' family' : 'JetLearn family' ?>.</p>
+          </td>
+        </tr>
+        <!-- row B: the horizontal ribbon with the bow at the knot -->
+        <tr>
+          <td colspan="3" align="center" bgcolor="#f5c400" style="background-color:#f5c400; height:46px; line-height:46px; font-size:30px; text-align:center;">&#127872;</td>
+        </tr>
+        <!-- row C: the value -->
+        <tr>
+          <td class="panel" valign="top" style="padding:22px 24px 30px; width:46%;">
+            <p style="margin:0 0 4px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#9a9a9a;">Amazon gift card</p>
+            <p class="amount" style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:50px; line-height:1.05; font-weight:700; letter-spacing:-0.02em; color:#ffffff;"><?= data.amountDisplay ?></p>
+          </td>
+          <td class="ribbon-v" width="8%" bgcolor="#f5c400" style="background-color:#f5c400; width:8%; font-size:0; line-height:0;">&nbsp;</td>
+          <td class="panel" valign="top" style="padding:22px 24px 30px; width:46%;">
+            <? if (data.website) { ?>
+            <p style="margin:0 0 2px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#9a9a9a;">Redeem on</p>
+            <p style="margin:0 0 14px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; font-weight:500; color:#ffffff;"><?= data.website ?></p>
+            <? } ?>
+            <? if (data.sentTo) { ?>
+            <p style="margin:0 0 2px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#9a9a9a;">Sent to</p>
+            <p style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:13px; font-weight:500; color:#ffffff; word-break:break-all;"><?= data.sentTo ?></p>
+            <? } ?>
+          </td>
+        </tr>
+      </table>
+
+      <!-- LETTER -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin-top:14px; background-color:#ffffff; border:1px solid #1a1a1a; border-radius:16px;">
+        <tr>
+          <td class="body-pad" style="padding:30px 32px;">
+            <p style="margin:0 0 14px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">Hi <strong style="color:#111111;"><?= data.parentName || 'there' ?></strong>,</p>
+            <? if (data.isSales) { ?>
+            <p style="margin:0 0 22px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">We've sent you an <strong style="color:#111111;">Amazon gift card worth <?= data.amountDisplay ?></strong> as a small gift from all of us at JetLearn. Use it on anything you like.</p>
+            <? } else { ?>
+            <p style="margin:0 0 22px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">Thank you for introducing a friend to JetLearn &mdash; it means a lot to us. As a thank-you, we've sent you an <strong style="color:#111111;">Amazon gift card worth <?= data.amountDisplay ?></strong>. Treat yourself, or pick up something for <?= data.learnerName || 'your child' ?>'s next big project.</p>
+            <? } ?>
+
+            <p style="margin:0 0 10px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8c8c8c;">How to use it</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+              <tr>
+                <td width="30" valign="top" style="padding:0 0 12px;"><span style="display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%; background-color:#f5c400; color:#111111; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:700;">1</span></td>
+                <td valign="top" style="padding:1px 0 12px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; line-height:1.6; color:#4a4a4a;">Find the email from <strong style="color:#111111;">Amazon</strong> with your gift card. Check Promotions or Spam if it isn't in your inbox.</td>
+              </tr>
+              <tr>
+                <td width="30" valign="top" style="padding:0 0 12px;"><span style="display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%; background-color:#f5c400; color:#111111; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:700;">2</span></td>
+                <td valign="top" style="padding:1px 0 12px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; line-height:1.6; color:#4a4a4a;">Choose <strong style="color:#111111;">Redeem Now</strong> in that email, or use the button below.</td>
+              </tr>
+              <tr>
+                <td width="30" valign="top" style="padding:0;"><span style="display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; border-radius:50%; background-color:#f5c400; color:#111111; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:700;">3</span></td>
+                <td valign="top" style="padding:1px 0 0; font-family:'DM Sans',Arial,sans-serif; font-size:14px; line-height:1.6; color:#4a4a4a;">The balance joins your Amazon account and is used automatically at checkout.</td>
+              </tr>
+            </table>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+              <tr>
+                <td bgcolor="#111111" style="background-color:#111111; border-radius:8px;">
+                  <a href="<?= data.redeemUrl ?>" target="_blank" style="display:inline-block; padding:14px 28px; font-family:'DM Sans',Arial,sans-serif; font-size:14px; font-weight:700; color:#f5c400; text-decoration:none;">Redeem on <?= data.website || 'Amazon' ?> &rarr;</a>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffbea" style="background-color:#fffbea; border:1px solid #f5c400; border-radius:9px;">
+              <tr>
+                <td style="padding:14px 16px; font-family:'DM Sans',Arial,sans-serif; font-size:13px; line-height:1.65; color:#4a4a4a;">
+                  <strong style="color:#111111;">Can't see it?</strong> Just reply to this email and we'll sort it out straight away.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 32px; border-top:1px solid #f0f0ef; font-family:'DM Sans',Arial,sans-serif; font-size:12px; font-weight:500; color:#767676;">With thanks, Team JetLearn</td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

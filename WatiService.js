@@ -362,6 +362,28 @@ function getWatiParameters(templateName, migrationData, hubspotData) {
       ];
       break;
     // ----------------------------------------------------
+    // SPECIAL LEARNING NEEDS — time and timezone are separate template fields
+    // ----------------------------------------------------
+    case "migration_special_needs": {
+      var snTz = migrationData.manualTimezone || hubspotData.timezone || "Europe/London";
+      var snSessions = migrationData.classSessions || [];
+      var snTime = snSessions.length > 0
+        ? snSessions.map(function(s) { return String(s.time || '').split(';')[0].trim(); }).join(' & ')
+        : "TBD";
+      requiredParams = [
+        { name: "parent_name",  value: parentName },
+        { name: "learner_name", value: learnerName },
+        { name: "old_teacher",  value: oldTeacherName },
+        { name: "new_teacher",  value: newTeacherFull },
+        { name: "day",          value: weekdayStr },
+        { name: "time",         value: snTime },
+        { name: "timezone",     value: _tzLabel(snTz) || "local time" },
+        { name: "link",         value: classLink }
+      ];
+      break;
+    }
+
+    // ----------------------------------------------------
     // 9. DEFAULT FALLBACK
     // ----------------------------------------------------
     default:
@@ -845,6 +867,11 @@ const WATI_REASON_MAPPING = {
     { id: "migration_escalation_on_teacher", label: "Escalation Update" }
   ],
 
+  // --- SPECIAL LEARNING NEEDS ---
+  "Special Learning Needs": [
+    { id: "migration_special_needs", label: "Special Learning Needs" }
+  ],
+
   // --- PAUSE / PSW ---
   "Pause Request": [
     { id: "migration_psw", label: "Pause/PSW Message" }
@@ -893,6 +920,9 @@ function getWatiConfigFromSheet() {
         mapping[reason].push({ id: templateId, label: label || templateId });
       }
     }
+
+    // Reasons added in code but not yet listed in the sheet still work
+    if (!mapping['Special Learning Needs']) mapping['Special Learning Needs'] = WATI_REASON_MAPPING['Special Learning Needs'];
 
     // 3. Cache the result
     if(typeof _sheetDataCache !== 'undefined') {

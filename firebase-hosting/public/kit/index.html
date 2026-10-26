@@ -422,18 +422,28 @@
         showState('errorState');
         return;
       }
+
+      // Show form immediately — don't block on GAS fetch.
+      // Name/email pre-fill in background when GAS responds.
       if (NAME_HINT) {
         applyLearnerName(NAME_HINT);
         document.getElementById('dispLearnerName').textContent = NAME_HINT;
-        document.getElementById('dispJlid').textContent = JLID;
-        showState('formState');
+      } else {
+        document.getElementById('dispLearnerName').textContent = '…';
       }
+      document.getElementById('dispJlid').textContent = JLID;
+      showState('formState');
+
       fetch(GAS_URL + '?api=addressFormContext&jlid=' + encodeURIComponent(JLID))
         .then(function(r) { return r.json(); })
         .then(function(res) {
           if (!res || !res.success) {
-            document.getElementById('errorMsg').textContent = (res && res.message) || 'This learner could not be found.';
-            showState('errorState');
+            // Show a non-blocking warning banner rather than replacing the form
+            var warn = document.createElement('div');
+            warn.style.cssText = 'background:#fef2f2;color:#b91c1c;padding:10px 16px;border-radius:8px;font-size:0.82rem;margin-bottom:16px;';
+            warn.textContent = 'Could not verify learner details — please fill in your information manually.';
+            var form = document.getElementById('mainForm');
+            if (form) form.parentNode.insertBefore(warn, form);
             return;
           }
           document.getElementById('dispLearnerName').textContent = res.learnerName || '—';
@@ -446,7 +456,6 @@
           fill('fState', ex.state);
           fill('fPostal', ex.zip);
           fill('fCountry', ex.country);
-          showState('formState');
         })
         .catch(function(err) {
           document.getElementById('errorMsg').textContent = String((err && err.message) || err);

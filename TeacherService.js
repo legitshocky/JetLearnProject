@@ -1101,6 +1101,17 @@ function searchMatchingTeachers(requestData) {
       return s;
     }
 
+    function requestedSlotsDetail(slots) {
+      return (slots || []).map(function(r) {
+        try {
+          var dp = String(r.date).split('-');
+          var day = Utilities.formatDate(new Date(Date.UTC(+dp[0], +dp[1] - 1, +dp[2], 12)), 'UTC', 'EEE d MMM');
+          var t = normaliseSlot(r.slot).replace(/\b0(\d):/g, '$1:').replace(' - ', '–');
+          return day + ' · ' + t + ' CET';
+        } catch (e) { return ''; }
+      }).filter(Boolean).join(' | ');
+    }
+
     // ── 3. Load Migration Teacher sheet as PRIMARY teacher list + slot data ──
     var MONTH_MAP = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
     function parseMigDateHeader(h) {
@@ -1251,7 +1262,7 @@ function searchMatchingTeachers(requestData) {
     // Fetch and cache available 1-hour slots for a teacher's calendar on a given date.
     // Returns [] if no availability events; null if calendar inaccessible (don't penalise teacher).
     var _scriptCache = CacheService.getScriptCache();
-    var CAL_CACHE_VER = 'v6'; // bumped: midnight slot end-time fix
+    var CAL_CACHE_VER = 'v7'; // bumped: DST helper fix invalidates stale slots
     function fetchTeacherCalendarSlots(calId, dateStr, teacherName, teacherEmail) {
       var ck = CAL_CACHE_VER + '_' + calId + '_' + dateStr;
       if (_calSlotCache[ck] !== undefined) return _calSlotCache[ck];
@@ -1307,7 +1318,7 @@ function searchMatchingTeachers(requestData) {
         // slots outside the teacher's actual working hours on the requested date.
         var dp2 = dateStr.split('-');
         var yr2 = parseInt(dp2[0]), mo2 = parseInt(dp2[1]), dy2 = parseInt(dp2[2]);
-        var cetOff2    = (mo2 >= 4 && mo2 <= 9) ? 2 : 1;
+        var cetOff2    = _cetOffsetForDate(yr2, mo2, dy2);
         var dayStartMs = Date.UTC(yr2, mo2 - 1, dy2,     -cetOff2, 0, 0); // midnight CET on dateStr
         var dayEndMs   = Date.UTC(yr2, mo2 - 1, dy2 + 1, -cetOff2, 0, 0); // midnight CET next day
         var freeSlots = [];
@@ -1366,7 +1377,7 @@ function searchMatchingTeachers(requestData) {
       var requests = toFetch.map(function(p) {
         var dp = p.dateStr.split('-');
         var yr = parseInt(dp[0]), mo = parseInt(dp[1]), dy = parseInt(dp[2]);
-        var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+        var cetOff = _cetOffsetForDate(yr, mo, dy);
         var tMin = new Date(Date.UTC(yr, mo-1, dy,   -cetOff, 0, 0)).toISOString();
         var tMax = new Date(Date.UTC(yr, mo-1, dy+1, -cetOff, 0, 0)).toISOString();
         return {
@@ -1420,7 +1431,7 @@ function searchMatchingTeachers(requestData) {
           // Clip to CET day and enumerate 1-hour slots
           var dp2 = p.dateStr.split('-');
           var yr2 = parseInt(dp2[0]), mo2 = parseInt(dp2[1]), dy2 = parseInt(dp2[2]);
-          var co2 = (mo2 >= 4 && mo2 <= 9) ? 2 : 1;
+          var co2 = _cetOffsetForDate(yr2, mo2, dy2);
           var dSMs = Date.UTC(yr2, mo2-1, dy2,   -co2, 0, 0);
           var dEMs = Date.UTC(yr2, mo2-1, dy2+1, -co2, 0, 0);
           var freeSlots = [];
@@ -1444,6 +1455,27 @@ function searchMatchingTeachers(requestData) {
     }
 
     // Convert "04:00 PM - 05:00 PM" (CET) + "2026-04-08" → [startMs, endMs] UTC
+    // DST-aware CET/CEST offset. CEST (UTC+2) runs from last Sunday of March
+    // at 02:00 local to last Sunday of October at 03:00 local.
+    // The naive month-range rule wrongly puts all of October in CET, causing
+    // Oct 1–25 slots to be off by 1 hour (match 6 PM when queried at 5 PM).
+    function _cetOffsetForDate(yr, mo, dy) {
+      // Find last Sunday of a given month/year
+      function lastSunday(y, m) {
+        var d = new Date(Date.UTC(y, m + 1, 1)); // first day of NEXT month
+        d.setUTCDate(d.getUTCDate() - 1);   // last day of target month
+        d.setUTCDate(d.getUTCDate() - d.getUTCDay()); // back to Sunday
+        return d.getUTCDate();
+      }
+      var dstStart = lastSunday(yr, 2);  // last Sun of March  (month index 2)
+      var dstEnd   = lastSunday(yr, 9);  // last Sun of October (month index 9)
+      // CEST: from dstStart March → before dstEnd October (inclusive start day)
+      if (mo > 3 && mo < 10) return 2;
+      if (mo === 3 && dy >= dstStart) return 2;
+      if (mo === 10 && dy < dstEnd)   return 2;
+      return 1;
+    }
+
     function parseSlotToUtcMs(dateStr, slotStr) {
       var di = slotStr.indexOf(' - ');
       if (di === -1) return null;
@@ -1461,8 +1493,7 @@ function searchMatchingTeachers(requestData) {
       if (!st || !et) return null;
       var dp = dateStr.split('-');
       var yr = parseInt(dp[0]), mo = parseInt(dp[1]), dy = parseInt(dp[2]);
-      // Apr–Sep = CEST (UTC+2); Oct–Mar = CET (UTC+1)
-      var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+      var cetOff = _cetOffsetForDate(yr, mo, dy);
       // If end hour ≤ start hour, the slot crosses midnight — end is on the next calendar day.
       // Without this, "11:00 PM - 12:00 AM" would compute endMs = Date.UTC(day, 0-2) = 22:00 UTC
       // on the PREVIOUS day, making cs.endMs >= reqEMs trivially true for every teacher.
@@ -1479,8 +1510,8 @@ function searchMatchingTeachers(requestData) {
     function utcMsToCetLabel(startMs, endMs, dateStr) {
       function fmt(ms) {
         var d = new Date(ms);
-        var mo = d.getUTCMonth() + 1;
-        var cetOff = (mo >= 4 && mo <= 9) ? 2 : 1;
+        var yr2 = d.getUTCFullYear(), mo = d.getUTCMonth() + 1, dy2 = d.getUTCDate();
+        var cetOff = _cetOffsetForDate(yr2, mo, dy2);
         var h  = (d.getUTCHours() + cetOff) % 24;
         var mn = d.getUTCMinutes();
         var ap = h >= 12 ? 'PM' : 'AM';
@@ -1832,6 +1863,7 @@ function searchMatchingTeachers(requestData) {
         teacherName           : rawName,
         ageYear               : candidateAgeGroups.join(', ') || 'N/A',
         slotMatch             : slotLabel,
+        slotMatchDetail       : isFullSlotMatch ? requestedSlotsDetail(requestedSlots) : '',
         slotFullMatch         : isFullSlotMatch,
         alternateSlots        : allAlternate.sort(function(a,b){ return (a.startMs||0)-(b.startMs||0); }).map(function(x){ return x.lbl||x; }).join(', '),
         currentCourseProgress : currentCourseProgress,

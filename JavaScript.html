@@ -8600,7 +8600,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (fetchMigrationDataBtn) {
         fetchMigrationDataBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            fetchMigrationSpecificData(); // The specialized fetcher
+            fetchMigrationSpecificData();
+        });
+    }
+    if (jlidInput) {
+        jlidInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); fetchMigrationSpecificData(); }
         });
     }
 
@@ -9231,7 +9236,7 @@ function triggerMigrationIntelligence() {
         jlidInput.addEventListener('blur', function() {
           const val = this.value.trim();
           if (val.length >= 8) {
-            _loadWatiContacts(val);
+            if (val !== window._migLastFetchedJlid) fetchMigrationSpecificData();
             // Prefetch learner migration history so modal renders instantly when teacher is selected
             window._miHistoryResult = null;
             window._miHistoryJlid   = val;
@@ -10218,10 +10223,16 @@ function fetchMigrationSpecificData() {
         const jlid = jlidInput.value.trim();
         if (!jlid) { showToast('error', 'Input Required', 'Please enter a JLID.'); return; }
 
+        // blur + button click + Enter can all fire for one action — only one request at a time per JLID
+        if (window._migFetchInFlight === jlid) return;
+        window._migFetchInFlight = jlid;
+        window._migLastFetchedJlid = jlid;
+
         showLoading('Fetching Latest Ticket & Deal...');
 
         google.script.run
             .withSuccessHandler(result => {
+                window._migFetchInFlight = null;
                 hideLoading();
                 if (result.success) {
                     const data = result.data;
@@ -10274,6 +10285,19 @@ function fetchMigrationSpecificData() {
                     window._migPreLastClassDate = data.preLastClassDate || '';
                     window._migReason = data.migrationReason || '';
                     _showCctcEndDateWarn(data.migrationReason, data.preLastClassDate);
+
+                    // ── CCTC: populate next course (future_course_1 from ticket) ──────
+                    var migFc1El = document.getElementById('migFutureCourse1');
+                    if (migFc1El) migFc1El.value = data.futureCourse1 || '';
+                    // Auto-set Course dropdown + new course display to future_course_1 for CCTC
+                    if (data.futureCourse1 && data.migrationReason === 'Course Change Teacher Change') {
+                        if (migrationCourseSelect) {
+                            addOptionIfNotExists(migrationCourseSelect, data.futureCourse1);
+                            migrationCourseSelect.value = data.futureCourse1;
+                        }
+                        var migNewCourseEl2 = document.getElementById('migNewCourseDisplay');
+                        if (migNewCourseEl2) migNewCourseEl2.value = data.futureCourse1;
+                    }
 
                     if (clsManagerSelect) clsManagerSelect.value = data.clsManagerName || '';
                     if (jetGuideSelect) jetGuideSelect.value = data.jetGuideName || '';
@@ -10341,6 +10365,10 @@ function fetchMigrationSpecificData() {
                     // Load WhatsApp contacts after successful fetch
                     _loadWatiContacts(jlid);
 
+                    // Auto-fetch remaining classes count + existing event description
+                    if (typeof _autoFetchRemainingClasses === 'function') _autoFetchRemainingClasses(jlid);
+                    if (typeof _autoFetchEventDescription === 'function') _autoFetchEventDescription(jlid);
+
                     // Prefetch migration history so teacher history renders instantly on teacher select
                     window._miHistoryResult = null;
                     window._miHistoryJlid = jlid;
@@ -10359,7 +10387,7 @@ function fetchMigrationSpecificData() {
                     showToast('error', 'Error', result.message);
                 }
             })
-            .withFailureHandler(showError)
+            .withFailureHandler(function(err) { window._migFetchInFlight = null; showError(err); })
             .fetchMigrationHybridData(jlid);
     }
 
@@ -11846,47 +11874,62 @@ function handleSmartFetchAction() {
 /**
  * Adds a session row for multi-slot matching
  */
-function _slotCETPreview(dateStr, slotStr, fromTz) {
-  if (!dateStr || !slotStr || !fromTz) return '';
+// Slot times are always CET. This converts the CET slot → parent's local timezone
+// to show what time the class will appear on the parent's calendar.
+function _slotLocalPreview(dateStr, slotStr, parentTz) {
+  if (!dateStr || !slotStr || !parentTz) return '';
   try {
     var parse12h = function(s) {
       var m = s.trim().match(/(\d+):(\d+)\s*(AM|PM)/i);
       if (!m) return null;
-      var h = parseInt(m[1]);
+      var h = parseInt(m[1]), mn = parseInt(m[2]);
       if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
       if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
-      return h;
+      return { h: h, m: mn };
     };
     var parts = slotStr.split(' - ');
-    var startH = parse12h(parts[0]);
-    if (startH === null) return '';
-    // Place startH as UTC, shift so fromTz reads startH
-    var utcBase = new Date(dateStr + 'T' + String(startH).padStart(2,'0') + ':00:00Z');
-    var fromHour = parseInt(new Intl.DateTimeFormat('en-US', {timeZone: fromTz, hour: 'numeric', hour12: false, hourCycle: 'h23'}).format(utcBase));
-    var hourDiff = fromHour - startH;
-    // Normalize to [-12h, +12h) — day rollover in the tz wraps the raw diff by ±24h
-    hourDiff = ((hourDiff + 12) % 24 + 24) % 24 - 12;
-    var corrected = new Date(utcBase.getTime() - hourDiff * 3600000);
-    var fmt = new Intl.DateTimeFormat('en-GB', {timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false});
-    return fmt.format(corrected) + ' – ' + fmt.format(new Date(corrected.getTime() + 3600000)) + ' CET';
+    var st = parse12h(parts[0]);
+    var et = parts[1] ? parse12h(parts[1]) : null;
+    if (!st) return '';
+    // Convert CET slot to UTC: use Europe/Berlin (DST-aware)
+    // Build a date string that represents this slot in CET/CEST
+    var cetUtc = new Date(dateStr + 'T' + String(st.h).padStart(2,'0') + ':' + String(st.m).padStart(2,'0') + ':00');
+    // cetUtc is in local browser time — instead use the Intl trick:
+    // find UTC ms where Europe/Berlin reads as st.h:st.m
+    var probe = new Date(dateStr + 'T' + String(st.h).padStart(2,'0') + ':' + String(st.m).padStart(2,'0') + ':00Z');
+    var berlinH = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Berlin',hour:'numeric',hour12:false,hourCycle:'h23'}).format(probe));
+    var berlinM = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Berlin',minute:'numeric'}).format(probe));
+    var diffMs  = ((berlinH * 60 + berlinM) - (st.h * 60 + st.m)) * 60000;
+    diffMs = (((diffMs / 60000 + 720) % 1440 + 1440) % 1440 - 720) * 60000;
+    var utcMs = probe.getTime() - diffMs; // UTC ms when Berlin reads st.h:st.m
+
+    var fmtLocal = new Intl.DateTimeFormat('en-GB', {timeZone: parentTz, hour: '2-digit', minute: '2-digit', hour12: false});
+    var localStart = fmtLocal.format(new Date(utcMs));
+    var localEnd   = et ? fmtLocal.format(new Date(utcMs + 3600000)) : '';
+    return localStart + (localEnd ? ' – ' + localEnd : '');
   } catch(e) { return ''; }
 }
 
 function _updateSlotCET(row) {
-  var tz = (document.getElementById('pReserveTimezone') || {}).value || 'Europe/Paris';
+  var tz = (document.getElementById('pReserveTimezone') || {}).value || 'Europe/Berlin';
   var dateEl = row.querySelector('.p-slot-date');
   var timeEl = row.querySelector('.p-slot-time');
   var preview = row.querySelector('.p-slot-cet-preview');
   if (!preview || !dateEl || !timeEl) return;
-  var cet = _slotCETPreview(dateEl.value, timeEl.value, tz);
-  if (cet && tz !== 'Europe/Paris' && tz !== 'Europe/Berlin') {
-    preview.textContent = '⌚ ' + cet;
-    preview.style.display = 'block';
-  } else if (cet && (tz === 'Europe/Paris' || tz === 'Europe/Berlin')) {
-    preview.textContent = '⌚ ' + cet + ' (same tz)';
-    preview.style.display = 'block';
+  var isCET = (tz === 'Europe/Paris' || tz === 'Europe/Berlin');
+  if (isCET) {
+    // Slot IS CET — just confirm it, no conversion needed
+    preview.textContent = '⌚ ' + (timeEl.value || '') + ' CET (same tz)';
+    preview.style.display = timeEl.value ? 'block' : 'none';
   } else {
-    preview.style.display = 'none';
+    var local = _slotLocalPreview(dateEl.value, timeEl.value, tz);
+    if (local) {
+      var tzShort = tz.split('/').pop().replace(/_/g,' ');
+      preview.textContent = '⌚ ' + local + ' ' + tzShort;
+      preview.style.display = 'block';
+    } else {
+      preview.style.display = 'none';
+    }
   }
 }
 
@@ -13261,7 +13304,7 @@ function renderPersonaCards() {
       : '';
 
     var slotHtml = isMatch
-      ? '<span style="color:#15803d;font-weight:700;">\u2714 Matches<\/span>'
+      ? '<span style="color:#15803d;font-weight:700;">\u2714 ' + (t.slotMatchDetail ? 'Free ' + escapeHtml(t.slotMatchDetail) : 'Matches') + '<\/span>'
       : isPartial
         ? '<span style="color:#d97706;font-size:0.78rem;">' + escapeHtml(slotRaw) + '<\/span>'
         : '<span style="color:#94a3b8;">\u2717 No match<\/span>';
@@ -13903,27 +13946,8 @@ document.addEventListener('DOMContentLoaded', function() {
   var fetchBtn = document.getElementById('fetchRemainingClassesBtn');
   if (fetchBtn) fetchBtn.addEventListener('click', function() {
     var jlid = (document.getElementById('jlid') || {}).value || '';
-    var statusEl = document.getElementById('bookClassesRemainingStatus');
-    if (!jlid) { if (statusEl) { statusEl.textContent = 'Load a learner (JLID) first.'; statusEl.style.color = '#dc2626'; } return; }
-    fetchBtn.disabled = true;
-    if (statusEl) { statusEl.textContent = 'Fetching…'; statusEl.style.color = '#64748b'; }
-    google.script.run
-      .withSuccessHandler(function(res) {
-        fetchBtn.disabled = false;
-        if (!res || !res.success) {
-          if (statusEl) { statusEl.textContent = (res && res.message) || 'Could not fetch remaining classes.'; statusEl.style.color = '#dc2626'; }
-          return;
-        }
-        var n = document.getElementById('bookClassesNumEvents');
-        if (n) n.value = res.classesLeft;
-        if (statusEl) { statusEl.textContent = _remainingClassesStatusText(res); statusEl.style.color = '#16a34a'; }
-        _updateBookClassesSplitPreview();
-      })
-      .withFailureHandler(function(err) {
-        fetchBtn.disabled = false;
-        if (statusEl) { statusEl.textContent = (err && err.message) || String(err); statusEl.style.color = '#dc2626'; }
-      })
-      .getRemainingClassesForJlid(jlid);
+    if (!jlid) { var s = document.getElementById('bookClassesRemainingStatus'); if (s) { s.textContent = 'Load a learner (JLID) first.'; s.style.color = '#dc2626'; } return; }
+    _autoFetchRemainingClasses(jlid);
   });
 
   var pFetchBtn = document.getElementById('pReserveFetchRemainingBtn');
@@ -14225,37 +14249,65 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── Fetch existing event description ─────────────────────────────────────────
+function _autoFetchEventDescription(jlid) {
+  if (!jlid) return;
+  var fetchBtn = document.getElementById('fetchEventDescBtn');
+  var statusEl = document.getElementById('fetchEventDescStatus');
+  if (statusEl) statusEl.textContent = 'Fetching…';
+  if (fetchBtn) fetchBtn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (fetchBtn) fetchBtn.disabled = false;
+      if (!res || !res.success) {
+        if (statusEl) statusEl.textContent = res ? res.message : 'Not found';
+        return;
+      }
+      var ta = document.getElementById('bookingEventDescription');
+      if (ta) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = (res.description || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
+        ta.value = (tmp.textContent || tmp.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+      }
+      if (statusEl) statusEl.textContent = 'Fetched ✓';
+    })
+    .withFailureHandler(function(err) {
+      if (fetchBtn) fetchBtn.disabled = false;
+      if (statusEl) statusEl.textContent = 'Error';
+    })
+    .getExistingEventDescription(jlid);
+}
+
+function _autoFetchRemainingClasses(jlid) {
+  if (!jlid) return;
+  var fetchBtn = document.getElementById('fetchRemainingClassesBtn');
+  var statusEl = document.getElementById('bookClassesRemainingStatus');
+  if (statusEl) { statusEl.textContent = 'Fetching…'; statusEl.style.color = '#64748b'; }
+  if (fetchBtn) fetchBtn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (fetchBtn) fetchBtn.disabled = false;
+      if (!res || !res.success) {
+        if (statusEl) { statusEl.textContent = (res && res.message) || 'Could not fetch remaining classes.'; statusEl.style.color = '#dc2626'; }
+        return;
+      }
+      var n = document.getElementById('bookClassesNumEvents');
+      if (n) n.value = res.classesLeft;
+      if (statusEl) { statusEl.textContent = _remainingClassesStatusText(res); statusEl.style.color = '#16a34a'; }
+      _updateBookClassesSplitPreview();
+    })
+    .withFailureHandler(function(err) {
+      if (fetchBtn) fetchBtn.disabled = false;
+      if (statusEl) { statusEl.textContent = (err && err.message) || String(err); statusEl.style.color = '#dc2626'; }
+    })
+    .getRemainingClassesForJlid(jlid);
+}
+
 (function() {
   var fetchBtn = document.getElementById('fetchEventDescBtn');
-  if (!fetchBtn) return;
-  fetchBtn.addEventListener('click', function() {
+  if (fetchBtn) fetchBtn.addEventListener('click', function() {
     var jlid = (document.getElementById('jlid') || {}).value || '';
     if (!jlid) { showToast('error', 'No JLID', 'Load a learner first.'); return; }
-    var statusEl = document.getElementById('fetchEventDescStatus');
-    if (statusEl) statusEl.textContent = 'Fetching…';
-    fetchBtn.disabled = true;
-    google.script.run
-      .withSuccessHandler(function(res) {
-        fetchBtn.disabled = false;
-        if (!res || !res.success) {
-          if (statusEl) statusEl.textContent = res ? res.message : 'Not found';
-          return;
-        }
-        var ta = document.getElementById('bookingEventDescription');
-        if (ta) {
-          // Strip HTML tags, decode entities, normalize line breaks
-          var tmp = document.createElement('div');
-          tmp.innerHTML = (res.description || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n');
-          ta.value = (tmp.textContent || tmp.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
-        }
-        if (statusEl) statusEl.textContent = 'Fetched ✓';
-      })
-      .withFailureHandler(function(err) {
-        fetchBtn.disabled = false;
-        if (statusEl) statusEl.textContent = 'Error';
-        showError(err);
-      })
-      .getExistingEventDescription(jlid);
+    _autoFetchEventDescription(jlid);
   });
 })();
 
@@ -15047,6 +15099,8 @@ function loadKitTrackingPage() {
         return;
       }
       _kitTrackingData = result.rows || [];
+      _ktRowCache = {};
+      _kitTrackingData.forEach(function(r) { _ktRowCache[r.rowIndex] = r; });
 
       // Populate month dropdown from data
       const monthSel = document.getElementById('ktFilterMonth');
@@ -15233,10 +15287,13 @@ function renderKitTrackingTable(filterArg) {
       ? '<button onclick="event.stopPropagation();ktMarkRefunded(' + row.rowIndex + ',this)" style="background:none;border:1px solid #f59e0b;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#d97706;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Mark as refunded — removes from monthly totals">↩ Refund<\/button>'
       : '<span style="font-size:0.7rem;color:#94a3b8;margin-left:4px;border:1px dashed #e2e8f0;border-radius:6px;padding:2px 6px;">Refunded<\/span>';
     var ktChatPhone = (row.phone || '').replace(/\D/g, '');
-    const msgBtn = ktChatPhone
-      ? '<button onclick="event.stopPropagation();pwbOpenChat(\'' + ktChatPhone + '\', this)" '
-        + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Open WATI chat">'
-        + '<i class="fab fa-whatsapp" style="margin-right:3px;"><\/i>Chat<\/button>'
+    var ktAllPhones = (row.phones && row.phones.length > 1) ? row.phones : (ktChatPhone ? [ktChatPhone] : []);
+    const msgBtn = ktAllPhones.length
+      ? ktAllPhones.map(function(p, pi) {
+          return '<a href="https://wa.me/' + p + '" target="_blank" onclick="event.stopPropagation();" '
+            + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="WhatsApp: ' + p + '">'
+            + '<i class="fab fa-whatsapp"><\/i>' + (ktAllPhones.length > 1 ? '<span>Chat ' + (pi+1) + '<\/span>' : '<span>Chat<\/span>') + '<\/a>';
+        }).join('')
       : '';
     // "Track" opens the public Track My Kit page in a new tab — available for
     // any row with a JLID, regardless of pipeline stage, so ops can preview
@@ -15257,7 +15314,7 @@ function renderKitTrackingTable(filterArg) {
     } else if (row.status === 'awaiting' || row.status === 'not_received' || row.status === 'need_check') {
       actionBtn = '<button onclick="ktSendFollowUp(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', this)" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#6366f1;cursor:pointer;white-space:nowrap;"><i class="fas fa-redo"><\/i> Resend<\/button>' + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.status === 'addr_received_pending_order') {
-      var orderDetailsBtn = '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>';
+      var orderDetailsBtn = '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ',_ktRowCache[' + row.rowIndex + '])" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>';
       var reimburseBtn = '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>';
       actionBtn = '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>' + reimburseBtn + orderDetailsBtn + msgBtn + trackBtn + editBtn + refundBtn;
     } else if (row.isReimbursement && row.reimbursementStatus === 'Pending') {
@@ -15356,7 +15413,10 @@ function renderKitTrackingTable(filterArg) {
       + '<td style="padding:10px 14px;">' + statusBadge + '<\/td>'
       + '<td style="padding:10px 14px;" onclick="event.stopPropagation()">' + actionBtn + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
-      +   (row.jlid ? '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>' : '')
+      +   (row.jlid ? (row.hsDealId
+            ? '<a href="https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId) + '" target="_blank" onclick="event.stopPropagation();" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>'
+            : '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this,' + row.rowIndex + ')" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>')
+          : '')
       + '<\/td>'
       + '<\/tr>' + detailHtml;
   }).join('');
@@ -15428,13 +15488,18 @@ function renderKitAskingAddressTable() {
       : '<span style="color:#94a3b8;font-size:0.75rem;">Not opened<\/span>';
 
     var ktChatPhone = (row.phone || '').replace(/\D/g, '');
-    const msgBtn = ktChatPhone
-      ? '<button onclick="event.stopPropagation();pwbOpenChat(\'' + ktChatPhone + '\', this)" style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-right:4px;" title="Open WATI chat"><i class="fab fa-whatsapp"><\/i><\/button>'
+    var ktAllPhones2 = (row.phones && row.phones.length > 1) ? row.phones : (ktChatPhone ? [ktChatPhone] : []);
+    const msgBtn = ktAllPhones2.length
+      ? ktAllPhones2.map(function(p, pi) {
+          return '<a href="https://wa.me/' + p + '" target="_blank" onclick="event.stopPropagation();" '
+            + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-right:4px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="WhatsApp: ' + p + '">'
+            + '<i class="fab fa-whatsapp"><\/i>' + (ktAllPhones2.length > 1 ? '<span>Chat ' + (pi+1) + '<\/span>' : '') + '<\/a>';
+        }).join('')
       : '';
     const orderBtn = row.addrStatus === 'Received'
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>'
-        + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
+        + '<button onclick="event.stopPropagation();ktOpenOrderDetails(' + row.rowIndex + ',_ktRowCache[' + row.rowIndex + '])" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Copy everything needed to place this order"><i class="fas fa-clipboard-list"><\/i> Order Details<\/button>'
       : '<button onclick="event.stopPropagation();ktSendAddressFollowUp(' + row.rowIndex + ', this)" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;margin-right:4px;" title="Send a WhatsApp + email reminder now — alternates a stronger urgency tone every other send"><i class="fas fa-bell"><\/i> Follow-up<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenManualAddress(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\')" style="background:none;border:1px solid #0d9488;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0d9488;cursor:pointer;white-space:nowrap;margin-right:4px;" title="You have the address (call/email/WhatsApp) — enter it directly"><i class="fas fa-map-marker-alt"><\/i> Add Address<\/button>'
         + '<button onclick="event.stopPropagation();ktMarkNotRequired(' + row.rowIndex + ', this)" style="background:none;border:1px solid #94a3b8;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;" title="Kit no longer needed — learner paused, roadmap changed, etc."><i class="fas fa-ban"><\/i> Not Required<\/button>';
@@ -15452,7 +15517,10 @@ function renderKitAskingAddressTable() {
       + '<td style="padding:10px 14px;font-size:0.76rem;color:#64748b;white-space:nowrap;">' + (escapeHtml(row.addrRequestedAt) || '—') + '<\/td>'
       + '<td style="padding:10px 14px;white-space:nowrap;" onclick="event.stopPropagation()">' + msgBtn + orderBtn + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
-      +   (row.jlid ? '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>' : '')
+      +   (row.jlid ? (row.hsDealId
+            ? '<a href="https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId) + '" target="_blank" onclick="event.stopPropagation();" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>'
+            : '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this,' + row.rowIndex + ')" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>')
+          : '')
       + '<\/td>'
       + '<\/tr>';
   }).join('');
@@ -15919,10 +15987,15 @@ function ktMarkReimbursed(rowIndex, btn) {
     .markKitReimbursementPaid(rowIndex);
 }
 
-// ── "Order Details" — everything needed to actually place the order
-// (Amazon or otherwise), pulled from HubSpot + the Kit sheet, with a
-// one-click "Copy All" so ops never has to open the sheet.
-function ktOpenOrderDetails(rowIndex) {
+var _KIT_AMAZON_DOMAINS = {'united states':'amazon.com','usa':'amazon.com','us':'amazon.com','united kingdom':'amazon.co.uk','uk':'amazon.co.uk','india':'amazon.in','germany':'amazon.de','italy':'amazon.it','france':'amazon.fr','spain':'amazon.es','canada':'amazon.ca','australia':'amazon.com.au','japan':'amazon.co.jp','united arab emirates':'amazon.ae','uae':'amazon.ae','saudi arabia':'amazon.sa','netherlands':'amazon.nl','sweden':'amazon.se','poland':'amazon.pl','belgium':'amazon.com.be','singapore':'amazon.sg','mexico':'amazon.com.mx','brazil':'amazon.com.br','turkey':'amazon.com.tr','egypt':'amazon.eg'};
+function _kitAmazonDomainForCountryJS(c) { return _KIT_AMAZON_DOMAINS[String(c||'').trim().toLowerCase()] || 'amazon.com'; }
+// Row cache populated when Kit Tracking data loads — lets Order Details render instantly
+var _ktRowCache = {};
+
+// ── "Order Details" — everything needed to actually place the order.
+// rowData is passed directly from the already-loaded kitTrackingData row,
+// so name/phone/email/address render instantly with zero GAS call.
+function ktOpenOrderDetails(rowIndex, rowData) {
   let modal = document.getElementById('ktOrderDetailsModal');
   if (!modal) {
     modal = document.createElement('div');
@@ -15943,14 +16016,88 @@ function ktOpenOrderDetails(rowIndex) {
     document.body.appendChild(modal);
   }
   modal.dataset.rowIndex = rowIndex;
-  // Shimmering skeleton rows instead of a bare spinner — same treatment as
-  // the Kit JLID fetch (V8.43), so the wait reads as "loading a real thing"
-  // rather than a blank pause.
-  document.getElementById('ktOdBody').innerHTML =
-      '<div class="kt-skeleton-line"><\/div>'.repeat(6);
   var markBtnReset = document.getElementById('ktOdMarkPlacedBtn');
   if (markBtnReset) markBtnReset.style.display = 'none';
   modal.style.display = 'flex';
+
+  var fieldId = 0;
+  var makeRow = function(label, val, copyable) {
+    fieldId++;
+    var id = 'ktOdField' + fieldId;
+    var copyBtn = (copyable && val)
+      ? '<button id="' + id + 'Btn" onclick="ktCopyField(\'' + id + '\')" title="Copy ' + label + '" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:3px 7px;font-size:0.7rem;color:#0d9488;cursor:pointer;margin-left:8px;flex:0 0 auto;"><i class="fas fa-copy"><\/i><\/button>'
+      : '';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">'
+      + '<span style="color:#64748b;flex:0 0 auto;">' + label + '<\/span>'
+      + '<span style="display:flex;align-items:center;min-width:0;">'
+      +   '<span id="' + id + '" data-copy="' + escapeHtml(val || '') + '" style="font-weight:600;text-align:right;overflow-wrap:anywhere;">' + escapeHtml(val || '—') + '<\/span>'
+      +   copyBtn
+      + '<\/span>'
+      + '<\/div>';
+  };
+
+  var _renderOrderDetails = function(res) {
+    var body = document.getElementById('ktOdBody');
+    fieldId = 0;
+    var amazonDomain = res.amazonDomain || _kitAmazonDomainForCountryJS(res.country);
+    var hasStructured = !!(res.addressLine || res.city || res.state || res.postalCode);
+    var addressBlock = hasStructured
+      ? makeRow('Address Line 1', res.addressLine, true)
+        + makeRow('Town / City', res.city, true)
+        + makeRow('State / County', res.state, true)
+        + makeRow('Postal Code', res.postalCode, true)
+      : makeRow('Delivery Address', res.deliveryAddress, true);
+
+    modal.dataset.orderText =
+        'Name: ' + (res.parentName || '—') + '\n'
+      + 'Phone: ' + (res.parentPhone || '—') + '\n'
+      + 'Email: ' + (res.parentEmail || '—') + '\n'
+      + 'Country: ' + (res.country || '—') + '\n'
+      + 'Address: ' + (res.deliveryAddress || '—') + '\n'
+      + 'Kit to order: ' + (res.kitName || '—') + '\n'
+      + (amazonDomain ? 'Amazon: https://www.' + amazonDomain : '');
+    modal.dataset.jlid = res.jlid || '';
+    modal.dataset.learnerName = res.learnerName || '';
+    modal.dataset.kitName = res.kitName || '';
+
+    body.className = 'fade-in';
+    body.innerHTML =
+        makeRow('Learner', res.learnerName, false)
+      + makeRow('Kit to order', res.kitName, false)
+      + makeRow('Parent Name', res.parentName, true)
+      + makeRow('Phone', res.parentPhone, true)
+      + makeRow('Email', res.parentEmail, true)
+      + makeRow('Country', res.country, true)
+      + addressBlock
+      + (amazonDomain ? '<div style="padding:10px 0 0;"><a href="https://www.' + amazonDomain + '" target="_blank" style="color:#0d9488;font-weight:700;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"><\/i> Open ' + amazonDomain + '<\/a><\/div>' : '');
+
+    var markBtn = document.getElementById('ktOdMarkPlacedBtn');
+    if (markBtn) markBtn.style.display = 'block';
+  };
+
+  // If rowData has parent info, render immediately — no GAS call needed
+  if (rowData && (rowData.parentName || rowData.parentPhone || rowData.deliveryAddress)) {
+    _renderOrderDetails({
+      success: true,
+      jlid: rowData.jlid || '',
+      learnerName: rowData.learnerName || '',
+      kitName: rowData.kit || '',
+      parentName: rowData.parentName || '',
+      parentPhone: rowData.parentPhone || '',
+      parentEmail: rowData.parentEmail || '',
+      country: rowData.country || '',
+      deliveryAddress: rowData.deliveryAddress || '',
+      addressLine: rowData.addrLine    || '',
+      city:        rowData.addrCity    || '',
+      state:       rowData.addrState   || '',
+      postalCode:  rowData.addrPostal  || ''
+    });
+    return;
+  }
+
+  // Fallback: fetch from GAS (first open for old rows, or missing parent data)
+  document.getElementById('ktOdBody').innerHTML =
+      '<div class="kt-skeleton-line"><\/div>'.repeat(6);
 
   google.script.run
     .withSuccessHandler(function(res) {
@@ -15960,67 +16107,7 @@ function ktOpenOrderDetails(rowIndex) {
         body.innerHTML = '<div style="color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load order details.') + '<\/div>';
         return;
       }
-      modal.dataset.orderText =
-          'Name: ' + (res.parentName || '—') + '\n'
-        + 'Phone: ' + (res.parentPhone || '—') + '\n'
-        + 'Email: ' + (res.parentEmail || '—') + '\n'
-        + 'Country: ' + (res.country || '—') + '\n'
-        + 'Address: ' + (res.deliveryAddress || '—') + '\n'
-        + 'Kit to order: ' + (res.kitName || '—') + '\n'
-        + 'Amazon: https://www.' + res.amazonDomain;
-
-      // Per-field copy buttons — Amazon's "Add an address" form is several
-      // separate single-line inputs (Name, Phone, Postcode, Address Line 1,
-      // etc.), so one big multi-line block doesn't paste cleanly into any
-      // of them. Each field gets its own copy button: click it, tab to the
-      // matching Amazon field, paste, repeat.
-      var fieldId = 0;
-      var row = function(label, val, copyable) {
-        fieldId++;
-        var id = 'ktOdField' + fieldId;
-        var copyBtn = (copyable && val)
-          ? '<button id="' + id + 'Btn" onclick="ktCopyField(\'' + id + '\')" title="Copy ' + label + '" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:6px;padding:3px 7px;font-size:0.7rem;color:#0d9488;cursor:pointer;margin-left:8px;flex:0 0 auto;"><i class="fas fa-copy"><\/i><\/button>'
-          : '';
-        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;">'
-          + '<span style="color:#64748b;flex:0 0 auto;">' + label + '<\/span>'
-          + '<span style="display:flex;align-items:center;min-width:0;">'
-          +   '<span id="' + id + '" data-copy="' + escapeHtml(val || '') + '" style="font-weight:600;text-align:right;overflow-wrap:anywhere;">' + escapeHtml(val || '—') + '<\/span>'
-          +   copyBtn
-          + '<\/span>'
-          + '<\/div>';
-      };
-      // If this JLID's address came through the public form, we have real
-      // structured Address/City/State/Postcode fields (from the Learner
-      // Address Submissions sheet) — show those separately, in the same
-      // order Amazon's own form asks for them. Otherwise (e.g. address was
-      // typed straight into Add Kit Entry by ops) fall back to the one
-      // combined line, since there's nothing structured to split it from.
-      var hasStructured = !!(res.addressLine || res.city || res.state || res.postalCode);
-      var addressBlock = hasStructured
-        ? row('Address Line 1', res.addressLine, true)
-          + row('Town / City', res.city, true)
-          + row('State / County', res.state, true)
-          + row('Postal Code', res.postalCode, true)
-        : row('Delivery Address', res.deliveryAddress, true);
-
-      body.className = 'fade-in';
-      body.innerHTML =
-          row('Learner', res.learnerName, false)
-        + row('Kit to order', res.kitName, false)
-        + row('Parent Name', res.parentName, true)
-        + row('Phone', res.parentPhone, true)
-        + row('Email', res.parentEmail, true)
-        + row('Country', res.country, true)
-        + addressBlock
-        + '<div style="padding:10px 0 0;">'
-        +   '<a href="https://www.' + res.amazonDomain + '" target="_blank" style="color:#0d9488;font-weight:700;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"><\/i> Open ' + res.amazonDomain + '<\/a>'
-        + '<\/div>';
-
-      modal.dataset.jlid = res.jlid || '';
-      modal.dataset.learnerName = res.learnerName || '';
-      modal.dataset.kitName = res.kitName || '';
-      var markBtn = document.getElementById('ktOdMarkPlacedBtn');
-      if (markBtn) markBtn.style.display = 'block';
+      _renderOrderDetails(res);
     })
     .withFailureHandler(function(err) {
       var body = document.getElementById('ktOdBody');
@@ -16685,11 +16772,15 @@ function ktSwitchTab(tab) {
   const pwbKpi     = document.getElementById('ktKpiPWB');
   const activeStyle  = 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:#fff;color:#1e293b;box-shadow:0 1px 4px rgba(0,0,0,0.08);border:none;';
   const inactiveStyle= 'border-radius:7px;padding:6px 18px;font-size:0.8rem;font-weight:600;background:transparent;color:#64748b;border:none;';
-  [jlBtn,aaBtn,pwbBtn,pivotBtn].forEach(function(b){if(b)b.style.cssText=inactiveStyle;});
-  [jlView,aaView,pwbView,pivotView].forEach(function(v){if(v)v.style.display='none';});
+  const gcBtn    = document.getElementById('ktTabGC');
+  const gcView   = document.getElementById('ktViewGC');
+  const gcKpi    = document.getElementById('ktKpiGC');
+  [jlBtn,aaBtn,pwbBtn,pivotBtn,gcBtn].forEach(function(b){if(b)b.style.cssText=inactiveStyle;});
+  [jlView,aaView,pwbView,pivotView,gcView].forEach(function(v){if(v)v.style.display='none';});
   if(jlKpi)  jlKpi.style.display  = 'none';
   if(aaKpi)  aaKpi.style.display  = 'none';
   if(pwbKpi) pwbKpi.style.display = 'none';
+  if(gcKpi)  gcKpi.style.display  = 'none';
   if (tab === 'jl') {
     if(jlBtn)    jlBtn.style.cssText   = activeStyle;
     if(jlView)   jlView.style.display  = '';
@@ -16708,6 +16799,11 @@ function ktSwitchTab(tab) {
     if(pivotBtn)   pivotBtn.style.cssText   = activeStyle;
     if(pivotView)  pivotView.style.display  = '';
     renderKitPivot();
+  } else if (tab === 'gc') {
+    if(gcBtn)   gcBtn.style.cssText   = activeStyle;
+    if(gcView)  gcView.style.display  = '';
+    if(gcKpi)   gcKpi.style.display   = '';
+    loadGiftCardData();
   }
 }
 
@@ -17028,13 +17124,13 @@ function renderPWBTable(rows) {
         + '<i class="fas fa-exclamation-triangle" style="margin-right:3px;"><\/i>Escalate to CLS<\/button>'
       : '<span style="font-size:0.7rem;color:#94a3b8;">Escalated<\/span>';
 
-    // Chat button — opens WATI conversation for parent
+    // Chat button — direct wa.me link for parent
     var chatPhone = (r.parentPhone || '').replace(/\D/g, '');
     var chatBtn = chatPhone
-      ? '<button onclick="pwbOpenChat(\'' + chatPhone + '\', this)" '
-        + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;" '
-        + 'title="Open WATI chat">'
-        + '<i class="fab fa-whatsapp" style="margin-right:3px;"><\/i>Chat<\/button>'
+      ? '<a href="https://wa.me/' + chatPhone + '" target="_blank" '
+        + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" '
+        + 'title="WhatsApp: ' + chatPhone + '">'
+        + '<i class="fab fa-whatsapp"><\/i>Chat<\/a>'
       : '';
     var selId = 'pwbStatusSel_' + i;
     var updateStatusHtml = r.jlid
@@ -17068,7 +17164,7 @@ function renderPWBTable(rows) {
       + "<td style=\"padding:4px 8px;\">" + overrideBtn + "<\/td>"
       + "<td style=\"padding:4px 8px;\">" + escalateBtn + "<\/td>"
       + "<td style=\"padding:4px 8px;\">" + chatBtn + "<\/td>"
-      + "<td style=\"padding:4px 8px;\">" + (r.jlid ? '<button onclick=\"openHsDeal(\\\'' + escapeHtml(r.jlid) + '\\\',this)\" style=\"background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;\"><i class=\"fas fa-external-link-alt\" style=\"margin-right:3px;\"><\/i>HS Deal<\/button>' : '') + "<\/td>"
+      + "<td style=\"padding:4px 8px;\">" + (r.jlid ? '<a href=\"https://app.hubspot.com/contacts/7729491/objects/0-3/views/all/list?query=' + encodeURIComponent(r.jlid) + '\" target=\"_blank\" style=\"background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;\"><i class=\"fas fa-external-link-alt\"><\/i>HS Deal<\/a>' : '') + "<\/td>"
       + "<td style=\"padding:6px 8px;\">" + msgPWB + "<\/td>"
       + "<\/tr>";
   }).join('');
@@ -17095,15 +17191,23 @@ function pwbOverrideStatus(jlid, btn) {
 }
 
 var _hsDealCache = {};
-function openHsDeal(jlid, btn) {
+function openHsDeal(jlid, btn, rowIndex) {
   if (_hsDealCache[jlid]) { window.open(_hsDealCache[jlid], '_blank'); return; }
   var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
   google.script.run
     .withSuccessHandler(function(res) {
       btn.disabled = false; btn.innerHTML = orig;
       if (res && res.success && res.data && res.data.dealId) {
-        var url = 'https://app.hubspot.com/contacts/7729491/deal/' + res.data.dealId;
+        var dealId = res.data.dealId;
+        var url = 'https://app.hubspot.com/contacts/7729491/deal/' + dealId;
         _hsDealCache[jlid] = url;
+        // Backfill in-memory row so next render shows direct link
+        if (rowIndex && _kitTrackingData) {
+          var row = _kitTrackingData.find(function(r) { return r.rowIndex === rowIndex; });
+          if (row) row.hsDealId = dealId;
+        }
+        // Persist to sheet for future sessions
+        if (rowIndex) google.script.run.ktSaveDealId(rowIndex, dealId);
         window.open(url, '_blank');
       } else { showToast('error', 'HubSpot', 'Deal not found for ' + jlid); }
     })
@@ -17379,6 +17483,357 @@ function ktMarkRefunded(rowIndex, btn) {
       showToast('error', 'Error', err && err.message ? err.message : String(err));
     })
     .markKitAsRefunded(rowIndex);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GIFT CARD TAB
+// ═══════════════════════════════════════════════════════════════════════════
+var _gcData = [];
+
+function loadGiftCardData() {
+  var tbody = document.getElementById('gcTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem;display:block;margin-bottom:0.75rem;"></i>Loading gift card data…</td></tr>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">' + escapeHtml((res && res.message) || 'Failed to load') + '</td></tr>';
+        return;
+      }
+      _gcData = res.rows || [];
+      // Populate month filter
+      var months = [];
+      _gcData.forEach(function(r) { if (r.months && months.indexOf(r.months) === -1) months.push(r.months); });
+      var mSel = document.getElementById('gcFilterMonth');
+      if (mSel) {
+        var cur = mSel.value;
+        mSel.innerHTML = '<option value="">All Months</option>';
+        months.forEach(function(m) { mSel.innerHTML += '<option value="' + escapeHtml(m) + '"' + (m === cur ? ' selected' : '') + '>' + escapeHtml(m) + '</option>'; });
+      }
+      // KPIs
+      var s = res.stats || {};
+      var setEl = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+      setEl('gcKpiTotal',    s.total    || 0);
+      setEl('gcKpiReferral', s.referral || 0);
+      setEl('gcKpiSales',    s.sales    || 0);
+      setEl('gcKpiEur',      '€' + (s.totalEur || '0.00'));
+      renderGiftCardTable();
+    })
+    .withFailureHandler(function(err) {
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">' + escapeHtml(err.message || String(err)) + '</td></tr>';
+    })
+    .getGiftCardData();
+}
+
+function renderGiftCardTable() {
+  var tbody  = document.getElementById('gcTableBody');
+  if (!tbody) return;
+  var search = ((document.getElementById('gcSearch')      || {}).value || '').toLowerCase().trim();
+  var type   = (document.getElementById('gcFilterType')  || {}).value || '';
+  var month  = (document.getElementById('gcFilterMonth') || {}).value || '';
+
+  var filtered = _gcData.filter(function(r) {
+    if (type  && r.type   !== type)  return false;
+    if (month && r.months !== month) return false;
+    if (search && !r.learnerName.toLowerCase().includes(search) &&
+                  !r.jlid.toLowerCase().includes(search) &&
+                  !(r.email || '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  var rc = document.getElementById('gcResultCount');
+  if (rc) rc.textContent = filtered.length + ' result' + (filtered.length === 1 ? '' : 's');
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="12" style="padding:2.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-gift"></i> No entries match filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(function(row, i) {
+    var typeBadge = row.type === 'referral'
+      ? '<span style="background:#fff1f2;color:#f43f5e;border:1px solid #fecdd3;border-radius:20px;padding:2px 8px;font-size:0.7rem;font-weight:600;">Referral</span>'
+      : '<span style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:20px;padding:2px 8px;font-size:0.7rem;font-weight:600;">Sales</span>';
+    var hsBadge = row.hsUpdated === 'YES'
+      ? '<span style="color:#10b981;font-size:0.75rem;"><i class="fas fa-check-circle"></i></span>'
+      : '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
+    var askEmailBtn = row.jlid
+      ? ' <button title="Email the parent asking for their Amazon website + account email" onclick="gcSendAskEmailRow(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#fff;border:1px solid #0d9488;border-radius:6px;padding:2px 7px;color:#0d9488;font-size:0.7rem;cursor:pointer;"><i class="fas fa-envelope"></i></button>'
+      : '';
+    var issuedEmailBtn = row.jlid
+      ? ' <button title="Email the parent the gift-wrapped gift card note" onclick="gcSendIssuedEmailRow(\'' + escapeHtml(row.jlid) + '\',' + row.rowIndex + ',\'' + escapeHtml(row.type) + '\',this)" style="background:#fff;border:1px solid #6366f1;border-radius:6px;padding:2px 7px;color:#6366f1;font-size:0.7rem;cursor:pointer;"><i class="fas fa-envelope"></i></button>'
+      : '';
+    var askCell = (row.askSentAt
+      ? '<span style="font-size:0.72rem;color:#10b981;"><i class="fas fa-check"></i> ' + escapeHtml(row.askSentAt) + '</span>'
+      : '<button onclick="gcSendAskRow(\'' + escapeHtml(row.jlid) + '\',' + row.rowIndex + ',this)" style="background:#0d9488;border:none;border-radius:6px;padding:2px 8px;color:#fff;font-size:0.7rem;cursor:pointer;white-space:nowrap;">Send Ask</button>') + askEmailBtn;
+    var issuedCell = (row.issuedSentAt
+      ? '<span style="font-size:0.72rem;color:#6366f1;"><i class="fas fa-check"></i> ' + escapeHtml(row.issuedSentAt) + '</span>'
+      : (row.jlid ? '<button onclick="gcSendIssuedRow(\'' + escapeHtml(row.jlid) + '\',' + row.rowIndex + ',\'' + escapeHtml(row.type) + '\',this)" style="background:#6366f1;border:none;border-radius:6px;padding:2px 8px;color:#fff;font-size:0.7rem;cursor:pointer;white-space:nowrap;">Send Issued</button>' : '—')) + issuedEmailBtn;
+    var orderCell = row.orderLink
+      ? '<a href="' + escapeHtml(row.orderLink) + '" target="_blank" style="font-size:0.72rem;color:#6366f1;text-decoration:none;" title="' + escapeHtml(row.orderLink) + '"><i class="fas fa-external-link-alt"></i></a>'
+      : '—';
+    return '<tr style="border-bottom:1px solid #f1f5f9;">'
+      + '<td style="padding:8px 14px;color:#94a3b8;font-size:0.78rem;">' + (i+1) + '</td>'
+      + '<td style="padding:8px 14px;font-weight:500;color:#1e293b;">' + escapeHtml(row.learnerName)
+        + (row.jlid ? '<span style="font-size:0.68rem;color:#94a3b8;display:block;font-family:monospace;">' + escapeHtml(row.jlid) + '</span>' : '') + '</td>'
+      + '<td style="padding:8px 14px;color:#475569;font-size:0.78rem;">' + escapeHtml(row.email || '—') + '</td>'
+      + '<td style="padding:8px 14px;font-weight:600;color:#1e293b;">' + escapeHtml(row.amount || '—') + ' ' + escapeHtml(row.currency || '') + '</td>'
+      + '<td style="padding:8px 14px;color:#d97706;font-weight:600;">€' + escapeHtml(row.eurAmount || '—') + '</td>'
+      + '<td style="padding:8px 14px;color:#64748b;white-space:nowrap;font-size:0.78rem;">' + escapeHtml(row.date || '—') + '</td>'
+      + '<td style="padding:8px 14px;color:#475569;font-size:0.78rem;">' + escapeHtml(row.website || '—') + ' ' + orderCell + '</td>'
+      + '<td style="padding:8px 14px;">' + typeBadge + '</td>'
+      + '<td style="padding:8px 14px;text-align:center;">' + hsBadge + '</td>'
+      + '<td style="padding:8px 14px;">' + askCell + '</td>'
+      + '<td style="padding:8px 14px;">' + issuedCell + '</td>'
+      + '<td style="padding:8px 14px;"></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function gcSendAskRow(jlid, rowIndex, btn) {
+  if (!jlid) { showToast('error', 'Missing', 'No JLID on this row'); return; }
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success) {
+        showToast('success', 'Ask Sent', 'WATI message sent to ' + (res.phone || ''));
+        var row = _gcData.find(function(r) { return r.rowIndex === rowIndex; });
+        if (row) { row.askSentAt = 'just now'; renderGiftCardTable(); }
+      } else { showToast('error', 'Failed', (res && res.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', err.message || String(err)); })
+    .gcSendAskMessage(jlid);
+}
+
+function gcSendIssuedRow(jlid, rowIndex, gcType, btn) {
+  if (!jlid) { showToast('error', 'Missing', 'No JLID on this row'); return; }
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success) {
+        showToast('success', 'Issued Sent', 'WATI gift card message sent');
+        var row = _gcData.find(function(r) { return r.rowIndex === rowIndex; });
+        if (row) { row.issuedSentAt = 'just now'; renderGiftCardTable(); }
+      } else { showToast('error', 'Failed', (res && res.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', err.message || String(err)); })
+    .gcSendIssuedMessage(rowIndex, jlid, gcType);
+}
+
+function gcSendAskEmailRow(jlid, btn) {
+  if (!jlid) { showToast('error', 'Missing', 'No JLID on this row'); return; }
+  if (!confirm('Email the parent asking for their Amazon website and account email?')) return;
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success) showToast('success', 'Ask Email Sent', 'Sent to ' + (res.to || 'parent'));
+      else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
+    })
+    .withFailureHandler(function(err) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', err.message || String(err)); })
+    .gcSendAskEmail(jlid);
+}
+
+function gcSendIssuedEmailRow(jlid, rowIndex, gcType, btn) {
+  if (!jlid) { showToast('error', 'Missing', 'No JLID on this row'); return; }
+  if (!confirm('Email the parent their gift-wrapped gift card note?')) return;
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success) showToast('success', 'Gift Card Email Sent', 'Sent to ' + (res.to || 'parent'));
+      else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
+    })
+    .withFailureHandler(function(err) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', err.message || String(err)); })
+    .gcSendIssuedEmail(rowIndex, jlid, gcType);
+}
+
+function gcSendAskEmailFromModal() {
+  var jlid = ((document.getElementById('gcJlid') || {}).value || '').trim().toUpperCase();
+  if (!jlid) { showToast('error', 'Missing', 'Enter and fetch a JLID first'); return; }
+  var btn = document.getElementById('gcAskEmailBtn');
+  var orig = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (res && res.success) showToast('success', 'Ask Email Sent', 'Sent to ' + (res.to || 'parent'));
+      else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      showToast('error', 'Error', err.message || String(err));
+    })
+    .gcSendAskEmail(jlid);
+}
+
+// ── Add Gift Card Modal ────────────────────────────────────────────────────
+var _gcModalJlidData = null;
+
+function gcOpenAddModal() {
+  _gcModalJlidData = null;
+  var modal = document.getElementById('gcAddModal');
+  if (modal) modal.style.display = 'flex';
+  // Default date to today
+  var d = document.getElementById('gcDate');
+  if (d && !d.value) d.value = new Date().toISOString().split('T')[0];
+  gcUpdateTypeNote();
+}
+
+function gcCloseModal() {
+  var modal = document.getElementById('gcAddModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function gcUpdateTypeNote() {
+  var note = document.getElementById('gcTypeNote');
+  if (!note) return;
+  var t = (document.getElementById('gcType') || {}).value || 'referral';
+  var tname = t === 'sales' ? 'amz_giftcard_sales_pitch' : 'amz_giftcard_sent_';
+  note.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:5px;"></i>Will send <strong>' + tname + '</strong> WATI template to parent on save.';
+}
+
+function gcFetchByJlid() {
+  var jlid = (document.getElementById('gcJlid') || {}).value;
+  if (!jlid || !jlid.trim()) { showToast('error', 'Missing', 'Enter a JLID first'); return; }
+  var resEl = document.getElementById('gcFetchResult');
+  if (resEl) { resEl.style.display = 'block'; resEl.innerHTML = '<span style="color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Looking up…</span>'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success || !res.data) {
+        if (resEl) resEl.innerHTML = '<span style="color:#ef4444;">Deal not found for ' + escapeHtml(jlid.trim()) + '</span>';
+        return;
+      }
+      _gcModalJlidData = res.data;
+      var ln = document.getElementById('gcLearnerName'); if (ln) ln.value = res.data.learnerName || '';
+      var em = document.getElementById('gcEmail');       if (em) em.value = res.data.parentEmail || res.data.parentName || '';
+      if (resEl) resEl.innerHTML = '<span style="color:#10b981;"><i class="fas fa-check-circle"></i> Found: ' + escapeHtml(res.data.learnerName || '') + ' — ' + escapeHtml(res.data.parentName || '') + '</span>';
+      gcLoadAmazonDetails(jlid.trim().toUpperCase(), res.data.parentEmail || '', res.data.parentContact || '');
+    })
+    .withFailureHandler(function(err) {
+      if (resEl) resEl.innerHTML = '<span style="color:#ef4444;">' + escapeHtml(err.message || String(err)) + '</span>';
+    })
+    .fetchHubspotByJlid(jlid.trim().toUpperCase());
+}
+
+var _gcAmazonDetails = null;
+
+function gcLoadAmazonDetails(jlid, parentEmail, parentPhone) {
+  var box = document.getElementById('gcAmazonDetails');
+  if (!box) return;
+  _gcAmazonDetails = null;
+  box.style.display = 'block';
+  box.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> Checking for the parent\'s Amazon details…</span>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        box.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">Couldn\'t check replies: ' + escapeHtml((res && res.message) || 'unknown error') + '</span>';
+        return;
+      }
+      if (!res.found) {
+        box.innerHTML = '<div style="padding:9px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;font-size:0.78rem;color:#64748b;"><i class="fas fa-inbox" style="margin-right:6px;"></i>No reply by email or WhatsApp yet. Use <strong>Email Ask</strong> or <strong>Send Ask First</strong> to request their Amazon website and account email.</div>';
+        return;
+      }
+      _gcAmazonDetails = res;
+      var site = res.website ? escapeHtml(res.website) : '<em style="color:#94a3b8;">not given</em>';
+      var mail = res.amazonEmail ? escapeHtml(res.amazonEmail) : '<em style="color:#94a3b8;">not given</em>';
+      box.innerHTML = '<div style="padding:10px 12px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;font-size:0.8rem;color:#134e4a;">'
+        + '<div style="font-weight:700;margin-bottom:6px;"><i class="fas fa-envelope-open-text" style="margin-right:6px;"></i>Parent replied' + (res.source ? ' via ' + escapeHtml(res.source) : '') + (res.repliedAt ? ' · ' + escapeHtml(res.repliedAt) : '') + '</div>'
+        + '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;">'
+        +   '<span style="color:#0f766e;">Amazon website</span><strong>' + site + '</strong>'
+        +   '<span style="color:#0f766e;">Amazon account email</span><strong style="word-break:break-all;">' + mail + '</strong>'
+        + '</div>'
+        + ((!res.website || !res.amazonEmail) && res.snippet ? '<div style="margin-top:6px;padding:6px 8px;background:#fff;border-radius:6px;color:#475569;white-space:pre-wrap;">' + escapeHtml(res.snippet) + '</div>' : '')
+        + '<button type="button" onclick="gcUseAmazonDetails()" class="btn btn-sm" style="margin-top:8px;background:#0d9488;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.75rem;font-weight:600;">Use these in the form</button>'
+        + '</div>';
+    })
+    .withFailureHandler(function(err) {
+      box.innerHTML = '<span style="font-size:0.78rem;color:#94a3b8;">Couldn\'t check replies: ' + escapeHtml(err.message || String(err)) + '</span>';
+    })
+    .gcGetAmazonDetails(jlid, parentEmail, parentPhone);
+}
+
+function gcUseAmazonDetails() {
+  if (!_gcAmazonDetails) return;
+  var w = document.getElementById('gcWebsite'); if (w && _gcAmazonDetails.website) w.value = _gcAmazonDetails.website;
+  var e = document.getElementById('gcEmail');   if (e && _gcAmazonDetails.amazonEmail) e.value = _gcAmazonDetails.amazonEmail;
+  showToast('success', 'Filled', 'Website and Amazon email added to the form');
+}
+
+function gcSendAsk() {
+  var jlid = (document.getElementById('gcJlid') || {}).value;
+  if (!jlid || !jlid.trim()) { showToast('error', 'Missing', 'Enter and fetch a JLID first'); return; }
+  var btn = document.getElementById('gcAskBtn');
+  var orig = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (res && res.success) showToast('success', 'Ask Sent', 'WATI migration_amz_giftvoucher_ sent to ' + (res.phone || ''));
+      else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      showToast('error', 'Error', err.message || String(err));
+    })
+    .gcSendAskMessage(jlid.trim().toUpperCase());
+}
+
+function gcSubmitEntry() {
+  var err  = document.getElementById('gcModalError');
+  if (err) err.style.display = 'none';
+  var jlid      = ((document.getElementById('gcJlid')        || {}).value || '').trim().toUpperCase();
+  var learner   = ((document.getElementById('gcLearnerName') || {}).value || '').trim();
+  var email     = ((document.getElementById('gcEmail')       || {}).value || '').trim();
+  var amount    = ((document.getElementById('gcAmount')      || {}).value || '').trim();
+  var currency  = ((document.getElementById('gcCurrency')    || {}).value || '').trim();
+  var eurAmount = ((document.getElementById('gcEurAmount')   || {}).value || '').trim();
+  var date      = ((document.getElementById('gcDate')        || {}).value || '').trim();
+  var website   = ((document.getElementById('gcWebsite')     || {}).value || '').trim();
+  var reason    = ((document.getElementById('gcReason')      || {}).value || '').trim();
+  var type      = ((document.getElementById('gcType')        || {}).value || '').trim();
+  var addedBy   = ((document.getElementById('gcAddedBy')     || {}).value || '').trim();
+  var orderLink = ((document.getElementById('gcOrderLink')   || {}).value || '').trim();
+  var sendWati  = (document.getElementById('gcSendWati')     || {}).checked;
+  var sendEmail = (document.getElementById('gcSendEmail')    || {}).checked;
+
+  var missing = [];
+  if (!learner) missing.push('Learner Name');
+  if (!amount)  missing.push('Gift Card Amount');
+  if (!currency) missing.push('Currency');
+  if (!eurAmount) missing.push('EUR Amount');
+  if (!date)    missing.push('Date');
+  if (!website) missing.push('Website');
+  if (!reason)  missing.push('Reason');
+  if (!type)    missing.push('Type');
+  if (!addedBy) missing.push('Added By');
+
+  if (missing.length) {
+    if (err) { err.style.display = 'block'; err.textContent = 'Required: ' + missing.join(', '); }
+    return;
+  }
+
+  var btn = document.getElementById('gcSubmitBtn');
+  var orig = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…'; }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (!res || !res.success) {
+        if (err) { err.style.display = 'block'; err.textContent = (res && res.message) || 'Failed to save'; }
+        return;
+      }
+      gcCloseModal();
+      showToast('success', 'Gift Card Recorded', learner + ' — ' + amount + ' ' + currency + (res.hsWarning ? ' (HS: ' + res.hsWarning + ')' : ''));
+      if (res.emailResult && !res.emailResult.success) showToast('error', 'Email not sent', res.emailResult.message || 'Unknown error');
+      loadGiftCardData();
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (err) { err.style.display = 'block'; err.textContent = e.message || String(e); }
+    })
+    .addGiftCardEntry({ jlid: jlid, learnerName: learner, email: email, amount: amount, currency: currency,
+      eurAmount: eurAmount, date: date, website: website, reason: reason, type: type, addedBy: addedBy,
+      orderLink: orderLink, sendWati: sendWati, sendEmail: sendEmail });
 }
 
 // ── Debug: fetch HubSpot kit status enum values ───────────────────────────

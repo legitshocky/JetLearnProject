@@ -762,7 +762,11 @@ function sendMigrationEmail(data, attachments = []) {
       : null;
     try {
       var dealPropStart = new Date().getTime();
-      var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '', _attrNoteBody);
+      var dealPropRes = updateMigrationDealProperties(data.jlid, data.oldTeacher || '', data.newTeacher || '', _attrNoteBody, data.classSessions || [], data.course || '');
+      if (_attrNoteBody) {
+        notes.push(dealPropRes.noteWritten ? 'Attrition note added to deal' : 'Attrition note NOT added to deal — check HubSpot note API log');
+      }
+      notes.push('Deal schedule/course sync: ' + ((dealPropRes.syncLog && dealPropRes.syncLog.length) ? dealPropRes.syncLog.join('; ') : 'already matched'));
       if (dealPropRes.success) {
         notes.push('Deal props updated: current_teacher, previous_teachers, migration_request_count');
         _timelineAdd(timeline, 'deal_props', 'Deal Properties Updated', 'success', dealPropStart, '', {

@@ -211,12 +211,13 @@ function _lafGetLogSheet() {
   var sheet = ss.getSheetByName('Learner Address Submissions');
   if (!sheet) {
     sheet = ss.insertSheet('Learner Address Submissions');
-    sheet.appendRow(['Timestamp', 'JLID', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID', 'Kit Bridge Status', 'HubSpot PATCH Status']);
-    sheet.getRange(1, 1, 1, 12).setFontWeight('bold');
+    sheet.appendRow(['Timestamp', 'JLID', 'Parent Name', 'Contact', 'Learner', 'Email', 'Address', 'City', 'State/Region', 'Postal Code', 'Country', 'Deal ID', 'HS Notes', 'HubSpot PATCH Status']);
+    sheet.getRange(1, 1, 1, 14).setFontWeight('bold');
     sheet.setFrozenRows(1);
-  } else if (sheet.getLastColumn() < 12) {
-    // Self-heal: older sheet predates the "HubSpot PATCH Status" column
-    sheet.getRange(1, 12).setValue('HubSpot PATCH Status').setFontWeight('bold');
+  } else if (sheet.getLastColumn() < 14) {
+    // Self-heal: add Parent Name, Contact headers if missing (v9.87+)
+    sheet.getRange(1, 13).setValue('HS Notes').setFontWeight('bold');
+    sheet.getRange(1, 14).setValue('HubSpot PATCH Status').setFontWeight('bold');
   }
   return sheet;
 }
@@ -324,12 +325,15 @@ function submitLearnerAddressForm(payload) {
     var addressText = [payload.address, payload.city, payload.state, payload.postalCode, payload.country]
       .filter(function(p) { return p && String(p).trim(); }).join(', ');
 
-    var bridgeStatus = _bridgeAddressToKitTracking(jlid, addressText, d);
+    var bridgeStatus = _bridgeAddressToKitTracking(jlid, addressText, d, payload);
 
     var sheet = _lafGetLogSheet();
     sheet.appendRow([
-      new Date(), jlid, d.learnerName || '', payload.email, payload.address,
-      payload.city, payload.state, payload.postalCode, payload.country, d.dealId || '', bridgeStatus, patchStatus
+      new Date(), jlid,
+      d.parentName || '', d.parentContact || '',
+      d.learnerName || '', payload.email, payload.address,
+      payload.city, payload.state, payload.postalCode, payload.country,
+      d.dealId || '', bridgeStatus, patchStatus
     ]);
 
     Logger.log('[LAF] Address submitted for ' + jlid + ' (kitBridgeStatus=' + bridgeStatus + ')');
@@ -346,7 +350,7 @@ function submitLearnerAddressForm(payload) {
 // the older WATI free-text / HubSpot-form flow. Never blocks the caller —
 // any failure here is logged and swallowed so the parent still sees success.
 // Returns a short status string logged on the submission row for auditing.
-function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
+function _bridgeAddressToKitTracking(jlid, addressText, hsData, structuredPayload) {
   try {
     var sheet = _getKitSheet();
     if (sheet.getLastRow() < 2) return 'no_kit_sheet_rows';
@@ -359,6 +363,19 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData) {
     sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
     sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(now);
     sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(now);
+    // Cache parent contact + structured address so Order Details needs no extra calls
+    if (hsData) {
+      if (hsData.parentName)    sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).setValue(hsData.parentName);
+      if (hsData.parentContact) sheet.getRange(rowIndex, KIT_COL.PARENT_PHONE).setValue(hsData.parentContact);
+      if (hsData.parentEmail)   sheet.getRange(rowIndex, KIT_COL.PARENT_EMAIL).setValue(hsData.parentEmail);
+    }
+    if (structuredPayload) {
+      if (structuredPayload.address)    sheet.getRange(rowIndex, KIT_COL.ADDR_LINE).setValue(structuredPayload.address);
+      if (structuredPayload.city)       sheet.getRange(rowIndex, KIT_COL.ADDR_CITY).setValue(structuredPayload.city);
+      if (structuredPayload.state)      sheet.getRange(rowIndex, KIT_COL.ADDR_STATE).setValue(structuredPayload.state);
+      if (structuredPayload.postalCode) sheet.getRange(rowIndex, KIT_COL.ADDR_POSTAL).setValue(structuredPayload.postalCode);
+      if (structuredPayload.country)    sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(structuredPayload.country);
+    }
 
     // Same confirmation WATI the internal flow sends — parent gets a
     // consistent experience regardless of which channel they used.
@@ -413,13 +430,14 @@ function getAddressFormLink(jlid, learnerName, useHsForm) {
   // (jetlearn-kit-links.web.app), not a redirect. The page fetch()es learner
   // data from the GAS backend as a JSON API, so this URL stays in the address
   // bar the whole time. Safe to paste directly into WhatsApp.
-  // NOTE: deliberately NOT appending ?name=... here — WhatsApp template
-  // parameters are picky about certain characters/patterns, and a query
-  // string with percent-encoded spaces got this exact template rejected by
-  // WATI ("cannot have typos or blank text"). The name is purely a cosmetic
-  // instant-display hint before the page's own API call resolves; the page
-  // works perfectly without it, so it's not worth risking template rejection.
+  // Append first name only (no spaces, ASCII-safe) so the page can show the
+  // learner's name instantly without waiting for the GAS fetch. WATI rejects
+  // URLs with percent-encoded spaces, so we use only the first word.
   var shortUrl = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(cleanJlid);
+  if (learnerName) {
+    var firstName = String(learnerName).trim().split(/\s+/)[0];
+    if (firstName) shortUrl += '?name=' + encodeURIComponent(firstName);
+  }
 
   return { success: true, url: shortUrl, longUrl: longUrl };
 }

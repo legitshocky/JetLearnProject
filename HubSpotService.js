@@ -61,7 +61,7 @@ function fetchHubspotByJlid(jlid, skipChurnCheck) {
     'learner_practice_document_link', 'installment_type', 'installment_terms_final',
     'installment_months', 'installment_received_months__cloned_', 'payment_due_date',
     'full_payment_received__y_n_', 'jet_guide', 'cls_manager', 'teacher_manager',
-    'parent_email', 'parent_name', 'phone_number_deal_',
+    'parent_email', 'parent_name', 'lastname', 'phone_number_deal_',
     'stage____payment_trigger_date', 'zoom_masked_link', 'urge_on_pause_date',
     'current_subscription_taken_classes', 'learner_health', 'learner_health_reason_code',
     'country', 'learning_kit_cost',
@@ -171,7 +171,7 @@ function fetchHubspotByJlid(jlid, skipChurnCheck) {
         dealId: contactProperties.hs_object_id || null,
         jlid: contactProperties.jetlearner_id || jlid,
         learnerName: `${contactProperties.dealname || ''}`.trim(),
-        parentName: contactProperties.parent_name || '',
+        parentName: [contactProperties.parent_name, contactProperties.lastname].filter(function(n){ return n && String(n).trim() && String(n).trim() !== '--'; }).join(' ').trim() || '',
         parentEmail: contactProperties.parent_email || '',
         parentContact: finalParentPhone, 
         course: getCourseLabel(contactProperties.current_course) || '',
@@ -425,6 +425,12 @@ function fetchMigrationHybridData(jlid) {
 
     // 5. Pre-migration last class date (CCTC warning)
     if (ticketResult.preLastClassDate) finalData.preLastClassDate = ticketResult.preLastClassDate;
+
+    // 6. Future courses from ticket (needed for CCTC "Next Course" display)
+    var _tp = ticketResult.rawProperties || {};
+    finalData.futureCourse1 = getCourseLabel(_tp.future_course_1) || '';
+    finalData.futureCourse2 = getCourseLabel(_tp.future_course_2) || '';
+    finalData.futureCourse3 = getCourseLabel(_tp.future_course_3) || '';
 
     finalData.source = "Hybrid (Deal + Ticket)";
   } else {
@@ -2907,10 +2913,21 @@ function addNoteToHubSpotTicket(ticketId, noteBody) {
  * Adds a note engagement to a HubSpot DEAL (not ticket).
  * Used for attrition notes, class credit notes, etc.
  */
+function _getCourseHsId(label) {
+  if (!label) return null;
+  var data = _getCachedSheetData(CONFIG.SHEETS.COURSE_HS_DATA);
+  var low = String(label).trim().toLowerCase();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][1] || '').trim().toLowerCase() === low) return String(data[i][0]).trim();
+    if (String(data[i][0] || '').trim().toLowerCase() === low) return String(data[i][0]).trim();
+  }
+  return null;
+}
+
 function addNoteToHubSpotDeal(dealId, noteBody) {
   try {
     var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
-    if (!token || !dealId || !noteBody) return;
+    if (!token || !dealId || !noteBody) return false;
 
     // Step 1: Create note via v3 API
     var createResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/notes', {
@@ -2923,7 +2940,7 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
     Logger.log('[addNoteDeal] Create note → HTTP ' + createCode);
     if (createCode !== 201 && createCode !== 200) {
       Logger.log('[addNoteDeal] Create failed: ' + createResp.getContentText().substring(0, 200));
-      return;
+      return false;
     }
     var noteId = JSON.parse(createResp.getContentText()).id;
 
@@ -2940,9 +2957,12 @@ function addNoteToHubSpotDeal(dealId, noteBody) {
     Logger.log('[addNoteDeal] Associate note ' + noteId + ' → deal ' + dealId + ' HTTP ' + assocCode);
     if (assocCode !== 200 && assocCode !== 201 && assocCode !== 204) {
       Logger.log('[addNoteDeal] Association failed: ' + assocResp.getContentText().substring(0, 300));
+      return false;
     }
+    return true;
   } catch(e) {
     Logger.log('[addNoteDeal] Error: ' + e.message);
+    return false;
   }
 }
 
@@ -3038,7 +3058,7 @@ function assignTeacherForOnboarding(jlid, teacherName) {
  *   - previous_teachers: append old teacher (semicolon-separated, no duplicates)
  *   - migration_request_count: increment by 1 (dropdown internal value 1,2,3,4...)
  */
-function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody) {
+function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody, classSessions, newCourse) {
   try {
     var hsResult = fetchHubspotByJlid(jlid);
     if (!hsResult.success || !hsResult.data || !hsResult.data.dealId) {
@@ -3050,7 +3070,7 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody) {
 
     // Direct GET to read raw current values — fetchHubspotByJlid doesn't map these properties
     var getRaw = monitoredFetch(
-      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=previous_teachers,migration_request_count',
+      'https://api.hubapi.com/crm/v3/objects/deals/' + dealId + '?properties=previous_teachers,migration_request_count,regular_class_day,regular_class_time_in_cet,current_course',
       { method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true }
     );
     var rawProps = {};
@@ -3073,28 +3093,73 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody) {
     var _resolvedNewTeacher = (typeof resolveTeacherName === 'function') ? resolveTeacherName(newTeacher) : newTeacher;
     var currentTeacherId = (typeof getTeacherHsId === 'function') ? (getTeacherHsId(_resolvedNewTeacher) || getTeacherHsId(newTeacher)) : null;
 
-    var payload = { properties: { migration_request_count: newCount } };
-    if (previousTeachersVal) payload.properties.previous_teachers = previousTeachersVal;
-    if (currentTeacherId)    payload.properties.current_teacher   = currentTeacherId;
+    // PATCH 1: teacher + count + previous_teachers (critical — never mix with optional fields)
+    var corePayload = { properties: { migration_request_count: newCount } };
+    if (previousTeachersVal) corePayload.properties.previous_teachers = previousTeachersVal;
+    if (currentTeacherId)    corePayload.properties.current_teacher   = currentTeacherId;
 
     Logger.log('[updateMigrationDealProps] deal=' + dealId + ' newTeacher="' + newTeacher + '" resolved="' + _resolvedNewTeacher + '" current_teacher_id=' + (currentTeacherId || 'SKIPPED-no-id') + ' previous_teachers=' + (previousTeachersVal || 'SKIPPED-empty') + ' count=' + newCount);
 
     var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
       method: 'PATCH',
       headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      payload: JSON.stringify(payload),
+      payload: JSON.stringify(corePayload),
       muteHttpExceptions: true
     });
 
     var code = resp.getResponseCode();
-    Logger.log('[updateMigrationDealProps] PATCH → HTTP ' + code);
-    if (code === 200 || code === 204) {
-      if (noteBody) {
-        try { addNoteToHubSpotDeal(dealId, noteBody); } catch(ne) { Logger.log('[updateMigrationDealProps] Note error: ' + ne.message); }
-      }
-      return { success: true };
+    Logger.log('[updateMigrationDealProps] PATCH 1 (teacher/count) → HTTP ' + code);
+
+    // Sync day / time / course to the deal when they differ. Ticket is the source for day + time
+    // (CET), form values are the fallback. One PATCH per field so a bad value never blocks the rest.
+    var syncLog = [];
+    try {
+      var tk = {};
+      try { var tkRes = fetchLatestMigrationTicket(jlid); if (tkRes && tkRes.found) tk = tkRes; } catch(te) {}
+      var tkProps = tk.rawProperties || {};
+      var firstSession = (classSessions || []).filter(function(s) { return s && s.day; })[0] || {};
+
+      var wantDay    = String(tk.classDay  || firstSession.day  || '').trim();
+      var wantTime   = String(tk.classTime || firstSession.time || '').trim();
+      // current_course is an internal enum value — a display label would be rejected with 400
+      var wantCourse = _getCourseHsId(newCourse) || String(tkProps.current_course__t_ || '').trim();
+
+      var syncFields = [
+        ['regular_class_day',         wantDay,    rawProps.regular_class_day],
+        ['regular_class_time_in_cet', wantTime,   rawProps.regular_class_time_in_cet],
+        ['current_course',            wantCourse, rawProps.current_course]
+      ];
+      syncFields.forEach(function(f) {
+        var fname = f[0], want = String(f[1] || '').trim(), have = String(f[2] || '').trim();
+        if (!want || want.toLowerCase() === have.toLowerCase()) return;
+        var body = { properties: {} };
+        body.properties[fname] = want;
+        var r = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+          method: 'PATCH',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          payload: JSON.stringify(body),
+          muteHttpExceptions: true
+        });
+        var rc = r.getResponseCode();
+        Logger.log('[updateMigrationDealProps] sync ' + fname + ' "' + have + '" → "' + want + '" HTTP ' + rc);
+        if (rc === 200 || rc === 204) syncLog.push(fname + ': "' + have + '" → "' + want + '"');
+        else { syncLog.push(fname + ' FAILED (' + rc + ')'); Logger.log('[updateMigrationDealProps] sync ' + fname + ' error: ' + r.getContentText().substring(0, 200)); }
+      });
+    } catch(schedErr) {
+      Logger.log('[updateMigrationDealProps] schedule/course sync error: ' + schedErr.message);
+      syncLog.push('sync error: ' + schedErr.message);
     }
-    return { success: false, message: 'PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
+
+    // Note is independent of the teacher PATCH — a failed PATCH must not drop it
+    var noteWritten = null;
+    if (noteBody) {
+      try { noteWritten = addNoteToHubSpotDeal(dealId, noteBody); } catch(ne) { noteWritten = false; Logger.log('[updateMigrationDealProps] Note error: ' + ne.message); }
+    }
+
+    if (code === 200 || code === 204) {
+      return { success: true, noteWritten: noteWritten, syncLog: syncLog };
+    }
+    return { success: false, noteWritten: noteWritten, syncLog: syncLog, message: 'PATCH failed (' + code + '): ' + resp.getContentText().substring(0, 200) };
   } catch(e) {
     Logger.log('[updateMigrationDealProps] Error: ' + e.message);
     return { success: false, message: e.message };

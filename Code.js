@@ -130,7 +130,7 @@ function doGet(e) {
     } else {
       ctx = getAddressFormContext(apiJlid);
       if (ctx && ctx.success) {
-        try { cache.put(cacheKey, JSON.stringify(ctx), 180); } catch(ce) {}
+        try { cache.put(cacheKey, JSON.stringify(ctx), 21600); } catch(ce) {}
       }
     }
     return ContentService.createTextOutput(JSON.stringify(ctx)).setMimeType(ContentService.MimeType.JSON);
@@ -230,17 +230,17 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  // --- Public Learner Address Form Route (no login required) ---
+  // --- Public Learner Address Form Route — redirect to Firebase hosted page ---
   if (e && e.parameter && e.parameter.page === 'addressForm') {
     var jlidParam = String(e.parameter.r || e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
     var nameParam  = String(e.parameter.name || '').trim();
-    var template = HtmlService.createTemplateFromFile('AddressForm');
-    template.jlid = jlidParam;
-    template.name = nameParam;
-    return template.evaluate()
-      .setTitle('JetLearn — Confirm Your Details')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    var firebaseUrl = 'https://jetlearn-kit-links.web.app/kit/' + encodeURIComponent(jlidParam);
+    if (nameParam) firebaseUrl += '?name=' + encodeURIComponent(nameParam.split(/\s+/)[0]);
+    return HtmlService.createHtmlOutput(
+      '<meta http-equiv="refresh" content="0;url=' + firebaseUrl + '">' +
+      '<script>location.replace(' + JSON.stringify(firebaseUrl) + ');</script>' +
+      '<p>Redirecting… <a href="' + firebaseUrl + '">Click here if not redirected.</a></p>'
+    ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
   // --- Standard Page Serving Route ---
@@ -906,10 +906,259 @@ function updateJetGuideByIndex(rowIndex, updates) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "9.73";
+const APP_VERSION = "9.106";
 
 function getAppVersion() {
   return APP_VERSION;
+}
+
+// ── Keep-warm trigger — prevents GAS cold starts on the address form ──────────
+// Run setupKeepWarmTrigger() ONCE in the GAS editor to activate.
+function keepWarm() {
+  // Lightweight ping — just enough to keep the V8 runtime alive.
+  // Also pre-warms the script cache so the first real doGet is faster.
+  Logger.log('[keepWarm] ping ' + new Date().toISOString());
+}
+
+// Run once in GAS editor to pre-warm cache for ALL currently pending address requests.
+function prewarmAllPendingAddressLinks() {
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[Prewarm] No rows.'); return; }
+  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var cache = CacheService.getScriptCache();
+  var warmed = 0, skipped = 0, errors = 0;
+
+  raw.forEach(function(r) {
+    var jlid      = String(r[KIT_COL.JLID - 1]        || '').trim().toUpperCase();
+    var addrStatus = String(r[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    var orderPlaced = String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
+    if (!jlid || orderPlaced) { skipped++; return; }
+    if (addrStatus !== 'Requested' && addrStatus !== 'Received') { skipped++; return; }
+
+    var cacheKey = 'addrFormCtx_' + jlid;
+    if (cache.get(cacheKey)) { skipped++; return; } // already cached
+
+    try {
+      var ctx = getAddressFormContext(jlid);
+      if (ctx && ctx.success) {
+        cache.put(cacheKey, JSON.stringify(ctx), 21600);
+        warmed++;
+        Logger.log('[Prewarm] cached ' + jlid);
+      } else {
+        errors++;
+      }
+    } catch(e) {
+      errors++;
+      Logger.log('[Prewarm] ERROR ' + jlid + ': ' + e.message);
+    }
+    Utilities.sleep(300); // avoid HubSpot rate limits
+  });
+
+  Logger.log('[Prewarm] Done. warmed=' + warmed + ' skipped=' + skipped + ' errors=' + errors);
+}
+
+// Run once from GAS editor to backfill Parent Name + Contact columns (C, D)
+// in the "Learner Address Submissions" sheet for rows written before v9.88.
+function backfillAddressSubmissionsParentColumns() {
+  var sheet = _lafGetLogSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[LAFBackfill] No rows.'); return; }
+  var data = sheet.getRange(2, 1, lastRow - 1, 4).getValues(); // A:D
+  var filled = 0, skipped = 0, errors = 0;
+
+  data.forEach(function(r, i) {
+    var rowIndex    = i + 2;
+    var jlid        = String(r[1] || '').trim(); // col B
+    var parentName  = String(r[2] || '').trim(); // col C
+    var contact     = String(r[3] || '').trim(); // col D
+    if (!jlid || (parentName && contact)) { skipped++; return; }
+
+    try {
+      var hs = fetchHubspotByJlid(jlid, true);
+      if (hs && hs.success && hs.data) {
+        if (!parentName && hs.data.parentName)    sheet.getRange(rowIndex, 3).setValue(hs.data.parentName);
+        if (!contact    && hs.data.parentContact) sheet.getRange(rowIndex, 4).setValue(hs.data.parentContact);
+        filled++;
+        Logger.log('[LAFBackfill] filled row ' + rowIndex + ' (' + jlid + ')');
+      } else {
+        errors++;
+        Logger.log('[LAFBackfill] no HS data for ' + jlid);
+      }
+    } catch(e) {
+      errors++;
+      Logger.log('[LAFBackfill] ERROR row ' + rowIndex + ': ' + e.message);
+    }
+    Utilities.sleep(300);
+  });
+
+  Logger.log('[LAFBackfill] Done. filled=' + filled + ' skipped=' + skipped + ' errors=' + errors);
+  return 'filled=' + filled + ' skipped=' + skipped + ' errors=' + errors;
+}
+
+// Run once from GAS editor to write all column headers into row 1 of the Kit sheet.
+function stampKitSheetHeaders() {
+  var sheet = _getKitSheet();
+  var headers = [
+    [1,  'SR No'],
+    [2,  'Learner Name'],
+    [3,  'Kit'],
+    [4,  'Country'],
+    [5,  'Price (EUR)'],
+    [6,  'Site'],
+    [7,  'Date of Order'],
+    [8,  ''],            // col H — unused gap
+    [9,  'ETA'],
+    [10, 'Delivery Date'],
+    [11, 'Time Taken'],
+    [12, 'Reason'],
+    [13, 'Subscription'],
+    [14, 'Roadmap'],
+    [15, 'Sent By'],
+    [16, 'JLID'],
+    [17, 'Followup Sent'],
+    [18, 'Followup Sent At'],
+    [19, 'Parent Response'],
+    [20, 'Phone Sent To'],
+    [21, 'Followup 2 Sent'],
+    [22, 'Followup 2 Sent At'],
+    [23, 'Delivery Address'],
+    [24, 'Addr Status'],
+    [25, 'Escalated'],
+    [26, 'Escalated At'],
+    [27, 'Refunded'],
+    [28, 'Addr Requested At'],
+    [29, 'Module Start Date'],
+    [30, 'Nudge Tier'],
+    [31, 'Nudge Stage'],
+    [32, 'Nudge Stage At'],
+    [33, 'Order Placed'],
+    [34, 'Order Placed At'],
+    [35, 'Order Store'],
+    [36, 'Order Tracking No'],
+    [37, 'Order Tracking URL'],
+    [38, 'Link Open Count'],
+    [39, 'Link First Opened At'],
+    [40, 'Link Last Opened At'],
+    [41, 'Addr Submitted At'],
+    [42, 'Reimbursement'],
+    [43, 'Reimbursement Amount'],
+    [44, 'Reimbursement Invoice Link'],
+    [45, 'Reimbursement Reason'],
+    [46, 'Reimbursement Status'],
+    [47, 'Reimbursement Requested At'],
+    [48, 'Reimbursement Paid At'],
+    [49, 'Manual Reminder Count'],
+    [50, 'Manual Reminder Last At'],
+    [51, 'HS Deal ID'],
+    [52, 'Parent Name'],
+    [53, 'Parent Phone'],
+    [54, 'Parent Email'],
+    [55, 'Address Line'],
+    [56, 'City'],
+    [57, 'State / Region'],
+    [58, 'Postal Code']
+  ];
+  headers.forEach(function(pair) {
+    var col = pair[0], label = pair[1];
+    if (label) sheet.getRange(1, col).setValue(label).setFontWeight('bold');
+  });
+  Logger.log('[stampKitSheetHeaders] Done — ' + headers.length + ' headers written.');
+  return 'Done';
+}
+
+// Run once from GAS editor to backfill ADDR_LINE/CITY/STATE/POSTAL for all
+// Received rows that existed before v9.92 (reads from Learner Address Submissions).
+function backfillStructuredAddressColumns() {
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[AddrBackfill] No rows.'); return; }
+  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var filled = 0, skipped = 0, errors = 0;
+
+  raw.forEach(function(r, i) {
+    var rowIndex   = i + 2;
+    var jlid       = String(r[KIT_COL.JLID       - 1] || '').trim();
+    var addrStatus = String(r[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    var addrLine   = String(r[KIT_COL.ADDR_LINE   - 1] || '').trim();
+    if (!jlid || addrStatus !== 'Received') { skipped++; return; }
+    if (addrLine) { skipped++; return; } // already filled
+
+    try {
+      var structured = _getStructuredAddressForJlid(jlid);
+      if (structured && (structured.address || structured.city)) {
+        if (structured.address)    sheet.getRange(rowIndex, KIT_COL.ADDR_LINE).setValue(structured.address);
+        if (structured.city)       sheet.getRange(rowIndex, KIT_COL.ADDR_CITY).setValue(structured.city);
+        if (structured.state)      sheet.getRange(rowIndex, KIT_COL.ADDR_STATE).setValue(structured.state);
+        if (structured.postalCode) sheet.getRange(rowIndex, KIT_COL.ADDR_POSTAL).setValue(structured.postalCode);
+        if (structured.country)    sheet.getRange(rowIndex, KIT_COL.COUNTRY).setValue(structured.country);
+        filled++;
+        Logger.log('[AddrBackfill] filled row ' + rowIndex + ' (' + jlid + ')');
+      } else {
+        skipped++;
+      }
+    } catch(e) {
+      errors++;
+      Logger.log('[AddrBackfill] ERROR row ' + rowIndex + ': ' + e.message);
+    }
+  });
+
+  Logger.log('[AddrBackfill] Done. filled=' + filled + ' skipped=' + skipped + ' errors=' + errors);
+  return 'filled=' + filled + ' skipped=' + skipped + ' errors=' + errors;
+}
+
+// Run once from GAS editor to backfill PARENT_NAME/PHONE/EMAIL for all rows
+// that already have ADDR_STATUS=Received but were written before v9.86.
+function backfillParentContactColumns() {
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('[Backfill] No rows.'); return; }
+  var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+  var filled = 0, skipped = 0, errors = 0;
+
+  raw.forEach(function(r, i) {
+    var rowIndex   = i + 2;
+    var jlid       = String(r[KIT_COL.JLID        - 1] || '').trim();
+    var addrStatus = String(r[KIT_COL.ADDR_STATUS  - 1] || '').trim();
+    var parentName = String(r[KIT_COL.PARENT_NAME  - 1] || '').trim();
+    var parentPhone= String(r[KIT_COL.PARENT_PHONE - 1] || '').trim();
+    // Only process Received rows missing at least one field
+    if (!jlid || addrStatus !== 'Received') { skipped++; return; }
+    if (parentName && parentPhone) { skipped++; return; }
+
+    try {
+      var hs = fetchHubspotByJlid(jlid, true);
+      if (hs && hs.success && hs.data) {
+        if (hs.data.parentName)    sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).setValue(hs.data.parentName);
+        if (hs.data.parentContact) sheet.getRange(rowIndex, KIT_COL.PARENT_PHONE).setValue(hs.data.parentContact);
+        if (hs.data.parentEmail)   sheet.getRange(rowIndex, KIT_COL.PARENT_EMAIL).setValue(hs.data.parentEmail);
+        filled++;
+        Logger.log('[Backfill] filled row ' + rowIndex + ' (' + jlid + ')');
+      } else {
+        errors++;
+        Logger.log('[Backfill] no HS data for ' + jlid);
+      }
+    } catch(e) {
+      errors++;
+      Logger.log('[Backfill] ERROR row ' + rowIndex + ' (' + jlid + '): ' + e.message);
+    }
+    Utilities.sleep(300); // avoid HubSpot rate limits
+  });
+
+  Logger.log('[Backfill] Done. filled=' + filled + ' skipped=' + skipped + ' errors=' + errors);
+  return 'filled=' + filled + ' skipped=' + skipped + ' errors=' + errors;
+}
+
+function setupKeepWarmTrigger() {
+  // Remove any existing keep-warm trigger first (idempotent).
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'keepWarm') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('keepWarm')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+  Logger.log('[setupKeepWarmTrigger] keepWarm trigger set to every 5 minutes.');
 }
 
 // Direct course list for Certificate Center — bypasses all caching/indirection
