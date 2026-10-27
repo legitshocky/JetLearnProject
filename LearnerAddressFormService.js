@@ -290,6 +290,11 @@ function submitLearnerAddressForm(payload) {
     if (!payload.email || !payload.address || !payload.city || !payload.state || !payload.postalCode || !payload.country) {
       return { success: false, message: 'Please fill in all required fields.' };
     }
+    // Backstop for the page's own check — a sentence or gibberish is not a delivery address
+    var addrCheck = _kitValidateStructuredAddress(payload);
+    if (!addrCheck.ok) return { success: false, message: addrCheck.message };
+    // Countries we can't ship kits to are recorded but NOT accepted as a usable address — ops sees them flagged
+    var blockedCountry = _kitCountryBlocked(payload.country);
     // Invalidate the addressFormContext cache (Code.js doGet) so a reopened
     // link reflects what was just submitted instead of a stale 3-minute-old snapshot.
     try { CacheService.getScriptCache().remove('addrFormCtx_' + jlid); } catch(cce) {}
@@ -315,7 +320,8 @@ function submitLearnerAddressForm(payload) {
           _formatDMY(new Date()) + ':\n' +
           String(payload.address).trim() + ', ' + String(payload.city).trim() + ', ' +
           String(payload.state).trim() + ', ' + String(payload.postalCode).trim() + ', ' +
-          String(payload.country).trim());
+          String(payload.country).trim() +
+          (blockedCountry ? '\n⚠ We cannot ship kits to ' + String(payload.country).trim() + ' — flagged for ops, NOT marked as a usable address.' : ''));
         patchStatus += ' | Address note added to deal';
       }
     } catch(ne) {
@@ -325,7 +331,7 @@ function submitLearnerAddressForm(payload) {
     var addressText = [payload.address, payload.city, payload.state, payload.postalCode, payload.country]
       .filter(function(p) { return p && String(p).trim(); }).join(', ');
 
-    var bridgeStatus = _bridgeAddressToKitTracking(jlid, addressText, d, payload);
+    var bridgeStatus = _bridgeAddressToKitTracking(jlid, addressText, d, payload, blockedCountry);
 
     var sheet = _lafGetLogSheet();
     sheet.appendRow([
@@ -336,8 +342,17 @@ function submitLearnerAddressForm(payload) {
       d.dealId || '', bridgeStatus, patchStatus
     ]);
 
-    Logger.log('[LAF] Address submitted for ' + jlid + ' (kitBridgeStatus=' + bridgeStatus + ')');
-    return { success: true };
+    // Parent typed a country we can't ship to — same CLS alert as when the request is made
+    if (blockedCountry) {
+      try {
+        var _kr = _findOpenKitRowByJlid(jlid);
+        var _kn = _kr ? String(_getKitSheet().getRange(_kr, KIT_COL.KIT).getValue() || '').trim() : '';
+        _kitNotifyCLSCountryBlocked(jlid, d, _kn, String(payload.country).trim(), 'address form');
+      } catch(ce) { Logger.log('[LAF] CLS country alert failed (non-fatal): ' + ce.message); }
+    }
+
+    Logger.log('[LAF] Address submitted for ' + jlid + ' (kitBridgeStatus=' + bridgeStatus + (blockedCountry ? ', country blocked' : '') + ')');
+    return { success: true, blocked: blockedCountry };
   } catch(e) {
     Logger.log('[LAF] submitLearnerAddressForm ERROR: ' + e.message);
     return { success: false, message: 'Something went wrong submitting your details. Please contact JetLearn support.' };
@@ -350,7 +365,7 @@ function submitLearnerAddressForm(payload) {
 // the older WATI free-text / HubSpot-form flow. Never blocks the caller —
 // any failure here is logged and swallowed so the parent still sees success.
 // Returns a short status string logged on the submission row for auditing.
-function _bridgeAddressToKitTracking(jlid, addressText, hsData, structuredPayload) {
+function _bridgeAddressToKitTracking(jlid, addressText, hsData, structuredPayload, blockedCountry) {
   try {
     var sheet = _getKitSheet();
     if (sheet.getLastRow() < 2) return 'no_kit_sheet_rows';
@@ -360,9 +375,10 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData, structuredPayloa
 
     var now = new Date();
     sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue(addressText);
-    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue(blockedCountry ? 'Rejected: Can\'t ship to this country' : 'Received');
     sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(now);
     sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(now);
+    if (blockedCountry) sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('');
     // Cache parent contact + structured address so Order Details needs no extra calls
     if (hsData) {
       if (hsData.parentName)    sheet.getRange(rowIndex, KIT_COL.PARENT_NAME).setValue(hsData.parentName);
@@ -381,7 +397,7 @@ function _bridgeAddressToKitTracking(jlid, addressText, hsData, structuredPayloa
     // consistent experience regardless of which channel they used.
     var phone = _normalisePhone((hsData && hsData.parentContact) || '');
     try {
-      if (phone) {
+      if (phone && !blockedCountry) {
         var kitName = String(sheet.getRange(rowIndex, KIT_COL.KIT).getValue() || '').trim();
         sendWatiMessage(phone, 'kit_address_received_confirmation', [
           { name: '1', value: (hsData && hsData.parentName) || '' },

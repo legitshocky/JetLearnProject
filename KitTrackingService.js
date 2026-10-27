@@ -300,6 +300,195 @@ function _findOpenKitRowByJlid(jlid) {
   return candidates.length === 1 ? candidates[0] : 0;
 }
 
+// ── Address validation + rejection ────────────────────────────────────────────
+// Countries JetLearn cannot ship learning kits to — lower-case, letters and single spaces only
+// (matched as WHOLE names, so "oman" does not block Romania). Mirrored in the public page's JS.
+var KIT_UNSHIPPABLE_COUNTRIES = [
+  // Africa
+  'algeria', 'angola', 'benin', 'botswana', 'burkina faso', 'burundi', 'cape verde', 'cabo verde', 'cameroon',
+  'central african republic', 'chad', 'comoros', 'congo', 'democratic republic of the congo', 'dr congo', 'drc',
+  'djibouti', 'egypt', 'equatorial guinea', 'eritrea', 'eswatini', 'swaziland', 'ethiopia', 'gabon', 'gambia',
+  'ghana', 'guinea', 'guinea bissau', 'ivory coast', 'cote d ivoire', 'kenya', 'lesotho', 'liberia', 'libya',
+  'madagascar', 'malawi', 'mali', 'mauritania', 'mauritius', 'morocco', 'mozambique', 'namibia', 'niger',
+  'nigeria', 'rwanda', 'sao tome', 'sao tome and principe', 'senegal', 'seychelles', 'sierra leone', 'somalia',
+  'south africa', 'south sudan', 'sudan', 'tanzania', 'togo', 'tunisia', 'uganda', 'zambia', 'zimbabwe',
+  // Middle East
+  'saudi arabia', 'ksa', 'qatar', 'kuwait', 'bahrain', 'iran', 'iraq', 'jordan', 'lebanon', 'israel',
+  'palestine', 'state of palestine', 'syria', 'yemen', 'oman'
+];
+// Names that contain a blocked name but ARE shippable
+var KIT_COUNTRY_EXCEPTIONS = ['papua new guinea'];
+
+var KIT_STREET_RE = /\b(road|rd|street|st|avenue|ave|lane|ln|drive|dr|close|way|court|ct|crescent|place|pl|terrace|gardens|grove|square|park|hill|row|walk|mews|boulevard|blvd|house|flat|apartment|apt|unit|block|building|villa|tower|plot|sector|floor|suite|po box|colony|nagar|marg|chowk|society|estate|cottage|farm|barn|lodge|manor|view|rise|green|common|highway|hwy|bypass)\b/i;
+var KIT_CHATTY_RE  = /\b(we|i|my|our|us|am|are|will|going|gone|away|please|pls|thanks|thank|hello|hi|hey|sorry|cannot|can't|cant|won't|tomorrow|today|tonight|yesterday|ok|okay|yes|no one|nobody|someone|receive|holiday|vacation|travel|travelling|traveling|busy|later|wait)\b/gi;
+
+// "Côte d'Ivoire" → " cote d ivoire " (accents stripped, punctuation → spaces, padded for whole-name matching)
+function _kitNormCountry(country) {
+  return ' ' + String(country || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z]+/g, ' ').trim() + ' ';
+}
+
+// Two-letter codes (HubSpot can hold either a name or an ISO code) — only matched when the WHOLE value is the code
+var KIT_UNSHIPPABLE_ISO = ['dz','ao','bj','bw','bf','bi','cv','cm','cf','td','km','cg','cd','dj','eg','gq','er','sz','et','ga','gm','gh','gn','gw','ci','ke','ls','lr','ly','mg','mw','ml','mr','mu','ma','mz','na','ne','ng','rw','st','sn','sc','sl','so','za','ss','sd','tz','tg','tn','ug','zm','zw','sa','qa','kw','bh','ir','iq','jo','lb','il','ps','sy','ye','om'];
+
+function _kitCountryBlocked(country) {
+  var c = _kitNormCountry(country);
+  if (c.trim() === '') return false;
+  if (/^ [a-z]{2} $/.test(c)) return KIT_UNSHIPPABLE_ISO.indexOf(c.trim()) !== -1;
+  if (KIT_COUNTRY_EXCEPTIONS.some(function(e) { return c.indexOf(' ' + e + ' ') !== -1; })) return false;
+  return KIT_UNSHIPPABLE_COUNTRIES.some(function(b) { return c.indexOf(' ' + b + ' ') !== -1; });
+}
+
+// Learner is in a country we can't ship kits to → tell the CLS manager to change the course / roadmap
+// (and leave a note on the deal). Emailed once per learner+kit per 6 hours so repeat clicks don't spam.
+// Returns { clsName, clsEmail, emailSent, deduped }
+function _kitNotifyCLSCountryBlocked(jlid, hsData, kitName, country, source) {
+  var out = { clsName: '', clsEmail: '', emailSent: false, deduped: false };
+  jlid = String(jlid || '').trim().toUpperCase();
+  var d = hsData || {};
+  out.clsName = String(d.clsManagerName || '').trim();
+
+  var cache = CacheService.getScriptCache();
+  var dedupeKey = 'KIT_BLOCK_ALERT_' + jlid + '_' + String(kitName || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  try { if (cache.get(dedupeKey)) { out.deduped = true; return out; } } catch(ce) {}
+
+  try { out.clsEmail = out.clsName ? (findClsEmailByManagerName(out.clsName) || '') : ''; } catch(fe) {}
+  var ops = (CONFIG.EMAIL && CONFIG.EMAIL.FROM) || 'hello@jet-learn.com';
+  var firstName = out.clsName ? out.clsName.split(/\s+/)[0] : 'team';
+  var row = function(k, v) { return '<tr><td style="padding:4px 16px 4px 0"><strong>' + k + '</strong></td><td>' + (v || '—') + '</td></tr>'; };
+
+  try {
+    sendTrackedEmail({
+      to: out.clsEmail || ops,
+      cc: out.clsEmail ? ops : undefined,
+      subject: 'Action needed: kit can\'t be shipped to ' + (country || 'this country') + ' — ' + (d.learnerName || jlid),
+      jlid: jlid,
+      htmlBody:
+        '<html><body style="font-family:sans-serif;font-size:14px;color:#1e293b;">' +
+        '<p>Hi ' + firstName + ',</p>' +
+        '<p>We need to send a <strong>' + (kitName || 'learning') + ' kit</strong> to the learner below, but their country ' +
+        '(<strong>' + (country || 'unknown') + '</strong>) is <strong>outside our logistics operations</strong> — we cannot ship kits there.</p>' +
+        '<p>Please speak to the parent and <strong>change the course or roadmap</strong> so it no longer depends on a physical kit ' +
+        '(or agree another option with them), then let the kit team know.</p>' +
+        '<table style="border-collapse:collapse;">' +
+        row('JLID', jlid) + row('Learner', d.learnerName) + row('Parent', d.parentName) +
+        row('Kit', kitName) + row('Country', country) + row('Found at', source || 'address request') +
+        '</table>' +
+        (out.clsEmail ? '' : '<p style="color:#b91c1c;">We could not find the CLS manager\'s email (' + (out.clsName || 'no CLS on the deal') + ') — sending to the ops inbox instead.</p>') +
+        '<p>— JetLearn Operations Platform</p></body></html>'
+    });
+    out.emailSent = true;
+  } catch(ee) { Logger.log('[KitTracking] CLS country-blocked email failed for ' + jlid + ': ' + ee.message); }
+
+  try {
+    if (d.dealId) {
+      _addNoteToDeal(d.dealId,
+        '[Kit Logistics] Cannot ship the ' + (kitName || '') + ' kit to ' + (country || 'this country') + ' — outside our logistics operations. ' +
+        (out.emailSent ? ('CLS' + (out.clsName ? ' (' + out.clsName + ')' : '') + ' asked to change the course / roadmap.') : 'CLS could NOT be emailed — follow up manually.') +
+        ' (found at: ' + (source || 'address request') + ')');
+    }
+  } catch(ne) { Logger.log('[KitTracking] country-blocked note failed: ' + ne.message); }
+
+  if (out.emailSent) { try { cache.put(dedupeKey, '1', 21600); } catch(ce2) {} }
+  Logger.log('[KitTracking] country blocked ' + jlid + ' (' + country + ') cls="' + out.clsName + '" email=' + out.clsEmail + ' sent=' + out.emailSent);
+  return out;
+}
+
+// Explicit "Email CLS" button on the red banner.
+function ktNotifyCLSShipBlocked(jlid, kitName) {
+  try {
+    jlid = String(jlid || '').trim().toUpperCase();
+    if (!jlid) return { success: false, message: 'JLID required' };
+    var hs = fetchHubspotByJlid(jlid, true);
+    if (!hs || !hs.success || !hs.data) return { success: false, message: 'HubSpot lookup failed for ' + jlid };
+    if (!_kitCountryBlocked(hs.data.country)) return { success: false, message: (hs.data.country || 'This country') + ' is not on the blocked list.' };
+    var r = _kitNotifyCLSCountryBlocked(jlid, hs.data, kitName, hs.data.country, 'kit tracking');
+    return { success: true, clsName: r.clsName, clsEmail: r.clsEmail, emailSent: r.emailSent, deduped: r.deduped };
+  } catch(e) {
+    Logger.log('[KitTracking] ktNotifyCLSShipBlocked ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// 'Rejected: …' (ops refused it) or 'Closed: …' (row superseded) — both leave the row out of
+// the normal Requested/Received flow but visible in the Asking Address tab.
+function _kitIsClosedAddrStatus(status) {
+  return /^(Rejected|Closed)\b/.test(String(status || '').trim());
+}
+
+// Heuristic "is this actually a postal address?" — catches replies like
+// "we are going away on 16th October, no one will be there" being saved as an address.
+function _kitLooksLikeAddress(text) {
+  var t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length < 10)  return { ok: false, reason: 'too short to be a full address' };
+  if (t.length > 400) return { ok: false, reason: 'too long to be an address' };
+  if (!/[A-Za-z]/.test(t)) return { ok: false, reason: 'has no street or place name' };
+
+  var score = 0;
+  if (/\d/.test(t)) score += 2;                                                   // house number / postcode
+  if (KIT_STREET_RE.test(t)) score += 2;                                          // street / building word
+  if ((t.match(/,/g) || []).length >= 2) score += 1;                              // comma-separated parts
+  if (/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(t)) score += 3;               // UK postcode
+  if (/\b\d{5}(?:-\d{4})?\b/.test(t) || /\b\d{6}\b/.test(t)) score += 2;          // US ZIP / India PIN
+
+  var chatty = (t.match(KIT_CHATTY_RE) || []).length;
+  if (chatty >= 2 && score < 5) return { ok: false, reason: 'reads like a message, not an address' };
+  if (score < 3) return { ok: false, reason: 'does not look like a full address' };
+  return { ok: true };
+}
+
+// Structured form fields → same test on the combined text, plus a basic address-line check.
+function _kitValidateStructuredAddress(p) {
+  p = p || {};
+  var line = String(p.address || '').trim();
+  if (line.length < 4 || !/[A-Za-z0-9]/.test(line)) {
+    return { ok: false, message: 'Please enter your full street address.' };
+  }
+  // The address line has to stand on its own — the city/postcode below must not rescue a sentence or gibberish
+  if ((line.match(KIT_CHATTY_RE) || []).length >= 2) {
+    return { ok: false, message: 'That doesn\'t look like a delivery address (reads like a message, not an address). Please enter your house number and street.' };
+  }
+  if (!/\d/.test(line) && !KIT_STREET_RE.test(line) && line.split(/\s+/).length < 2) {
+    return { ok: false, message: 'That doesn\'t look like a delivery address. Please enter your house number and street.' };
+  }
+  var combined = [line, p.city, p.state, p.postalCode].filter(function(x) { return x && String(x).trim(); }).join(', ');
+  var chk = _kitLooksLikeAddress(combined);
+  if (!chk.ok) {
+    return { ok: false, message: 'That doesn\'t look like a delivery address (' + chk.reason + '). Please enter your house number and street.' };
+  }
+  return { ok: true };
+}
+
+// Closes the single leftover address-first row (same JLID + same kit, no order yet) when an order
+// is added through Add Kit Entry. Only acts when exactly one such row exists — never guesses.
+function _kitCloseDanglingAddressRow(jlid, kitName, exceptRow) {
+  jlid = String(jlid || '').trim().toUpperCase();
+  if (!jlid) return;
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var kitLow = String(kitName || '').trim().toLowerCase();
+  var jlidCol = sheet.getRange(2, KIT_COL.JLID, lastRow - 1, 1).getValues();
+  var candidates = [];
+  jlidCol.forEach(function(r, i) {
+    var rowIndex = i + 2;
+    if (rowIndex === exceptRow || String(r[0] || '').trim().toUpperCase() !== jlid) return;
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    var st = String(row[KIT_COL.ADDR_STATUS - 1] || '').trim();
+    var placed = String(row[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE';
+    var hasOrderDate = !!row[KIT_COL.DATE_OF_ORDER - 1];
+    var sameKit = String(row[KIT_COL.KIT - 1] || '').trim().toLowerCase() === kitLow;
+    if (!placed && !hasOrderDate && sameKit && (st === 'Requested' || st === 'Received')) candidates.push(rowIndex);
+  });
+  if (candidates.length === 1) {
+    sheet.getRange(candidates[0], KIT_COL.ADDR_STATUS).setValue('Closed: Order placed separately');
+    sheet.getRange(candidates[0], KIT_COL.NUDGE_STAGE).setValue('');
+    Logger.log('[KitTracking] closed dangling address row ' + candidates[0] + ' for ' + jlid + ' (order added on row ' + exceptRow + ')');
+  } else if (candidates.length > 1) {
+    Logger.log('[KitTracking] ' + candidates.length + ' open address rows for ' + jlid + ' — left as is, close manually');
+  }
+}
+
 // ── Record that the public address page was opened (called from the JSON
 // API's addressFormContext branch, every time the page loads/reloads) ────────
 // Best-effort and silent — link-open tracking must never affect what the
@@ -899,7 +1088,7 @@ function _createBareKitRow(jlid, learnerName, kitName) {
 // of our own page, and skips the yes/no reconfirm (that's specific to our
 // own page's flow) — just a straight link ask either way.
 // Returns { success, addressSource, address, phone, needsWati, watiSent, rowIndex }
-function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
+function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
   try {
     if (!jlid || !kitName) return { success: false, message: 'JLID and kit name required' };
 
@@ -911,6 +1100,20 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm) {
     if (!hs || !hs.success) return { success: false, message: 'HubSpot lookup failed for ' + jlid };
 
     var d           = hs.data;
+
+    // Country is outside our logistics — don't ask the parent for an address we can't use. Nothing is sent to
+    // the parent; the CLS manager is emailed to change the course / roadmap. `force` = ops knows better
+    // (e.g. the parent has a shippable address in another country).
+    if (!force && _kitCountryBlocked(d.country)) {
+      var al = _kitNotifyCLSCountryBlocked(jlid, d, kitName, d.country, 'address request');
+      return {
+        success: false, shipBlocked: true, country: d.country,
+        clsName: al.clsName, clsNotified: al.emailSent || al.deduped,
+        message: 'We can\'t ship kits to ' + d.country + '. ' +
+          (al.emailSent ? 'CLS' + (al.clsName ? ' (' + al.clsName + ')' : '') + ' has been emailed to change the course / roadmap.'
+                        : (al.deduped ? 'CLS was already emailed about this recently.' : 'CLS could NOT be emailed — please follow up manually.'))
+      };
+    }
     var phone       = _normalisePhone(d.parentContact || '');
     var parentName  = d.parentName  || '';
     var learnerName = d.learnerName || '';
@@ -1082,6 +1285,23 @@ function handleKitAddressReply(phone, addressText) {
     var meta     = JSON.parse(cached);
     var rowIndex = meta.rowIndex || 0;
     var addrText = String(addressText).trim();
+
+    // Not an address (e.g. "we're away on 16th Oct, no one to receive it") — don't save it as one,
+    // don't flip the row to Received. Keep the pending request open so a real address is still
+    // accepted, and leave the parent's message on the deal for ops to read.
+    var addrCheck = _kitLooksLikeAddress(addrText);
+    if (!addrCheck.ok) {
+      Logger.log('[KitTracking] handleKitAddressReply: NOT an address for ' + meta.jlid + ' (' + addrCheck.reason + '): "' + addrText.substring(0, 120) + '"');
+      try {
+        var hsBad = meta.jlid ? fetchHubspotByJlid(meta.jlid, true) : null;
+        if (hsBad && hsBad.success && hsBad.data && hsBad.data.dealId) {
+          _addNoteToDeal(hsBad.data.dealId,
+            '[Kit Address] Parent replied on WhatsApp but it was not saved as an address (' + addrCheck.reason + '):\n"' +
+            addrText.substring(0, 400) + '"\nThe address request is still open.');
+        }
+      } catch(nbe) { Logger.log('[KitTracking] not-an-address note failed (non-fatal): ' + nbe.message); }
+      return true; // handled — don't let other handlers treat it as an address
+    }
 
     // Update sheet row
     var sheet = _getKitSheet();
@@ -1266,6 +1486,12 @@ function _handleKitAddressFormWebhook(payload) {
     return;
   }
 
+  var whCheck = _kitLooksLikeAddress(addrStr);
+  if (!whCheck.ok) {
+    Logger.log('[KitAddrWebhook] NOT an address (' + whCheck.reason + ') — not saved: "' + addrStr.substring(0, 120) + '"');
+    return;
+  }
+
   // Match to pending queue entry by phone or email
   var submittedPhone = _normalisePhone(fields['phone'] || fields['mobilephone'] || fields['phone_number'] || '');
   var submittedEmail = fields['email'] || '';
@@ -1384,7 +1610,8 @@ function checkKitAddressNudges() {
       var isRefunded = String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
 
       // Only rows still waiting on an address, with a Day-0 anchor stamped
-      if (isRefunded || addrStatus === 'Received' || !requestedAt || !stage) return;
+      // (rejected/closed rows are not waiting on the parent — never nudge them)
+      if (isRefunded || addrStatus === 'Received' || _kitIsClosedAddrStatus(addrStatus) || !requestedAt || !stage) return;
       if (stage === 'call_nudge_sent') return; // final stage already reached
 
       var daysSince = _kitDaysBetween(requestedAt, today);
@@ -2351,7 +2578,7 @@ function getKitTrackingData() {
       }
       // Skip old rows — EXCEPT address-pipeline rows (no order yet, OR still
       // waiting on address), which must always be visible regardless of date.
-      var isAddressPipelineRow = !orderPlaced && (addrStatus === 'Requested' || addrStatus === 'Received');
+      var isAddressPipelineRow = !orderPlaced && (addrStatus === 'Requested' || addrStatus === 'Received' || _kitIsClosedAddrStatus(addrStatus));
       var isAddressFirstRow = !orderRaw && addrStatus && !orderPlaced;
       if (!isAddressPipelineRow && !isAddressFirstRow && (!orderDate || orderDate < cutoff)) return;
 
@@ -2390,15 +2617,15 @@ function getKitTrackingData() {
 
       // Compute status — refunded wins over everything (no ETA/overdue tracking applies)
       var isRefunded = String(r[26] || '').trim().toUpperCase() === 'TRUE';
-      var needsCall = (nudgeStage === 'call_nudge_sent' && addrStatus !== 'Received');
+      var needsCall = (nudgeStage === 'call_nudge_sent' && addrStatus !== 'Received' && !_kitIsClosedAddrStatus(addrStatus));
 
       // 'Requested' or 'Received' status is sufficient proof the row is in the
       // address pipeline — no need to gate on ADDR_REQUESTED_AT being stamped,
       // since that excludes rows where the request was sent outside the app or
       // where the stamp failed. Legacy rows only have 'Verified' (not these two).
       var addrRequestedAtRaw = r[KIT_COL.ADDR_REQUESTED_AT - 1];
-      var inAddressPipeline = !orderPlaced &&
-        (addrStatus === 'Requested' || addrStatus === 'Received');
+      var inAddressPipeline = !orderPlaced && !isRefunded &&
+        (addrStatus === 'Requested' || addrStatus === 'Received' || _kitIsClosedAddrStatus(addrStatus));
 
       var status = 'pending';
       if (isRefunded) {
@@ -2592,6 +2819,8 @@ function fetchKitLearnerDetails(jlid) {
       learnerName:      d.learnerName      || '',
       subscription:     d.planName         || '',
       country:          d.country          || '',
+      shipBlocked:      _kitCountryBlocked(d.country),   // outside our logistics — don't request an address
+      clsManagerName:   d.clsManagerName   || '',
       kitCostSoFar:     d.learningKitCost  || 0,
       dealId:           d.dealId           || '',
       phone:            phone,
@@ -2686,6 +2915,12 @@ function addKitEntry(data) {
     });
     Logger.log('[KitTracking] addKitEntry: wrote to row ' + writeRow + ' sr=' + srNo);
     Logger.log('[KitTracking] addKitEntry: row added sr=' + srNo + ' learner=' + data.learnerName + ' jlid=' + jlid + ' row=' + writeRow);
+
+    // Add Kit Entry always creates a NEW row. If the parent had already sent an address (address-first
+    // row, same learner + kit, no order yet) that older row would sit in Asking Address forever,
+    // still offering "Mark Order Placed" — close it now that the order exists.
+    try { _kitCloseDanglingAddressRow(jlid, data.kit, writeRow); }
+    catch(dce) { Logger.log('[KitTracking] addKitEntry: closing old address row failed (non-fatal): ' + dce.message); }
 
     // ── HubSpot updates on kit entry ──────────────────────────────────
     var price = parseFloat(data.price) || 0;
@@ -3389,6 +3624,97 @@ function markKitAddressReceivedManual(rowIndex, rawLine, parts) {
     return { success: true };
   } catch(e) {
     Logger.log('[KitTracking] markKitAddressReceivedManual ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── Reject / close an address — ops refuses what the parent sent (not a real address,
+// country we can't ship to, learner paused, duplicate row). Clears the bad address everywhere
+// it is read from, keeps an audit note on the HubSpot deal, and optionally asks the parent
+// to share it again (restarts the nudge cadence + sends the link by WhatsApp and email).
+// reasonCode: invalid | country | notrequired | duplicate | other
+function ktRejectAddress(rowIndex, reasonCode, note, reAsk, rejectedBy) {
+  if (!rowIndex) return { success: false, message: 'No rowIndex' };
+  try {
+    var REASONS = {
+      invalid:     'Not a valid address',
+      country:     'Can\'t ship to this country',
+      notrequired: 'Kit not required (learner paused / cancelled)',
+      duplicate:   'Order placed separately',
+      other:       'Other'
+    };
+    var label = REASONS[reasonCode] || 'Other';
+    note = String(note || '').trim().substring(0, 300);
+
+    var sheet = _getKitSheet();
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    if (String(row[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE') {
+      return { success: false, message: 'An order is already placed on this row — there is no address to reject.' };
+    }
+
+    var jlid        = String(row[KIT_COL.JLID - 1] || '').trim().toUpperCase();
+    var learnerName = String(row[KIT_COL.LEARNER_NAME - 1] || '').trim();
+    var kitName     = String(row[KIT_COL.KIT - 1] || '').trim();
+    var oldAddress  = String(row[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim();
+    var now         = new Date();
+    // "Not required" and "duplicate" never go back to the parent
+    var doReAsk = !!reAsk && reasonCode !== 'notrequired' && reasonCode !== 'duplicate';
+
+    // 1. Audit trail on the deal — the rejected text is kept here, not on the row
+    var noteStatus = 'skipped';
+    try {
+      var hs = jlid ? fetchHubspotByJlid(jlid, true) : null;
+      if (hs && hs.success && hs.data && hs.data.dealId) {
+        _addNoteToDeal(hs.data.dealId,
+          '[Kit Address Rejected] ' + kitName + ' — ' + label + (note ? ' (' + note + ')' : '') + '\n' +
+          'Rejected address: ' + (oldAddress || '—') + '\n' +
+          'Parent asked to share it again: ' + (doReAsk ? 'Yes' : 'No') +
+          (rejectedBy ? '\nBy: ' + rejectedBy : ''));
+        noteStatus = 'added';
+      } else { noteStatus = 'no_deal'; }
+    } catch(ne) { noteStatus = 'failed: ' + ne.message; Logger.log('[KitTracking] ktRejectAddress note failed: ' + ne.message); }
+
+    // 2. Clear the bad address everywhere it is read from
+    [KIT_COL.DELIVERY_ADDRESS, KIT_COL.ADDR_LINE, KIT_COL.ADDR_CITY, KIT_COL.ADDR_STATE, KIT_COL.ADDR_POSTAL, KIT_COL.ADDR_SUBMITTED_AT]
+      .forEach(function(c) { try { sheet.getRange(rowIndex, c).clearContent(); } catch(ce) {} });
+    // The public page pre-fills from the newest submission — add an empty one so the rejected text doesn't come back
+    try {
+      var prev = jlid ? _getStructuredAddressForJlid(jlid) : null;
+      _lafGetLogSheet().appendRow([
+        now, jlid, (prev && prev.parentName) || '', (prev && prev.parentContact) || '',
+        learnerName, (prev && prev.email) || '', '', '', '', '', '', '', 'address_rejected_by_ops', label
+      ]);
+    } catch(le) { Logger.log('[KitTracking] ktRejectAddress tombstone failed: ' + le.message); }
+    try {
+      var sc = CacheService.getScriptCache();
+      sc.remove('kitOD_' + rowIndex);
+      if (jlid) sc.remove('addrFormCtx_' + jlid);
+    } catch(ke) {}
+
+    // 3. New status (+ optional re-ask)
+    var reminder = null;
+    if (reasonCode === 'notrequired') {
+      // Same mechanism as the existing "Not Required" button
+      markKitAsRefunded(rowIndex);
+    } else if (doReAsk) {
+      sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Requested');
+      sheet.getRange(rowIndex, KIT_COL.ADDR_REQUESTED_AT).setValue(now);   // restart the nudge cadence
+      sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('');
+      sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(now);
+      reminder = sendKitAddressManualReminder(rowIndex);
+      if (reminder && reminder.success) {
+        sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue(reminder.emailStatus === 'sent' ? 'email_sent' : 'whatsapp_sent');
+      }
+    } else {
+      sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue((reasonCode === 'duplicate' ? 'Closed: ' : 'Rejected: ') + label);
+      sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE).setValue('');
+      sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(now);
+    }
+
+    Logger.log('[KitTracking] ktRejectAddress row=' + rowIndex + ' jlid=' + jlid + ' reason=' + reasonCode + ' reAsk=' + doReAsk + ' note=' + noteStatus);
+    return { success: true, reAsk: doReAsk, label: label, noteStatus: noteStatus, reminder: reminder };
+  } catch(e) {
+    Logger.log('[KitTracking] ktRejectAddress ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
 }

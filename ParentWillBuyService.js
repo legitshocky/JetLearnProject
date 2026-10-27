@@ -42,7 +42,7 @@ var PWB_COURSE_KIT_MAP = {
   'Advanced Robotics using Makey Makey':           'Makey Makey'
 };
 
-var PWB_TERMINAL_STATUSES = ['Order Placed', 'Kit Received', "Parent Didn't Buy - Roadmap Changed"];
+var PWB_TERMINAL_STATUSES = ['Order Placed', 'Kit Received', "Parent Didn't Buy - Roadmap Changed", 'Course Changed - Kit Not Needed'];
 
 // ── HubSpot status values (must match exact enum values in HubSpot) ─────────
 // Set script property PWB_HS_STATUS_PROP to override the property internal name.
@@ -477,6 +477,9 @@ function _pwbCheckCourseChanged(sheet, sheetRow, row) {
     var rowKit     = String(row[PWB_COL.KIT - 1] || '').trim();
     if (!jlid || !rowCourse) return false;
 
+    // Already closed for this reason — the deal note was written then. Never write it again.
+    if (String(row[PWB_COL.STATUS - 1] || '').trim() === 'Course Changed - Kit Not Needed') return true;
+
     var hs = fetchHubspotByJlid(jlid);
     if (!hs || !hs.success || !hs.data || !hs.data.course) return false;
     var dealCourse = String(hs.data.course).trim();
@@ -588,7 +591,8 @@ function _processPWBRow(sheet, sheetRow, row, today) {
   var startDateRaw = row[PWB_COL.COURSE_START_DATE - 1];
   var amazonLink   = String(row[PWB_COL.AMAZON_LINK - 1]       || '').trim();
   var status       = String(row[PWB_COL.STATUS - 1]            || '').trim();
-  var escalated    = String(row[PWB_COL.ESCALATED - 1]         || '').trim();
+  // Sheets turns the text "TRUE" into a real boolean, which reads back as "true" — compare case-insensitively
+  var escalated    = String(row[PWB_COL.ESCALATED - 1]         || '').trim().toUpperCase();
 
   // Skip terminal or already-escalated rows
   if (PWB_TERMINAL_STATUSES.indexOf(status) > -1) return;

@@ -158,46 +158,69 @@ function addGiftCardEntry(data) {
           });
 
           var props = {};
-          if (dealResp.getResponseCode() === 200) {
+          var readOk = dealResp.getResponseCode() === 200;
+          if (readOk) {
             props = JSON.parse(dealResp.getContentText()).properties || {};
           }
 
-          // 1. Append month (e.g. "September 2026")
-          var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-          var newMonth = MONTHS[dateVal.getMonth()] + ' ' + dateVal.getFullYear();
-          var existingMonths = String(props['amazon_gift_vouchers_issued__month_'] || '').trim();
-          var updatedMonths  = existingMonths ? existingMonths + ', ' + newMonth : newMonth;
-
-          // 2. Add EUR amount
-          var existingEur  = parseFloat(props['amazon_card_voucher_amount__in_euros_']) || 0;
-          var updatedEur   = existingEur + eurAmount;
-
-          // 3. Increment referral count (only for referral type)
-          var existingRef  = parseInt(props['number_of_referral_conversion']) || 0;
-          var updatedRef   = gcType === 'referral' ? existingRef + 1 : existingRef;
-
-          var patchProps = {
-            'amazon_gift_vouchers_issued__month_':      updatedMonths,
-            'amazon_card_voucher_amount__in_euros_':    String(updatedEur)
-          };
-          if (gcType === 'referral') {
-            patchProps['number_of_referral_conversion'] = String(updatedRef);
-          }
-
-          var patchResp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
-            method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            payload: JSON.stringify({ properties: patchProps }),
-            muteHttpExceptions: true
-          });
-          var patchCode = patchResp.getResponseCode();
-          Logger.log('[GiftCard] HS PATCH HTTP ' + patchCode + ' props=' + JSON.stringify(patchProps));
-
-          if (patchCode === 200) {
-            sheet.getRange(writeRow, GC_COL.HS_UPDATED).setValue('YES');
+          if (!readOk) {
+            // Never write without the current totals — we'd overwrite the running EUR total / month list
+            hsWarning = 'Could not read the deal (HTTP ' + dealResp.getResponseCode() + ') — HubSpot properties NOT updated, please update by hand';
+            sheet.getRange(writeRow, GC_COL.HS_UPDATED).setValue('FAILED');
           } else {
-            hsWarning = 'HS update failed HTTP ' + patchCode;
-            Logger.log('[GiftCard] HS PATCH ERROR: ' + patchResp.getContentText().substring(0, 300));
+            // 1. Month — a multi-checkbox property: values are joined with ";" (a ", " string is a single
+            //    invalid option and makes HubSpot reject the request)
+            var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+            var newMonth = MONTHS[dateVal.getMonth()] + ' ' + dateVal.getFullYear();
+            var monthList = String(props['amazon_gift_vouchers_issued__month_'] || '')
+              .split(/\s*;\s*|\s*,\s*(?=[A-Za-z]+ \d{4})/)
+              .map(function(s) { return s.trim(); })
+              .filter(Boolean);
+            if (monthList.indexOf(newMonth) === -1) monthList.push(newMonth);
+            var updatedMonths = monthList.join(';');
+
+            // 2. EUR total
+            var existingEur = parseFloat(props['amazon_card_voucher_amount__in_euros_']) || 0;
+            var updatedEur  = Math.round((existingEur + eurAmount) * 100) / 100;
+
+            // 3. Referral count (referral type only) — enumeration "1".."20"
+            var existingRef = parseInt(props['number_of_referral_conversion'], 10) || 0;
+            var updatedRef  = existingRef + 1;
+
+            var propUpdates = [
+              { name: 'amazon_gift_vouchers_issued__month_',   value: updatedMonths,        label: 'month (' + newMonth + ')' },
+              { name: 'amazon_card_voucher_amount__in_euros_', value: String(updatedEur),   label: 'EUR total' }
+            ];
+            var failures = [];
+            if (gcType === 'referral') {
+              if (updatedRef <= 20) propUpdates.push({ name: 'number_of_referral_conversion', value: String(updatedRef), label: 'referral count' });
+              else failures.push('referral count (HubSpot only allows up to 20)');
+            }
+
+            // One PATCH per property so a single bad value can't block the others
+            propUpdates.forEach(function(u) {
+              var body = { properties: {} };
+              body.properties[u.name] = u.value;
+              var r = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/' + dealId, {
+                method: 'PATCH',
+                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                payload: JSON.stringify(body),
+                muteHttpExceptions: true
+              });
+              var c = r.getResponseCode();
+              Logger.log('[GiftCard] HS PATCH ' + u.name + ' = "' + u.value + '" → HTTP ' + c);
+              if (c !== 200) {
+                failures.push(u.label + ' (HTTP ' + c + ')');
+                Logger.log('[GiftCard] HS PATCH ERROR ' + u.name + ': ' + r.getContentText().substring(0, 300));
+              }
+            });
+
+            if (!failures.length) {
+              sheet.getRange(writeRow, GC_COL.HS_UPDATED).setValue('YES');
+            } else {
+              hsWarning = 'HubSpot not updated for: ' + failures.join(', ') + ' — please fix on the deal by hand';
+              sheet.getRange(writeRow, GC_COL.HS_UPDATED).setValue(failures.length >= propUpdates.length ? 'FAILED' : 'PARTIAL');
+            }
           }
 
           // HS Note
@@ -209,7 +232,8 @@ function addGiftCardEntry(data) {
             'Website: ' + (data.website || '—'),
             'Date: ' + _gcFormatDMY(dateVal),
             (data.orderLink ? 'Order Link: ' + data.orderLink : ''),
-            'Added By: ' + (data.addedBy || '—')
+            'Added By: ' + (data.addedBy || '—'),
+            (hsWarning ? '⚠ ' + hsWarning : '')
           ].filter(Boolean);
           addNoteToHubSpotDeal(dealId, noteLines.join('\n'));
 

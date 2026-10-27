@@ -15438,6 +15438,7 @@ function renderKitAskingAddressTable() {
     if (filterStage === 'requested' && row.addrStatus !== 'Requested') return false;
     if (filterStage === 'received'  && row.addrStatus !== 'Received') return false;
     if (filterStage === 'needsCall' && !row.needsCall) return false;
+    if (filterStage === 'rejected'  && !/^(Rejected|Closed)\b/.test(row.addrStatus || '')) return false;
     return true;
   });
 
@@ -15475,7 +15476,11 @@ function renderKitAskingAddressTable() {
   };
 
   tbody.innerHTML = rows.map(function(row, i) {
-    const ac = addrConfig[row.addrStatus] || { label: row.addrStatus, color: '#64748b', bg: '#f1f5f9' };
+    const isClosedAddr = /^(Rejected|Closed)\b/.test(row.addrStatus || '');
+    const isClosedOnly = /^Closed\b/.test(row.addrStatus || '');
+    const ac = addrConfig[row.addrStatus] || (isClosedAddr
+      ? { label: '🚫 ' + row.addrStatus, color: '#dc2626', bg: '#fef2f2' }
+      : { label: row.addrStatus, color: '#64748b', bg: '#f1f5f9' });
     const addrBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>';
 
     const stageLabel = stageLabels[row.nudgeStage || ''] || row.nudgeStage;
@@ -15515,7 +15520,7 @@ function renderKitAskingAddressTable() {
       + '<td style="padding:10px 14px;">' + stageBadge + '<\/td>'
       + '<td style="padding:10px 14px;">' + openedCell + '<\/td>'
       + '<td style="padding:10px 14px;font-size:0.76rem;color:#64748b;white-space:nowrap;">' + (escapeHtml(row.addrRequestedAt) || '—') + '<\/td>'
-      + '<td style="padding:10px 14px;white-space:nowrap;" onclick="event.stopPropagation()">' + msgBtn + orderBtn + '<\/td>'
+      + '<td style="padding:10px 14px;white-space:nowrap;" onclick="event.stopPropagation()">' + msgBtn + ktFinalAddrBtns(row, orderBtn, isClosedAddr, isClosedOnly) + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
       +   (row.jlid ? (row.hsDealId
             ? '<a href="https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId) + '" target="_blank" onclick="event.stopPropagation();" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>'
@@ -16012,12 +16017,15 @@ function ktOpenOrderDetails(rowIndex, rowData) {
       + '<button id="ktOdCopyBtn" onclick="ktCopyOrderDetails()" title="Copies everything as one text block — for reference/pasting into a note, not for Amazon\'s form fields directly (use the per-field copy icons for those)" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-copy"><\/i> Copy All (as note)<\/button>'
       + '<\/div>'
       + '<button id="ktOdMarkPlacedBtn" onclick="ktMarkOrderPlacedFromDetails()" style="display:none;width:100%;margin-top:10px;padding:9px;border:none;border-radius:8px;background:#0d9488;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
+      + '<button id="ktOdRejectBtn" onclick="ktRejectFromDetails()" title="Not a real address, a country we can\'t ship to, or no longer needed" style="display:none;width:100%;margin-top:8px;padding:9px;border:1px solid #fca5a5;border-radius:8px;background:#fff;color:#dc2626;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-ban"><\/i> Reject this address…<\/button>'
       + '<\/div>';
     document.body.appendChild(modal);
   }
   modal.dataset.rowIndex = rowIndex;
   var markBtnReset = document.getElementById('ktOdMarkPlacedBtn');
   if (markBtnReset) markBtnReset.style.display = 'none';
+  var rejectBtnReset = document.getElementById('ktOdRejectBtn');
+  if (rejectBtnReset) rejectBtnReset.style.display = 'none';
   modal.style.display = 'flex';
 
   var fieldId = 0;
@@ -16059,6 +16067,7 @@ function ktOpenOrderDetails(rowIndex, rowData) {
     modal.dataset.jlid = res.jlid || '';
     modal.dataset.learnerName = res.learnerName || '';
     modal.dataset.kitName = res.kitName || '';
+    modal.dataset.deliveryAddress = res.deliveryAddress || '';
 
     body.className = 'fade-in';
     body.innerHTML =
@@ -16073,6 +16082,8 @@ function ktOpenOrderDetails(rowIndex, rowData) {
 
     var markBtn = document.getElementById('ktOdMarkPlacedBtn');
     if (markBtn) markBtn.style.display = 'block';
+    var rejectBtn = document.getElementById('ktOdRejectBtn');
+    if (rejectBtn) rejectBtn.style.display = 'block';
   };
 
   // If rowData has parent info, render immediately — no GAS call needed
@@ -16472,7 +16483,14 @@ function ktFetchByJlid() {
       addrSection.style.display = 'block';
       if (addrVerifyBtn) addrVerifyBtn.style.display = 'none';
 
-      if (r.addressPending) {
+      window._ktShipBlocked = !!r.shipBlocked;
+      if (r.shipBlocked) {
+        // Country is outside our logistics — don't ask the parent for an address we can't use
+        if (addrInput)  addrInput.value = '';
+        if (addrStatus) addrStatus.innerHTML = ktShipBlockedBanner(r.country, r.clsManagerName, '');
+        if (addrReqBtn)  addrReqBtn.style.display  = 'none';
+        if (addrCheckBtn) addrCheckBtn.style.display = 'none';
+      } else if (r.addressPending) {
         // WATI already sent this session — waiting for parent to submit form
         if (addrInput)  addrInput.value = r.deliveryAddress || '';
         if (addrStatus) addrStatus.innerHTML = '<span style="color:#d97706;font-size:0.75rem;">⏳ Reconfirmation sent — waiting for parent<\/span>';
@@ -16519,6 +16537,7 @@ function ktOnKitChange() {
 
   // Only act if address section is already visible (JLID fetched)
   if (!addrSec || addrSec.style.display === 'none') return;
+  if (window._ktShipBlocked) return; // country outside our logistics — keep the request button hidden
 
   // Check button currently hidden vs pending state
   var checkBtn = document.getElementById('ktfCheckAddrBtn');
@@ -16533,7 +16552,39 @@ function ktOnKitChange() {
 }
 
 // ── Request delivery address from parent via WATI ────────────────────────────
-function ktRequestAddress() {
+// Red banner for learners in a country we can't ship kits to (shown on fetch and when a request is blocked)
+function ktShipBlockedBanner(country, clsName, note) {
+  return '<div style="margin-top:6px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:0.78rem;color:#991b1b;line-height:1.45;">'
+    + '<div style="font-weight:700;margin-bottom:4px;"><i class="fas fa-ban"><\/i> We can\'t ship kits to ' + escapeHtml(country || 'this country') + '<\/div>'
+    + 'This location is outside our logistics operations — don\'t ask the parent for an address. Ask the CLS' + (clsName ? ' (' + escapeHtml(clsName) + ')' : '') + ' to change the course or roadmap.'
+    + (note ? '<div style="margin-top:4px;color:#7f1d1d;">' + escapeHtml(note) + '<\/div>' : '')
+    + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">'
+    +   '<button type="button" onclick="ktNotifyCLSBlocked(this)" style="background:#dc2626;border:none;border-radius:6px;padding:4px 10px;font-size:0.74rem;color:#fff;cursor:pointer;font-weight:600;"><i class="fas fa-envelope"><\/i> Email CLS now<\/button>'
+    +   '<button type="button" onclick="ktRequestAddress(true)" style="background:none;border:1px solid #fca5a5;border-radius:6px;padding:4px 10px;font-size:0.74rem;color:#dc2626;cursor:pointer;" title="Only if the parent has a shippable address in another country"><i class="fas fa-whatsapp"><\/i> Request address anyway<\/button>'
+    + '<\/div><\/div>';
+}
+
+function ktNotifyCLSBlocked(btn) {
+  var jlid = ((document.getElementById('ktfJlid') || {}).value || '').trim();
+  var kitName = ((document.getElementById('ktfKit') || {}).value || '').trim();
+  if (!jlid) { showToast('warning', 'Email CLS', 'Enter and fetch JLID first'); return; }
+  var orig = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (!res || !res.success) { showToast('error', 'Email CLS Failed', (res && res.message) || 'Unknown error'); return; }
+      if (res.deduped) showToast('info', 'Already emailed', 'CLS' + (res.clsName ? ' (' + res.clsName + ')' : '') + ' was emailed about this learner recently.');
+      else if (res.emailSent) showToast('success', 'CLS emailed', (res.clsName || 'CLS') + (res.clsEmail ? ' <' + res.clsEmail + '>' : ' (CLS email not found — sent to the ops inbox)') + ' asked to change the course / roadmap.');
+      else showToast('error', 'Email not sent', 'Could not email the CLS — please follow up manually.');
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .ktNotifyCLSShipBlocked(jlid, kitName);
+}
+
+function ktRequestAddress(force) {
   var jlid    = ((document.getElementById('ktfJlid') || {}).value || '').trim();
   var kitEl   = document.getElementById('ktfKit');
   var kitName = kitEl ? kitEl.value.trim() : '';
@@ -16551,6 +16602,14 @@ function ktRequestAddress() {
       var addrStatus  = document.getElementById('ktfAddressStatus');
       var addrCheckBtn = document.getElementById('ktfCheckAddrBtn');
       var addrVerifyBtn = document.getElementById('ktfVerifyAddrBtn');
+      if (r && r.shipBlocked) {
+        // Nothing was sent to the parent — the CLS manager was emailed instead
+        window._ktShipBlocked = true;
+        if (addrStatus) addrStatus.innerHTML = ktShipBlockedBanner(r.country, r.clsName, r.message);
+        if (btn) btn.style.display = 'none';
+        showToast('error', 'Can\'t ship to ' + (r.country || 'this country'), r.message);
+        return;
+      }
       if (!r || !r.success) {
         showToast('error', 'Address Request Failed', (r && r.message) || 'Unknown error');
         return;
@@ -16581,7 +16640,7 @@ function ktRequestAddress() {
       if (btn) { btn.innerHTML = '<i class="fas fa-whatsapp"><\/i> Request via WhatsApp'; btn.disabled = false; }
       showToast('error', 'Address Request Failed', err.message || String(err));
     })
-    .requestKitDeliveryAddress(jlid, kitName, 0, useHsForm);
+    .requestKitDeliveryAddress(jlid, kitName, 0, useHsForm, force === true);
 }
 
 // ── Verify Address — sends the yes/no reconfirm using the address already
@@ -17465,6 +17524,128 @@ function ktMarkNotRequired(rowIndex, btn) {
     .markKitAsRefunded(rowIndex);
 }
 
+// ── Kit Tracking: reject an address the parent sent ─────────────────────────
+// Not a real address / a country we can't ship to / learner paused / duplicate row.
+// Ops chooses whether the parent is asked to share the address again.
+var KT_REJECT_REASONS = [
+  { v: 'invalid',     label: 'Not a valid address',                                  reAsk: true,  lock: false, help: 'Sends the address link by WhatsApp + email and restarts the reminders.' },
+  { v: 'country',     label: 'We can\'t ship to this country',                        reAsk: false, lock: false, help: 'Tick only if the parent could give an address in a country we do ship to.' },
+  { v: 'notrequired', label: 'Kit no longer needed (learner paused / cancelled)',    reAsk: false, lock: true,  help: 'Not sent to the parent — the kit is dropped from the pipeline.' },
+  { v: 'duplicate',   label: 'Order already placed separately (duplicate row)',      reAsk: false, lock: true,  help: 'Not sent to the parent — this row is just closed.' },
+  { v: 'other',       label: 'Other',                                                reAsk: false, lock: false, help: 'Sends the address link by WhatsApp + email and restarts the reminders.' }
+];
+
+function ktFinalAddrBtns(row, orderBtn, isClosedAddr, isClosedOnly) {
+  var j = escapeHtml(row.jlid), l = escapeHtml(row.learnerName), k = escapeHtml(row.kit);
+  var rejectBtn = '<button onclick="event.stopPropagation();ktOpenRejectAddress(' + row.rowIndex + ', \'' + j + '\', \'' + l + '\', \'' + k + '\', _ktRowCache[' + row.rowIndex + '])" style="background:none;border:1px solid #fca5a5;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#dc2626;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Not a real address, a country we can\'t ship to, or no longer needed — reject it and choose whether to ask the parent again"><i class="fas fa-ban"><\/i> Reject<\/button>';
+  var parentPurchasedBtn = '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + j + '\', \'' + l + '\', \'' + k + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>';
+  var notRequiredBtn = '<button onclick="event.stopPropagation();ktMarkNotRequired(' + row.rowIndex + ', this)" style="background:none;border:1px solid #94a3b8;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#64748b;cursor:pointer;white-space:nowrap;" title="Remove this closed row from the pipeline"><i class="fas fa-ban"><\/i> Not Required<\/button>';
+  if (row.addrStatus === 'Received') return orderBtn + rejectBtn;
+  if (isClosedOnly) return notRequiredBtn;
+  if (isClosedAddr) return orderBtn + parentPurchasedBtn;
+  return orderBtn;
+}
+
+function ktRejectFromDetails() {
+  var m = document.getElementById('ktOrderDetailsModal');
+  if (!m) return;
+  ktOpenRejectAddress(m.dataset.rowIndex, m.dataset.jlid || '', m.dataset.learnerName || '', m.dataset.kitName || '', { deliveryAddress: m.dataset.deliveryAddress || '' });
+}
+
+function ktOpenRejectAddress(rowIndex, jlid, learnerName, kitName, rowData) {
+  var modal = document.getElementById('ktRejectAddrModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktRejectAddrModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:10000;display:flex;align-items:center;justify-content:center;';
+    var lbl = 'font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;';
+    var fld = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;font-family:inherit;background:#fff;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:26px 30px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+      +   '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-ban" style="color:#dc2626;margin-right:8px;"><\/i>Reject address<\/h3>'
+      +   '<button onclick="ktCloseRejectAddress()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button>'
+      + '<\/div>'
+      + '<p id="ktRjSubtitle" style="margin:0 0 10px;font-size:0.82rem;color:#64748b;"><\/p>'
+      + '<div id="ktRjAddress" style="margin-bottom:14px;padding:9px 11px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:0.82rem;color:#7f1d1d;overflow-wrap:anywhere;"><\/div>'
+      + '<label style="' + lbl + '">Why are you rejecting it?<\/label>'
+      + '<select id="ktRjReason" onchange="ktRejectReasonChanged()" style="' + fld + '">'
+      +   KT_REJECT_REASONS.map(function(r) { return '<option value="' + r.v + '">' + r.label + '<\/option>'; }).join('')
+      + '<\/select>'
+      + '<label style="' + lbl + '">Note <span style="font-weight:400;color:#94a3b8;">(optional — saved on the HubSpot deal)<\/span><\/label>'
+      + '<textarea id="ktRjNote" rows="2" style="' + fld + 'resize:vertical;"><\/textarea>'
+      + '<label style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;">'
+      +   '<input type="checkbox" id="ktRjReAsk" style="margin-top:3px;width:15px;height:15px;">'
+      +   '<span style="font-size:0.84rem;color:#1e293b;"><b>Ask the parent to share their address again<\/b><br><span id="ktRjReAskHelp" style="font-size:0.75rem;color:#94a3b8;"><\/span><\/span>'
+      + '<\/label>'
+      + '<div style="display:flex;gap:10px;margin-top:18px;">'
+      +   '<button onclick="ktCloseRejectAddress()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      +   '<button id="ktRjSubmitBtn" onclick="ktSubmitRejectAddress()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#dc2626;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-ban"><\/i> Reject address<\/button>'
+      + '<\/div>'
+      + '<\/div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.rowIndex = rowIndex;
+  document.getElementById('ktRjSubtitle').textContent = (learnerName || '') + (kitName ? ' · ' + kitName : '') + (jlid ? ' · ' + jlid : '');
+  var addr = (rowData && rowData.deliveryAddress) || '';
+  document.getElementById('ktRjAddress').textContent = addr || 'No address text on this row.';
+  document.getElementById('ktRjReason').value = 'invalid';
+  document.getElementById('ktRjNote').value = '';
+  ktRejectReasonChanged();
+  var btn = document.getElementById('ktRjSubmitBtn');
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-ban"><\/i> Reject address'; }
+  modal.style.display = 'flex';
+}
+
+function ktRejectReasonChanged() {
+  var code = document.getElementById('ktRjReason').value;
+  var r = KT_REJECT_REASONS.filter(function(x) { return x.v === code; })[0] || KT_REJECT_REASONS[0];
+  var cb = document.getElementById('ktRjReAsk');
+  cb.checked = r.reAsk;
+  cb.disabled = r.lock;
+  document.getElementById('ktRjReAskHelp').textContent = r.help;
+}
+
+function ktCloseRejectAddress() {
+  var modal = document.getElementById('ktRejectAddrModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function ktSubmitRejectAddress() {
+  var modal = document.getElementById('ktRejectAddrModal');
+  if (!modal) return;
+  var rowIndex = parseInt(modal.dataset.rowIndex, 10);
+  var reasonEl = document.getElementById('ktRjReason');
+  var code = reasonEl.value;
+  var cb = document.getElementById('ktRjReAsk');
+  var reAsk = !!cb.checked && !cb.disabled;
+  var note = document.getElementById('ktRjNote').value.trim();
+  var reasonLabel = reasonEl.options[reasonEl.selectedIndex].text;
+
+  if (!confirm('Reject this address?\n\nReason: ' + reasonLabel + '\n\n' +
+      (reAsk ? 'The parent WILL be asked to share their address again (WhatsApp + email).' : 'The parent will NOT be contacted.'))) return;
+
+  var btn = document.getElementById('ktRjSubmitBtn');
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Rejecting…';
+  var who = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.name || currentUser.username || currentUser.email || '') : '';
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (!res || !res.success) { showToast('error', 'Reject Failed', (res && res.message) || 'Unknown error'); return; }
+      ktCloseRejectAddress();
+      if (typeof ktCloseOrderDetails === 'function') ktCloseOrderDetails();
+      showToast('success', 'Address rejected', res.reAsk ? 'Parent asked to share their address again.' : 'Parent was not contacted.');
+      if (res.reAsk && res.reminder && !res.reminder.success) showToast('error', 'Re-ask not sent', res.reminder.message || 'Check the parent\'s phone/email on the deal.');
+      if (res.noteStatus && res.noteStatus !== 'added') showToast('error', 'HubSpot note not added', 'The address was rejected but the note on the deal failed (' + res.noteStatus + ').');
+      loadKitTrackingPage();
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false; btn.innerHTML = orig;
+      showToast('error', 'Error', err && err.message ? err.message : String(err));
+    })
+    .ktRejectAddress(rowIndex, code, note, reAsk, who);
+}
+
 // ── Kit Tracking: mark kit as refunded (logistics loss) ───────────────────
 function ktMarkRefunded(rowIndex, btn) {
   if (!confirm('Mark this kit as refunded?\n\nThis will zero the price so it doesn\'t count in monthly totals. Cannot be undone easily.')) return;
@@ -17555,7 +17736,9 @@ function renderGiftCardTable() {
       : '<span style="background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;border-radius:20px;padding:2px 8px;font-size:0.7rem;font-weight:600;">Sales</span>';
     var hsBadge = row.hsUpdated === 'YES'
       ? '<span style="color:#10b981;font-size:0.75rem;"><i class="fas fa-check-circle"></i></span>'
-      : '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
+      : (row.hsUpdated === 'PARTIAL' || row.hsUpdated === 'FAILED')
+        ? '<span title="HubSpot deal properties were not fully updated — fix on the deal by hand" style="color:#f59e0b;font-size:0.75rem;"><i class="fas fa-exclamation-triangle"></i></span>'
+        : '<span style="color:#94a3b8;font-size:0.75rem;">—</span>';
     var askEmailBtn = row.jlid
       ? ' <button title="Email the parent asking for their Amazon website + account email" onclick="gcSendAskEmailRow(\'' + escapeHtml(row.jlid) + '\',this)" style="background:#fff;border:1px solid #0d9488;border-radius:6px;padding:2px 7px;color:#0d9488;font-size:0.7rem;cursor:pointer;"><i class="fas fa-envelope"></i></button>'
       : '';
@@ -17824,6 +18007,7 @@ function gcSubmitEntry() {
       }
       gcCloseModal();
       showToast('success', 'Gift Card Recorded', learner + ' — ' + amount + ' ' + currency + (res.hsWarning ? ' (HS: ' + res.hsWarning + ')' : ''));
+      if (res.hsWarning) showToast('error', 'HubSpot not fully updated', res.hsWarning);
       if (res.emailResult && !res.emailResult.success) showToast('error', 'Email not sent', res.emailResult.message || 'Unknown error');
       loadGiftCardData();
     })

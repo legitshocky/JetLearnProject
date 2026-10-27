@@ -315,7 +315,7 @@
     <div id="successState" class="state-msg success" style="display:none;">
       <div class="icon-wrap"><i class="fas fa-check"></i></div>
       <h2>Thank you!</h2>
-      <p>Your details have been received and updated. Our team will be in touch if anything else is needed.</p>
+      <p id="successMsg">Your details have been received and updated. Our team will be in touch if anything else is needed.</p>
       <a id="successTrackLink" href="#" class="submit-btn" style="margin-top:22px;text-decoration:none;">Track my kit →</a>
     </div>
 
@@ -401,6 +401,58 @@
     var JLID = decodeURIComponent((pathParts[1] || '').replace(/\/$/, '')).trim().toUpperCase();
     var NAME_HINT = decodeURIComponent((new URLSearchParams(location.search)).get('name') || '');
 
+    // Same rules as the server (KitTrackingService._kitValidateStructuredAddress) — the server is the
+    // backstop, this gives the parent an immediate answer instead of a "Thank you" for a non-address.
+    // Countries we can't ship kits to — same list as KitTrackingService.KIT_UNSHIPPABLE_COUNTRIES (whole-name match)
+    var KIT_BLOCKED_COUNTRIES = [
+      'algeria', 'angola', 'benin', 'botswana', 'burkina faso', 'burundi', 'cape verde', 'cabo verde', 'cameroon',
+      'central african republic', 'chad', 'comoros', 'congo', 'democratic republic of the congo', 'dr congo', 'drc',
+      'djibouti', 'egypt', 'equatorial guinea', 'eritrea', 'eswatini', 'swaziland', 'ethiopia', 'gabon', 'gambia',
+      'ghana', 'guinea', 'guinea bissau', 'ivory coast', 'cote d ivoire', 'kenya', 'lesotho', 'liberia', 'libya',
+      'madagascar', 'malawi', 'mali', 'mauritania', 'mauritius', 'morocco', 'mozambique', 'namibia', 'niger',
+      'nigeria', 'rwanda', 'sao tome', 'sao tome and principe', 'senegal', 'seychelles', 'sierra leone', 'somalia',
+      'south africa', 'south sudan', 'sudan', 'tanzania', 'togo', 'tunisia', 'uganda', 'zambia', 'zimbabwe',
+      'saudi arabia', 'ksa', 'qatar', 'kuwait', 'bahrain', 'iran', 'iraq', 'jordan', 'lebanon', 'israel',
+      'palestine', 'state of palestine', 'syria', 'yemen', 'oman'
+    ];
+    var KIT_COUNTRY_EXCEPTIONS = ['papua new guinea'];
+    function countryBlocked(country) {
+      var c = ' ' + String(country || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]+/g, ' ').trim() + ' ';
+      if (c.trim() === '') return false;
+      if (KIT_COUNTRY_EXCEPTIONS.some(function(e) { return c.indexOf(' ' + e + ' ') !== -1; })) return false;
+      return KIT_BLOCKED_COUNTRIES.some(function(b) { return c.indexOf(' ' + b + ' ') !== -1; });
+    }
+    var STREET_RE = /\b(road|rd|street|st|avenue|ave|lane|ln|drive|dr|close|way|court|ct|crescent|place|pl|terrace|gardens|grove|square|park|hill|row|walk|mews|boulevard|blvd|house|flat|apartment|apt|unit|block|building|villa|tower|plot|sector|floor|suite|po box|colony|nagar|marg|chowk|society|estate|cottage|farm|barn|lodge|manor|view|rise|green|common|highway|hwy|bypass)\b/i;
+    var CHATTY_RE = /\b(we|i|my|our|us|am|are|will|going|gone|away|please|pls|thanks|thank|hello|hi|hey|sorry|cannot|can't|cant|won't|tomorrow|today|tonight|yesterday|ok|okay|yes|no one|nobody|someone|receive|holiday|vacation|travel|travelling|traveling|busy|later|wait)\b/gi;
+
+    function looksLikeAddress(text) {
+      var t = String(text || '').replace(/\s+/g, ' ').trim();
+      if (t.length < 10 || t.length > 400 || !/[A-Za-z]/.test(t)) return false;
+      var score = 0;
+      if (/\d/.test(t)) score += 2;
+      if (STREET_RE.test(t)) score += 2;
+      if ((t.match(/,/g) || []).length >= 2) score += 1;
+      if (/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i.test(t)) score += 3;
+      if (/\b\d{5}(?:-\d{4})?\b/.test(t) || /\b\d{6}\b/.test(t)) score += 2;
+      var chatty = (t.match(CHATTY_RE) || []).length;
+      if (chatty >= 2 && score < 5) return false;
+      return score >= 3;
+    }
+
+    // Returns '' when the address line is plausible, otherwise the message to show the parent
+    function addressLineProblem() {
+      var line = document.getElementById('fAddress').value.trim();
+      var city = document.getElementById('fCity').value.trim();
+      var state = document.getElementById('fState').value.trim();
+      var postal = document.getElementById('fPostal').value.trim();
+      var msg = 'That doesn\'t look like a delivery address. Please enter your house number and street, e.g. "12 Empire Way".';
+      if (line.length < 4 || !/[A-Za-z0-9]/.test(line)) return 'Please enter your full street address.';
+      if ((line.match(CHATTY_RE) || []).length >= 2) return msg;
+      if (!/\d/.test(line) && !STREET_RE.test(line) && line.split(/\s+/).length < 2) return msg;
+      if (!looksLikeAddress([line, city, state, postal].filter(Boolean).join(', '))) return msg;
+      return '';
+    }
+
     function showState(id) {
       ['loadingState', 'formState', 'errorState', 'successState'].forEach(function(s) {
         document.getElementById(s).style.display = (s === id) ? 'block' : 'none';
@@ -466,7 +518,11 @@
     function submitForm() {
       var fields = [
         { id: 'fEmail', err: 'errEmail', check: function(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); } },
-        { id: 'fAddress', err: 'errAddress', check: function(v) { return v.trim().length > 0; } },
+        { id: 'fAddress', err: 'errAddress', check: function(v) {
+            var problem = v.trim().length > 0 ? addressLineProblem() : 'Please complete this required field.';
+            document.getElementById('errAddress').textContent = problem || 'Please complete this required field.';
+            return !problem;
+          } },
         { id: 'fCity', err: 'errCity', check: function(v) { return v.trim().length > 0; } },
         { id: 'fState', err: 'errState', check: function(v) { return v.trim().length > 0; } },
         { id: 'fPostal', err: 'errPostal', check: function(v) { return v.trim().length > 0; } },
@@ -503,6 +559,16 @@
       // the background; failures are logged for ops, not shown here, since
       // by this point the parent has already seen "Thank you".
       document.getElementById('successTrackLink').href = 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(JLID);
+      var countryVal = document.getElementById('fCountry').value.trim();
+      var blocked = countryBlocked(countryVal);
+      if (blocked) {
+        // Still sent to JetLearn (ops sees it flagged) — but don't promise a kit we can't deliver
+        document.getElementById('successMsg').textContent = 'Thank you for letting us know. Unfortunately we can\'t ship learning kits to ' + countryVal + ' at the moment. Our team will be in touch shortly to talk through the options.';
+        document.getElementById('successTrackLink').style.display = 'none';
+      } else {
+        document.getElementById('successMsg').textContent = 'Your details have been received and updated. Our team will be in touch if anything else is needed.';
+        document.getElementById('successTrackLink').style.display = '';
+      }
       showState('successState');
 
       fetch(GAS_URL, { method: 'POST', body: body })
