@@ -1,6 +1,103 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-07] — Gift card requests moved to GiftCardRequests.js (V9.127)
+- `gcGetRequests` was "not a function" from the page in v9.126 (code existed in the deployed version). Tracker code (`gcRecordRequest`, `gcGetRequests`, `gcCloseRequest`, `_gcMarkRequestIssued`, `GC_REQ*`) moved out of `GiftCardService.js` into `GiftCardRequests.js`.
+
+---
+## [2026-11-07] — Gift cards: occasions + request tracker (V9.126)
+
+### `GiftCardService.js`
+- `GC_OCCASIONS` (referral, same_day, early_bird, seasonal, sales_offer, renewal) drive subject, hero, top label and body wording of both emails. `gcSendAskEmail(jlid, occasionId, offerName, who)` / `gcSendIssuedEmail(rowIndex, jlid, gcType, occasionId, offerName)`; occasion derived from the sheet Reason/Type when not given (unknown → referral). HubSpot notes name the occasion.
+- Reply search now matches subject "two quick details" (all ask subjects contain it) as well as "Amazon details" + JLID.
+- New sheet tab "Gift Card Requests": `gcRecordRequest`, `gcGetRequests(recheck)`, `gcCloseRequest`, `_gcMarkRequestIssued`. Waiting rows re-checked via `gcGetAmazonDetails` (<=12 per call, >=10 min apart). Issued rows shown 7 days.
+### `GiftCardAskTemplate.html` / `GiftCardIssuedTemplate.html`
+- Use `data.occ.*` instead of hard-coded referral / isSales text.
+### `Index.html` / `JavaScript.html`
+- Gift Cards tab: "Waiting for Amazon details" panel; ask window has an occasion select + offer-name box and an inline sent notice.
+
+---
+## [2026-11-07] — Delayed entry: skip forms filed by CLS / TP / ops (V9.125)
+
+### `LateMigrationFormService.js`
+- The migration form attaches the submitter as the ticket's contact (`hs_all_associated_contact_emails`; `form_filled_by_` / `filled_by` are empty on these tickets). Teachers use `name.jetlearn@gmail.com`; staff use `@jet-learn.com`. `_lfFilledByStaff()` skips the delayed-entry email when any attached address ends in `@jet-learn.com` or equals the teacher's CLS / TP email. If no contact is attached yet the ticket is retried on the next run (within the 3-day lookback).
+
+---
+## [2026-11-07] — Triggers for the teacher kit checks (V9.124)
+
+### `LateMigrationFormService.js`
+- `setupTeacherKitTriggers()` (run once): hourly `lateFormScanTrigger` and daily ~8am `kitTeacherDailyTrigger` (`runKitFormReminders` + `kitTeacherFollowups`). `listTeacherKitTriggers()` shows which jobs are installed; `runTeacherKitChecksNow()` runs both checks on demand. The same checks also run inside `runMigrationAutomation` and `sendKitFollowUps`; they are idempotent.
+
+---
+## [2026-11-07] — Late migration form email + teacher guide page (V9.123)
+
+### `LateMigrationFormService.js` (new), `MigrationAutomationService.js`, `KitTrackingService.js`, `firebase-hosting/public/teacher-guide/index.html` (new)
+- `runKitFormReminders()` (daily, from `sendKitFollowUps`): learners from the course planner (`getLearnerProgressions`) whose next course needs a kit, who attended in the last 35 days, and who have no migration ticket in the last 90 days (cancelled ones ignored). Weeks left (`projectedWeeks`) <= needed weeks -> "now", <= needed + 1 -> "soon" (falls back to 4 / 5 classes when no pace is known). Needed weeks = 4 for 1 class a week, 6 for 2 or more (`_lfRequiredDays`; 28 / 42 days). One digest email per teacher, CLS + TP copied; each learner once per step per course (Script Property `KIT_FORM_REMINDERS`); the 'soon' step is skipped once 'now' was sent; nobody is emailed if the HubSpot ticket check fails.
+- Delayed entry check now uses the ticket's `regular_class_day__t_` (number of days = classes a week) for the 28 / 42 day requirement.
+- `scanLateMigrationForms()`: tickets (any stage, so Migration Triggered and "11. Lr Migration Form Filled - No Migration Required" 153457301 are both covered) created on or after 2026-11-07 (`LATE_FORM_STARTS_ON`) in the last 3 days in the migration pipeline whose reason contains "course change", whose next course (`future_course_1`) maps to a kit (`_lfKitForCourse`: known map, then Microbit/Makey/CoSpaces/VR/Arduino keywords, because HubSpot course labels differ from the sheet names), and where `pre_migration_last_class_conducted_date__t_` minus `createdate` is under 28 days. Emails the current teacher (CLS + TP copied) using `KitTeacherTemplate.html`, adds a ticket note, and remembers the ticket id (Script Property `LATE_FORM_NOTIFIED`, last 400) so it is never emailed twice.
+- Runs at the end of `MIG_AUTO.run()` (10-minute trigger) and of `sendKitFollowUps()` (daily trigger).
+- Teacher guide page (4-week rule, kit steps, kit courses, challenges, FAQ) is static; publish with `firebase deploy --only hosting:kitlinks` from `firebase-hosting`.
+
+---
+## [2026-11-07] — Kits sent by us: teacher thread (V9.122)
+
+### `KitTeacherNotifyService.js`, `KitTeacherTemplate.html` (new), `KitTrackingService.js`, `KitLogisticsMessages.js`, `JavaScript.html`
+- One Gmail thread per kit with the learner's current teacher (To) and CLS + TP managers (Cc). First email via `sendTrackedEmail`, later updates via `GmailApp` `replyAll` on the stored thread id (falls back to a fresh "Re:" email).
+- Events: ordered / ordered_again / delayed / late / reminder / check_cls / delivered / reorder / cancelled. Hooks: `markKitOrderPlaced`, `updateKitRow` (Kit Received, ETA edit), `handleKitReply` (parent taps Kit Received), `markKitAsRefunded` (reorder or cancelled), the kit escalation pass (`parent_silent`), and a daily `kitTeacherFollowups()` that runs at the end of `sendKitFollowUps`.
+- Rules: late after `remindAfterDays` (2), "check with CLS" after `escalateAfterDays` (7) or when the kit is needed within `neededWithinDays` (7); reminders at most every `reminderEveryDays` (3). Override with Script Property `KIT_TEACHER_NOTIFY_CFG`. Only kits already in a teacher thread get follow-ups.
+- Gemini only tidies a free-text reason into one sentence (rejected if it contains digits).
+- New Kits sheet columns 59-63 (`TEACHER_THREAD`, `TEACHER_NOTIFIED_AT`, `TEACHER_TOLD_ETA`, `TEACHER_STAGE`, `TEACHER_REMINDED_AT`), added automatically on first use.
+- Edit modal: Expected delivery (ETA) field; `updateKitRow({eta})`. Message Parent window: "Also tell the teacher" + reason for delay/late/address presets (`teacherEvent` on each preset).
+
+---
+## [2026-11-06] — TIC: ticket stage buttons with results, Reserve Slot moves the ticket (V9.121)
+
+### `JavaScript.html`, `Index.html`
+- `#ticResultsStrip` (sticky, in the AI Ranked Recommendations block) mirrors the Move Ticket buttons and shows the current stage; driven by `_renderTicActionStrip()` for stages Migration Triggered / TP Pending / CLS Pending / Execution Pending.
+- `_personaReserveSlot` and `_personaReserveSlotDirect`: confirm window gets a "Then move the ticket to" choice (`_reserveStageChoiceHtml`), applied after `reserveCalendarSlot` succeeds (`_reserveMoveTicketAfter` -> `moveTicketStageForJlid`). Default Execution Pending; CLS Approval when the reason is in `CLS_REQUIRED_REASONS`; no choice when the ticket is already past approval.
+
+---
+## [2026-11-06] — Auto migration: parent time, class link, parity, pre-run check (V9.120)
+
+### `MigrationAutomationService.js`, `JavaScript.html`
+- Class slot converted from CET (ticket/deal) to the parent's IANA timezone for a real date (DST-safe) and used for messages, deal sync, teacher email and booking (`classSessions`, `classBookingIana`). Unknown parent timezone blocks the run.
+- Class link only accepts live.jetlearn.com/join, Zoom, Meet, Teams; otherwise `https://live.jetlearn.com/join/<jlid>` (event-notes URLs such as scratch.mit.edu were being picked up).
+- Execution data now carries what the manual form sends: `clsManager`, `jetGuide`, `startDate`, `migrationType` (Mid-Course; New Assignment for course change), `completedCourseForCert`, `sendEmailToParentAlso` + `parentEmailTargets`.
+- `_guard` pre-run check: hard (parent timezone, link) and soft (unusual hour, teacher already booked, Gemini review via `_callGemini`) findings; automatic run waits on any, a person can accept soft ones. `verifyAutoMigrate(jlid)` previews the plan; `runAutoMigrateForJlid(jlid, teacher, acceptWarnings)`.
+
+---
+## [2026-11-06] — Migration + kit logistics (V9.112–V9.119)
+
+### `MigrationAutomationService.js`, `HubSpotService.js`, `EmailService.js`
+- Auto migration rewritten: writes ticket props (`migration_execution_status`, `migration_slot_status__t_`) before Completed, books the classes, stays in Execution Pending with the reason (`mig_auto_error`) when anything is missing or fails. Notes attach with the default association.
+- Upskilling note: future courses passed as `{courseLabel}` objects and the note goes on the ticket being migrated (`checkAndWriteUpskillNote(..., forcedTicketId)`).
+- Reserved slots (`Reserved : ...` booking-log rows) are cancelled after the real classes are booked; the note lists what was removed.
+
+### `JavaScript.html`, `Index.html`, `Styles.html`
+- Learner Migration page: list view first, JLID lookup, fetched-learner form view with header and live summary panel (`migShowView`, `migSummaryRender`).
+- Ready to migrate command center (`rtm*`): tiles, list, detail panel, bulk run, "Migrated this session" registry (`_rtmDone`, sessionStorage).
+- Auto Migrate / Submit from the form record the learner as done, clear the form, return to the list.
+
+### `KitLogisticsMessages.js`, `KitLogisticsTemplate.html`, `KitTrackingService.js`
+- Message Parent: 15 presets, WATI template `outbound_msg` (parent, text, text1) plus branded email; delivery-date changes and refunds require an explicit send or logged skip.
+- Refund asks for a reason; reorder reasons reopen the row at Address received (address kept) and log the cancelled order on the deal.
+
+---
+## [2026-10-27] — Kit address reject + country block (V9.107–V9.111)
+
+### `KitTrackingService.js`, `LearnerAddressFormService.js`, `ParentWillBuyService.js`, `GiftCardService.js`
+- Reject address with reason and optional re-ask; junk-address validation; unshippable countries notify the CLS manager instead of asking the parent.
+- Parent Will Buy: one note per learner (terminal statuses and case-insensitive TRUE fixed).
+- Gift card HubSpot update fixed (per-property PATCH, `;` joined months).
+
+---
+## [2026-10-26] — Referral reward emails, special needs, DST (V9.97–V9.106)
+
+### `GiftCardService.js`, `WatiService.js`, `TeacherService.js`, `HubSpotService.js`
+- Referral reward ask and issued emails with parent Amazon website and email read from email and WhatsApp replies.
+- WATI template `migration_special_needs`; `_cetOffsetForDate` month fix; migration fetch fires once; ticket course, day and time synced to the deal; attrition note independent of PATCH result.
+
+---
 ## [2026-09-21] — v9.39: Fix login canvas animation (V9.39)
 
 ### `Code.js`

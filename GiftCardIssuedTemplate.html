@@ -31,7 +31,7 @@
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; margin-bottom:14px;">
         <tr>
           <td style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; color:#8a8a8a;">
-            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:#f5c400; margin-right:8px;"></span>JetLearn &mdash; <?= data.isSales ? 'A gift for you' : 'Referral reward' ?>
+            <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background-color:#f5c400; margin-right:8px;"></span>JetLearn &mdash; <?= data.occ.topLabel ?>
           </td>
         </tr>
       </table>
@@ -46,7 +46,7 @@
           </td>
           <td class="ribbon-v" width="8%" bgcolor="#f5c400" style="background-color:#f5c400; width:8%; font-size:0; line-height:0;">&nbsp;</td>
           <td class="panel" valign="bottom" style="padding:28px 24px 22px; width:46%;">
-            <p style="margin:0 0 6px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#f5c400;"><?= data.isSales ? 'From the JetLearn team' : 'For introducing a friend' ?></p>
+            <p style="margin:0 0 6px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#f5c400;"><?= data.occ.heroSmall ?></p>
             <p style="margin:0; font-family:'DM Sans',Arial,sans-serif; font-size:13px; line-height:1.6; color:#d4d4d4;">Hand-picked for <strong style="color:#ffffff;"><?= data.parentName || 'you' ?></strong> and the <?= data.learnerName ? data.learnerName + ' family' : 'JetLearn family' ?>.</p>
           </td>
         </tr>
@@ -79,11 +79,7 @@
         <tr>
           <td class="body-pad" style="padding:30px 32px;">
             <p style="margin:0 0 14px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">Hi <strong style="color:#111111;"><?= data.parentName || 'there' ?></strong>,</p>
-            <? if (data.isSales) { ?>
-            <p style="margin:0 0 22px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">We've sent you an <strong style="color:#111111;">Amazon gift card worth <?= data.amountDisplay ?></strong> as a small gift from all of us at JetLearn. Use it on anything you like.</p>
-            <? } else { ?>
-            <p style="margin:0 0 22px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;">Thank you for introducing a friend to JetLearn &mdash; it means a lot to us. As a thank-you, we've sent you an <strong style="color:#111111;">Amazon gift card worth <?= data.amountDisplay ?></strong>. Treat yourself, or pick up something for <?= data.learnerName || 'your child' ?>'s next big project.</p>
-            <? } ?>
+            <p style="margin:0 0 22px; font-family:'DM Sans',Arial,sans-serif; font-size:15px; line-height:1.7; color:#4a4a4a;"><?= data.occ.issuedLead ?> we've sent you an <strong style="color:#111111;">Amazon gift card worth <?= data.amountDisplay ?></strong>. <?= data.occ.issuedTail ?></p>
 
             <p style="margin:0 0 10px; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8c8c8c;">How to use it</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">

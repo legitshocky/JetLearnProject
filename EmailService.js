@@ -747,7 +747,7 @@ function sendMigrationEmail(data, attachments = []) {
 
     // ── Write upskill note to HubSpot ticket ──────────────────────────────────
     try {
-      checkAndWriteUpskillNote(data.jlid, data.newTeacher, data.confirmedFutureCourses || [], data.course || '', data.reasonOfMigration || '');
+      checkAndWriteUpskillNote(data.jlid, data.newTeacher, data.confirmedFutureCourses || [], data.course || '', data.reasonOfMigration || '', data._ticketId || '');
     } catch(upErr) {
       Logger.log('[sendMigrationEmail] Upskill note failed: ' + upErr.message);
     }

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Teacher Guide to Kits and Migration Forms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: a warm paper page, black and yellow brand accents, one wide column that reads like a guide. */
+:root{
+  --bg:#f1efe8; --card:#ffffff; --ink:#151515; --mute:#5c5c57; --line:#dcd9cf; --soft:#f7f5ef;
+  --yellow:#f5c400; --black:#111111; --good:#0f7b52; --good-bg:#dcf5e9; --warn:#92400e; --warn-bg:#fef3c7; --bad:#991b1b; --bad-bg:#fee2e2;
+  --font:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'DM Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#131312; --card:#1c1c1a; --ink:#efeee9; --mute:#a5a49c; --line:#2f2f2b; --soft:#232321;
+  --good:#5fd6a0; --good-bg:#12382a; --warn:#f0c066; --warn-bg:#3a2d10; --bad:#ff8f85; --bad-bg:#3d1a17; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131312; --card:#1c1c1a; --ink:#efeee9; --mute:#a5a49c; --line:#2f2f2b; --soft:#232321;
+  --good:#5fd6a0; --good-bg:#12382a; --warn:#f0c066; --warn-bg:#3a2d10; --bad:#ff8f85; --bad-bg:#3d1a17; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.65;padding-block:0 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:860px;margin:0 auto}
+.top{background:var(--black);margin:0 calc(-1 * max(16px,env(safe-area-inset-left,0px))) 0 calc(-1 * max(16px,env(safe-area-inset-right,0px)));padding:14px max(16px,env(safe-area-inset-left,0px))}
+.top .in{max-width:860px;margin:0 auto;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.top b{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--yellow);font-weight:500}
+.top span{font-family:var(--mono);font-size:11px;color:#8d8d86;letter-spacing:.06em}
+.hero{padding:44px 0 26px}
+.hero .k{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 10px}
+.hero h1{font-size:clamp(30px,6vw,46px);line-height:1.1;font-weight:600;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance}
+.hero h1 mark{background:linear-gradient(transparent 62%,var(--yellow) 62%);color:inherit;padding:0 2px}
+.hero p{font-size:18px;color:var(--mute);max-width:58ch;margin:0}
+.uids{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}
+.uid{border-radius:9px;padding:8px 12px;border:1px solid var(--line);background:var(--soft)}
+.uid span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px}
+.uid code{font-family:var(--mono);font-size:13px;word-break:break-all}
+.uid.ok{background:var(--good-bg);border-color:var(--good)}.uid.ok span{color:var(--good)}
+.uid.no{background:var(--bad-bg);border-color:var(--bad)}.uid.no span{color:var(--bad)}
+.btn{display:inline-block;background:var(--black);color:var(--yellow);text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px}
+.btn:hover{filter:brightness(1.15)}
+.rule{display:flex;gap:16px;align-items:center;background:var(--black);color:#fff;border-radius:14px;padding:18px 22px;margin:8px 0 8px}
+.rule .n{font-size:44px;font-weight:600;color:var(--yellow);line-height:1;font-variant-numeric:tabular-nums}
+.rule p{margin:0;font-size:16px;color:#e8e8e3}
+h2{font-size:24px;font-weight:600;letter-spacing:-.01em;margin:46px 0 6px}
+.lede{color:var(--mute);margin:0 0 18px;max-width:62ch}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.steps li{display:grid;grid-template-columns:34px minmax(0,1fr);gap:14px;padding:0 0 18px;position:relative}
+.steps li:not(:last-child)::before{content:"";position:absolute;left:16px;top:34px;bottom:2px;width:2px;background:var(--line)}
+.steps .d{width:34px;height:34px;border-radius:50%;background:var(--card);border:2px solid var(--black);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;font-family:var(--mono)}
+.steps li.you .d{background:var(--yellow);border-color:var(--black)}
+.steps h3{font-size:16px;margin:4px 0 2px;font-weight:600}
+.steps p{margin:0;color:var(--mute);font-size:15px}
+.tag{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;background:var(--yellow);color:#111;border-radius:5px;padding:1px 7px;margin-left:8px;vertical-align:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.card h3{margin:0 0 6px;font-size:16px;font-weight:600}
+.card p{margin:0;color:var(--mute);font-size:15px}
+.check{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.check li{display:grid;grid-template-columns:24px minmax(0,1fr);gap:10px;align-items:start}
+.check i{font-style:normal;width:22px;height:22px;border-radius:6px;background:var(--good-bg);color:var(--good);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+.tbl{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;overflow-x:auto}
+th,td{text-align:left;padding:10px 16px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);font-weight:500;background:var(--soft)}
+tr:last-child td{border-bottom:0}
+.late{background:var(--warn-bg);border:1px solid #f59e0b;border-radius:14px;padding:18px 20px}
+.late h3{margin:0 0 6px;color:var(--warn);font-size:16px}
+.late p{margin:0 0 6px}
+.late p:last-child{margin:0}
+.ch{display:grid;gap:12px}
+.ch .card{display:grid;grid-template-columns:minmax(0,1fr);gap:4px}
+.ch .card b{font-weight:600}
+.ch .card .fix{font-size:14px;color:var(--good);margin-top:2px}
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:0 0 10px;overflow:hidden}
+summary{cursor:pointer;padding:14px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-family:var(--mono);color:var(--mute)}
+details[open] summary::after{content:"–"}
+details[open] summary{border-bottom:1px solid var(--line)}
+details p{margin:0;padding:14px 18px;color:var(--mute)}
+details p strong{color:var(--ink);font-weight:600}
+.contact{background:var(--black);color:#e8e8e3;border-radius:14px;padding:22px 24px;margin-top:40px}
+.contact h2{margin:0 0 6px;color:#fff;font-size:20px}
+.contact p{margin:0;color:#c9c9c2;max-width:60ch}
+.foot{color:var(--mute);font-size:13px;margin-top:22px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+@media (max-width:560px){.rule{flex-direction:column;align-items:flex-start;gap:6px}.hero{padding-top:32px}}
+</style>
+
+<div class="top"><div class="in"><b>JetLearn · Teacher guide</b><span>Kits and migration forms</span></div></div>
+<div class="wrap">
+
+<section class="hero">
+  <p class="k">For every teacher</p>
+  <h1>Fill the migration form <mark>4 weeks</mark> before the course changes</h1>
+  <p>A kit takes a few steps to reach a learner, and the first step is your migration form. The earlier it is filled, the more likely the kit is on the learner's desk the day the new course starts.</p>
+  <p style="margin-top:18px"><a class="btn" href="https://share.hsforms.com/1RZKGkUG6Qc2kLHBVlTOmPw4lo43" target="_blank" rel="noopener">Fill the migration form</a></p>
+</section>
+
+<div class="rule"><div class="n">4</div><p><b>weeks before the current course ends</b> for a learner with 1 class a week. In a 12-class course that is class 8. <b>For 2 or more classes a week, it is 6 weeks.</b> If the next course needs a kit, the migration form is what starts the kit order.</p></div>
+
+<h2>How a kit reaches a learner</h2>
+<p class="lede">Your step comes first. Every step after it needs the one before it to be finished.</p>
+<ol class="steps">
+  <li class="you"><span class="d">1</span><div><h3>You fill the migration form <span class="tag">your step</span></h3><p>This tells us the learner is changing course and which course comes next. Nothing else can start until this is done.</p></div></li>
+  <li><span class="d">2</span><div><h3>We ask the parent for a delivery address</h3><p>By WhatsApp and email. Parents do not always reply quickly, so we send reminders.</p></div></li>
+  <li><span class="d">3</span><div><h3>We order the kit</h3><p>Once a valid address is in, the kit is ordered and you get an email with the expected date.</p></div></li>
+  <li><span class="d">4</span><div><h3>The courier delivers it</h3><p>Delivery is in the courier's hands. Dates can move, and if they do you hear about it in the same email thread.</p></div></li>
+  <li><span class="d">5</span><div><h3>The new course starts</h3><p>With the kit, lessons that need it can go ahead on day one.</p></div></li>
+</ol>
+
+<h2>What we need from you</h2>
+<div class="card">
+  <ul class="check">
+    <li><i>✓</i><span><b>Fill the migration form as soon as you know</b> a learner will move to a new course: at least 4 weeks before the course ends, or 6 weeks if the learner has 2 or more classes a week.</span></li>
+    <li><i>✓</i><span><b>Do it for every learner</b>, not only the ones you think need a kit. We check whether the next course needs one.</span></li>
+    <li><i>✓</i><span><b>Pick the right next course.</b> The kit depends on it. If it changes later, tell your CLS manager straight away.</span></li>
+    <li><i>✓</i><span><b>Fill in the last class date</b> of the current course, so we know when the new course begins.</span></li>
+    <li><i>✓</i><span><b>Not upskilled on the next course yet? Choose "Not Onboarded" and fill the form anyway.</b> Waiting for the training to finish is a common reason a form goes in late. Tell your TP manager so the upskilling and the kit order run side by side.</span></li>
+    <li><i>✓</i><span><b>Same teacher carrying on? You still fill the form.</b> The form is what starts the kit order, with or without a teacher change.</span></li>
+  </ul>
+</div>
+
+<h2>Where the classes fit</h2>
+<p class="lede">For a learner with 1 class a week on a 12-class course, this is what happens around the form. If the learner has 2 or more classes a week, count weeks and not classes: the course ends sooner but the kit takes just as long, so the form is needed 6 weeks ahead.</p>
+<div class="grid2">
+  <div class="card"><h3>Class 8: fill the migration form now</h3><p>This is the deadline. Everything that follows starts from it.</p></div>
+  <div class="card"><h3>Classes 9 to 11: kit and teacher</h3><p>The kit is processed and shipped, and the next teacher is assigned if it is not you.</p></div>
+  <div class="card"><h3>Class 12: the last class</h3><p>The course finishes and the certificate is ready.</p></div>
+  <div class="card"><h3>Day 1 of the next course</h3><p>The kit is with the learner and the certificate arrives.</p></div>
+</div>
+
+<h2>Check Athena before you fill anything</h2>
+<p class="lede">Open the learner's PRM Prep in Athena first. This one step prevents most of the mistakes below.</p>
+<div class="grid2">
+  <div class="card"><h3>Current course end</h3><p>The exact date of the last class, so the form is neither early nor late.</p></div>
+  <div class="card"><h3>The next 3 courses</h3><p>The order they come in, and which ones need a kit.</p></div>
+  <div class="card"><h3>Your upskilling status</h3><p>Whether you are trained on the next course, so you pick the right option in the form.</p></div>
+</div>
+
+<h2>Filling the form correctly</h2>
+<div class="card" style="margin-bottom:14px">
+  <h3>1. Type the learner ID exactly as it appears</h3>
+  <p>No brackets, no angle brackets, no spaces. A wrong format breaks the HubSpot workflow and delays the kit.</p>
+  <div class="uids"><div class="uid ok"><span>Correct</span><code>JL39611449152C2</code></div><div class="uid no"><span>Wrong</span><code>(JL39611449152C2)</code></div><div class="uid no"><span>Wrong</span><code>&lt;JL39611449152C2&gt;</code></div><div class="uid no"><span>Wrong</span><code>JL 396 114 491 52C2</code></div></div>
+</div>
+<div class="card" style="margin-bottom:14px">
+  <h3>2. Choose your upskilling honestly</h3>
+  <p>If you are trained on the next course, pick your level: 0 to 30% is basic familiarity, 30 to 50% is moderate, and above 50% is a strong command. <b>If you are not trained yet, choose "Not Onboarded"</b> and still send the form now. That is what gets the right teacher assigned and keeps the kit on time. Do not wait until you have been trained.</p>
+</div>
+<div class="card">
+  <h3>3. Pick the right migration reason and the right last class date</h3>
+  <p>The wrong reason confuses the operations team, and the wrong date makes the form early or late. Both come from PRM Prep in Athena.</p>
+</div>
+
+<h2>The last class form</h2>
+<div class="card">
+  <p>If you are upskilled and will keep teaching the learner, fill the Last Class form straight after the final class of the current course. It triggers the certificate, which reaches the learner on day 1 of the next course.</p>
+</div>
+
+<h2>Common mistakes</h2>
+<div class="tbl"><table>
+  <thead><tr><th>Mistake</th><th>What it causes</th></tr></thead>
+  <tbody>
+    <tr><td>Wrong learner ID format</td><td>Brackets, spaces or symbols break the automation</td></tr>
+    <tr><td>Wrong last class date</td><td>Not checking PRM Prep leads to timing errors</td></tr>
+    <tr><td>Filling after the 4 week window</td><td>Kits and teacher assignments are delayed</td></tr>
+    <tr><td>Wrong migration reason</td><td>The operations team does not know what to do</td></tr>
+    <tr><td>Skipping the Athena check</td><td>Small errors cascade into bigger ones</td></tr>
+  </tbody>
+</table></div>
+<p class="foot">When a form is wrong or late: kits arrive after the course starts, the wrong or an unprepared teacher is assigned, operations has to fix automated steps by hand, and parents start to doubt the program.</p>
+
+<h2>Courses that need a kit</h2>
+<p class="lede">If a learner's next course is on this list, the form decides whether the kit is on time.</p>
+<div class="tbl"><table>
+  <thead><tr><th>Course</th><th>Kit</th></tr></thead>
+  <tbody>
+    <tr><td>Immersive AR and VR Modeling (CoSpaces)</td><td>VR headset</td></tr>
+    <tr><td>Immersive VR Experiences with JavaScript</td><td>VR headset</td></tr>
+    <tr><td>Robotics with Microbit (Jr)</td><td>Microbit</td></tr>
+    <tr><td>Programming with Robotics (Microbit)</td><td>Microbit</td></tr>
+    <tr><td>Advanced Programming with Robotics (Microbit)</td><td>Microbit</td></tr>
+    <tr><td>Advanced Robotics using Makey Makey</td><td>Makey Makey</td></tr>
+  </tbody>
+</table></div>
+<p class="foot">Arduino-based courses also need a kit. If you are not sure whether a course needs one, ask your CLS manager.</p>
+
+<h2>If the form is filled late</h2>
+<div class="late">
+  <h3>You, your TP manager and the CLS manager get an email</h3>
+  <p>When a course-change form is filed less than 4 weeks before the new course starts and the next course needs a kit, a "delayed entry" email goes to you with your TP manager and CLS manager copied. It says how many days of notice we had, and asks you to be careful with the next learner.</p>
+  <p>We still order the kit straight away, but it may arrive after the course starts. Your CLS manager will decide with you whether to wait, move to a course that needs no kit, or pause.</p>
+</div>
+
+<h2>What slows a kit down</h2>
+<p class="lede">These are the situations we meet most often. Knowing them helps you spot a problem early.</p>
+<div class="ch">
+  <div class="card"><b>The form is filed at the last minute</b><p>The kit has not even been ordered when the course is meant to begin.</p><span class="fix">What helps: fill the form 4 weeks ahead.</span></div>
+  <div class="card"><b>The teacher is not upskilled on the next course, so the form waits</b><p>The form gets filed once the upskilling is sorted, which is often too late for the kit.</p><span class="fix">What helps: fill the form as soon as the change is planned and ask your TP manager to start the upskilling at the same time.</span></div>
+  <div class="card"><b>The parent is slow to share an address</b><p>We send WhatsApp and email reminders. After two reminders with no reply the CLS manager steps in, and you are told.</p><span class="fix">What helps: mention the kit to the parent in class, and tell CLS if the parent seems unreachable.</span></div>
+  <div class="card"><b>The address is incomplete or not an address</b><p>Messages like "no one is home" or an email address instead of a street cannot be delivered to. We ask the parent again.</p></div>
+  <div class="card"><b>Courier delays and cancelled orders</b><p>The courier can run late, lose a parcel or have an order cancelled. We reorder and update you in the same thread.</p><span class="fix">What helps: keep teaching the current module and do not promise the parent a date.</span></div>
+  <div class="card"><b>We cannot deliver to some countries</b><p>Where our delivery partners do not reach, we cannot send a kit. The CLS manager changes the course or roadmap.</p></div>
+  <div class="card"><b>The learner pauses or changes course while the kit is on its way</b><p>The order may already be placed. Tell CLS the moment you hear.</p></div>
+  <div class="card"><b>The parent wants to buy the kit themselves</b><p>This is possible, and CLS tracks it. It still needs the form first so we know which kit.</p></div>
+</div>
+
+<h2>Common questions</h2>
+<details><summary>What does "4 weeks before" mean exactly?</summary><p>Four weeks between the day you submit the migration form and the last class of the current course, for a learner with 1 class a week. If that last class is 3 weeks away, the form is already late. For a learner with 2 or more classes a week it is 6 weeks, because the course finishes sooner while the kit takes the same time to arrive.</p></details>
+<details><summary>Will anyone remind me?</summary><p>Yes. When a learner is about a week away from the point where the form is due, and their next course needs a kit, you get a reminder with your CLS and TP managers copied. You get another when it is due. Nothing is sent once the form is in.</p></details>
+<details><summary>Which learners need the form?</summary><p>Every learner who is changing course. We check on our side whether the next course needs a kit, so you do not have to work it out.</p></details>
+<details><summary>I am not upskilled on the next course yet. Should I wait before filling the form?</summary><p>No. Choose "Not Onboarded" in the upskilling question, fill the form now, and tell your TP manager that upskilling is still needed. The kit order and the upskilling can happen at the same time, and waiting for one to finish before the other starts is what makes forms late.</p></details>
+<details><summary>The same teacher is carrying on with the next course. Do I still fill the form?</summary><p>Yes. The form is what starts the kit order, whether or not the teacher changes.</p></details>
+<details><summary>The change was decided suddenly. What should I do?</summary><p>Fill the form right away anyway, and tell your CLS manager that it is late. We order the kit straight away. The CLS manager decides whether the new course waits for it, or the learner starts a course that needs no kit.</p></details>
+<details><summary>Will I know where the kit is?</summary><p>Yes. When the kit is ordered you get an email with the expected date, with your CLS and TP managers copied. If the date moves, delivery slips or the kit arrives, the update comes as a reply in the same email thread.</p></details>
+<details><summary>What do I teach while the kit has not arrived?</summary><p>Keep going with the current module. Hold any activity that needs the kit until the delivery email arrives. If a lesson that needs it is close, contact your CLS manager.</p></details>
+<details><summary>Can I tell the parent when the kit will arrive?</summary><p>Please do not promise a date. Delivery is handled by the courier and dates move. Point the parent to the CLS manager.</p></details>
+<details><summary>The parent says they never received an address request.</summary><p>Let your CLS manager know. We can resend the request by WhatsApp and email to every contact on the learner's account.</p></details>
+<details><summary>The kit arrived damaged, wrong or incomplete.</summary><p>Tell your CLS manager. Please include the learner's name and what is wrong so it can be sorted quickly.</p></details>
+<details><summary>Who do I talk to about a kit?</summary><p>Start with your CLS manager. Your TP manager is copied on every kit email and can help with how it affects your lessons.</p></details>
+
+<div class="contact">
+  <h2>Questions?</h2>
+  <p>Your CLS manager is the first person to ask about a kit. Your TP manager is copied on every kit update and can help with your lessons. For anything about the forms themselves, contact your operations coordinator.</p>
+</div>
+<p class="foot">Kits and migration forms · JetLearn operations</p>
+</div>
+
+</html>

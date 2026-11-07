@@ -269,9 +269,10 @@ function addGiftCardEntry(data) {
     // ── Email — issued (after the row exists so the template reads the saved values) ──
     var emailResult = null;
     if (data.sendEmail && jlid) {
-      emailResult = gcSendIssuedEmail(writeRow, jlid, gcType);
+      emailResult = gcSendIssuedEmail(writeRow, jlid, gcType, data.occasion, data.offerName);
     }
 
+    _gcMarkRequestIssued(jlid);
     return { success: true, rowIndex: writeRow, hsWarning: hsWarning, watiResult: watiResult, emailResult: emailResult };
   } catch(e) {
     Logger.log('[GiftCard] addGiftCardEntry ERROR: ' + e.message);
@@ -281,7 +282,7 @@ function addGiftCardEntry(data) {
 
 // ── SEND ASK MESSAGE ──────────────────────────────────────────────────────────
 // Sends migration_amz_giftvoucher_ to the parent to ask about gift card preference
-function gcSendAskMessage(jlid) {
+function gcSendAskMessage(jlid, occasionId, offerName, who) {
   try {
     if (!jlid) return { success: false, message: 'JLID required' };
     var hs = fetchHubspotByJlid(jlid);
@@ -295,7 +296,8 @@ function gcSendAskMessage(jlid) {
       { name: 'Parent', value: parentName }
     ]);
     Logger.log('[GiftCard] gcSendAskMessage jlid=' + jlid + ' phone=' + parentPhone + ' result=' + JSON.stringify(wr));
-    return { success: true, phone: parentPhone, watiResult: wr, parentName: parentName };
+    var rec = gcRecordRequest(jlid, 'WhatsApp', occasionId, offerName, who, hs.data);
+    return { success: true, phone: parentPhone, watiResult: wr, parentName: parentName, tracked: !!(rec && rec.success), reminder: !!(rec && rec.reminder) };
   } catch(e) {
     Logger.log('[GiftCard] gcSendAskMessage ERROR: ' + e.message);
     return { success: false, message: e.message };
@@ -329,6 +331,81 @@ function gcSendIssuedMessage(rowIndex, jlid, gcType) {
     Logger.log('[GiftCard] gcSendIssuedMessage ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+}
+
+// ── Occasions: why a gift card is being sent. Each one is a ready-made wording for the ask email and the gift card email. ──
+// {offer} is replaced by the offer name typed in the window (Easter sale, early-bird offer ...). type/reason fill the sheet columns.
+var GC_OCCASIONS = {
+  referral: {
+    label: 'Referral reward', needsOffer: false, reason: 'Referral', type: 'referral',
+    topLabel: 'Referral reward', heroSmall: 'For introducing a friend',
+    askLead: 'Thank you for introducing a friend to JetLearn — it means a lot to us.', askTail: 'as a thank-you',
+    issuedLead: 'Thank you for introducing a friend to JetLearn — it means a lot to us. As a thank-you,', issuedTail: 'Treat yourself, or pick up something for {learner}\'s next big project.',
+    askSubject: '🎁 Your JetLearn referral reward — two quick details', issuedSubject: '🎁 Your {amount} Amazon gift card from JetLearn', noteLabel: 'Referral reward'
+  },
+  same_day: {
+    label: 'Same-day enrollment bonus', needsOffer: false, reason: 'Sales', type: 'sales',
+    topLabel: 'Enrollment bonus', heroSmall: 'For enrolling today',
+    askLead: 'Thank you for choosing JetLearn and enrolling with us today.', askTail: 'as the enrollment bonus we promised',
+    issuedLead: 'Thank you for enrolling with JetLearn today. As promised,', issuedTail: 'Use it on anything you like, and enjoy the start of {learner}\'s learning journey.',
+    askSubject: '🎁 Your JetLearn enrollment bonus — two quick details', issuedSubject: '🎁 Your {amount} enrollment bonus from JetLearn', noteLabel: 'Same-day enrollment bonus'
+  },
+  early_bird: {
+    label: 'Early-bird offer', needsOffer: false, reason: 'Sales', type: 'sales',
+    topLabel: 'Early-bird offer', heroSmall: 'For joining early',
+    askLead: 'Thank you for joining JetLearn through our {offer}.', askTail: 'as part of that offer',
+    issuedLead: 'Thank you for joining us early through our {offer}. As part of it,', issuedTail: 'Use it on anything you like.',
+    askSubject: '🎁 Your JetLearn early-bird gift — two quick details', issuedSubject: '🎁 Your {amount} early-bird gift from JetLearn', noteLabel: 'Early-bird offer'
+  },
+  seasonal: {
+    label: 'Seasonal sale (Easter, Black Friday...)', needsOffer: true, reason: 'Sales', type: 'sales',
+    topLabel: '{offer}', heroSmall: 'Part of our {offer}',
+    askLead: 'Thank you for joining JetLearn during our {offer}.', askTail: 'as part of the {offer}',
+    issuedLead: 'Thank you for joining us during our {offer}. As part of the offer,', issuedTail: 'Use it on anything you like.',
+    askSubject: '🎁 Your JetLearn {offer} gift — two quick details', issuedSubject: '🎁 Your {amount} {offer} gift from JetLearn', noteLabel: '{offer}'
+  },
+  sales_offer: {
+    label: 'Offer from our sales team', needsOffer: false, reason: 'Sales', type: 'sales',
+    topLabel: 'A gift for you', heroSmall: 'A special offer for you',
+    askLead: 'Thank you for choosing JetLearn.', askTail: 'as part of the offer our team shared with you',
+    issuedLead: 'Thank you for choosing JetLearn. As part of the offer our team shared with you,', issuedTail: 'Use it on anything you like.',
+    askSubject: '🎁 Your JetLearn gift — two quick details', issuedSubject: '🎁 Your {amount} Amazon gift card from JetLearn', noteLabel: 'Sales offer'
+  },
+  renewal: {
+    label: 'Renewal / loyalty thank-you', needsOffer: false, reason: 'Retention', type: 'sales',
+    topLabel: 'A thank-you', heroSmall: 'For staying with us',
+    askLead: 'Thank you for continuing your learning journey with JetLearn.', askTail: 'as a thank-you for renewing',
+    issuedLead: 'Thank you for continuing your learning journey with JetLearn. As a thank-you for renewing,', issuedTail: 'Use it on anything you like.',
+    askSubject: '🎁 Your JetLearn thank-you gift — two quick details', issuedSubject: '🎁 Your {amount} thank-you gift from JetLearn', noteLabel: 'Renewal thank-you'
+  }
+};
+
+function _gcFill(str, vars) {
+  return String(str || '').replace(/\{(offer|learner|amount)\}/g, function(_, k) { return vars[k] || ''; });
+}
+
+// Resolve an occasion to the exact wording; unknown / missing -> referral (the original behaviour)
+function _gcOccasion(id, offerName, extra) {
+  var o = GC_OCCASIONS[String(id || '').trim()] || GC_OCCASIONS.referral;
+  var offer = String(offerName || '').trim() || (o === GC_OCCASIONS.seasonal ? 'special sale' : (o === GC_OCCASIONS.early_bird ? 'early-bird offer' : ''));
+  var v = { offer: offer, learner: (extra && extra.learner) || 'your child', amount: (extra && extra.amount) || '' };
+  var out = {};
+  Object.keys(o).forEach(function(k) { out[k] = (typeof o[k] === 'string') ? _gcFill(o[k], v) : o[k]; });
+  out.id = Object.keys(GC_OCCASIONS).filter(function(k) { return GC_OCCASIONS[k] === o; })[0];
+  out.offer = offer;
+  return out;
+}
+
+// The sheet only stores Reason + Type, so an occasion is worked out from them when it was not chosen
+function _gcOccasionFromRow(reason, type) {
+  var r = String(reason || '').toLowerCase(), t = String(type || '').toLowerCase();
+  if (r.indexOf('referral') > -1 || (t === 'referral' && !r)) return 'referral';
+  if (r.indexOf('retention') > -1) return 'renewal';
+  return 'sales_offer';
+}
+
+function gcGetOccasions() {
+  return { success: true, occasions: Object.keys(GC_OCCASIONS).map(function(k) { var o = GC_OCCASIONS[k]; return { id: k, label: o.label, needsOffer: o.needsOffer, reason: o.reason, type: o.type }; }) };
 }
 
 // ── EMAIL — referral reward ───────────────────────────────────────────────────
@@ -379,7 +456,7 @@ function _gcResolveSite(website) {
 
 function _gcSiteLinks(jlid) {
   var to = CONFIG.EMAIL.FROM;
-  var subject = 'Referral reward — Amazon details (' + jlid + ')';
+  var subject = 'Gift card — Amazon details (' + jlid + ')';
   return GC_AMAZON_SITES.map(function(s) {
     var body = 'Hi JetLearn team,\n\nAmazon website: ' + (s.host || '(please type it here)') +
                '\nEmail on my Amazon account: \n\nLearner ID: ' + jlid;
@@ -388,7 +465,7 @@ function _gcSiteLinks(jlid) {
 }
 
 // Asks the parent for their Amazon website + the email on their Amazon account.
-function gcSendAskEmail(jlid) {
+function gcSendAskEmail(jlid, occasionId, offerName, who) {
   try {
     jlid = String(jlid || '').trim().toUpperCase();
     if (!jlid) return { success: false, message: 'JLID required' };
@@ -398,19 +475,22 @@ function gcSendAskEmail(jlid) {
     var emails = _gcParentEmails(hs.data);
     if (!emails.length) return { success: false, message: 'No valid parent email for ' + jlid };
 
+    var occ = _gcOccasion(occasionId, offerName);
     var htmlBody = _gcRender('GiftCardAskTemplate', {
       parentName: String(hs.data.parentName || '').trim().split(/\s+/)[0],
-      siteLinks:  _gcSiteLinks(jlid)
+      siteLinks:  _gcSiteLinks(jlid),
+      occ:        occ
     });
     sendTrackedEmail({
       to: emails.join(','),
-      subject: '🎁 Your JetLearn referral reward — two quick details',
+      subject: occ.askSubject,
       htmlBody: htmlBody,
       jlid: jlid
     });
-    try { addNoteToHubSpotDeal(hs.data.dealId, '📧 Referral reward email sent asking for Amazon website + account email → ' + emails.join(', ')); } catch(ne) {}
+    try { addNoteToHubSpotDeal(hs.data.dealId, '📧 Gift card email sent (' + occ.noteLabel + ') asking for Amazon website + account email → ' + emails.join(', ')); } catch(ne) {}
     Logger.log('[GiftCard] gcSendAskEmail jlid=' + jlid + ' to=' + emails.join(','));
-    return { success: true, to: emails.join(', ') };
+    var rec = gcRecordRequest(jlid, 'Email', occasionId, offerName, who, hs.data);
+    return { success: true, to: emails.join(', '), tracked: !!(rec && rec.success), reminder: !!(rec && rec.reminder) };
   } catch(e) {
     Logger.log('[GiftCard] gcSendAskEmail ERROR: ' + e.message);
     return { success: false, message: e.message };
@@ -453,7 +533,7 @@ function gcGetAmazonDetails(jlid, parentEmails, parentPhone) {
 
     var emails = String(parentEmails || '').split(/[;,\s]+/).filter(function(e) { return e && isValidEmail(e); });
     var q = 'newer_than:180d (subject:("Amazon details" "' + jlid + '")';
-    if (emails.length) q += ' OR (from:(' + emails.join(' OR ') + ') subject:("referral reward"))';
+    if (emails.length) q += ' OR (from:(' + emails.join(' OR ') + ') subject:("two quick details"))';
     q += ')';
 
     var candidates = [];
@@ -510,7 +590,7 @@ function gcGetAmazonDetails(jlid, parentEmails, parentPhone) {
 }
 
 // Sends the gift-wrapped "your gift card is here" email for a recorded sheet row.
-function gcSendIssuedEmail(rowIndex, jlid, gcType) {
+function gcSendIssuedEmail(rowIndex, jlid, gcType, occasionId, offerName) {
   try {
     jlid = String(jlid || '').trim().toUpperCase();
     if (!jlid) return { success: false, message: 'JLID required' };
@@ -528,7 +608,10 @@ function gcSendIssuedEmail(rowIndex, jlid, gcType) {
 
     var site = _gcResolveSite(r[GC_COL.WEBSITE - 1]);
     var type = String(gcType || r[GC_COL.TYPE - 1] || 'referral').toLowerCase();
+    var learnerFirst = String(r[GC_COL.LEARNER_NAME - 1] || '').trim().split(/\s+/)[0];
+    var occ = _gcOccasion(occasionId || _gcOccasionFromRow(r[GC_COL.REASON - 1], type), offerName, { learner: learnerFirst, amount: amountDisplay });
     var htmlBody = _gcRender('GiftCardIssuedTemplate', {
+      occ:           occ,
       parentName:    String(hs.data.parentName || '').trim().split(/\s+/)[0],
       learnerName:   String(r[GC_COL.LEARNER_NAME - 1] || '').trim().split(/\s+/)[0],
       amountDisplay: amountDisplay,
@@ -539,11 +622,11 @@ function gcSendIssuedEmail(rowIndex, jlid, gcType) {
     });
     sendTrackedEmail({
       to: emails.join(','),
-      subject: '🎁 Your ' + amountDisplay + ' Amazon gift card from JetLearn',
+      subject: occ.issuedSubject,
       htmlBody: htmlBody,
       jlid: jlid
     });
-    try { addNoteToHubSpotDeal(hs.data.dealId, '📧 Gift card email sent (' + amountDisplay + ') → ' + emails.join(', ')); } catch(ne) {}
+    try { addNoteToHubSpotDeal(hs.data.dealId, '📧 Gift card email sent (' + amountDisplay + ', ' + occ.noteLabel + ') → ' + emails.join(', ')); } catch(ne) {}
     Logger.log('[GiftCard] gcSendIssuedEmail row=' + rowIndex + ' jlid=' + jlid + ' to=' + emails.join(','));
     return { success: true, to: emails.join(', ') };
   } catch(e) {

@@ -1038,6 +1038,28 @@
        matching the New Communication launcher cards' icon treatment. */
     .form-container-wide { max-width: 1120px; }
     .formc-shell { display: grid; grid-template-columns: 200px 1fr; gap: 28px; align-items: start; }
+        /* ── Learner Migration: fetched-learner form = rail | form | live summary ── */
+    #migrationForm .formc-shell { grid-template-columns: 170px minmax(0, 1fr) 310px; gap: 22px; }
+    .mig-summary { position: sticky; top: 88px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+    .mig-sum-title { font-size: 0.95rem; font-weight: 700; color: #1e293b; }
+    .mig-sum-hint { font-size: 0.74rem; color: #94a3b8; margin: 2px 0 10px; }
+    .mig-list { list-style: none; margin: 0; padding: 0; }
+    .mig-chk { display: flex; gap: 9px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.8rem; color: #1e293b; }
+    .mig-chk:last-child { border-bottom: 0; }
+    .mig-chk small { display: block; color: #64748b; font-size: 0.72rem; margin-top: 1px; }
+    .mig-ic { flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem; font-weight: 700; }
+    .mig-ok { background: #dcfce7; color: #15803d; } .mig-wn { background: #fef3c7; color: #b45309; } .mig-off { background: #f1f5f9; color: #94a3b8; }
+    .mig-sum-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    .mig-btn { border: 1px solid #e2e8f0; background: #fff; color: #475569; border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .mig-btn.mig-pri { flex: 1; background: #6366f1; border-color: #6366f1; color: #fff; }
+    body.dark-mode .mig-summary { background: #1e293b; border-color: #334155; }
+    body.dark-mode .mig-sum-title, body.dark-mode .mig-chk { color: #e2e8f0; }
+    body.dark-mode .mig-chk { border-bottom-color: #334155; }
+    @media (max-width: 1250px) {
+      #migrationForm .formc-shell { grid-template-columns: 170px minmax(0, 1fr); }
+      .mig-summary { grid-column: 1 / -1; position: static; }
+    }
+    @media (max-width: 800px) { #migrationForm .formc-shell { grid-template-columns: minmax(0, 1fr); } }
     .formc-rail { position: sticky; top: 88px; display: flex; flex-direction: column; gap: 2px; }
     .formc-rail a {
       font-size: 0.82rem; color: #64748b; text-decoration: none; padding: 8px 12px;

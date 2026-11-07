@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kit update — JetLearn</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body style="margin:0; padding:0; background-color:#f4f4f2; font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<? var tones = { good: ['#065f46','#d1fae5','#10b981'], info: ['#1e3a8a','#dbeafe','#3b82f6'], warn: ['#92400e','#fef3c7','#f59e0b'], bad: ['#991b1b','#fee2e2','#ef4444'] }; var tc = tones[data.tone] || tones.info; ?>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f2;">
+  <tr>
+    <td align="center" style="padding:32px 14px;">
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; background-color:#ffffff; border:1px solid #1a1a1a; border-radius:14px; overflow:hidden;">
+
+        <!-- Header bar -->
+        <tr>
+          <td style="background-color:#111111; padding:14px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="font-family:'DM Mono','Courier New',monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#f5c400;"><?= data.headerLabel ?></td>
+                <td align="right" style="font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.08em; color:#8a8a8a;"><?= data.learnerName ?> · <?= data.jlid ?></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:24px 24px 6px;">
+            <p style="display:inline-block; font-family:'DM Mono','Courier New',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; border-radius:6px; padding:3px 10px; margin:0 0 14px; color:<?= tc[0] ?>; background-color:<?= tc[1] ?>; border:1px solid <?= tc[2] ?>;"><?= data.tag ?></p>
+            <p style="font-size:14px; line-height:1.7; margin:0 0 12px; color:#111111;">Hi <strong><?= data.teacherName || 'there' ?></strong>,</p>
+            <? data.paras.forEach(function(p) { ?>
+            <p style="font-size:14px; line-height:1.7; margin:0 0 12px; color:#333333;"><?= p ?></p>
+            <? }); ?>
+          </td>
+        </tr>
+
+        <!-- Details -->
+        <? if (data.rows && data.rows.length) { ?>
+        <tr>
+          <td style="padding:4px 24px 8px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #ececec; border-radius:9px; border-collapse:separate; overflow:hidden;">
+              <? data.rows.forEach(function(r, i) { ?>
+              <tr>
+                <td style="padding:9px 14px; font-size:12.5px; color:#767676; <?= i < data.rows.length - 1 ? 'border-bottom:1px solid #f1f1ef;' : '' ?>"><?= r.l ?></td>
+                <td align="right" style="padding:9px 14px; font-size:13px; font-weight:500; color:#111111; <?= i < data.rows.length - 1 ? 'border-bottom:1px solid #f1f1ef;' : '' ?>">
+                  <? if (r.old) { ?><span style="text-decoration:line-through; color:#999999; font-weight:400;"><?= r.old ?></span> &nbsp; <? } ?><?= r.v ?>
+                </td>
+              </tr>
+              <? }); ?>
+            </table>
+          </td>
+        </tr>
+        <? } ?>
+
+        <!-- What to do -->
+        <? if (data.actionText) { ?>
+        <tr>
+          <td style="padding:8px 24px 6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:<?= data.tone === 'bad' ? '#fef2f2' : '#fffbea' ?>; border:1px solid <?= data.tone === 'bad' ? '#fca5a5' : '#f5c400' ?>; border-radius:9px;">
+              <tr>
+                <td style="padding:12px 14px; font-size:13px; line-height:1.65; color:#333333;"><strong style="color:#111111;"><?= data.actionTitle || 'What to do' ?>:</strong> <?= data.actionText ?></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <? } ?>
+
+        <!-- CTA -->
+        <? if (data.ctaHref && data.ctaLabel) { ?>
+        <tr>
+          <td style="padding:12px 24px 6px;">
+            <a href="<?= data.ctaHref ?>" style="display:inline-block; background-color:#111111; color:#f5c400; text-decoration:none; font-size:13.5px; font-weight:600; padding:11px 20px; border-radius:8px;"><?= data.ctaLabel ?></a>
+            <? if (data.cta2Href && data.cta2Label) { ?>
+            &nbsp; <a href="<?= data.cta2Href ?>" style="display:inline-block; background-color:#ffffff; color:#111111; text-decoration:none; font-size:13.5px; font-weight:600; padding:10px 18px; border-radius:8px; border:1px solid #111111;"><?= data.cta2Label ?></a>
+            <? } ?>
+          </td>
+        </tr>
+        <? } ?>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:18px 24px 20px;">
+            <p style="font-size:12px; line-height:1.6; margin:0; color:#888888; border-top:1px solid #ececec; padding-top:12px;"><?= data.footer ?></p>
+          </td>
+        </tr>
+
+      </table>
+
+    </td>
+  </tr>
+</table>
+</body>
+</html>

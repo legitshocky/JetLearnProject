@@ -3175,9 +3175,13 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody, c
  * @param {string} newTeacherName
  * @param {Array}  confirmedCourses  [{courseLabel, isUpskilled}] from client-side popup confirms
  */
-function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, currentCourse, reasonOfMigration) {
+function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, currentCourse, reasonOfMigration, forcedTicketId) {
   try {
-    var ticketResult = fetchLatestMigrationTicket(jlid);
+    // forcedTicketId: the automation already knows which ticket it is migrating, so the note goes on THAT ticket
+    // (the 'latest ticket' lookup can pick a different one when a learner has several).
+    var ticketResult = forcedTicketId
+      ? { found: true, ticketId: String(forcedTicketId), rawProperties: null }
+      : fetchLatestMigrationTicket(jlid);
     if (!ticketResult.found || !ticketResult.ticketId) {
       Logger.log('[upskillNote] No ticket/ticketId for ' + jlid);
       return;
@@ -3197,6 +3201,7 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
     }
     if (courseLabels.length === 0) {
       // Fall back to HubSpot ticket data
+      if (!ticketResult.rawProperties) { try { ticketResult.rawProperties = (fetchLatestMigrationTicket(jlid) || {}).rawProperties || null; } catch (fe) {} }
       var props = ticketResult.rawProperties || {};
       [props.future_course_1, props.future_course_2, props.future_course_3].forEach(function(raw) {
         if (!raw || _isNaVal(raw)) return;

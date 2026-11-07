@@ -105,7 +105,13 @@ var KIT_COL = {
   ADDR_LINE:               55,
   ADDR_CITY:               56,
   ADDR_STATE:              57,
-  ADDR_POSTAL:             58
+  ADDR_POSTAL:             58,
+  // Teacher thread columns — the email thread with the teacher for this kit (KitTeacherNotifyService.js)
+  TEACHER_THREAD:          59,  // Gmail thread id
+  TEACHER_NOTIFIED_AT:     60,
+  TEACHER_TOLD_ETA:        61,  // the delivery date the teacher was last told
+  TEACHER_STAGE:           62,  // ordered / delayed / reminder / check_cls / delivered / reorder / cancelled
+  TEACHER_REMINDED_AT:     63
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
@@ -1718,6 +1724,7 @@ function _getKitSheet() {
   var ss = SpreadsheetApp.openById(ssId);
   // Try tab named "Kit Tracking", fall back to first sheet
   var sheet = ss.getSheetByName('Kits') || ss.getSheetByName('Kit Tracking') || ss.getSheets()[0];
+  if (typeof _ktEnsureCols === 'function') _ktEnsureCols(sheet);
   return sheet;
 }
 
@@ -2099,10 +2106,16 @@ function sendKitFollowUps() {
       // Mark escalated in sheet
       sheet.getRange(sheetRow, KIT_COL.ESCALATED).setValue('TRUE');
       sheet.getRange(sheetRow, KIT_COL.ESCALATED_AT).setValue(new Date());
+      try { kitTeacherNotify(sheetRow, 'check_cls', { reason: 'parent_silent' }); } catch (kte5) { Logger.log('[KitTracking] teacher notify failed: ' + kte5.message); }
       escalated++;
     });
 
     Logger.log('[KitTracking] sendKitFollowUps done. Escalations: ' + escalated);
+
+    // Teachers: nudge on kits that are running late (only kits already in a teacher thread)
+    try { kitTeacherFollowups(); } catch (kft) { Logger.log('[KitTracking] teacher follow-ups failed: ' + kft.message); }
+    try { if (typeof scanLateMigrationForms === 'function') scanLateMigrationForms(); } catch (lfe) { Logger.log('[KitTracking] late-form scan failed: ' + lfe.message); }
+    try { if (typeof runKitFormReminders === 'function') runKitFormReminders(); } catch (kfe) { Logger.log('[KitTracking] form reminders failed: ' + kfe.message); }
   } catch (e) {
     Logger.log('[KitTracking] sendKitFollowUps ERROR: ' + e.message + '\n' + e.stack);
   }
@@ -2270,6 +2283,7 @@ function handleKitReply(waId, buttonText) {
 
       // Update HubSpot kit status � internal enum value is "Received" (label: "Received by the Parents")
       if (normJlid) _updateHubspotKitStatus(normJlid, kitName, 'Received');
+      try { kitTeacherNotify(matchRow, 'delivered'); } catch (kte2) { Logger.log('[KitTracking] teacher notify failed: ' + kte2.message); }
 
       // Auto-reply to parent - confirm via template (session messages unreliable)
       try {
@@ -3202,6 +3216,7 @@ function updateKitRow(data) {
     var rowIndex     = parseInt(data.rowIndex, 10);
     var jlid         = String(data.jlid         || '').trim();
     var deliveryDate = String(data.deliveryDate || '').trim();
+    var newEtaIn     = String(data.eta || '').trim();   // YYYY-MM-DD, optional
     var response     = String(data.response     || '').trim();
 
     if (!rowIndex || rowIndex < 2) return { success: false, message: 'Invalid row index.' };
@@ -3230,6 +3245,23 @@ function updateKitRow(data) {
         sheet.getRange(rowIndex, KIT_COL.TIME_TAKEN).setValue(days + ' days');
       }
       Logger.log('[KitTracking] updateKitRow: DeliveryDate=' + deliveryDate + ' row=' + rowIndex);
+    }
+
+    // Expected delivery date (ETA) edit — remember what it was so the parent/teacher messages can show old -> new
+    var etaChanged = false, oldEtaStr = '';
+    if (newEtaIn) {
+      var oldEtaCell = row[KIT_COL.ETA - 1];
+      var oldEtaD = (oldEtaCell instanceof Date) ? oldEtaCell : _parseDMY(String(oldEtaCell || ''));
+      var newEtaP = newEtaIn.split('-');
+      var newEtaD = new Date(parseInt(newEtaP[0], 10), parseInt(newEtaP[1], 10) - 1, parseInt(newEtaP[2], 10));
+      if (!isNaN(newEtaD.getTime())) {
+        oldEtaStr = oldEtaD && !isNaN(oldEtaD.getTime()) ? Utilities.formatDate(oldEtaD, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '';
+        if (oldEtaStr !== newEtaIn) {
+          sheet.getRange(rowIndex, KIT_COL.ETA).setValue(newEtaD);
+          etaChanged = true;
+          Logger.log('[KitTracking] updateKitRow: ETA ' + oldEtaStr + ' -> ' + newEtaIn + ' row=' + rowIndex);
+        }
+      }
     }
 
     // Update parent response
@@ -3293,6 +3325,12 @@ function updateKitRow(data) {
       }
     }
 
+    // Kit Received: tell the teacher (once; same thread) — independent of whether the parent is messaged
+    var teacherRes = null;
+    if (response === 'Kit Received' || (deliveryDate && !response)) {
+      try { teacherRes = kitTeacherNotify(rowIndex, 'delivered'); } catch (kte) { Logger.log('[KitTracking] teacher notify failed: ' + kte.message); }
+    }
+
     // Build user-facing message
     var msg = 'Sheet updated.';
     if (response === 'Kit Received') {
@@ -3303,7 +3341,7 @@ function updateKitRow(data) {
       else                              msg = 'Sheet updated ?  HubSpot failed: ' + hsStatus;
     }
 
-    return { success: true, message: msg, hsStatus: hsStatus };
+    return { success: true, message: msg, hsStatus: hsStatus, etaChanged: etaChanged, oldEta: oldEtaStr, newEta: newEtaIn, teacher: teacherRes };
   } catch (e) {
     Logger.log('[KitTracking] updateKitRow ERROR: ' + e.message);
     return { success: false, message: e.message };
@@ -3720,7 +3758,7 @@ function ktRejectAddress(rowIndex, reasonCode, note, reAsk, rejectedBy) {
 }
 
 // ── Mark kit as refunded (logistics loss) — zeros price, sets refunded flag, subtracts from HubSpot ──
-function markKitAsRefunded(rowIndex) {
+function markKitAsRefunded(rowIndex, reason, who, reopen) {
   if (!rowIndex) return { success: false, message: 'No rowIndex' };
   try {
     var sheet = _getKitSheet();
@@ -3750,7 +3788,44 @@ function markKitAsRefunded(rowIndex) {
       } catch(hsErr) { Logger.log('[KitTracking] markKitAsRefunded HS error: ' + hsErr.message); }
     }
 
-    return { success: true, price: price };
+    // Capture the cancelled order's details before anything is cleared (for the deal note)
+    var oldOrderNo = '', oldOrderUrl = '', oldStore = '';
+    try {
+      var ex = sheet.getRange(rowIndex, KIT_COL.ORDER_STORE, 1, 3).getValues()[0];
+      oldStore = String(ex[0] || '').trim(); oldOrderNo = String(ex[1] || '').trim(); oldOrderUrl = String(ex[2] || '').trim();
+    } catch (xe) {}
+
+    // trace the reason on the deal
+    if (reason && jlid) {
+      try {
+        var hsr = fetchHubspotByJlid(jlid);
+        if (hsr && hsr.success && hsr.data && hsr.data.dealId) {
+          _addNoteToDeal(hsr.data.dealId, '[Kit Refund] ' + String(row[KIT_COL.KIT - 1] || 'Kit') + ' marked refunded. Reason: ' + reason + (oldOrderNo ? '. Cancelled order: ' + (oldStore ? oldStore + ' ' : '') + oldOrderNo : '') + (price > 0 ? '. Cost refunded: ' + price : '') + (reopen ? '. Returned to address-received for a new order' : '') + (who ? '. By ' + who : '') + '.');
+        }
+      } catch (ne) { Logger.log('[KitTracking] markKitAsRefunded note failed: ' + ne.message); }
+    }
+
+    // Full circle: cancelled order -> back to "address received, pending order" so the replacement can be placed.
+    var reopened = false, addressMissing = false;
+    if (reopen) {
+      var C = KIT_COL;
+      var blank = [C.DATE_OF_ORDER, C.ETA, C.DELIVERY_DATE, C.TIME_TAKEN, C.ORDER_PLACED, C.ORDER_PLACED_AT, C.ORDER_STORE,
+        C.ORDER_TRACKING_NO, C.ORDER_TRACKING_URL, C.FOLLOWUP_SENT, C.FOLLOWUP_SENT_AT, C.FOLLOWUP2_SENT, C.FOLLOWUP2_SENT_AT,
+        C.PARENT_RESPONSE, C.ESCALATED, C.ESCALATED_AT, C.REFUNDED, C.MANUAL_REMINDER_COUNT, C.MANUAL_REMINDER_LAST_AT];
+      blank.forEach(function(col) { sheet.getRange(rowIndex, col).clearContent(); });
+      var addrNow = String(sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
+      if (addrNow) { sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received'); }
+      else { addressMissing = true; }
+      reopened = true;
+      Logger.log('[KitTracking] markKitAsRefunded: row ' + rowIndex + ' reopened for reorder (address ' + (addrNow ? 'kept' : 'MISSING') + ')');
+    }
+
+    var teacherRes = null;
+    if (reason) {
+      try { teacherRes = kitTeacherNotify(rowIndex, reopen ? 'reorder' : 'cancelled', { reason: String(reason).replace(/\s*\(do not contact parent\)\s*/i, '').replace(/\s*-\s*(reordering( new kit)?|not reordering)\s*$/i, '') }); }
+      catch (kte4) { Logger.log('[KitTracking] teacher notify failed: ' + kte4.message); }
+    }
+    return { success: true, price: price, reopened: reopened, addressMissing: addressMissing, teacher: teacherRes };
   } catch(e) {
     Logger.log('[KitTracking] markKitAsRefunded ERROR: ' + e.message);
     return { success: false, message: e.message };
@@ -3888,6 +3963,10 @@ function markKitOrderPlaced(rowIndex, payload) {
       }
     }
 
+    // Tell the teacher a kit has been ordered, with the expected date (CLS + TP copied; one thread per kit)
+    var teacherRes = null;
+    try { teacherRes = kitTeacherNotify(rowIndex, 'ordered'); } catch (kte3) { Logger.log('[KitTracking] teacher notify failed: ' + kte3.message); }
+
     // Notify the parent their kit is on the way. Two separate templates,
     // each doing its own job (previously the tracking link was crammed
     // into the `address` variable of the order notice as a workaround —
@@ -3932,7 +4011,7 @@ function markKitOrderPlaced(rowIndex, payload) {
 
     Logger.log('[KitTracking] Order placed for row=' + rowIndex + ' jlid=' + jlid +
       ' hsNote=' + hsNoteStatus + ' hsStatus=' + hsStatusStatus + ' wati=' + waStatus + ' waTrack=' + waTrackStatus);
-    return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus, waTrackStatus: waTrackStatus };
+    return { success: true, hsNoteStatus: hsNoteStatus, hsStatusStatus: hsStatusStatus, waStatus: waStatus, waTrackStatus: waTrackStatus, teacher: teacherRes };
   } catch(e) {
     Logger.log('[KitTracking] markKitOrderPlaced ERROR: ' + e.message);
     return { success: false, message: e.message };

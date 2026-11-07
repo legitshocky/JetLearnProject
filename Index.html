@@ -611,7 +611,70 @@
         <div id="migrationTab" class="tab-content">
           <div class="form-container form-container-wide">
             <h2 class="form-title">Learner Migration Details</h2>
-            <form id="migrationForm"> <input type="hidden" id="globalMigrationTimezone" value="">
+
+            <!-- Ready to migrate — pick from here instead of typing a JLID -->
+            <div id="migLookup" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px;margin-bottom:1rem;">
+              <span style="font-size:0.82rem;color:#64748b;"><i class="fas fa-search" style="margin-right:6px;"></i>Look up a learner</span>
+              <input type="text" id="migLookupJlid" placeholder="Enter JLID, e.g. JL52767973402C" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();migLookup();}" style="flex:1;min-width:220px;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:0.85rem;font-family:monospace;">
+              <button type="button" onclick="migLookup()" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:0.82rem;font-weight:600;cursor:pointer;"><i class="fas fa-cloud-download-alt"></i> Fetch details</button>
+            </div>
+            <div id="rtmCard" style="border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-bottom:1.25rem;overflow:hidden;">
+              <style>
+                #rtmCard .rtm-tile{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;text-align:left;cursor:pointer;font-family:inherit;}
+                #rtmCard .rtm-tile:hover{border-color:#c7d2fe;}
+                #rtmCard .rtm-tile.on{border-color:#6366f1;box-shadow:0 0 0 1px #6366f1;}
+                #rtmCard .rtm-tile b{display:block;font-size:1.5rem;font-weight:700;line-height:1.1;color:#1e293b;}
+                #rtmCard .rtm-tile span{font-size:0.74rem;color:#64748b;}
+                #rtmCard tr.rtm-row:hover{background:#f8fafc;}
+                @media (max-width:900px){ #rtmGrid{grid-template-columns:minmax(0,1fr) !important;} #rtmDetail{position:static !important;} }
+              </style>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;padding:0.8rem 1rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                  <span style="font-size:0.85rem;font-weight:700;color:#1e293b;"><i class="fas fa-list-check" style="color:#6366f1;margin-right:6px;"></i>Ready to migrate</span>
+                  <span id="rtmCount" style="background:#6366f1;color:#fff;border-radius:99px;padding:1px 9px;font-size:0.72rem;font-weight:700;">—</span>
+                  <span id="rtmChips" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <button type="button" id="rtmRunBtn" onclick="rtmRunSelected()" disabled style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;opacity:0.5;"><i class="fas fa-bolt"></i> Run selected (0)</button>
+                  <button type="button" onclick="rtmLoad(true)" title="Refresh" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:0.78rem;color:#6366f1;cursor:pointer;"><i class="fas fa-sync-alt"></i></button>
+                  <button type="button" onclick="rtmToggleCard()" id="rtmToggleBtn" title="Collapse / expand" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;font-size:0.78rem;color:#64748b;cursor:pointer;"><i class="fas fa-chevron-up"></i></button>
+                </div>
+              </div>
+              <div id="rtmProgress" style="display:none;padding:0.6rem 1rem;background:#eef2ff;border-bottom:1px solid #c7d2fe;font-size:0.8rem;color:#3730a3;align-items:center;justify-content:space-between;gap:0.75rem;"></div>
+              <div id="rtmTiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:12px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>
+              <div id="rtmBodyWrap" style="padding:12px 14px;">
+                <div id="rtmGrid" style="display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:12px;align-items:start;">
+                  <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:auto;max-height:480px;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+                      <thead>
+                        <tr style="background:#fff;position:sticky;top:0;z-index:1;box-shadow:0 1px 0 #e2e8f0;">
+                          <th style="padding:8px 10px;width:28px;"><input type="checkbox" id="rtmAll" onclick="rtmToggleAll(this.checked)" title="Select all that can be run in bulk"></th>
+                          <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:600;">Learner</th>
+                          <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:600;">Teacher change</th>
+                          <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:600;">Class (CET)</th>
+                          <th style="padding:8px 10px;text-align:left;color:#64748b;font-weight:600;">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="rtmBody"><tr><td colspan="5" style="padding:1.5rem;text-align:center;color:#94a3b8;">Loading…</td></tr></tbody>
+                    </table>
+                  </div>
+                  <div id="rtmDetail" style="border:1px solid #e2e8f0;border-radius:10px;padding:16px;position:sticky;top:8px;background:#fff;"></div>
+                </div>
+              </div>
+              <div id="rtmFoot" style="padding:6px 12px;border-top:1px solid #f1f5f9;font-size:0.7rem;color:#94a3b8;"></div>
+            </div>
+
+
+<div id="migHeader" style="display:none;flex-wrap:wrap;align-items:center;gap:12px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 16px;margin-bottom:1rem;">
+              <button type="button" onclick="migBack()" style="background:none;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:0.8rem;color:#475569;cursor:pointer;"><i class="fas fa-arrow-left"></i> Back to list</button>
+              <div style="flex:1;min-width:200px;">
+                <div id="migHdName" style="font-size:1.05rem;font-weight:700;color:#1e293b;"></div>
+                <div id="migHdMeta" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:3px;"></div>
+              </div>
+              <a id="migHdTicket" href="#" target="_blank" style="display:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;font-size:0.8rem;color:#475569;text-decoration:none;">Open ticket <i class="fas fa-external-link-alt" style="font-size:0.7rem;"></i></a>
+              <button type="button" onclick="migHdAuto()" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;cursor:pointer;"><i class="fas fa-bolt"></i> Auto Migrate</button>
+            </div>
+            <form id="migrationForm" style="display:none;"> <input type="hidden" id="globalMigrationTimezone" value="">
               <div class="formc-shell">
                 <div class="formc-rail">
                   <a href="#migSecLearner" class="current">Learner &amp; Contact</a>
@@ -903,6 +966,15 @@
               </div>
                 </div>
                 </div>
+              <aside id="migSummary" class="mig-summary">
+                  <div class="mig-sum-title">What happens when you submit</div>
+                  <p class="mig-sum-hint">Checked live from the form.</p>
+                  <ul id="migSummaryList" class="mig-list"></ul>
+                  <div class="mig-sum-btns">
+                    <button type="button" class="mig-btn mig-pri" onclick="migSubmit()"><i class="fas fa-paper-plane"></i> Submit Migration</button>
+                    <button type="button" class="mig-btn" onclick="migReviewWa()"><i class="fab fa-whatsapp"></i> Review WA</button>
+                  </div>
+                </aside>
               </div> <!-- End of formc-shell -->
 
               <!-- NEW: Actions with Review Button -->
@@ -2784,7 +2856,7 @@
               </div>
               <div style="background:#fff;border-radius:10px;padding:0.75rem 1rem;border:1px solid #fde68a;text-align:center;">
                 <div style="font-size:1.6rem;font-weight:700;color:#b45309;" id="migAutoStatSkipped">—</div>
-                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;">Skipped</div>
+                <div style="font-size:0.7rem;font-weight:600;color:#64748b;margin-top:2px;" title="Tickets waiting on something (class link, schedule, CLS approval, course end date). Re-checked automatically every ~20 min.">Waiting</div>
               </div>
             </div>
             <!-- Needs manual review list -->
@@ -4117,6 +4189,14 @@
 
     <!-- Gift Card View -->
     <div id="ktViewGC" style="display:none;">
+      <!-- Waiting for details: everyone we have asked for their Amazon website + account email -->
+      <div id="gcReqPanel" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:1rem;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;">
+          <div style="font-size:0.85rem;font-weight:700;color:#92400e;"><i class="fas fa-hourglass-half" style="margin-right:6px;"></i>Waiting for Amazon details <span id="gcReqCount" style="background:#f59e0b;color:#fff;border-radius:99px;padding:1px 9px;font-size:0.72rem;margin-left:4px;">0</span></div>
+          <button type="button" onclick="gcLoadRequests(true)" id="gcReqRefreshBtn" style="background:#fff;border:1px solid #fcd34d;border-radius:8px;padding:5px 12px;font-size:0.76rem;font-weight:600;color:#92400e;cursor:pointer;"><i class="fas fa-sync-alt"></i> Check replies</button>
+        </div>
+        <div id="gcReqBody" style="font-size:0.8rem;"><div style="padding:14px;color:#94a3b8;">Loading…</div></div>
+      </div>
       <!-- Actions bar -->
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:1rem;background:#f8fafc;border-radius:10px;padding:8px 12px;border:1px solid #e2e8f0;">
         <input type="text" id="gcSearch" class="form-control" placeholder="Search learner, JLID or email…" style="flex:1 1 180px;min-width:150px;height:36px;padding:4px 10px;font-size:0.8rem;" oninput="renderGiftCardTable()">
@@ -4868,6 +4948,21 @@
             <input type="text" id="gcWebsite" class="form-control" placeholder="e.g. amazon.co.uk">
           </div>
           <div>
+            <label style="font-size:0.8rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">What is it for?</label>
+            <select id="gcOccasion" class="form-control form-select" onchange="gcOccasionChanged()">
+              <option value="referral">Referral reward</option>
+              <option value="same_day">Same-day enrollment bonus</option>
+              <option value="early_bird">Early-bird offer</option>
+              <option value="seasonal">Seasonal sale (Easter, Black Friday...)</option>
+              <option value="sales_offer">Offer from our sales team</option>
+              <option value="renewal">Renewal / loyalty thank-you</option>
+            </select>
+          </div>
+          <div id="gcOfferWrap" style="display:none;">
+            <label style="font-size:0.8rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Offer name</label>
+            <input type="text" id="gcOfferName" class="form-control" placeholder="e.g. Easter sale">
+          </div>
+          <div>
             <label style="font-size:0.8rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Reason</label>
             <select id="gcReason" class="form-control form-select">
               <option value="">Select…</option>
@@ -4899,6 +4994,7 @@
           </div>
         </div>
 
+        <div id="gcAskNotice" style="display:none;margin-top:12px;padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:0.8rem;color:#15803d;"></div>
         <div id="gcTypeNote" style="margin-top:12px;padding:10px 14px;background:#fff5f6;border:1px solid #fecdd3;border-radius:8px;font-size:0.78rem;color:#be123c;">
           <i class="fas fa-paper-plane" style="margin-right:5px;"></i>Will send <strong>amz_giftcard_sent_</strong> WATI template to parent on save.
         </div>
@@ -5262,6 +5358,19 @@
        <h3 class="dashboard-section-title" style="margin:0;">AI Ranked Recommendations</h3>
        <span id="personaResultsCount" class="status-badge status-info">0 matches</span>
        <span style="font-size:0.72rem; color:#64748b; margin-left:auto;">Ranked by: Slot availability &middot; Audit score (45d) &middot; Course readiness &middot; Trait match</span>
+    </div>
+
+    <!-- Ticket stage buttons, kept with the results so they are not forgotten while searching for a slot -->
+    <div id="ticResultsStrip" style="display:none;position:sticky;top:8px;z-index:6;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;margin-bottom:0.75rem;box-shadow:0 2px 8px rgba(15,23,42,0.06);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:0.72rem;text-transform:uppercase;color:#64748b;font-weight:600;letter-spacing:0.04em;">Ticket</span>
+        <span id="ticResultsStage" style="font-size:0.8rem;font-weight:600;color:#1e293b;"></span>
+        <span style="flex:1;"></span>
+        <span style="font-size:0.72rem;color:#64748b;">Move to:</span>
+        <button type="button" id="ticRBtnTp"   onclick="ticMoveStage('128913750','TP Approval')"      style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-size:0.78rem;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600;">TP Approval</button>
+        <button type="button" id="ticRBtnCls"  onclick="ticMoveStage('128913752','CLS Approval')"     style="background:#fef9c3;color:#854d0e;border:1px solid #fde047;font-size:0.78rem;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600;">CLS Approval</button>
+        <button type="button" id="ticRBtnExec" onclick="ticMoveStage('1065336836','Execution Pending')" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;font-size:0.78rem;padding:4px 12px;border-radius:6px;cursor:pointer;font-weight:600;">Execution Pending</button>
+      </div>
     </div>
     <!-- Audit legend -->
     <div style="display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;font-size:0.72rem;color:#64748b;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">

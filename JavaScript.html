@@ -642,7 +642,10 @@ function _setBookingTzByIana(iana) {
 function makeSearchableSelect(sel, placeholder, optionsProvider) {
   if (!sel || sel.dataset.hasSearch) return;
   sel.dataset.hasSearch = '1';
-  sel.style.display = 'none';
+  // Invisible but still rendered — NOT display:none. A hidden `required` select makes the browser refuse to
+  // submit the form silently ("invalid form control is not focusable"); this keeps its validation message.
+  sel.style.cssText += ';position:absolute;left:0;bottom:0;width:100%;height:1px;opacity:0;pointer-events:none;';
+  sel.tabIndex = -1;
 
   var ph = (placeholder || 'Select...').replace('🔍 ', '').replace('...', '');
 
@@ -2567,12 +2570,14 @@ function submitMigrationForm(e) {
                 }
                 // Reset form regardless
                 window.mipConfirmedCourses = [];
+                try { if (typeof rtmRecordDone === 'function' && migrationData && migrationData.jlid) rtmRecordDone(migrationData.jlid, result.message || 'Migrated', migrationData.learner || ''); } catch (rdErr) {}
                 migrationForm.reset();
                 _resetWatiContactPicker();
                 classSessionsContainer.innerHTML = '';
                 classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration'));
                 sessionCounter = 0;
                 initDateInputs();
+                if (typeof migShowView === 'function') { migShowView('list'); if (typeof rtmLoad === 'function') rtmLoad(true); }
               } else {
                 showToast('error', 'Migration Failed', (result && result.message) ? result.message : 'Unknown error processing migration.');
               }
@@ -2690,6 +2695,28 @@ function submitMigrationForm(e) {
       // Only show when ticket is in Migration Triggered stage (128913747)
       var isTriggered = _ticTicketStage === '128913747';
       strip.style.display = isTriggered ? '' : 'none';
+
+      // The same three buttons next to the results (shown whenever a ticket is loaded)
+      var rs = document.getElementById('ticResultsStrip');
+      if (rs) {
+        var known = !!_ticTicketId && !!_TIC_STAGE_NAMES[_ticTicketStage];
+        rs.style.display = known ? '' : 'none';
+        if (known) {
+          var stg = document.getElementById('ticResultsStage');
+          if (stg) stg.textContent = _TIC_STAGE_NAMES[_ticTicketStage];
+          [['ticRBtnTp', '128913750'], ['ticRBtnCls', '128913752'], ['ticRBtnExec', '1065336836']].forEach(function(b) {
+            var el = document.getElementById(b[0]);
+            if (!el) return;
+            var here = (_ticTicketStage === b[1]);
+            el.disabled = here;
+            el.style.opacity = here ? '0.4' : '1';
+            el.style.cursor = here ? 'default' : 'pointer';
+            el.title = here ? 'The ticket is already here' : '';
+          });
+          var clsB = document.getElementById('ticRBtnCls');
+          if (clsB && _ticNeedsCls() && _ticTicketStage !== '128913752') clsB.style.boxShadow = '0 0 0 2px #fde047'; else if (clsB) clsB.style.boxShadow = '';
+        }
+      }
       if (!isTriggered) return;
 
       var msg = document.getElementById('ticActionMsg');
@@ -3231,6 +3258,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
     if (tabContentElement) {
         tabContentElement.classList.add('active');
     }
+    if (tabId === 'migration' && typeof rtmLoad === 'function') rtmLoad(false); // "Ready to migrate" list
 
     // Reset relevant forms for a clean state.
     resetHubspotFields('onboarding');
@@ -8550,7 +8578,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 7. FORM ACTIONS (FETCH / RESET / CANCEL)
     // ==========================================
-    if (cancelMigrationBtn) cancelMigrationBtn.addEventListener('click', () => { migrationForm.reset(); initDateInputs(); });
+    if (cancelMigrationBtn) cancelMigrationBtn.addEventListener('click', () => { migrationForm.reset(); initDateInputs(); if (typeof migShowView === 'function') migShowView('list'); });
 
     // HubSpot Fetchers
     if (fetchOnboardingDataBtn) {
@@ -8627,10 +8655,15 @@ document.addEventListener('DOMContentLoaded', () => {
           statusEl.innerHTML = msg;
         }
 
+        _setStatus('<i class="fas fa-spinner fa-spin"></i> Checking the plan…', 'neutral');
+        google.script.run.withSuccessHandler(function(_v) {
+        if (!_v || !_v.success) { _setStatus('<i class="fas fa-exclamation-triangle"></i> Not ready: ' + escapeHtml((_v && _v.message) || 'could not check.'), 'red'); return; }
+        if (_v.hard && _v.hard.length) { _setStatus('<i class="fas fa-ban"></i> Not safe to run: ' + escapeHtml(_v.hard.join(' ')), 'red'); return; }
+        if (statusEl) statusEl.style.display = 'none';
+        var _acceptSoft = !!(_v.soft && _v.soft.length);
         showConfirm(
           'Auto Migrate',
-          'Run full automation for <strong>' + escapeHtml(jlid) + '</strong>?<br>'
-          + '<span style="font-size:0.8rem;color:#64748b;">Sends migration emails, books classes, updates HubSpot ticket → Completed.</span>',
+          migPlanHtml(_v),
           function(confirmed) {
             if (!confirmed) return;
             _autoMigrateBtn.disabled = true;
@@ -8655,6 +8688,18 @@ document.addEventListener('DOMContentLoaded', () => {
                   _setStatus('<i class="fas fa-check-circle"></i> ' + escapeHtml(res.message || 'Done.'), 'green');
                   finalizeLoadingTimeline(res, autoSteps);
                   hideLoading();
+                  try {
+                    if (typeof rtmRecordDone === 'function') rtmRecordDone(jlid, res.message || 'Migrated', (document.getElementById('learner') || {}).value || '');
+                    showToast('success', 'Migration done', (res.message || 'Executed.'));
+                    migrationForm.reset();
+                    if (typeof _resetWatiContactPicker === 'function') _resetWatiContactPicker();
+                    classSessionsContainer.innerHTML = '';
+                    classSessionsContainer.appendChild(createClassSessionGroup(false, 'migration'));
+                    sessionCounter = 0;
+                    initDateInputs();
+                    window._migLastFetchedJlid = '';
+                    if (typeof migShowView === 'function') { migShowView('list'); setTimeout(function() { rtmLoad(true); }, 2500); }
+                  } catch (resetErr) { console.warn('post auto-migrate reset failed', resetErr); }
                 } else {
                   _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((res && res.message) || 'Failed.'), 'red');
                   finalizeLoadingTimeline(res, autoSteps);
@@ -8668,9 +8713,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((err && err.message) || String(err)), 'red');
                 hideLoading();
               })
-              .runAutoMigrateForJlid(jlid, _uiNewTeacher);
+              .runAutoMigrateForJlid(jlid, _uiNewTeacher, _acceptSoft);
           }
         );
+        }).withFailureHandler(function(_err) { _setStatus('<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml((_err && _err.message) || String(_err)), 'red'); }).verifyAutoMigrate(jlid, _uiNewTeacher);
       });
     }
 
@@ -9283,6 +9329,8 @@ function triggerMigrationIntelligence() {
         card.style.display = show ? '' : 'none';
       });
     }
+    // Called from inline onclick in Index.html — must be global (this sits inside DOMContentLoaded)
+    window.mipFilterHistory = mipFilterHistory;
 
     window.renderMigrationHistory = function renderMigrationHistory(r) {
       if (!r || !r.success) return;
@@ -10724,6 +10772,82 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V9.127': [
+      "**Gift Cards — Waiting list fix**: The Waiting for Amazon details panel stuck on Loading. Its server code now lives in its own file so the page can reach it.",
+    ],
+    'V9.126': [
+      "**Gift Cards — 6 email wordings**: Pick why the card is going out: referral, same-day enrollment, early-bird, seasonal sale (type the sale name, e.g. Easter sale), sales offer or renewal. The ask email and the gift-card email both follow that reason. No more referral wording for sales customers.",
+      "**Gift Cards — Waiting for Amazon details**: Every ask (email or WhatsApp) is now recorded and listed on the Gift Cards tab. Replies are checked when the tab opens or when you press Check replies. Remind, issue the card, or close each request. The ask window stays open after sending and confirms what was sent.",
+    ],
+    'V9.125': [
+      "**Migration — No delayed-entry email when CLS, TP or ops filed the form**: The email only goes out when the teacher filed the form themselves. Forms filed with a @jet-learn.com address (CLS, TP, ops) are skipped, so teachers are not blamed for them.",
+    ],
+    'V9.124': [
+      "**Migration — Automatic checks for teachers**: One setup step (run setupTeacherKitTriggers once in the Apps Script editor) switches on an hourly check of new course-change forms, which emails the teacher when a form was filed late, and a daily run of the form reminders and kit follow-ups. listTeacherKitTriggers shows what is on.",
+    ],
+    'V9.123': [
+      "**Migration — Form reminder before the deadline**: Every day, learners whose current course is close to ending and whose next course needs a kit get their teacher a reminder to fill the migration form (CLS and TP copied, one email per teacher listing their learners). A first heads-up goes about a week before the form is due, and a second when it is due. Nothing is sent if a migration ticket already exists.",
+      "**Migration — 4 weeks, or 6 weeks for 2 or more classes a week**: The notice needed depends on the learner's classes per week, for the reminder and for the delayed entry email.",
+      "**Migration — Delayed entry email to teachers**: From 7 Nov 2026, when a course-change migration (including those parked in \"11. Lr Migration Form Filled - No Migration Required\") is filed less than 4 weeks before the learner's current course ends and the next course needs a kit, the teacher gets a \"delayed entry\" email with the TP manager and CLS manager copied. It says how many days of notice there were, whether they are upskilled on the next course, links the migration form and the teacher guide, and asks them to be careful with the next learner. One email per ticket.",
+      "**Teacher guide page**: A public page for teachers explains why the migration form is needed 4 weeks ahead, how a kit reaches a learner, what slows kits down, and answers the questions we hear most (jetlearn-kit-links.web.app/teacher-guide).",
+    ],
+    'V9.122': [
+      "**Kit Tracking — Teachers are kept in the loop**: When JetLearn orders a kit, the learner's teacher gets an email with the expected date, and the CLS manager and TP manager are copied. Every later update is a reply in the same email thread.",
+      "**Kit Tracking — Date moved**: Edit now has an Expected delivery (ETA) field. Changing it opens the message to the parent, with a box to also tell the teacher (with the reason). Skipping the parent message does not skip the teacher.",
+      "**Kit Tracking — Late and unresponsive parents**: If the date passes without delivery the teacher is reminded; if it is 7 or more days late, or the kit is needed soon, the email asks them to check with their CLS manager. The same happens when the parent has not replied to both reminders.",
+      "**Kit Tracking — Delivered, reordered, cancelled**: The teacher is told when the kit arrives (the thread closes), when it is cancelled and reordered, or cancelled with no reorder.",
+    ],
+    'V9.121': [
+      "**Teacher Intelligence — Ticket buttons with the results**: TP Approval, CLS Approval and Execution Pending now stay at the top of the recommendations while you scroll, with the ticket's current stage shown. The stage you are already in is greyed out.",
+      "**Teacher Intelligence — Reserve Slot moves the ticket**: After the slots are reserved on the calendar, the ticket moves too. The confirm window lets you pick where (Execution Pending by default, CLS Approval for reasons that need it, TP Approval, or leave it). If the move fails you are told the slots were still reserved.",
+    ],
+    'V9.120': [
+      "**Auto Migration — Class time for the parent**: The parent is now told the class time in their own timezone (a 6 PM CET class is 5 PM for a UK parent) and the classes are booked at that same moment. Before, the ticket's CET time was sent with the parent's timezone label.",
+      "**Auto Migration — Class link**: An unrelated link in the event notes (for example scratch.mit.edu) can no longer become the class link. It uses the Zoom, Meet or live.jetlearn.com link, or the learner's standard live.jetlearn.com join link.",
+      "**Auto Migration — Teacher email matches the manual one**: Mid-Course or New Assignment, JetGuide, CLS manager, start date and the completed course for the certificate are filled in.",
+      "**Auto Migration — Parent emailed too**: The parent gets the email as well as the WhatsApp, on every email address on the deal.",
+      "**Auto Migration — Check before it runs**: Run and Auto Migrate show what will happen first (teacher, first class in the parent's time and in CET, who gets emails, class link). Missing parent timezone stops it. An unusual class hour, a double-booked teacher, or an AI check that finds a problem asks for your OK, and the automatic run waits.",
+    ],
+    'V9.119': [
+      "**Migration — Auto Migrate clears the form**: After Auto Migrate (or Submit) from the form, the form clears and you return to the learner list.",
+      "**Migration — Migrated this session**: The counter now includes runs from the list, bulk runs, and the form. It keeps its count after the list refreshes and across a page reload; click the tile to see who was migrated.",
+    ],
+    'V9.118': [
+      "**Migration — New page layout**: The page opens on the learner list with a Look up a learner box. Fetching a learner shows the same form with a header (Back to list, status, Open ticket, Auto Migrate) and a live What happens when you submit panel on the right.",
+      "**Auto Migration — Upskilling note**: The teacher upskilling check for the next courses is now written on the ticket being migrated.",
+      "**Auto Migration — Reserved slot**: The earlier Reserved slot for the learner is deleted once the real classes are booked, and the ticket note says what was removed.",
+    ],
+    'V9.117': [
+      "**Migration — Ready to migrate command center**: Summary tiles (Ready, Waiting on a date, Need you, Migrated this session), the list with tick boxes, and a detail panel with Run migration, Open in form and Ticket link.",
+    ],
+    'V9.116': [
+      "**Kit Tracking — Refund can send the kit back to Address received**: For reasons where a new order follows (Amazon cancelled, delayed too long, lost, out of stock), the row returns to Address received with the address kept, so the replacement can be placed. The cancelled order is logged on the deal.",
+    ],
+    'V9.115': [
+      "**Kit Tracking — Refund reasons**: Refund now asks why (Amazon cancelled, cancelled for delay, lost, out of stock, learner paused, parent bought it, duplicate, other). The reason is saved on the deal and, where the parent should know, the Message Parent window opens next.",
+    ],
+    'V9.114': [
+      "**Kit Tracking — Message Parent**: Send the parent a WhatsApp (template outbound_msg) and a branded email about delivery, delay, cancellation, refund, reorder, address or shipping problems, with 15 ready messages. Every send is noted on the deal.",
+      "**Kit Tracking — Delivery date changes**: Changing a kit delivery date opens the message to the parent, pre-filled with the old and new date. It cannot be skipped silently; choosing not to inform is logged on the deal.",
+      "**Kit Tracking — Marking a kit delivered**: Offers the Delivered message with the date you picked.",
+    ],
+    'V9.113': [
+      "**Auto Migration — Rewritten**: Updates the ticket and deal properties, books the classes, and only then completes the ticket. If anything is missing it stays in Execution Pending with the reason shown.",
+      "**Migration — Ready to migrate list**: Pick learners from the waiting tickets and run one or many, instead of typing JLIDs one by one.",
+      "**Migration Intelligence — Buttons fixed**: The broken filter and history buttons work again.",
+    ],
+    'V9.111': [
+      "**Kit Tracking — Reject address**: Reject an address with a reason and optionally ask the parent again. Junk text is no longer saved as an address.",
+      "**Kit Tracking — Countries we cannot ship to**: The address request is not sent, and the CLS manager is emailed to change the course or roadmap.",
+      "**Parent Will Buy — Note spam**: One note per learner instead of a new note every day.",
+      "**Gift Card — HubSpot update fixed**: The gift card details now save on the deal.",
+    ],
+    'V9.106': [
+      "**Referral reward — Gift card emails**: A branded email asks the parent for their Amazon website and email, and a second email delivers the gift card. The details show in the gift card window.",
+      "**Migration — Special Learning Needs**: New WhatsApp template for this reason.",
+      "**Teacher search — DST**: Slot search converts CET correctly across the clock change, and the card shows the day and time in CET.",
+      "**Migration — Deal sync**: Course, day and time from the ticket now update the deal, the fetch fires once, and the attrition note is written.",
+    ],
     'V6.18': [
       "**Certificate — Slide from Sheet**: Certificate template slide (Foundation / Math / Pro+Advanced) now driven by Tagging column (col C) of the Course Name sheet — no hardcoded lists.",
       "**Certificate — Dynamic Course Dropdown**: Course dropdown in Certificate Center now loads live from the Course Name sheet instead of a hardcoded list.",
@@ -13103,6 +13227,539 @@ function _lopsLoadMigration() {
     .getMigrationRegistry();
 }
 
+// ── Learner Migration: "Ready to migrate" list ──────────────────────────────
+// Pick learners from the tickets that are waiting instead of typing a JLID.
+// "Open" loads the learner into the form below (the normal manual flow); "Run" / "Run selected" use the same
+// automation as the Auto Migrate button, one learner at a time. Nothing is sent for a learner whose class link
+// or schedule is missing — the run reports why instead.
+var _rtmRows = [];
+var _rtmFilter = 'all';
+var _rtmSel = {};
+var _rtmBusy = false;
+var _rtmStop = false;
+var _rtmLoadedAt = 0;
+var _rtmDone = {};
+try { _rtmDone = JSON.parse(sessionStorage.getItem('rtmDone') || '{}') || {}; } catch (e) { _rtmDone = {}; }
+
+// Learners migrated during this browser session (from the list, bulk run, or the form's Auto Migrate / Submit).
+// Kept separately because a completed ticket drops out of the list on the next refresh.
+function rtmRecordDone(jlid, message, learnerHint) {
+  if (!jlid) return;
+  var row = rtmFindByJlid(jlid) || {};
+  _rtmDone[jlid] = {
+    ticketId: 'done_' + jlid, jlid: jlid, learner: row.learner || learnerHint || '', oldTeacher: row.oldTeacher || '', newTeacher: row.newTeacher || '',
+    reason: row.reason || '', course: row.course || '', nextCourse: row.nextCourse || '', schedule: row.schedule || '', stageLabel: 'Completed',
+    daysWaiting: row.daysWaiting || 0, state: 'done', canRun: false, canBulk: false, result: { success: true, message: message || 'Migrated' }
+  };
+  try { sessionStorage.setItem('rtmDone', JSON.stringify(_rtmDone)); } catch (e) {}
+}
+
+
+function rtmToggleCard() {
+  var wrap = document.getElementById('rtmBodyWrap'), foot = document.getElementById('rtmFoot');
+  var icon = document.querySelector('#rtmToggleBtn i');
+  if (!wrap) return;
+  var hide = wrap.style.display !== 'none';
+  wrap.style.display = hide ? 'none' : '';
+  if (foot) foot.style.display = hide ? 'none' : '';
+  if (icon) icon.className = 'fas fa-chevron-' + (hide ? 'down' : 'up');
+}
+
+function rtmLoad(force) {
+  var body = document.getElementById('rtmBody');
+  if (!body || _rtmBusy) return;
+  if (!force && _rtmRows.length && (new Date().getTime() - _rtmLoadedAt) < 60000) return;
+  body.innerHTML = '<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Loading…<\/td><\/tr>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        body.innerHTML = '<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load.') + '<\/td><\/tr>';
+        return;
+      }
+      _rtmRows = res.rows || [];
+      _rtmLoadedAt = new Date().getTime();
+      var keep = {};
+      _rtmRows.forEach(function(r) { if (_rtmSel[r.ticketId] && r.canBulk) keep[r.ticketId] = true; });
+      _rtmSel = keep;
+      rtmRender(res);
+    })
+    .withFailureHandler(function(err) {
+      body.innerHTML = '<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '<\/td><\/tr>';
+    })
+    .getReadyToMigrate();
+}
+
+function rtmSetFilter(f) { _rtmFilter = f; rtmRender(); }
+
+function rtmVisibleRows() {
+  if (_rtmFilter === 'done') return Object.keys(_rtmDone).map(function(k) { return _rtmDone[k]; });
+  return _rtmRows.filter(function(r) {
+    if (_rtmDone[r.jlid] && !(r.result && r.result.success)) return false;
+    var done = !!(r.result && r.result.success);
+    if (_rtmFilter === 'done')      return done;
+    if (_rtmFilter === 'ready')     return r.state === 'ready' && !done;
+    if (_rtmFilter === 'waiting')   return (r.state === 'waiting' || r.state === 'started') && !done;
+    if (_rtmFilter === 'attention') return (r.state === 'blocked' || r.state === 'failed') && !done;
+    return true;
+  });
+}
+
+function rtmSelectedCount() { return Object.keys(_rtmSel).length; }
+
+function rtmUpdateRunBtn() {
+  var btn = document.getElementById('rtmRunBtn');
+  if (!btn) return;
+  var n = rtmSelectedCount();
+  btn.innerHTML = '<i class="fas fa-bolt"><\/i> Run selected (' + n + ')';
+  btn.disabled = (n === 0 || _rtmBusy);
+  btn.style.opacity = btn.disabled ? '0.5' : '1';
+  var all = document.getElementById('rtmAll');
+  if (all) {
+    var vis = rtmVisibleRows().filter(function(r) { return r.canBulk; });
+    all.checked = vis.length > 0 && vis.every(function(r) { return _rtmSel[r.ticketId]; });
+    all.disabled = _rtmBusy;
+  }
+}
+
+function rtmToggle(ticketId, checked) {
+  if (checked) _rtmSel[ticketId] = true; else delete _rtmSel[ticketId];
+  rtmUpdateRunBtn();
+}
+
+function rtmToggleAll(checked) {
+  rtmVisibleRows().forEach(function(r) {
+    if (!r.canBulk) return;
+    if (checked) _rtmSel[r.ticketId] = true; else delete _rtmSel[r.ticketId];
+  });
+  rtmRender();
+}
+
+var _rtmDetailId = '';
+
+function rtmSelectRow(ticketId) { _rtmDetailId = ticketId; rtmRender(); }
+
+function rtmCounts() {
+  var c = { ready: 0, waiting: 0, attention: 0, done: Object.keys(_rtmDone).length };
+  _rtmRows.forEach(function(r) {
+    if ((r.result && r.result.success) || _rtmDone[r.jlid]) return;
+    if (r.state === 'ready') c.ready++;
+    else if (r.state === 'blocked' || r.state === 'failed') c.attention++;
+    else c.waiting++;
+  });
+  return c;
+}
+
+function rtmBadge(r) {
+  if (r.running) return '<span style="background:#eef2ff;color:#4338ca;border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;"><i class="fas fa-spinner fa-spin"><\/i> Running…<\/span>';
+  if (r.result) {
+    var ok = r.result.success, bg = ok ? '#dcfce7' : (r.result.notRun ? '#fef3c7' : '#fee2e2'), fg = ok ? '#15803d' : (r.result.notRun ? '#b45309' : '#b91c1c');
+    return '<span style="background:' + bg + ';color:' + fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + (ok ? '✓ Done' : (r.result.notRun ? '⏸ Not run' : '✗ Failed')) + '<\/span>';
+  }
+  var cfg = {
+    ready:   { bg: '#dcfce7', fg: '#15803d', t: 'Ready' },
+    blocked: { bg: '#fee2e2', fg: '#b91c1c', t: 'Needs you' },
+    waiting: { bg: '#fef3c7', fg: '#b45309', t: 'Waiting' },
+    failed:  { bg: '#fee2e2', fg: '#b91c1c', t: 'Failed' },
+    started: { bg: '#ede9fe', fg: '#6d28d9', t: 'Started' }
+  }[r.state] || { bg: '#f1f5f9', fg: '#475569', t: r.state };
+  return '<span title="' + escapeHtml(r.why || '') + '" style="background:' + cfg.bg + ';color:' + cfg.fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + cfg.t + '<\/span>';
+}
+
+function rtmDetailHtml(r) {
+  if (!r) return '<div style="text-align:center;color:#94a3b8;padding:1.5rem 0;font-size:0.82rem;">Select a learner to see the details.<\/div>';
+  var j = escapeHtml(r.jlid || '');
+  var kv = function(k, v) { return '<div style="color:#64748b;">' + k + '<\/div><div style="font-weight:500;color:#1e293b;">' + v + '<\/div>'; };
+  var note = '';
+  if (r.result) {
+    var ok = r.result.success;
+    note = '<div style="margin:12px 0;padding:9px 11px;border-radius:8px;font-size:0.78rem;background:' + (ok ? '#dcfce7' : (r.result.notRun ? '#fef3c7' : '#fee2e2')) + ';color:' + (ok ? '#15803d' : (r.result.notRun ? '#92400e' : '#b91c1c')) + ';">' + escapeHtml(r.result.message || '') + '<\/div>';
+  } else if (r.why) {
+    var bad = (r.state === 'blocked' || r.state === 'failed');
+    note = '<div style="margin:12px 0;padding:9px 11px;border-radius:8px;font-size:0.78rem;background:' + (bad ? '#fee2e2' : '#fef3c7') + ';color:' + (bad ? '#b91c1c' : '#92400e') + ';">' + escapeHtml(r.why) + '<\/div>';
+  }
+  var runLabel = r.state === 'failed' ? 'Retry run' : 'Run migration';
+  var canRunNow = r.canRun && !_rtmBusy && !r.result && !r.running;
+  var runBtn = '<button type="button" ' + (canRunNow ? 'onclick="rtmRunOne(\'' + j + '\', this)"' : 'disabled') + ' style="background:#6366f1;border:none;border-radius:8px;color:#fff;font-size:0.8rem;font-weight:600;padding:8px 14px;cursor:' + (canRunNow ? 'pointer' : 'default') + ';opacity:' + (canRunNow ? '1' : '0.45') + ';"><i class="fas fa-bolt"><\/i> ' + runLabel + '<\/button>';
+  var openBtn = '<button type="button" onclick="rtmOpen(\'' + j + '\')" title="Load this learner into the form below" style="background:#fff;border:1px solid #c7d2fe;border-radius:8px;color:#4338ca;font-size:0.8rem;font-weight:600;padding:8px 14px;cursor:pointer;">Open in form<\/button>';
+  var tk = r.ticketId ? '<a href="https://app.hubspot.com/contacts/7729491/record/0-5/' + escapeHtml(r.ticketId) + '" target="_blank" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;color:#475569;font-size:0.8rem;font-weight:600;padding:8px 14px;text-decoration:none;">Ticket <i class="fas fa-external-link-alt" style="font-size:0.7rem;"><\/i><\/a>' : '';
+  return '<div style="font-size:1.05rem;font-weight:700;color:#1e293b;">' + escapeHtml(r.learner || '—') + '<\/div>'
+    + '<div style="font-family:monospace;font-size:0.72rem;color:#94a3b8;margin-bottom:8px;">' + j + ' · ' + escapeHtml(r.stageLabel || '') + '<\/div>'
+    + rtmBadge(r)
+    + '<div style="display:grid;grid-template-columns:84px minmax(0,1fr);gap:8px 10px;margin:14px 0;font-size:0.8rem;">'
+    + kv('Teacher', escapeHtml(r.oldTeacher || '—') + ' <span style="color:#94a3b8;">→<\/span> ' + escapeHtml(r.newTeacher || '—'))
+    + kv('Course', escapeHtml(r.course || '—') + (r.nextCourse ? ' <span style="color:#94a3b8;">→<\/span> <span style="color:#6366f1;">' + escapeHtml(r.nextCourse) + '<\/span>' : ''))
+    + kv('Class slot', r.schedule ? escapeHtml(r.schedule) + ' CET' : '<span style="color:#94a3b8;">from the deal or calendar when run<\/span>')
+    + kv('Reason', escapeHtml(r.reason || '—'))
+    + kv('Waiting', '<span style="color:' + (r.daysWaiting >= 7 ? '#dc2626' : '#1e293b') + ';">' + r.daysWaiting + ' day' + (r.daysWaiting === 1 ? '' : 's') + '<\/span>')
+    + '<\/div>' + note
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + runBtn + openBtn + tk + '<\/div>';
+}
+
+function rtmRender(meta) {
+  var body = document.getElementById('rtmBody');
+  if (!body) return;
+  var rows = _rtmRows;
+  var c = rtmCounts();
+
+  var cnt = document.getElementById('rtmCount'); if (cnt) cnt.textContent = rows.length;
+  var chipHtml = function(key, label, n, color) {
+    var on = _rtmFilter === key;
+    return '<button type="button" onclick="rtmSetFilter(\'' + key + '\')" style="border:1px solid ' + (on ? color : '#e2e8f0') + ';background:' + (on ? color : '#fff') + ';color:' + (on ? '#fff' : '#475569') + ';border-radius:99px;padding:1px 10px;font-size:0.7rem;font-weight:600;cursor:pointer;">' + label + ' ' + n + '<\/button>';
+  };
+  var chips = document.getElementById('rtmChips');
+  if (chips) chips.innerHTML = chipHtml('all', 'All', rows.length, '#6366f1') + chipHtml('ready', 'Ready', c.ready, '#16a34a')
+    + chipHtml('waiting', 'Waiting', c.waiting, '#b45309') + (c.attention ? chipHtml('attention', 'Needs you', c.attention, '#dc2626') : '');
+
+  var tiles = document.getElementById('rtmTiles');
+  if (tiles) {
+    var tile = function(key, n, label) {
+      return '<button type="button" class="rtm-tile' + (_rtmFilter === key ? ' on' : '') + '" onclick="rtmSetFilter(\'' + (_rtmFilter === key ? 'all' : key) + '\')"><b>' + n + '<\/b><span>' + label + '<\/span><\/button>';
+    };
+    tiles.innerHTML = tile('ready', c.ready, 'Ready to run') + tile('waiting', c.waiting, 'Waiting on a date')
+      + tile('attention', c.attention, 'Need you') + tile('done', c.done, 'Migrated this session');
+  }
+
+  var vis = rtmVisibleRows();
+  var selRow = null;
+  vis.forEach(function(r) { if (r.ticketId === _rtmDetailId) selRow = r; });
+  if (!selRow && vis.length) { selRow = vis[0]; _rtmDetailId = selRow.ticketId; }
+  var detail = document.getElementById('rtmDetail');
+  if (detail) detail.innerHTML = rtmDetailHtml(selRow);
+
+  if (!vis.length) {
+    body.innerHTML = '<tr><td colspan="5" style="padding:1.75rem;text-align:center;color:#94a3b8;"><i class="fas fa-check-circle" style="font-size:1.3rem;display:block;margin-bottom:0.4rem;"><\/i>'
+      + (rows.length ? 'Nothing in this filter.' : 'Nothing is waiting to be migrated.') + '<\/td><\/tr>';
+  } else {
+    body.innerHTML = vis.map(function(r) {
+      var disabled = _rtmBusy ? ' disabled' : '';
+      var cb = r.canBulk
+        ? '<input type="checkbox" ' + (_rtmSel[r.ticketId] ? 'checked ' : '') + 'onclick="event.stopPropagation();rtmToggle(\'' + escapeHtml(r.ticketId) + '\', this.checked)"' + disabled + '>'
+        : '<span style="color:#cbd5e1;">—<\/span>';
+      var sel = r.ticketId === _rtmDetailId;
+      return '<tr class="rtm-row" onclick="rtmSelectRow(\'' + escapeHtml(r.ticketId) + '\')" style="border-bottom:1px solid #f1f5f9;vertical-align:top;cursor:pointer;' + (sel ? 'background:#eef2ff;' : '') + '">'
+        + '<td style="padding:8px 10px;">' + cb + '<\/td>'
+        + '<td style="padding:8px 10px;"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learner || '—') + '<\/div><div style="font-family:monospace;font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.jlid || '') + '<\/div><\/td>'
+        + '<td style="padding:8px 10px;color:#334155;">' + escapeHtml(r.oldTeacher || '—') + ' <span style="color:#94a3b8;">→<\/span> <b>' + escapeHtml(r.newTeacher || '—') + '<\/b><div style="font-size:0.7rem;color:#94a3b8;">' + escapeHtml(r.reason || '') + '<\/div><\/td>'
+        + '<td style="padding:8px 10px;color:#475569;">' + (r.schedule ? escapeHtml(r.schedule) : '<span style="color:#94a3b8;">from deal<\/span>') + '<div style="font-size:0.7rem;color:#94a3b8;">' + escapeHtml(r.course || '') + (r.nextCourse ? ' → ' + escapeHtml(r.nextCourse) : '') + '<\/div><\/td>'
+        + '<td style="padding:8px 10px;">' + rtmBadge(r) + '<div style="font-size:0.68rem;color:' + (r.daysWaiting >= 7 ? '#dc2626' : '#94a3b8') + ';margin-top:2px;">' + r.daysWaiting + 'd waiting<\/div><\/td>'
+        + '<\/tr>';
+    }).join('');
+  }
+
+  var foot = document.getElementById('rtmFoot');
+  if (foot && meta) {
+    foot.textContent = 'Tickets in Execution Pending / Approved by CLS' + (meta.truncated ? ' — showing the oldest ' + rows.length + ' of ' + meta.total : '')
+      + ' · updated ' + new Date(meta.fetchedAt || new Date().toISOString()).toLocaleTimeString();
+  }
+  rtmUpdateRunBtn();
+}
+
+// ── Learner Migration: list view -> fetched-learner form view ─────────────────────────────────────────
+// The queue is the landing view. Fetching a learner (typing a JLID, or "Open in form") shows the same form as
+// before, re-laid-out with a header and a live "what happens when you run" panel. Nothing in the form changed.
+var _migView = 'list';
+var _migTimer = null;
+
+function migShowView(v) {
+  _migView = v;
+  var form = document.getElementById('migrationForm');
+  if (!form) return;
+  var isForm = (v === 'form');
+  var hdr = document.getElementById('migHeader'), card = document.getElementById('rtmCard'), look = document.getElementById('migLookup');
+  form.style.display = isForm ? '' : 'none';
+  if (hdr)  hdr.style.display  = isForm ? 'flex' : 'none';
+  if (card) card.style.display = isForm ? 'none' : '';
+  if (look) look.style.display = isForm ? 'none' : 'flex';
+  var wrap = form.closest ? form.closest('.form-container-wide') : null;
+  if (wrap) wrap.style.maxWidth = isForm ? '1400px' : '';
+  clearInterval(_migTimer);
+  if (isForm) {
+    migRefreshPanels();
+    _migTimer = setInterval(migRefreshPanels, 1200);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    if (typeof rtmLoad === 'function') rtmLoad(false);
+  }
+}
+
+function migBack() { migShowView('list'); }
+
+function migLookup() {
+  var inp = document.getElementById('migLookupJlid');
+  var v = inp ? inp.value.trim() : '';
+  if (!v) { showToast('error', 'Enter a JLID', 'Type the learner ID, or pick a learner from the list.'); return; }
+  var el = document.getElementById('jlid');
+  if (!el) return;
+  el.value = v;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  window._migLastFetchedJlid = '';
+  if (typeof fetchMigrationSpecificData === 'function') fetchMigrationSpecificData();
+}
+
+function migHdAuto() { var b = document.getElementById('autoMigrateBtn'); if (b && !b.disabled) b.click(); }
+function migSubmit() { var b = document.getElementById('submitMigration'); if (b && !b.disabled) b.click(); }
+function migReviewWa() { var b = document.getElementById('reviewWhatsappBtn'); if (b) b.click(); }
+
+function _migVal(id) { var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+function _migSel(id) {
+  var e = document.getElementById(id);
+  if (!e || !e.value) return '';
+  var o = e.options && e.options[e.selectedIndex];
+  return o ? String(o.text || '').trim() : String(e.value || '').trim();
+}
+function _migChk(id) { var e = document.getElementById(id); return !!(e && e.checked); }
+
+function migRefreshPanels() { migHeaderUpdate(); migSummaryRender(); }
+
+function migHeaderUpdate() {
+  var nameEl = document.getElementById('migHdName'), metaEl = document.getElementById('migHdMeta'), tk = document.getElementById('migHdTicket');
+  if (!nameEl) return;
+  var jlid = _migVal('jlid');
+  var row = (typeof rtmFindByJlid === 'function') ? rtmFindByJlid(jlid) : null;
+  var name = _migVal('learner') || (row && row.learner) || 'Learner';
+  nameEl.innerHTML = escapeHtml(name) + ' <span style="font-family:monospace;font-size:0.72rem;color:#94a3b8;font-weight:500;">' + escapeHtml(jlid) + '<\/span>';
+  var chips = [];
+  var pill = function(bg, fg, t) { return '<span style="background:' + bg + ';color:' + fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + escapeHtml(t) + '<\/span>'; };
+  if (row) {
+    var cfg = { ready: ['#dcfce7', '#15803d', 'Ready'], waiting: ['#fef3c7', '#b45309', 'Waiting on a date'], blocked: ['#fee2e2', '#b91c1c', 'Needs you'], failed: ['#fee2e2', '#b91c1c', 'Failed'], started: ['#ede9fe', '#6d28d9', 'Started'] }[row.state];
+    if (cfg) chips.push(pill(cfg[0], cfg[1], cfg[2]));
+    if (row.stageLabel) chips.push(pill('#f1f5f9', '#475569', 'Ticket: ' + row.stageLabel));
+  }
+  var reason = _migSel('reasonOfMigration');
+  if (reason) chips.push('<span style="font-size:0.78rem;color:#64748b;">' + escapeHtml(reason) + '<\/span>');
+  metaEl.innerHTML = chips.join(' ');
+  if (tk) {
+    if (row && row.ticketId) { tk.href = 'https://app.hubspot.com/contacts/7729491/record/0-5/' + encodeURIComponent(row.ticketId); tk.style.display = ''; }
+    else tk.style.display = 'none';
+  }
+}
+
+function migSummaryRender() {
+  var box = document.getElementById('migSummaryList');
+  if (!box) return;
+  var items = [];
+  var add = function(kind, title, sub) { items.push({ kind: kind, title: title, sub: sub || '' }); };
+
+  var newT = _migSel('newTeacher'), oldT = _migSel('oldTeacher');
+  if (newT) add('ok', 'Teacher on the deal becomes ' + newT, oldT ? oldT + ' is replaced' : '');
+  else add('wn', 'No new teacher selected', 'Pick the new teacher in Teacher & Booking');
+
+  var course = _migSel('migrationCourse');
+  var sessions = [];
+  document.querySelectorAll('#classSessionsContainer .class-session-group').forEach(function(g) {
+    var d = g.querySelector('.class-day-select'), h = g.querySelector('.class-hour-select'), m = g.querySelector('.class-minute-select'), a = g.querySelector('.class-meridiem-select');
+    if (d && d.value && h && h.value && m && m.value && a && a.value) sessions.push(d.value.substring(0, 3) + ' ' + parseInt(h.value, 10) + ':' + m.value + ' ' + a.value);
+  });
+  if (sessions.length) add('ok', 'Course, day and time synced to the deal', (course ? course + ' · ' : '') + sessions.join(', '));
+  else add('wn', 'No class day and time set yet', 'Add the schedule in Class & Schedule');
+
+  var link = _migVal('migrationClassLink');
+  if (/^https?:\/\//i.test(link)) add('ok', 'Class link set', '');
+  else add('off', 'Class link empty', 'A link is generated from the JLID when left empty');
+
+  var reason = _migSel('reasonOfMigration').toLowerCase();
+  var next = _migVal('migFutureCourse1');
+  if (reason.indexOf('course change') > -1 && next) add('ok', 'Deal moves to the new course', next);
+  if (/attrition|leave|maternity|higher studies/.test(reason)) add('ok', 'Attrition note added to the deal', '');
+
+  if (_migChk('sendEmailToTeacher')) add('ok', 'New teacher emailed', ''); else add('off', 'Teacher email skipped', 'Unticked in Communication');
+
+  if (_migChk('sendWhatsappToParent')) {
+    var manual = _migVal('manualWhatsappNumber');
+    var n = manual ? 1 : document.querySelectorAll('#watiContactList input[type=checkbox]:checked').length;
+    add(n ? 'ok' : 'wn', n ? 'Parent WhatsApp to ' + n + ' contact' + (n === 1 ? '' : 's') : 'No WhatsApp contact selected', _migSel('watiTemplateSelect') ? 'Template: ' + _migSel('watiTemplateSelect') : '');
+  } else add('off', 'Parent WhatsApp skipped', 'Unticked in Communication');
+
+  if (_migChk('sendEmailToParentAlso')) add('ok', 'Parent also emailed', 'Same content as the WhatsApp');
+  if (_migChk('sendCourseCertificate')) add('ok', 'Course certificate sent', '');
+  add('ok', 'Teacher upskilling check noted on the ticket', 'Covers the next courses');
+
+  var bookStatus = (document.getElementById('bookClassesWithNewTeacherStatus') || {}).textContent || '';
+  var classes = _migVal('bookClassesNumEvents');
+  if (/booked/i.test(bookStatus)) add('ok', 'Classes booked', bookStatus.trim());
+  else add('off', 'Classes not booked yet', 'Use "Book classes with new teacher"' + (classes ? ' (' + classes + ' classes)' : '') + ' in Teacher & Booking');
+
+  var icon = { ok: '✓', wn: '!', off: '–' };
+  box.innerHTML = items.map(function(i) {
+    return '<li class="mig-chk"><span class="mig-ic mig-' + i.kind + '">' + icon[i.kind] + '<\/span><span>' + escapeHtml(i.title) + (i.sub ? '<small>' + escapeHtml(i.sub) + '<\/small>' : '') + '<\/span><\/li>';
+  }).join('');
+}
+
+(function() {
+  var o = window.fetchMigrationSpecificData;
+  if (typeof o !== 'function') return;
+  window.fetchMigrationSpecificData = function() {
+    var v = (document.getElementById('jlid') || {}).value;
+    if (v && String(v).trim()) migShowView('form');
+    return o.apply(this, arguments);
+  };
+})();
+
+// Load a learner from the list into the normal manual form
+function rtmOpen(jlid) {
+  var el = document.getElementById('jlid');
+  if (!el || !jlid) return;
+  el.value = jlid;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  window._migLastFetchedJlid = '';
+  if (typeof fetchMigrationSpecificData === 'function') fetchMigrationSpecificData();
+  var form = document.getElementById('migrationForm');
+  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function rtmFindByJlid(jlid) {
+  for (var i = 0; i < _rtmRows.length; i++) if (_rtmRows[i].jlid === jlid) return _rtmRows[i];
+  return null;
+}
+
+// Turns the server's answer into a row result: "Not run" (nothing was sent) vs failed vs done
+function rtmSetResult(row, res) {
+  var msg = (res && res.message) || '';
+  var notRun = !!(res && res.success === false && /^Not run/i.test(msg));
+  row.running = false;
+  row.result = { success: !!(res && res.success), notRun: notRun, message: msg };
+  if (res && res.success) rtmRecordDone(row.jlid, msg, row.learner);
+}
+
+// ── Pre-run check: what will happen, shown before anything is sent ─────────────────────────────────────
+function migPlanLines(v) {
+  var p = v.plan || {};
+  var told = (p.slotToTellParent || []).map(function(s) { return s.day + ' ' + s.time; }).join(', ');
+  var lines = [];
+  lines.push(['Learner', v.learner || p.learner || '']);
+  lines.push(['Teacher', (p.oldTeacher || '?') + ' → ' + (p.newTeacher || '?')]);
+  lines.push(['Course', (p.bookingCourse || p.currentCourse || '—')]);
+  if (p.firstClassForParent) lines.push(['First class', p.firstClassForParent]);
+  if (p.firstClassCET) lines.push(['Same moment in CET', p.firstClassCET]);
+  if (told) lines.push(['Parent will be told', told + (p.parentTimezone ? ' (' + p.parentTimezone + ')' : '')]);
+  var mails = ['teacher'].concat((p.parentEmails && p.parentEmails.length) ? ['parent (' + p.parentEmails.length + ')'] : []);
+  lines.push(['Emails to', mails.join(' and ')]);
+  if (p.migrationType) lines.push(['Type', p.migrationType]);
+  if (p.classLink) lines.push(['Class link', p.classLink]);
+  return lines;
+}
+function migPlanText(v) {
+  var t = migPlanLines(v).map(function(r) { return r[0] + ': ' + r[1]; }).join('\n');
+  if (v.aiSummary) t += '\n\nCheck: ' + v.aiSummary;
+  if (v.soft && v.soft.length) t += '\n\n⚠ Please look at this first:\n• ' + v.soft.join('\n• ');
+  return t;
+}
+function migPlanHtml(v) {
+  var rows = migPlanLines(v).map(function(r) {
+    return '<tr><td style="color:#64748b;padding:3px 10px 3px 0;white-space:nowrap;vertical-align:top;">' + escapeHtml(r[0]) + '<\/td><td style="font-weight:600;color:#1e293b;word-break:break-word;">' + escapeHtml(r[1]) + '<\/td><\/tr>';
+  }).join('');
+  var html = '<div style="text-align:left;font-size:0.82rem;"><div style="margin-bottom:8px;color:#475569;">Sends the migration emails and WhatsApp, books the classes and completes the ticket. This is what will happen:<\/div>'
+    + '<table style="border-collapse:collapse;">' + rows + '<\/table>';
+  if (v.aiSummary) html += '<div style="margin-top:8px;color:#15803d;">✓ Checked: ' + escapeHtml(v.aiSummary) + '<\/div>';
+  if (v.soft && v.soft.length) {
+    html += '<div style="margin-top:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;color:#92400e;"><b>Please look at this first<\/b><ul style="margin:4px 0 0 16px;padding:0;">'
+      + v.soft.map(function(w) { return '<li>' + escapeHtml(w) + '<\/li>'; }).join('') + '<\/ul><\/div>';
+  }
+  return html + '<\/div>';
+}
+
+function rtmRunOne(jlid, btn) {
+  var row = rtmFindByJlid(jlid);
+  if (!row || _rtmBusy) return;
+  row.running = true; rtmRender();
+  // 1. check the plan first (sends nothing)
+  google.script.run
+    .withSuccessHandler(function(v) {
+      row.running = false;
+      if (!v || !v.success) { rtmRender(); showToast('error', 'Not ready to run', (v && v.message) || 'Could not check this learner.'); return; }
+      if (v.hard && v.hard.length) { rtmRender(); showToast('error', 'Not safe to run', v.hard.join(' ')); return; }
+      var warn = row.state === 'failed'
+        ? '\n\nA previous run FAILED part-way — the teacher email and parent WhatsApp may already have been sent. Running again sends them again.'
+        : '';
+      rtmRender();
+      if (!confirm('Run the migration for ' + (row.learner || jlid) + ' (' + jlid + ')?\n\n' + migPlanText(v) + warn)) return;
+      var accept = !!(v.soft && v.soft.length);
+      // 2. run it
+      row.running = true; rtmRender();
+      google.script.run
+        .withSuccessHandler(function(res) {
+          rtmSetResult(row, res); rtmRender();
+          if (res && res.success) showToast('success', 'Migration done', (row.learner || jlid) + ' — ' + (res.message || 'Executed.'));
+          else showToast('error', 'Not completed', (res && res.message) || 'Unknown error');
+          setTimeout(function() { rtmLoad(true); }, 2500);
+        })
+        .withFailureHandler(function(err) {
+          rtmSetResult(row, { success: false, message: ((err && err.message) || String(err)) + ' — check the ticket before running it again (it may have partly run).' }); rtmRender();
+          showToast('error', 'Error', (err && err.message) || String(err));
+        })
+        .runAutoMigrateForJlid(jlid, '', accept);
+    })
+    .withFailureHandler(function(err) { row.running = false; rtmRender(); showToast('error', 'Could not check', (err && err.message) || String(err)); })
+    .verifyAutoMigrate(jlid, '');
+}
+
+function rtmRunSelected() {
+  if (_rtmBusy) return;
+  var queue = _rtmRows.filter(function(r) { return _rtmSel[r.ticketId] && r.canBulk; });
+  if (!queue.length) return;
+  var names = queue.slice(0, 8).map(function(r) { return '• ' + (r.learner || r.jlid) + ' → ' + (r.newTeacher || '?'); }).join('\n') + (queue.length > 8 ? '\n• …and ' + (queue.length - 8) + ' more' : '');
+  if (!confirm('Run ' + queue.length + ' migration' + (queue.length === 1 ? '' : 's') + ' now, one after another?\n\n' + names
+      + '\n\nEach one sends the teacher email and the parent WhatsApp, books the classes and moves the ticket to Completed. A learner whose class link or schedule is missing is skipped and NOTHING is sent for them.\n\nKeep this page open — it takes roughly a minute per learner.')) return;
+
+  _rtmBusy = true; _rtmStop = false;
+  var total = queue.length, done = 0, failed = 0, notRun = 0, idx = 0;
+  var prog = document.getElementById('rtmProgress');
+  var showProg = function(text, withStop) {
+    if (!prog) return;
+    prog.style.display = 'flex';
+    prog.innerHTML = '<span>' + text + '<\/span>' + (withStop ? '<button type="button" onclick="_rtmStop=true;this.disabled=true;this.textContent=\'Stopping…\';" style="background:#fff;border:1px solid #a5b4fc;border-radius:6px;color:#3730a3;font-size:0.72rem;font-weight:600;padding:3px 10px;cursor:pointer;">Stop after this one<\/button>' : '');
+  };
+  rtmRender();
+
+  var finish = function() {
+    _rtmBusy = false; _rtmSel = {};
+    showProg('<b>Finished.<\/b> ' + done + ' done' + (notRun ? ', ' + notRun + ' not run (nothing sent — see the reason in the list)' : '') + (failed ? ', ' + failed + ' failed' : '')
+      + (_rtmStop && idx < total ? ' · stopped with ' + (total - idx) + ' left' : '') + '.', false);
+    showToast(failed ? 'error' : 'success', 'Bulk migration finished', done + ' done, ' + notRun + ' not run, ' + failed + ' failed.');
+    rtmRender();
+    setTimeout(function() { rtmLoad(true); }, 3000);
+  };
+
+  var next = function() {
+    if (_rtmStop || idx >= total) { finish(); return; }
+    var row = queue[idx];
+    showProg('Running <b>' + (idx + 1) + ' of ' + total + '<\/b> — ' + escapeHtml(row.learner || row.jlid) + '…', true);
+    row.running = true; rtmRender();
+    google.script.run
+      .withSuccessHandler(function(res) {
+        rtmSetResult(row, res);
+        if (row.result.success) done++; else if (row.result.notRun) notRun++; else failed++;
+        idx++; rtmRender(); setTimeout(next, 300);
+      })
+      .withFailureHandler(function(err) {
+        rtmSetResult(row, { success: false, message: ((err && err.message) || String(err)) + ' — check the ticket before running it again (it may have partly run).' });
+        failed++; idx++; rtmRender(); setTimeout(next, 300);
+      })
+      .runAutoMigrateForJlid(row.jlid, '');
+  };
+  next();
+}
+
+// Run one waiting/failed ticket now, once someone has fixed what it was waiting on
+function lopsRunAutoMigrate(jlid, btn) {
+  if (!jlid) return;
+  if (!confirm('Run the migration for ' + jlid + ' now?\n\nThis sends the teacher email and the parent WhatsApp and books the classes. If the classes cannot be booked, the ticket stays in Execution Pending.')) return;
+  var orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      if (res && res.success) showToast('success', 'Migration done', res.message || 'Executed.');
+      else showToast('error', 'Not completed', (res && res.message) || 'Unknown error');
+      _lopsLoadAutoStats();
+    })
+    .withFailureHandler(function(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      showToast('error', 'Error', (err && err.message) || String(err));
+    })
+    .runAutoMigrateForJlid(jlid, '');
+}
+
 // ── Automation stats (Migration tab sub-panel) ──────────────────────────────
 function _lopsLoadAutoStats() {
   var strip = document.getElementById('migAutoStatsStrip');
@@ -13120,14 +13777,14 @@ function _lopsLoadAutoStats() {
       set('migAutoStatExec',    res.autoExecuted);
       set('migAutoStatQueue',   res.pendingQueue);
       set('migAutoStatFailed',  res.failed);
-      set('migAutoStatSkipped', res.skipped);
+      set('migAutoStatSkipped', (res.skipped || 0) + (res.blocked || 0));
 
       var lastRun = document.getElementById('migAutoLastRun');
       if (lastRun && res.fetchedAt) {
         try { lastRun.textContent = 'as of ' + new Date(res.fetchedAt).toLocaleTimeString(); } catch(e) {}
       }
 
-      var manualTickets = (res.failedTickets || []).concat(res.skippedTickets || []);
+      var manualTickets = (res.failedTickets || []).concat(res.blockedTickets || []).concat(res.skippedTickets || []);
       var manualWrap = document.getElementById('migAutoNeedsManual');
       var manualList = document.getElementById('migAutoNeedsManualList');
       if (manualWrap && manualList) {
@@ -13139,17 +13796,22 @@ function _lopsLoadAutoStats() {
             var bg     = '#fef2f2';
             var border = '#fca5a5';
             var label  = 'Failed';
-            // if ticket is in skipped list
+            // waiting on something (blocked) or legacy skipped — both are re-checked automatically
             var isSkipped = (res.skippedTickets || []).some(function(s) { return s.id === t.id; });
-            if (isSkipped) { color = '#b45309'; bg = '#fffbeb'; border = '#fde68a'; label = 'Skipped'; }
-            var hsLink = 'https://app.hubspot.com/contacts/20515701/ticket/' + t.id;
+            var isBlocked = (res.blockedTickets || []).some(function(s) { return s.id === t.id; });
+            if (isSkipped || isBlocked) { color = '#b45309'; bg = '#fffbeb'; border = '#fde68a'; label = isBlocked ? 'Waiting' : 'Skipped'; }
+            var hsLink = 'https://app.hubspot.com/contacts/7729491/record/0-5/' + t.id;
+            var runBtn = t.jlid
+              ? '<button onclick="lopsRunAutoMigrate(\'' + escapeHtml(t.jlid) + '\', this)" title="Run this migration now (sends the teacher email + parent WhatsApp and books the classes)" style="background:#6366f1;border:none;border-radius:5px;color:#fff;font-size:0.68rem;font-weight:600;padding:2px 8px;cursor:pointer;white-space:nowrap;margin-right:6px;"><i class="fas fa-bolt"><\/i> Run<\/button>'
+              : '';
             return '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:7px;padding:6px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">'
               + '<div style="flex:1;min-width:0;">'
               + '<span style="font-size:0.72rem;font-weight:700;color:' + color + ';margin-right:5px;padding:1px 6px;background:' + border + '20;border-radius:4px;">' + label + '</span>'
               + '<a href="' + hsLink + '" target="_blank" style="font-size:0.78rem;font-weight:600;color:#1e293b;text-decoration:none;">' + escapeHtml(t.subject || t.jlid || t.id) + '</a>'
               + (t.error ? '<div style="font-size:0.69rem;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escapeHtml(t.error) + '">' + escapeHtml(t.error) + '</div>' : '')
               + '</div>'
-              + '<a href="' + hsLink + '" target="_blank" style="font-size:0.7rem;color:#6366f1;white-space:nowrap;text-decoration:none;padding-top:2px;">View →</a>'
+              + '<div style="display:flex;align-items:flex-start;padding-top:1px;">' + runBtn
+              + '<a href="' + hsLink + '" target="_blank" style="font-size:0.7rem;color:#6366f1;white-space:nowrap;text-decoration:none;padding-top:2px;">View →</a></div>'
               + '</div>';
           }).join('');
         } else {
@@ -13692,6 +14354,52 @@ function _personaRegisterMatchLog(teacherName) {
  * calendar (hello@jet-learn.com) + teacher's calendar, inviting the teacher.
  * "Total Classes to Reserve" is split evenly across however many slot rows exist.
  */
+// ── Ticket stage choice shown with Reserve Slot + the results-area buttons ─────────────────────────────
+var _TIC_STAGE_NAMES = { '128913747': 'Migration Triggered', '128913750': 'TP Approval Pending', '128913752': 'CLS Approval Pending', '1065336836': 'Execution Pending' };
+var _TIC_BEFORE_EXECUTION = ['128913747', '128913750', '128913752'];
+
+function _ticNeedsCls() {
+  var low = (_ticMigrationReason || '').toLowerCase();
+  return (typeof CLS_REQUIRED_REASONS !== 'undefined') && CLS_REQUIRED_REASONS.some(function(r) { return low.indexOf(r) !== -1; });
+}
+
+// The "then move the ticket to" choice inside the Reserve Slot confirm. '' when there is no ticket to move.
+function _reserveStageChoiceHtml() {
+  if (!_ticTicketId || !_ticTicketStage) return '';
+  var cur = _ticTicketStage;
+  var box = 'margin-top:10px;text-align:left;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;font-size:0.8rem;color:#475569;';
+  if (_TIC_BEFORE_EXECUTION.indexOf(cur) === -1) {
+    return '<div style="' + box + '">The ticket stays in <strong>' + escapeHtml(_TIC_STAGE_NAMES[cur] || 'its current stage') + '<\/strong>.<\/div>';
+  }
+  var needsCls = _ticNeedsCls();
+  var def = needsCls ? '128913752' : '1065336836';
+  var opts = [['1065336836', 'Execution Pending'], ['128913752', 'CLS Approval'], ['128913750', 'TP Approval'], ['none', 'Don\'t move it']].map(function(o) {
+    return '<option value="' + o[0] + '"' + (o[0] === def ? ' selected' : '') + '>' + o[1] + '<\/option>';
+  }).join('');
+  return '<div style="' + box + '"><label style="font-weight:600;">Then move the ticket to<\/label> '
+    + '<select id="reserveMoveStage" style="margin-left:6px;padding:3px 6px;border:1px solid #cbd5e1;border-radius:6px;font-size:0.8rem;">' + opts + '<\/select>'
+    + '<div style="font-size:0.72rem;color:#94a3b8;margin-top:4px;">Now in ' + escapeHtml(_TIC_STAGE_NAMES[cur] || 'its current stage') + '.'
+    + (needsCls ? ' This reason needs CLS approval, so CLS Approval is suggested.' : '') + '<\/div><\/div>';
+}
+
+// After the slots are reserved, move the ticket the person chose.
+function _reserveMoveTicketAfter(jlid, target) {
+  if (!target || target === 'none') return;
+  var name = _TIC_STAGE_NAMES[target] || 'the next stage';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.success) {
+        _ticTicketStage = target;
+        if (typeof _renderTicActionStrip === 'function') _renderTicActionStrip();
+        showToast('success', 'Ticket moved', 'The ticket is now in ' + name + '.');
+      } else {
+        showToast('warning', 'Slots reserved, ticket NOT moved', (res && res.message) || 'Move it with the buttons above the results.');
+      }
+    })
+    .withFailureHandler(function(e) { showToast('warning', 'Slots reserved, ticket NOT moved', (e && e.message) || String(e)); })
+    .moveTicketStageForJlid(jlid, target);
+}
+
 function _personaReserveSlot(teacherName) {
   var jlid        = _personaCtxJlid    || '';
   var learnerName = _personaCtxLearner || '';
@@ -13723,9 +14431,10 @@ function _personaReserveSlot(teacherName) {
     'Reserve Slot',
     'Reserve <strong>' + slotsDesc + ' (' + escapeHtml(tzLabel) + ')<\/strong> with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br>'
       + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
-      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + _reserveStageChoiceHtml(),
     function(confirmed) {
       if (!confirmed) return;
+      var _mvStage = (document.getElementById('reserveMoveStage') || {}).value || '';
       showLoading('Reserving slots (' + numEvents + ' total classes)…');
       google.script.run
         .withSuccessHandler(function(res) {
@@ -13735,6 +14444,7 @@ function _personaReserveSlot(teacherName) {
             return;
           }
           showToast('success', 'Slots Reserved', res.occurrences + ' total classes booked with ' + teacherName);
+          _reserveMoveTicketAfter(jlid, _mvStage);
         })
         .withFailureHandler(function(err) {
           hideLoading();
@@ -13812,9 +14522,10 @@ function _personaReserveSlotDirect() {
     'Reserve Slot',
     'Reserve <strong>' + slotsDesc + ' (' + escapeHtml(tzLabel) + ')<\/strong> with <strong>' + escapeHtml(teacherName) + '<\/strong> for <strong>' + escapeHtml(learnerName || jlid) + '<\/strong>?<br>'
       + '<span style="font-size:0.8rem;color:#6366f1;">' + splitDesc + '<\/span><br>'
-      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>',
+      + '<span style="font-size:0.8rem;color:#94a3b8;">Invites hello@jet-learn.com (organizer), the teacher' + (extraEmails.length ? ', and ' + extraEmails.length + ' parent email(s)' : '') + '.<\/span>' + _reserveStageChoiceHtml(),
     function(confirmed) {
       if (!confirmed) return;
+      var _mvStage = (document.getElementById('reserveMoveStage') || {}).value || '';
       showLoading('Reserving slots (' + numEvents + ' total classes)…');
       google.script.run
         .withSuccessHandler(function(res) {
@@ -13824,6 +14535,7 @@ function _personaReserveSlotDirect() {
             return;
           }
           showToast('success', 'Slots Reserved', res.occurrences + ' total classes booked with ' + teacherName);
+          _reserveMoveTicketAfter(jlid, _mvStage);
         })
         .withFailureHandler(function(err) {
           hideLoading();
@@ -15288,13 +16000,14 @@ function renderKitTrackingTable(filterArg) {
       : '<span style="font-size:0.7rem;color:#94a3b8;margin-left:4px;border:1px dashed #e2e8f0;border-radius:6px;padding:2px 6px;">Refunded<\/span>';
     var ktChatPhone = (row.phone || '').replace(/\D/g, '');
     var ktAllPhones = (row.phones && row.phones.length > 1) ? row.phones : (ktChatPhone ? [ktChatPhone] : []);
-    const msgBtn = ktAllPhones.length
+    let msgBtn = ktAllPhones.length
       ? ktAllPhones.map(function(p, pi) {
           return '<a href="https://wa.me/' + p + '" target="_blank" onclick="event.stopPropagation();" '
             + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="WhatsApp: ' + p + '">'
             + '<i class="fab fa-whatsapp"><\/i>' + (ktAllPhones.length > 1 ? '<span>Chat ' + (pi+1) + '<\/span>' : '<span>Chat<\/span>') + '<\/a>';
         }).join('')
       : '';
+    msgBtn += ktParentMsgBtn(row);
     // "Track" opens the public Track My Kit page in a new tab — available for
     // any row with a JLID, regardless of pipeline stage, so ops can preview
     // exactly what the parent sees. "Send Tracking Link" (WhatsApp + email)
@@ -15494,13 +16207,14 @@ function renderKitAskingAddressTable() {
 
     var ktChatPhone = (row.phone || '').replace(/\D/g, '');
     var ktAllPhones2 = (row.phones && row.phones.length > 1) ? row.phones : (ktChatPhone ? [ktChatPhone] : []);
-    const msgBtn = ktAllPhones2.length
+    let msgBtn = ktAllPhones2.length
       ? ktAllPhones2.map(function(p, pi) {
           return '<a href="https://wa.me/' + p + '" target="_blank" onclick="event.stopPropagation();" '
             + 'style="background:#075E54;border:none;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;margin-right:4px;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="WhatsApp: ' + p + '">'
             + '<i class="fab fa-whatsapp"><\/i>' + (ktAllPhones2.length > 1 ? '<span>Chat ' + (pi+1) + '<\/span>' : '') + '<\/a>';
         }).join('')
       : '';
+    msgBtn += ktParentMsgBtn(row);
     const orderBtn = row.addrStatus === 'Received'
       ? '<button onclick="event.stopPropagation();ktOpenMarkOrderPlaced(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:#0d9488;border:none;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:#fff;cursor:pointer;white-space:nowrap;font-weight:600;"><i class="fas fa-shopping-cart"><\/i> Mark Order Placed<\/button>'
         + '<button onclick="event.stopPropagation();ktOpenReimbursement(' + row.rowIndex + ', \'' + escapeHtml(row.jlid) + '\', \'' + escapeHtml(row.learnerName) + '\', \'' + escapeHtml(row.kit) + '\')" style="background:none;border:1px solid #7c3aed;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#7c3aed;cursor:pointer;white-space:nowrap;margin-left:4px;" title="Address issue or out of stock — parent buys it themselves, JetLearn reimburses"><i class="fas fa-hand-holding-usd"><\/i> Parent Purchased<\/button>'
@@ -15643,7 +16357,9 @@ function ktOpenEdit(rowIndex, jlid, learnerName, kitName, deliveryDate, response
       + '<p id="ktEditSubtitle" style="margin:0 0 18px;font-size:0.82rem;color:#64748b;"><\/p>'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">JLID<\/label>'
       + '<input id="ktEditJlid" type="text" placeholder="JL52767973402C" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;font-family:monospace;">'
-      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Delivery Date<\/label>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Expected delivery (ETA) <span style="font-weight:400;color:#94a3b8;">— change it when the courier moves the date<\/span><\/label>'
+      + '<input id="ktEditEta" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Delivered on <span style="font-weight:400;color:#94a3b8;">— only once it has arrived<\/span><\/label>'
       + '<input id="ktEditDelivery" type="date" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:14px;">'
       + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Parent Response<\/label>'
       + '<select id="ktEditResponse" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;margin-bottom:20px;background:#fff;">'
@@ -15662,6 +16378,13 @@ function ktOpenEdit(rowIndex, jlid, learnerName, kitName, deliveryDate, response
 
   // Pre-fill
   modal.dataset.rowIndex = rowIndex;
+  modal.dataset.origDate = (deliveryDate && deliveryDate !== 'undefined') ? deliveryDate : '';
+  // ETA (what the courier promised) comes from the loaded row: DD/MM/YYYY -> YYYY-MM-DD for the date input
+  var _rcEta = (typeof _ktRowCache !== 'undefined' && _ktRowCache[rowIndex] && _ktRowCache[rowIndex].eta) || '';
+  var _etaP = String(_rcEta).split('/');
+  var _etaIso = _etaP.length === 3 ? (_etaP[2] + '-' + _etaP[1].padStart(2, '0') + '-' + _etaP[0].padStart(2, '0')) : '';
+  modal.dataset.origEta = _etaIso;
+  document.getElementById('ktEditEta').value = _etaIso;
   document.getElementById('ktEditSubtitle').textContent = learnerName + (kitName ? ' — ' + kitName : '');
   document.getElementById('ktEditJlid').value = jlid || '';
 
@@ -15689,6 +16412,204 @@ function ktCloseEdit() {
   if (modal) modal.style.display = 'none';
 }
 
+// ── Kit Tracking: message the parent about logistics (WhatsApp outbound_msg + branded email) ─────────
+var _kpmPresets = null, _kpmTimer = null, _kpmSeq = 0;
+
+function ktParentMsgBtn(row) {
+  if (!row || !row.jlid) return '';
+  return '<button onclick="event.stopPropagation();ktOpenParentMsg(' + row.rowIndex + ')" '
+    + 'style="background:none;border:1px solid #0ea5e9;border-radius:6px;padding:3px 8px;font-size:0.72rem;color:#0284c7;cursor:pointer;white-space:nowrap;margin-left:4px;" '
+    + 'title="Tell the parent about delivery, delay, cancellation, refund, reorder… (WhatsApp + email)"><i class="fas fa-envelope-open-text"><\/i> Message Parent<\/button>';
+}
+
+function ktOpenParentMsg(rowIndex, opts) {
+  opts = opts || {};
+  var row = (typeof _ktRowCache !== 'undefined' && _ktRowCache[rowIndex]) || {};
+  var ctxObj = {
+    rowIndex: rowIndex,
+    jlid: opts.jlid || row.jlid || '',
+    learnerName: opts.learnerName || row.learnerName || '',
+    kitName: opts.kitName || row.kit || ''
+  };
+  var modal = document.getElementById('ktParentMsgModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ktParentMsgModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+    var inp = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;';
+    var lbl = 'font-size:0.74rem;font-weight:600;color:#475569;display:block;margin:12px 0 4px;';
+    modal.innerHTML = '<div style="background:#fff;border-radius:14px;padding:24px 26px;width:760px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.2);">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+      + '<h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;"><i class="fas fa-envelope-open-text" style="color:#0284c7;margin-right:8px;"><\/i>Message Parent<\/h3>'
+      + '<button id="kpmX" onclick="ktCancelParentMsg()" style="background:none;border:none;font-size:1.2rem;color:#94a3b8;cursor:pointer;">✕<\/button><\/div>'
+      + '<p id="kpmMandatory" style="display:none;margin:8px 0 0;padding:8px 10px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;font-size:0.8rem;color:#92400e;"><span id="kpmMandText">The delivery date changed.<\/span> The parent should be told — send this message, or choose not to inform them.<\/p>'
+      + '<p id="kpmSub" style="margin:4px 0 0;font-size:0.8rem;color:#64748b;"><\/p>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:6px;">'
+      + '<div>'
+      + '<label style="' + lbl + '">What happened?<\/label><select id="kpmPreset" onchange="kpmPresetChanged()" style="' + inp + 'background:#fff;"><\/select>'
+      + '<div id="kpmPrevWrap"><label id="kpmPrevLbl" style="' + lbl + '">Originally expected<\/label><input id="kpmPrev" type="date" oninput="kpmQueuePreview()" style="' + inp + '"><\/div>'
+      + '<div id="kpmDateWrap"><label id="kpmDateLbl" style="' + lbl + '">Date<\/label><input id="kpmDate" type="date" oninput="kpmQueuePreview()" style="' + inp + '"><\/div>'
+      + '<label style="' + lbl + '">Message (WhatsApp <code>text<\/code>)<\/label><textarea id="kpmText" rows="3" oninput="kpmQueuePreview()" style="' + inp + 'resize:vertical;"><\/textarea>'
+      + '<label style="' + lbl + '">Follow-up (WhatsApp <code>text1<\/code>)<\/label><textarea id="kpmText1" rows="3" oninput="kpmQueuePreview()" style="' + inp + 'resize:vertical;"><\/textarea>'
+      + '<p style="margin:4px 0 0;font-size:0.7rem;color:#94a3b8;">{learner} {kit} {date} are filled in automatically.<\/p>'
+      + '<div style="display:flex;gap:16px;margin-top:12px;font-size:0.82rem;color:#334155;">'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="kpmWa" checked> WhatsApp<\/label>'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="kpmMail" checked> Email<\/label><\/div>'
+      + '<div id="kpmTeacherWrap" style="display:none;margin-top:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:8px 10px;">'
+      + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.82rem;color:#0c4a6e;font-weight:600;"><input type="checkbox" id="kpmTeacher" checked> Also tell the teacher<\/label>'
+      + '<div style="font-size:0.72rem;color:#0369a1;margin:2px 0 6px 22px;">Same email thread as the kit order, CLS and TP manager copied.<\/div>'
+      + '<input type="text" id="kpmTeacherReason" placeholder="Reason for the teacher, e.g. courier delay at the carrier" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #bae6fd;border-radius:6px;font-size:0.8rem;">'
+      + '<\/div>'
+      + '<\/div>'
+      + '<div>'
+      + '<label style="' + lbl + '">WhatsApp preview<\/label>'
+      + '<div id="kpmBubble" style="background:#dcf8c6;border-radius:10px;padding:10px 12px;font-size:0.82rem;color:#0f172a;line-height:1.5;min-height:70px;white-space:pre-wrap;"><\/div>'
+      + '<label style="' + lbl + '">Email preview<\/label>'
+      + '<iframe id="kpmFrame" style="width:100%;height:330px;border:1px solid #e2e8f0;border-radius:8px;background:#f4f4f2;"><\/iframe>'
+      + '<\/div><\/div>'
+      + '<div style="display:flex;gap:10px;margin-top:18px;">'
+      + '<button id="kpmCancel" onclick="ktCancelParentMsg()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      + '<button id="kpmSendBtn" onclick="ktSendParentMsg()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#0284c7;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;"><i class="fas fa-paper-plane"><\/i> Send to Parent<\/button>'
+      + '<\/div><\/div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.ctx = JSON.stringify(ctxObj);
+  document.getElementById('kpmSub').textContent = (ctxObj.learnerName || ctxObj.jlid) + (ctxObj.kitName ? ' — ' + ctxObj.kitName : '') + '  ·  ' + ctxObj.jlid;
+  document.getElementById('kpmDate').value = opts.date || new Date().toISOString().slice(0, 10);
+  document.getElementById('kpmPrev').value = opts.prevDate || '';
+  modal.dataset.mandatory = opts.mandatory ? '1' : '';
+  modal.dataset.what = opts.what || '';
+  document.getElementById('kpmMandText').textContent = opts.mandatoryText || 'The delivery date changed.';
+  document.getElementById('kpmMandatory').style.display = opts.mandatory ? 'block' : 'none';
+  document.getElementById('kpmX').style.display = opts.mandatory ? 'none' : 'inline';
+  document.getElementById('kpmCancel').textContent = opts.mandatory ? "Don't inform parent" : 'Cancel';
+  document.getElementById('kpmWa').checked = true;
+  document.getElementById('kpmMail').checked = true;
+  modal.style.display = 'flex';
+
+  var startId = opts.presetId || 'delivered';
+  var fill = function() {
+    var sel = document.getElementById('kpmPreset');
+    if (!sel.options.length) {
+      var groups = {};
+      _kpmPresets.forEach(function(p) {
+        if (!groups[p.group]) { groups[p.group] = document.createElement('optgroup'); groups[p.group].label = p.group; sel.appendChild(groups[p.group]); }
+        var o = document.createElement('option'); o.value = p.id; o.textContent = p.label; groups[p.group].appendChild(o);
+      });
+    }
+    sel.value = startId;
+    kpmPresetChanged();
+  };
+  if (_kpmPresets) fill();
+  else google.script.run
+    .withSuccessHandler(function(r) { if (!r || !r.success) { showToast('error', 'Error', 'Could not load message presets.'); return; } _kpmPresets = r.presets; fill(); })
+    .withFailureHandler(function(e) { showToast('error', 'Error', e && e.message ? e.message : String(e)); })
+    .getKitLogisticsPresets();
+}
+
+// Cancel / X. After a date change this is NOT silent: ops must explicitly choose not to inform, and it is logged on the deal.
+function ktCancelParentMsg() {
+  var m = document.getElementById('ktParentMsgModal');
+  if (!m || m.dataset.mandatory !== '1') { ktCloseParentMsg(); return; }
+  if (!confirm("Skip informing the parent?\n\nThis will be logged on the HubSpot deal.")) return;
+  var c = JSON.parse(m.dataset.ctx || '{}');
+  var who = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.name || currentUser.username || currentUser.email || '') : '';
+  google.script.run.logKitParentNotInformed({ jlid: c.jlid, date: document.getElementById('kpmDate').value, what: m.dataset.what, who: who });
+  var _tp = _kpmPayload();
+  if (_tp.alsoTeacher) {
+    google.script.run
+      .withSuccessHandler(function(tr) { if (tr && !tr.skipped) showToast(tr.success ? 'success' : 'warning', 'Teacher', (tr && tr.message) || ''); })
+      .withFailureHandler(function(e) { showToast('warning', 'Teacher not emailed', (e && e.message) || String(e)); })
+      .kitTeacherUpdateFromUi(_tp);
+  }
+  ktCloseParentMsg();
+  showToast('warning', 'Parent not informed', 'Date saved. Use "Message Parent" on the row any time to tell them.' + (_tp.alsoTeacher ? ' The teacher is being told.' : ''));
+}
+
+function ktCloseParentMsg() {
+  var m = document.getElementById('ktParentMsgModal');
+  if (m) m.style.display = 'none';
+}
+
+function kpmPresetChanged() {
+  var id = document.getElementById('kpmPreset').value;
+  var p = (_kpmPresets || []).filter(function(x) { return x.id === id; })[0];
+  if (!p) return;
+  document.getElementById('kpmText').value = p.text;
+  document.getElementById('kpmText1').value = p.text1;
+  document.getElementById('kpmDateWrap').style.display = p.needsDate ? 'block' : 'none';
+  document.getElementById('kpmDateLbl').textContent = p.dateLabel || 'Date';
+  document.getElementById('kpmPrevWrap').style.display = p.needsPrevDate ? 'block' : 'none';
+  var _tw = document.getElementById('kpmTeacherWrap'); if (_tw) _tw.style.display = p.teacherEvent ? 'block' : 'none';
+  document.getElementById('kpmPrevLbl').textContent = p.prevDateLabel || 'Original date';
+  kpmQueuePreview(true);
+}
+
+function _kpmPayload() {
+  var ctxObj = JSON.parse(document.getElementById('ktParentMsgModal').dataset.ctx || '{}');
+  var d = document.getElementById('kpmDate').value;
+  return {
+    rowIndex: ctxObj.rowIndex, jlid: ctxObj.jlid, learnerName: ctxObj.learnerName, kitName: ctxObj.kitName,
+    presetId: document.getElementById('kpmPreset').value,
+    date: d,
+    prevDate: document.getElementById('kpmPrev').value,
+    text: document.getElementById('kpmText').value,
+    text1: document.getElementById('kpmText1').value,
+    sendWati: document.getElementById('kpmWa').checked,
+    sendEmail: document.getElementById('kpmMail').checked,
+    alsoTeacher: (document.getElementById('kpmTeacherWrap').style.display !== 'none') && document.getElementById('kpmTeacher').checked,
+    teacherReason: (document.getElementById('kpmTeacherReason') || {}).value || ''
+  };
+}
+
+function kpmQueuePreview(now) {
+  clearTimeout(_kpmTimer);
+  _kpmTimer = setTimeout(kpmRunPreview, now ? 0 : 450);
+}
+
+function kpmRunPreview() {
+  var seq = ++_kpmSeq;
+  var payload = _kpmPayload();
+  document.getElementById('kpmBubble').style.opacity = '0.5';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (seq !== _kpmSeq) return;
+      document.getElementById('kpmBubble').style.opacity = '1';
+      if (!r || !r.success) { document.getElementById('kpmBubble').textContent = (r && r.message) || 'Preview failed'; return; }
+      document.getElementById('kpmBubble').textContent = 'Hi ' + '[parent first name]' + ', ' + r.text + ' ' + r.text1;
+      document.getElementById('kpmFrame').srcdoc = r.html;
+    })
+    .withFailureHandler(function(e) { if (seq === _kpmSeq) document.getElementById('kpmBubble').textContent = 'Preview failed: ' + (e && e.message ? e.message : e); })
+    .previewKitLogisticsMessage(payload);
+}
+
+function ktSendParentMsg() {
+  var payload = _kpmPayload();
+  if (!payload.jlid) { showToast('error', 'JLID missing', 'Add the JLID to this row first (Edit).'); return; }
+  if (!payload.sendWati && !payload.sendEmail) { showToast('error', 'Pick a channel', 'Tick WhatsApp and/or Email.'); return; }
+  var p = (_kpmPresets || []).filter(function(x) { return x.id === payload.presetId; })[0];
+  if (p && p.needsDate && !payload.date) { showToast('error', 'Date needed', 'Pick the "' + (p.dateLabel || 'date') + '".'); return; }
+  if (p && p.needsPrevDate && !payload.prevDate) { showToast('error', 'Date needed', 'Pick the "' + (p.prevDateLabel || 'original date') + '".'); return; }
+  if (!confirm('Send this message to the parent now?\n\n' + (p ? p.label : '') + '\nChannels: ' + [payload.sendWati ? 'WhatsApp' : '', payload.sendEmail ? 'Email' : ''].filter(Boolean).join(' + '))) return;
+  payload.who = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.name || currentUser.username || currentUser.email || '') : '';
+  var btn = document.getElementById('kpmSendBtn');
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (!r || !r.success) { showToast('error', 'Not sent', (r && r.message) || 'Unknown error'); return; }
+      ktCloseParentMsg();
+      var partial = (payload.sendWati && !r.wati.sent) || (payload.sendEmail && !r.email.sent);
+      showToast(partial ? 'warning' : 'success', partial ? 'Partly sent' : 'Parent informed', r.message);
+      if (r.note === 'failed') showToast('warning', 'HubSpot note not added', 'Message went out but the note on the deal failed.');
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false; btn.innerHTML = orig;
+      showToast('error', 'Error', e && e.message ? e.message : String(e));
+    })
+    .sendKitLogisticsMessage(payload);
+}
+
 function ktSaveEdit() {
   const modal   = document.getElementById('ktEditModal');
   const rowIndex = parseInt(modal.dataset.rowIndex, 10);
@@ -15696,6 +16617,7 @@ function ktSaveEdit() {
 
   const jlid     = (document.getElementById('ktEditJlid').value     || '').trim();
   const dateVal  = (document.getElementById('ktEditDelivery').value  || '').trim();
+  const etaVal   = (document.getElementById('ktEditEta').value       || '').trim();
   const response = (document.getElementById('ktEditResponse').value  || '').trim();
 
   // Convert YYYY-MM-DD → DD/MM/YYYY for sheet
@@ -15722,6 +16644,23 @@ function ktSaveEdit() {
         } else {
           showToast('success', 'Row Updated', result.message || 'Changes saved.');
         }
+        var _r0 = (typeof _ktRowCache !== 'undefined' && _ktRowCache[rowIndex]) || {};
+        var _op = { date: dateVal, jlid: jlid, learnerName: _r0.learnerName, kitName: _r0.kit };
+        if (result.teacher && !result.teacher.skipped) showToast(result.teacher.success ? 'success' : 'warning', 'Teacher', result.teacher.message || '');
+        if (jlid && dateVal && response === 'Kit Received') {
+          _op.presetId = 'delivered';
+          ktOpenParentMsg(rowIndex, _op);
+        } else if (jlid && result.etaChanged && etaVal && !dateVal) {
+          // The expected date moved: parent AND teacher must hear about it (the window cannot be closed silently)
+          var _later = result.oldEta && etaVal > result.oldEta;
+          _op.date = etaVal;
+          if (result.oldEta && _later) { _op.presetId = 'delayed'; _op.prevDate = result.oldEta; }
+          else { _op.presetId = 'dispatched'; }
+          _op.mandatory = true;
+          _op.mandatoryText = 'The expected delivery date changed.';
+          _op.what = 'Expected delivery date changed to ' + etaVal;
+          ktOpenParentMsg(rowIndex, _op);
+        }
         loadKitTrackingPage();
       } else {
         showToast('error', 'Save Failed', (result && result.message) || 'Unknown error.');
@@ -15732,7 +16671,7 @@ function ktSaveEdit() {
       saveBtn.disabled = false;
       showToast('error', 'Save Failed', err.message || String(err));
     })
-    .updateKitRow({ rowIndex: rowIndex, jlid: jlid, deliveryDate: deliveryDate, response: response });
+    .updateKitRow({ rowIndex: rowIndex, jlid: jlid, deliveryDate: deliveryDate, response: response, eta: etaVal });
 }
 
 // Carrier tracking URL templates — {n} is replaced with the tracking number.
@@ -16233,6 +17172,7 @@ function ktSaveOrderPlaced() {
           if (!statusOk) gaps.push('HubSpot status patch (' + (result.hsStatusStatus || 'unknown') + ')');
           showToast('warning', 'Order Placed — with gaps', gaps.join('; '));
         }
+        if (result.teacher && !result.teacher.skipped) showToast(result.teacher.success ? 'success' : 'warning', 'Teacher', result.teacher.message || '');
         loadKitTrackingPage();
       } else {
         showToast('error', 'Could Not Save', (result && result.message) || 'Unknown error.');
@@ -17647,15 +18587,81 @@ function ktSubmitRejectAddress() {
 }
 
 // ── Kit Tracking: mark kit as refunded (logistics loss) ───────────────────
+// Refund reasons -> which parent message (if any) goes with them. preset '' = internal only, parent not contacted.
+var KT_REFUND_REASONS = [
+  { v: 'amazon_reorder',  label: 'Amazon cancelled (carrier / logistics issue) - reordering new kit', preset: 'cancelled_logistics_reorder', reopen: true },
+  { v: 'amazon_refund',   label: 'Amazon cancelled (carrier / logistics issue) - not reordering',      preset: 'cancelled_logistics_refund' },
+  { v: 'delay_cancel',    label: 'Cancelled by us - delivery delayed too long - reordering',                        preset: 'cancelled_logistics_reorder', reopen: true },
+  { v: 'lost',            label: 'Lost in transit - reordering',                                           preset: 'lost', reopen: true },
+  { v: 'unavailable',     label: 'Out of stock / item unavailable - reordering',                           preset: 'custom', reopen: true },
+  { v: 'paused',          label: 'Learner paused / no longer needs the kit (do not contact parent)',   preset: '' },
+  { v: 'parent_bought',   label: 'Parent bought it themselves (do not contact parent)',                preset: '' },
+  { v: 'duplicate',       label: 'Duplicate / ordered by mistake (do not contact parent)',             preset: '' },
+  { v: 'other',           label: 'Other (write my own message)',                                       preset: 'custom' }
+];
+
 function ktMarkRefunded(rowIndex, btn) {
-  if (!confirm('Mark this kit as refunded?\n\nThis will zero the price so it doesn\'t count in monthly totals. Cannot be undone easily.')) return;
+  var m = document.getElementById('ktRefundModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'ktRefundModal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    m.innerHTML = '<div style="background:#fff;border-radius:14px;padding:26px 30px;width:470px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,0.18);">'
+      + '<h3 style="margin:0 0 6px;font-size:1.05rem;font-weight:700;color:#1e293b;">↩ Mark kit as refunded<\/h3>'
+      + '<p style="margin:0 0 14px;font-size:0.8rem;color:#64748b;">This zeroes the price so it does not count in monthly totals.<\/p>'
+      + '<label style="font-size:0.78rem;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Reason<\/label>'
+      + '<select id="ktRfReason" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:0.85rem;background:#fff;">'
+      + KT_REFUND_REASONS.map(function(r) { return '<option value="' + r.v + '">' + r.label + '<\/option>'; }).join('')
+      + '<\/select>'
+      + '<p id="ktRfHint" style="margin:8px 0 0;font-size:0.76rem;color:#0369a1;"><\/p>'
+      + '<div style="display:flex;gap:10px;margin-top:18px;">'
+      + '<button onclick="ktCloseRefund()" style="flex:1;padding:9px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:0.85rem;cursor:pointer;">Cancel<\/button>'
+      + '<button id="ktRfBtn" onclick="ktConfirmRefund()" style="flex:2;padding:9px;border:none;border-radius:8px;background:#d97706;color:#fff;font-size:0.85rem;font-weight:600;cursor:pointer;">Mark refunded<\/button>'
+      + '<\/div><\/div>';
+    document.body.appendChild(m);
+    document.getElementById('ktRfReason').onchange = ktRefundHint;
+  }
+  m.dataset.rowIndex = rowIndex;
+  document.getElementById('ktRfReason').value = KT_REFUND_REASONS[0].v;
+  ktRefundHint();
+  m.style.display = 'flex';
+}
+
+function ktRefundHint() {
+  var r = KT_REFUND_REASONS.filter(function(x) { return x.v === document.getElementById('ktRfReason').value; })[0];
+  document.getElementById('ktRfHint').textContent =
+    (r && r.reopen ? 'The row goes back to "Address received - pending order" with the address kept, so you can place the replacement order. ' : 'The row stays closed as refunded. ')
+    + (r && r.preset ? 'You will then be asked to send the parent a WhatsApp + email.' : 'The parent will not be contacted.');
+}
+
+function ktCloseRefund() {
+  var m = document.getElementById('ktRefundModal');
+  if (m) m.style.display = 'none';
+}
+
+function ktConfirmRefund() {
+  var m = document.getElementById('ktRefundModal');
+  var rowIndex = parseInt(m.dataset.rowIndex, 10);
+  var sel = document.getElementById('ktRfReason');
+  var r = KT_REFUND_REASONS.filter(function(x) { return x.v === sel.value; })[0];
+  var btn = document.getElementById('ktRfBtn');
   var origHtml = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  var who = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.name || currentUser.username || currentUser.email || '') : '';
+  var rowObj = (typeof _ktRowCache !== 'undefined' && _ktRowCache[rowIndex]) || {};
   google.script.run
     .withSuccessHandler(function(res) {
       btn.disabled = false; btn.innerHTML = origHtml;
       if (res && res.success) {
-        showToast('success', 'Marked Refunded', 'Price zeroed — excluded from monthly totals');
+        ktCloseRefund();
+        if (res.reopened && res.addressMissing) showToast('warning', 'Back to start', 'No address on file for this kit - request the address again from the row.');
+        else if (res.reopened) showToast('success', 'Ready to reorder', 'Row is back to "Address received - pending order". Use Mark Order Placed for the new order.');
+        else showToast('success', 'Marked Refunded', 'Price zeroed — excluded from monthly totals');
+        if (res.teacher && !res.teacher.skipped) showToast(res.teacher.success ? 'success' : 'warning', 'Teacher', res.teacher.message || '');
+        if (r.preset && rowObj.jlid) {
+          ktOpenParentMsg(rowIndex, { presetId: r.preset, mandatory: true,
+            mandatoryText: 'The order was marked refunded / cancelled.', what: 'Order marked refunded (' + r.label + ')' });
+        }
         loadKitTrackingPage();
       } else { showToast('error', 'Failed', (res && res.message) || 'Unknown error'); }
     })
@@ -17663,7 +18669,7 @@ function ktMarkRefunded(rowIndex, btn) {
       btn.disabled = false; btn.innerHTML = origHtml;
       showToast('error', 'Error', err && err.message ? err.message : String(err));
     })
-    .markKitAsRefunded(rowIndex);
+    .markKitAsRefunded(rowIndex, r.label, who, !!r.reopen);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -17699,6 +18705,7 @@ function loadGiftCardData() {
       setEl('gcKpiSales',    s.sales    || 0);
       setEl('gcKpiEur',      '€' + (s.totalEur || '0.00'));
       renderGiftCardTable();
+      gcLoadRequests(false);
     })
     .withFailureHandler(function(err) {
       tbody.innerHTML = '<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">' + escapeHtml(err.message || String(err)) + '</td></tr>';
@@ -17804,6 +18811,104 @@ function gcSendIssuedRow(jlid, rowIndex, gcType, btn) {
     .gcSendIssuedMessage(rowIndex, jlid, gcType);
 }
 
+// ── Gift cards: what is it for + the "Waiting for Amazon details" list ─────────────────────────────
+var GC_OCC_MAP = { referral: ['Referral', 'referral'], same_day: ['Sales', 'sales'], early_bird: ['Sales', 'sales'], seasonal: ['Sales', 'sales'], sales_offer: ['Sales', 'sales'], renewal: ['Retention', 'sales'] };
+var _gcReqRows = [];
+
+function gcOccasionChanged() {
+  var o = (document.getElementById('gcOccasion') || {}).value || 'referral';
+  var m = GC_OCC_MAP[o] || GC_OCC_MAP.referral;
+  var r = document.getElementById('gcReason'); if (r) r.value = m[0];
+  var t = document.getElementById('gcType');   if (t) t.value = m[1];
+  var w = document.getElementById('gcOfferWrap'); if (w) w.style.display = (o === 'seasonal' || o === 'early_bird') ? 'block' : 'none';
+  if (typeof gcUpdateTypeNote === 'function') gcUpdateTypeNote();
+}
+function _gcOccasionNow() { return { occ: (document.getElementById('gcOccasion') || {}).value || 'referral', offer: ((document.getElementById('gcOfferName') || {}).value || '').trim() }; }
+function _gcWho() { return (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.name || currentUser.username || currentUser.email || '') : ''; }
+function gcOccasionForRow(reason, type) {
+  var r = String(reason || '').toLowerCase();
+  if (r.indexOf('referral') > -1 || (!r && String(type || '').toLowerCase() === 'referral')) return 'referral';
+  if (r.indexOf('retention') > -1) return 'renewal';
+  return 'sales_offer';
+}
+
+function gcLoadRequests(recheck) {
+  var body = document.getElementById('gcReqBody'); if (!body) return;
+  var btn = document.getElementById('gcReqRefreshBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Checking…'; }
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"><\/i> Check replies'; }
+      if (!res || !res.success) { body.innerHTML = '<div style="padding:14px;color:#ef4444;">' + escapeHtml((res && res.message) || 'Could not load.') + '<\/div>'; return; }
+      _gcReqRows = res.rows || [];
+      gcRenderRequests();
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync-alt"><\/i> Check replies'; }
+      body.innerHTML = '<div style="padding:14px;color:#ef4444;">' + escapeHtml((e && e.message) || String(e)) + '<\/div>';
+    })
+    .gcGetRequests(!!recheck);
+}
+
+function gcRenderRequests() {
+  var body = document.getElementById('gcReqBody'), cnt = document.getElementById('gcReqCount');
+  if (!body) return;
+  var open = _gcReqRows.filter(function(r) { return r.status === 'Waiting' || r.status === 'Details received'; });
+  if (cnt) cnt.textContent = open.length;
+  if (!_gcReqRows.length) { body.innerHTML = '<div style="padding:16px;color:#94a3b8;text-align:center;">Nobody is being asked right now. Use Add Gift Card, fetch the learner and send the ask, and it shows up here.<\/div>'; return; }
+  var th = 'padding:7px 10px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;border-bottom:1px solid #e2e8f0;';
+  var td = 'padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;';
+  var pill = function(bg, fg, t) { return '<span style="background:' + bg + ';color:' + fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + t + '<\/span>'; };
+  var rows = _gcReqRows.map(function(r) {
+    var st = r.status === 'Details received' ? pill('#dcfce7', '#15803d', '✓ Details received')
+           : r.status === 'Issued' ? pill('#f1f5f9', '#475569', 'Issued')
+           : pill(r.waitingDays >= 3 ? '#fee2e2' : '#fef3c7', r.waitingDays >= 3 ? '#b91c1c' : '#92400e', 'Waiting ' + r.waitingDays + 'd');
+    var details = (r.website || r.amazonEmail)
+      ? '<div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.website || '—') + '<\/div><div style="color:#475569;">' + escapeHtml(r.amazonEmail || 'email not given yet') + '<\/div><div style="font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.replySource || '') + (r.replyAt ? ' · ' + escapeHtml(r.replyAt) : '') + '<\/div>'
+      : '<span style="color:#94a3b8;">No reply yet<\/span>';
+    var j = escapeHtml(r.jlid);
+    var acts = '';
+    if (r.status === 'Details received') acts += '<button type="button" onclick="gcReqIssue(' + r.rowIndex + ')" style="background:#f43f5e;border:none;border-radius:6px;color:#fff;font-size:0.72rem;font-weight:600;padding:4px 10px;cursor:pointer;margin-right:4px;"><i class="fas fa-gift"><\/i> Issue gift card<\/button>';
+    if (r.status === 'Waiting') acts += '<button type="button" title="Remind by email" onclick="gcReqRemind(\'' + j + '\',\'email\',' + r.rowIndex + ',this)" style="background:#fff;border:1px solid #0d9488;border-radius:6px;color:#0d9488;font-size:0.72rem;padding:4px 8px;cursor:pointer;margin-right:4px;"><i class="fas fa-envelope"><\/i><\/button>'
+      + '<button type="button" title="Remind on WhatsApp" onclick="gcReqRemind(\'' + j + '\',\'wa\',' + r.rowIndex + ',this)" style="background:#fff;border:1px solid #16a34a;border-radius:6px;color:#16a34a;font-size:0.72rem;padding:4px 8px;cursor:pointer;margin-right:4px;"><i class="fab fa-whatsapp"><\/i><\/button>';
+    if (r.status !== 'Issued') acts += '<button type="button" title="Not needed any more" onclick="gcReqClose(' + r.rowIndex + ')" style="background:none;border:1px solid #e2e8f0;border-radius:6px;color:#94a3b8;font-size:0.72rem;padding:4px 8px;cursor:pointer;">✕<\/button>';
+    return '<tr><td style="' + td + '"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learner || '—') + '<\/div><div style="font-family:monospace;font-size:0.68rem;color:#94a3b8;">' + j + '<\/div><\/td>'
+      + '<td style="' + td + '">' + escapeHtml(r.occasion) + (r.offer ? '<div style="font-size:0.7rem;color:#94a3b8;">' + escapeHtml(r.offer) + '<\/div>' : '') + '<\/td>'
+      + '<td style="' + td + 'white-space:nowrap;">' + escapeHtml(r.channels || '—') + '<div style="font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.requestedAt) + (r.reminders ? ' · ' + r.reminders + ' reminder' + (r.reminders === 1 ? '' : 's') : '') + '<\/div><\/td>'
+      + '<td style="' + td + '">' + details + '<\/td><td style="' + td + '">' + st + '<\/td><td style="' + td + 'text-align:right;white-space:nowrap;">' + acts + '<\/td><\/tr>';
+  }).join('');
+  body.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="' + th + '">Learner<\/th><th style="' + th + '">For<\/th><th style="' + th + '">Asked via<\/th><th style="' + th + '">Amazon details<\/th><th style="' + th + '">Status<\/th><th style="' + th + '"><\/th><\/tr><\/thead><tbody>' + rows + '<\/tbody><\/table><\/div>';
+}
+
+function gcReqRemind(jlid, channel, rowIndex, btn) {
+  var r = _gcReqRows.filter(function(x) { return x.rowIndex === rowIndex; })[0] || {};
+  if (!confirm('Remind the parent ' + (channel === 'wa' ? 'on WhatsApp' : 'by email') + ' to send their Amazon details?')) return;
+  var orig = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i>';
+  var fn = google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false; btn.innerHTML = orig;
+      if (res && res.success) { showToast('success', 'Reminder sent', channel === 'wa' ? 'WhatsApp sent.' : 'Email sent to ' + (res.to || 'the parent') + '.'); gcLoadRequests(false); }
+      else showToast('error', 'Not sent', (res && res.message) || 'Unknown error');
+    })
+    .withFailureHandler(function(e) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', (e && e.message) || String(e)); });
+  if (channel === 'wa') fn.gcSendAskMessage(jlid, r.occasionId, r.offer, _gcWho()); else fn.gcSendAskEmail(jlid, r.occasionId, r.offer, _gcWho());
+}
+
+function gcReqClose(rowIndex) {
+  if (!confirm('Remove this learner from the waiting list? (Use this if the gift card is no longer needed.)')) return;
+  google.script.run
+    .withSuccessHandler(function() { _gcReqRows = _gcReqRows.filter(function(x) { return x.rowIndex !== rowIndex; }); gcRenderRequests(); })
+    .withFailureHandler(function(e) { showToast('error', 'Error', (e && e.message) || String(e)); })
+    .gcCloseRequest(rowIndex);
+}
+
+// "Issue gift card" from a request: opens the Add window with the learner and their Amazon details filled in
+function gcReqIssue(rowIndex) {
+  var r = _gcReqRows.filter(function(x) { return x.rowIndex === rowIndex; })[0];
+  if (!r) return;
+  gcOpenAddModal({ jlid: r.jlid, website: r.website, amazonEmail: r.amazonEmail, occasion: r.occasionId, offer: r.offer });
+}
+
 function gcSendAskEmailRow(jlid, btn) {
   if (!jlid) { showToast('error', 'Missing', 'No JLID on this row'); return; }
   if (!confirm('Email the parent asking for their Amazon website and account email?')) return;
@@ -17815,7 +18920,7 @@ function gcSendAskEmailRow(jlid, btn) {
       else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
     })
     .withFailureHandler(function(err) { btn.disabled = false; btn.innerHTML = orig; showToast('error', 'Error', err.message || String(err)); })
-    .gcSendAskEmail(jlid);
+    .gcSendAskEmail(jlid, gcOccasionForRow(((_gcData || []).filter(function(x) { return x.jlid === jlid; })[0] || {}).reason, ((_gcData || []).filter(function(x) { return x.jlid === jlid; })[0] || {}).type), '', _gcWho());
 }
 
 function gcSendIssuedEmailRow(jlid, rowIndex, gcType, btn) {
@@ -17832,6 +18937,16 @@ function gcSendIssuedEmailRow(jlid, rowIndex, gcType, btn) {
     .gcSendIssuedEmail(rowIndex, jlid, gcType);
 }
 
+// After an ask goes out: say so in the window (it stays open) and refresh the waiting list
+function gcAskSent(channel, res) {
+  var n = document.getElementById('gcAskNotice');
+  if (n) {
+    n.style.display = 'block';
+    n.innerHTML = '<i class="fas fa-check-circle" style="margin-right:6px;"><\/i><b>' + (res && res.reminder ? 'Reminder' : 'Ask') + ' sent by ' + channel + '.<\/b> ' + (res && res.tracked ? 'It is now under "Waiting for Amazon details" at the top of the Gift Cards tab, and the reply appears there when the parent answers.' : 'It could not be added to the waiting list, please check the Gift Card Requests sheet.');
+  }
+  gcLoadRequests(false);
+}
+
 function gcSendAskEmailFromModal() {
   var jlid = ((document.getElementById('gcJlid') || {}).value || '').trim().toUpperCase();
   if (!jlid) { showToast('error', 'Missing', 'Enter and fetch a JLID first'); return; }
@@ -17840,27 +18955,36 @@ function gcSendAskEmailFromModal() {
   google.script.run
     .withSuccessHandler(function(res) {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      if (res && res.success) showToast('success', 'Ask Email Sent', 'Sent to ' + (res.to || 'parent'));
+      if (res && res.success) { showToast('success', 'Ask Email Sent', 'Sent to ' + (res.to || 'parent')); gcAskSent('Email', res); }
       else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
     })
     .withFailureHandler(function(err) {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
       showToast('error', 'Error', err.message || String(err));
     })
-    .gcSendAskEmail(jlid);
+    .gcSendAskEmail(jlid, _gcOccasionNow().occ, _gcOccasionNow().offer, _gcWho());
 }
 
 // ── Add Gift Card Modal ────────────────────────────────────────────────────
 var _gcModalJlidData = null;
 
-function gcOpenAddModal() {
+function gcOpenAddModal(prefill) {
   _gcModalJlidData = null;
+  var _an = document.getElementById('gcAskNotice'); if (_an) { _an.style.display = 'none'; _an.innerHTML = ''; }
   var modal = document.getElementById('gcAddModal');
   if (modal) modal.style.display = 'flex';
   // Default date to today
   var d = document.getElementById('gcDate');
   if (d && !d.value) d.value = new Date().toISOString().split('T')[0];
   gcUpdateTypeNote();
+  if (prefill && prefill.jlid) {
+    var set = function(id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+    set('gcJlid', prefill.jlid);
+    set('gcOccasion', prefill.occasion || 'referral'); set('gcOfferName', prefill.offer || ''); gcOccasionChanged();
+    gcFetchByJlid();
+    setTimeout(function() { if (prefill.website) set('gcWebsite', prefill.website); if (prefill.amazonEmail) set('gcEmail', prefill.amazonEmail); }, 1800);
+  } else { set2(); }
+  function set2() { var o = document.getElementById('gcOccasion'); if (o) { o.value = 'referral'; gcOccasionChanged(); } var f = document.getElementById('gcOfferName'); if (f) f.value = ''; }
 }
 
 function gcCloseModal() {
@@ -17951,14 +19075,14 @@ function gcSendAsk() {
   google.script.run
     .withSuccessHandler(function(res) {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      if (res && res.success) showToast('success', 'Ask Sent', 'WATI migration_amz_giftvoucher_ sent to ' + (res.phone || ''));
+      if (res && res.success) { showToast('success', 'Ask Sent', 'WhatsApp sent to ' + (res.phone || '')); gcAskSent('WhatsApp', res); }
       else showToast('error', 'Failed', (res && res.message) || 'Unknown error');
     })
     .withFailureHandler(function(err) {
       if (btn) { btn.disabled = false; btn.innerHTML = orig; }
       showToast('error', 'Error', err.message || String(err));
     })
-    .gcSendAskMessage(jlid.trim().toUpperCase());
+    .gcSendAskMessage(jlid.trim().toUpperCase(), _gcOccasionNow().occ, _gcOccasionNow().offer, _gcWho());
 }
 
 function gcSubmitEntry() {
@@ -18017,7 +19141,7 @@ function gcSubmitEntry() {
     })
     .addGiftCardEntry({ jlid: jlid, learnerName: learner, email: email, amount: amount, currency: currency,
       eurAmount: eurAmount, date: date, website: website, reason: reason, type: type, addedBy: addedBy,
-      orderLink: orderLink, sendWati: sendWati, sendEmail: sendEmail });
+      orderLink: orderLink, sendWati: sendWati, sendEmail: sendEmail, occasion: _gcOccasionNow().occ, offerName: _gcOccasionNow().offer });
 }
 
 // ── Debug: fetch HubSpot kit status enum values ───────────────────────────
