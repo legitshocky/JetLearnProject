@@ -3123,6 +3123,11 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                         }
                     }
 
+                    // --- 7b. Invoice: installment plan from the deal (type, terms, months) fills the installment block ---
+                    if (formPrefix === 'invoice' && typeof _invoiceApplyDealInstallments === 'function') {
+                        try { _invoiceApplyDealInstallments(data, formPrefix); } catch (e) { console.warn('Installment autofill failed', e); }
+                    }
+
                     // --- 8. Parent Onboarding Specific Logic ---
                     if (formPrefix === 'onboardingParent') {
                         const installmentRadio = document.getElementById('onboardingParentPaymentInstallment');
@@ -3144,6 +3149,12 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
                         if (typeof updateParentOnboardingPlanDetails === 'function') {
                             updateParentOnboardingPlanDetails();
                         }
+                        // Brain: classes, free classes, tenure, end date, discount all derived from the deal
+                        var _brainChecks = [];
+                        try { _brainChecks = _onboardingApplyDealBrain(data); } catch (e) { console.warn('Deal brain failed', e); }
+                        // Deal's installment plan (type, terms, months) fills the block, after the generic reset above
+                        try { _invoiceApplyDealInstallments(data, 'onboardingParent'); } catch (e) { console.warn('Installment autofill failed', e); }
+                        try { _onbBrainSnapshot(data, _brainChecks); } catch (e) { console.warn('Brain snapshot failed', e); }
                     }
 
                     showToast('success', 'Data Fetched', 'Learner data populated from HubSpot.');
@@ -3755,7 +3766,7 @@ function collectEmailFormData(emailType) {
                 }
             }
             google.script.run.withSuccessHandler(onParentOnboardingOk).withFailureHandler(onSendErr)
-                .sendParentOnboardingWithInvoice(fd, base64Files);
+                .sendParentOnboardingWithInvoice((function(){ try { fd.brainReview = _onbBrainReview(fd.jlid); } catch (e) {} return fd; })(), base64Files);
         } else {
             var tpl = emailType === 'minecraft' ? 'Minecraft Install' : 'Roblox Install';
             google.script.run.withSuccessHandler(onSendOk).withFailureHandler(onSendErr)
@@ -6014,6 +6025,173 @@ function mipSelectAlternativeTeacher(teacherName) {
         }
         tenureOptions.push('101+');
         populateSelect(invoiceSubscriptionTenure, tenureOptions, false, "Select tenure");
+    }
+
+
+    // Fills Payment Type / Number of Installments / Frequency / First Payment Date / Due Day from the HubSpot deal
+    // (installment_type e.g. "Once in 4 months", installment_terms_final e.g. 3, installment_months e.g. "October 2026;March 2027").
+    function _invoiceApplyDealInstallments(d, formPrefix) {
+        const P = formPrefix === 'onboardingParent'
+            ? { radio: 'onboardingParentPaymentInstallment', group: 'onboardingParentInstallmentOptions', num: 'onboardingParentNumberOfInstallments', freq: 'onboardingParentInstallmentFrequency', first: 'onboardingParentFirstPaymentDate', day: 'onboardingParentDueDayToPay', recalc: 'updateParentOnboardingPlanDetails' }
+            : { radio: 'paymentInstallment', group: 'installmentOptionsGroup', num: 'invoiceNumberOfInstallments', freq: 'invoiceInstallmentType', first: 'invoiceFirstPaymentDate', day: 'invoiceDueDayToPay', recalc: 'calculateAndDisplayTotal' };
+        const $ = id => document.getElementById(id);
+        const terms = parseInt(d.installmentTerms, 10) || 0;
+        const explicitUpfront = String(d.paymentTypeRaw || '').toLowerCase().indexOf('upfront') > -1;
+        const isInst = d.paymentType === 'Installment' || (terms > 1 && !explicitUpfront);
+        if (!isInst) return;
+        $(P.radio).checked = true;
+        $(P.group).style.display = 'block';
+        if (terms > 0) $(P.num).value = terms;
+        // Frequency
+        const raw = String(d.installmentType || '').toLowerCase();
+        let freq = '';
+        const m = raw.match(/(\d+)\s*month/);
+        if (m) { const n = parseInt(m[1], 10); freq = n === 1 ? 'Monthly' : n === 2 ? 'Alternate' : n === 3 ? 'Quarterly' : (n <= 12 ? n + ' Months' : ''); }
+        else if (raw.indexOf('quarter') > -1) freq = 'Quarterly';
+        else if (raw.indexOf('alternate') > -1) freq = 'Alternate';
+        else if (raw.indexOf('month') > -1) freq = 'Monthly';
+        if (freq && Array.from($(P.freq).options).some(o => o.value === freq)) $(P.freq).value = freq;
+        // First payment date = earliest installment month; day follows the subscription start day (else 1st)
+        const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+        const found = [];
+        String(d.installmentMonths || '').split(/[;,]/).forEach(part => {
+            const mm = part.trim().toLowerCase().match(/([a-z]+)\s+(\d{4})/);
+            if (mm) { const mi = MONTHS.findIndex(x => x.indexOf(mm[1].slice(0, 3)) === 0); if (mi > -1) found.push({ y: parseInt(mm[2], 10), m: mi }); }
+        });
+        found.sort((a, b) => (a.y - b.y) || (a.m - b.m));
+        const startStr = d.subscriptionStartDate || d.startingDate || '';
+        let day = 1;
+        const sd = startStr ? new Date(startStr) : null;
+        if (sd && !isNaN(sd.getTime())) day = sd.getUTCDate();
+        if (found.length) {
+            const f = found[0], last = new Date(Date.UTC(f.y, f.m + 1, 0)).getUTCDate(), dd = Math.min(day, last);
+            $(P.first).value = f.y + '-' + String(f.m + 1).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+            $(P.day).value = dd;
+        }
+        if (P.recalc === 'updateParentOnboardingPlanDetails') { if (typeof updateParentOnboardingPlanDetails === 'function') updateParentOnboardingPlanDetails(); }
+        else if (typeof calculateAndDisplayTotal === 'function') calculateAndDisplayTotal();
+    }
+
+
+    // ── Onboarding brain: derive every plan number from the deal so nothing is typed by hand ──
+    // structured classes (number_of_classes_offered) -> tenure (plan table: classes per month) -> plan, list price
+    // free classes (total_number_of_complementary_classes_offered) -> Free Classes
+    // duration = (structured + free) / classes per week -> End Date; discount = list price - deal amount
+    function _onboardingApplyDealBrain(d) {
+        const $ = id => document.getElementById(id);
+        const checks = [];
+        const add = (lvl, msg) => checks.push({ lvl: lvl, msg: msg });
+        const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
+        const paid = Math.round(num(d.classesOffered)), free = Math.round(num(d.complementaryClasses));
+        const journey = Math.round(num(d.totalClassesJourney));
+        const mPW = String(d.sessionsPerWeek || '').match(/(\d+)/), perWeek = mPW ? parseInt(mPW[1], 10) : 0;
+        const amount = num(d.dealAmount);
+        const plans = (typeof globalInvoiceProducts !== 'undefined' && globalInvoiceProducts) || [];
+        const pm = p => ({ name: p['Plan Name'], months: parseInt(p['Months Tenure'], 10) || 0, sessions: parseInt(p['Default Sessions'], 10) || 0 });
+        const plan = plans.map(pm).find(p => p.name === d.planName) || null;
+
+        if (!paid) add('warn', 'Structured classes (number_of_classes_offered) missing on the deal, so tenure and price were not auto-filled.');
+        if (!perWeek) add('warn', 'Classes per week missing on the deal.');
+        let tenure = 0;
+        if (paid) {
+            // Classes per month comes from the plan table (4 for every standard plan)
+            const perMonth = (plan && plan.months && plan.sessions) ? plan.sessions / plan.months : 4;
+            tenure = Math.max(1, Math.round(paid / perMonth));
+            if (Math.abs(tenure * perMonth - paid) > 0.01) add('warn', paid + ' structured classes is not a whole number of months at ' + perMonth + '/month; tenure rounded to ' + tenure + ' months.');
+            const tSel = $('onboardingParentSubscriptionTenure');
+            if (tSel) { if (!Array.from(tSel.options).some(o => o.value === String(tenure))) tSel.appendChild(new Option(String(tenure), String(tenure))); tSel.value = String(tenure); }
+            // Plan: keep the deal's plan name when it exists in the table, otherwise the biggest plan that fits the tenure
+            if (!plan) {
+                const fit = plans.map(pm).filter(p => p.months && p.months <= tenure).sort((a, b) => b.months - a.months)[0] || plans.map(pm).filter(p => p.months).sort((a, b) => a.months - b.months)[0];
+                if (fit) { const pSel = $('onboardingParentPlanName'); if (pSel) pSel.value = fit.name; add('info', 'Plan set to ' + fit.name + ' (deal plan "' + (d.planName || '-') + '" is not in the plan table).'); }
+            }
+            if (num(d.subscriptionTenureMonths) && num(d.subscriptionTenureMonths) !== tenure) add('warn', 'Deal tenure says ' + d.subscriptionTenureMonths + ' months but ' + paid + ' structured classes = ' + tenure + ' months. Using ' + tenure + '.');
+        }
+        // Free classes
+        const fEl = $('onboardingParentFreeClasses'); if (fEl) fEl.value = String(free);
+        // Sessions per week
+        if (perWeek) { const sSel = $('onboardingParentSessionsPerWeek'); if (sSel) { const opt = Array.from(sSel.options).find(o => parseInt(o.value, 10) === perWeek); if (opt) sSel.value = opt.value; } }
+        if (journey && (paid + free) && journey !== paid + free) add('warn', 'Deal journey total is ' + journey + ' but structured + free = ' + (paid + free) + '.');
+
+        // End date from total classes / classes per week (not tenure x per-week, which over-counts on multi-class weeks)
+        const startStr = ($('onboardingParentStartDate') || {}).value;
+        let weeks = 0, endISO = '';
+        if (perWeek && (paid + free) && startStr) {
+            weeks = Math.ceil((paid + free) / perWeek);
+            const sd = new Date(startStr);
+            if (!isNaN(sd.getTime())) { const e = new Date(sd); e.setUTCDate(sd.getUTCDate() + weeks * 7 - 1); endISO = e.toISOString().split('T')[0]; }
+        }
+        if (endISO) {
+            $('onboardingParentEndDate').value = endISO;
+            isParentInvoiceEndDateManuallySet = true;
+            if (d.endDate) { const diff = Math.abs((new Date(d.endDate) - new Date(endISO)) / 86400000); if (diff > 14) add('warn', 'Computed end date ' + endISO + ' (' + (paid + free) + ' classes, ' + weeks + ' weeks) differs from the deal end date ' + d.endDate + ' by ' + Math.round(diff) + ' days.'); }
+        }
+
+        // Money: discount = list price - deal amount, so the invoice total equals what the deal says
+        const dEl = $('onboardingParentDiscount');
+        if (dEl) dEl.value = '0';
+        if (typeof updateParentOnboardingPlanDetails === 'function') updateParentOnboardingPlanDetails();
+        if (amount > 0 && tenure && typeof calculateInvoicePricingClient === 'function') {
+            const p0 = calculateInvoicePricingClient(collectParentOnboardingFormDataForCalc());
+            const list = p0 && p0.effectiveBasePrice || 0;
+            if (list > 0) {
+                const disc = Math.round((list - amount) * 100) / 100;
+                if (disc >= 0) { if (dEl) dEl.value = String(disc); add('ok', 'List price ' + p0.currencySymbol + list.toFixed(2) + ' - discount ' + p0.currencySymbol + disc.toFixed(2) + ' = deal amount ' + p0.currencySymbol + amount.toFixed(2) + '.'); }
+                else add('warn', 'Deal amount ' + amount + ' is higher than the list price ' + list.toFixed(2) + '; no discount applied, please review.');
+            } else add('warn', 'Could not work out a list price for this plan and currency.');
+            if (typeof updateParentOnboardingPlanDetails === 'function') updateParentOnboardingPlanDetails();
+            const p1 = calculateInvoicePricingClient(collectParentOnboardingFormDataForCalc());
+            if (p1 && Math.abs((p1.finalTotal || 0) - amount) > 0.5) add('warn', 'Invoice total ' + (p1.finalTotal || 0).toFixed(2) + ' does not match deal amount ' + amount + '.');
+        } else if (!amount) add('warn', 'Deal amount is missing.');
+
+        // Payment type vs installment fields
+        const raw = String(d.paymentTypeRaw || '').toLowerCase();
+        if (raw.indexOf('upfront') > -1 && (parseInt(d.installmentTerms, 10) || 0) > 1) add('warn', 'Deal payment type is Upfront but installment terms is ' + d.installmentTerms + '. Treated as Upfront.');
+        if (!startStr) add('warn', 'Start date missing.');
+
+        // Panel
+        const box = $('onboardingParentBrain');
+        if (box) {
+            const icon = { ok: '✓', info: 'i', warn: '⚠' };
+            const col = { ok: '#15803d', info: '#475569', warn: '#b45309' };
+            const head = '<div style="font-weight:700;margin-bottom:6px;">Deal check: ' + (paid + free) + ' classes (' + paid + ' structured + ' + free + ' free)' + (weeks ? ', ' + weeks + ' weeks' : '') + (tenure ? ', ' + tenure + ' months' : '') + '<\/div>';
+            box.innerHTML = head + checks.map(c => '<div style="color:' + col[c.lvl] + ';font-size:0.85rem;line-height:1.5;">' + icon[c.lvl] + ' ' + (typeof escapeHtml === 'function' ? escapeHtml(c.msg) : c.msg) + '<\/div>').join('');
+            box.style.display = 'block';
+        }
+        return checks;
+    }
+
+
+    // ── Review log: what the brain proposed vs what is finally sent (logged to the review sheet on send) ──
+    function _onbFieldsNow() {
+        const $ = id => document.getElementById(id);
+        const v = id => { const el = $(id); return el ? String(el.value == null ? '' : el.value).trim() : ''; };
+        const pt = document.querySelector('input[name="onboardingParentPaymentType"]:checked');
+        const isInst = pt && pt.value === 'Installment';
+        return {
+            planName: v('onboardingParentPlanName'), tenure: v('onboardingParentSubscriptionTenure'), freeClasses: v('onboardingParentFreeClasses'),
+            sessionsPerWeek: v('onboardingParentSessionsPerWeek'), startDate: v('onboardingParentStartDate'), endDate: v('onboardingParentEndDate'),
+            discount: v('onboardingParentDiscount'), paymentType: pt ? pt.value : '',
+            installments: isInst ? v('onboardingParentNumberOfInstallments') : '', frequency: isInst ? v('onboardingParentInstallmentFrequency') : '',
+            firstPaymentDate: isInst ? v('onboardingParentFirstPaymentDate') : '', totalPayable: v('onboardingParentTotalPayableDisplay')
+        };
+    }
+    function _onbBrainSnapshot(d, checks) {
+        window._onbBrain = {
+            ran: true, jlid: d.jlid, proposed: _onbFieldsNow(),
+            warnings: (checks || []).filter(c => c.lvl === 'warn').map(c => c.msg),
+            deal: {
+                plan: d.planName, tenure: d.subscriptionTenureMonths, amount: d.dealAmount, currency: d.currency, paymentType: d.paymentTypeRaw,
+                installmentType: d.installmentType, installmentTerms: d.installmentTerms, installmentMonths: d.installmentMonths,
+                classesPerWeek: d.sessionsPerWeek, structured: d.classesOffered, free: d.complementaryClasses, journey: d.totalClassesJourney,
+                start: d.startingDate, end: d.endDate
+            }
+        };
+    }
+    function _onbBrainReview(jlid) {
+        const b = window._onbBrain;
+        if (!b || String(b.jlid || '').toUpperCase() !== String(jlid || '').toUpperCase()) return { ran: false, final: _onbFieldsNow(), warnings: [], deal: {} };
+        return { ran: true, proposed: b.proposed, final: _onbFieldsNow(), warnings: b.warnings, deal: b.deal };
     }
 
     function loadInvoicePage() {
@@ -10772,6 +10950,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.37': [
+      "**Onboarding — plan filled from the deal**: Fetching a learner now fills tenure, free classes, sessions per week, end date and discount from the deal's classes and amount, so the invoice total equals the deal. A Deal check box lists what was done and flags anything that does not add up.",
+      "**Onboarding & Invoice — installments auto-fill**: Payment type, number of installments, frequency, first payment date and due day are taken from the deal's installment fields.",
+      "**Onboarding — course name in the welcome WhatsApp**: Shown next to the teacher in the Jet, Set, Go message.",
+      "**Onboarding review log**: Every send records what was proposed, what was changed and the deal's numbers in the review sheet, for a December review.",
+    ],
+    'V9.128': [
+      "**Onboarding WhatsApp — course name added**: The Jet, Set, Go! message now shows the course next to the teacher, e.g. with Ms. Sanjana (Design with Roblox). No WATI template change needed.",
+    ],
     'V9.127': [
       "**Gift Cards — Waiting list fix**: The Waiting for Amazon details panel stuck on Loading. Its server code now lives in its own file so the page can reach it.",
     ],

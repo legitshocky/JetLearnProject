@@ -310,6 +310,7 @@ function sendParentOnboardingWithInvoice(formData, attachmentsBase64) {
 
   } finally {
     logAction('New Learner Onboarded', formData.jlid, formData.learnerName, '', formData.teacherName, formData.course, overallStatus, logNotes, '', formData.performedBy || '');
+    try { logOnboardingBrain(formData, overallStatus === 'Success' ? 'Success' : 'Failed'); } catch (e) { Logger.log('[OnboardingBrainLog] ' + e.message); }
   }
 }
 

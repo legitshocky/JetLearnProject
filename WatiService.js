@@ -513,7 +513,8 @@ function sendOnboardingWhatsAppSequence(data) {
 
   const welcomeParams = [
     { name: "learner", value: `*${data.learnerName}*` }, 
-    { name: "current_teacher", value: `*${data.teacherName}*` }, 
+    // Course rides inside the existing teacher variable (template text unchanged): "with Ms. *Teacher* (*Course*) begins every..."
+    { name: "current_teacher", value: `*${data.teacherName}*` + ((data.course && String(data.course).trim() && !/^n\/?a$/i.test(String(data.course).trim())) ? ` (*${String(data.course).trim()}*)` : '') }, 
     { name: "timeslot", value: `*${timeSlotStr}*` }, 
     { name: "start_date", value: `*${whatsAppDate}*` }, // Use the formatted variable
     { name: "Zoom_Link", value: data.zoomLink }, 

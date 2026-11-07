@@ -1,6 +1,26 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-07] — Onboarding brain, installment auto-fill, review log (V10.37)
+
+### `JavaScript.html`
+- `_onboardingApplyDealBrain(d)`: structured classes (`number_of_classes_offered`) / plan classes-per-month -> tenure; complementary classes -> Free Classes; (structured + free) / classes per week -> End Date; discount = plan list price - deal amount (so invoice total = deal amount). Writes a "Deal check" panel (`#onboardingParentBrain`). Runs on the Onboarding Email fetch.
+- `_invoiceApplyDealInstallments(d, formPrefix)`: Installment type / terms / months fill the installment block on Invoice and Onboarding Email. Explicit "Upfront" payment type wins over terms.
+- `_onbBrainSnapshot` / `_onbBrainReview` attach `brainReview` to the onboarding send.
+### `OnboardingBrainLog.js` (new)
+- `logOnboardingBrain(formData, result)`, called from `sendParentOnboardingWithInvoice` (finally). Review sheet 1iNrejNX3HA01UqYEch94HuKLQCffSPofB8KbD4D9sI4: main tab gid 330124279 (headers auto-written if empty) + tab "Onboarding Brain Changes" (auto-created). Failures never block onboarding.
+### `HubSpotService.js`
+- Fetch returns `installmentType`, `installmentMonths`, `installmentReceivedMonths`, `paymentTypeRaw`, `classesOffered`, `complementaryClasses`.
+### `WatiService.js`
+- Welcome template: `current_teacher` variable now `*Teacher* (*Course*)`.
+### Versioning
+- From this release APP_VERSION = deployment number / 100.
+
+---
+## [2026-11-07] — Onboarding WhatsApp shows the course (V9.128)
+- `WatiService.js` `sendOnboardingWhatsAppSequence`: the `current_teacher` variable of template `onboarding_link` is now `*Teacher* (*Course*)`. Template unchanged. Blank / N/A course leaves the old text.
+
+---
 ## [2026-11-07] — Gift card requests moved to GiftCardRequests.js (V9.127)
 - `gcGetRequests` was "not a function" from the page in v9.126 (code existed in the deployed version). Tracker code (`gcRecordRequest`, `gcGetRequests`, `gcCloseRequest`, `_gcMarkRequestIssued`, `GC_REQ*`) moved out of `GiftCardService.js` into `GiftCardRequests.js`.
 

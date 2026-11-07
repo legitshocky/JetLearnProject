@@ -66,6 +66,7 @@ function fetchHubspotByJlid(jlid, skipChurnCheck) {
     'current_subscription_taken_classes', 'learner_health', 'learner_health_reason_code',
     'country', 'learning_kit_cost',
     'current_subscription___total_classes_offered', 'current_subscription_taken_classes_till_date',
+    'number_of_classes_offered', 'total_number_of_complementary_classes_offered',
     'previous_teachers', 'migration_request_count'
   ];
 
@@ -202,6 +203,12 @@ function fetchHubspotByJlid(jlid, skipChurnCheck) {
         timezone: contactProperties.time_zone || '',
         paymentReceivedDate: contactProperties.stage____payment_trigger_date || null,
         installmentTerms: contactProperties.installment_terms_final || '',
+        installmentType: contactProperties.installment_type || '',
+        paymentTypeRaw: contactProperties.payment_type || '',
+        classesOffered: contactProperties.number_of_classes_offered || '',
+        complementaryClasses: contactProperties.total_number_of_complementary_classes_offered || '',
+        installmentMonths: contactProperties.installment_months || '',
+        installmentReceivedMonths: contactProperties.installment_received_months__cloned_ || '',
         discount: calculatedDiscount,
         
         // Pass the alert object
