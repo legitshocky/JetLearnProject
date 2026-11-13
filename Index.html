@@ -5672,7 +5672,7 @@
 <div id="bgBellWrap" style="position:fixed;top:18px;right:26px;z-index:9500;display:none;">
   <button id="bgBellBtn" onclick="bgToggleBellPanel()" title="Background tasks"
     style="width:40px;height:40px;border-radius:50%;background:#fff;border:1.5px solid #e2e8f0;box-shadow:0 2px 10px rgba(0,0,0,0.10);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#475569;position:relative;">
-    <i class="fas fa-bell"></i>
+    <i class="fas fa-list-check"></i>
     <span id="bgBellBadge" style="display:none;position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#6366f1;color:#fff;font-size:0.62rem;font-weight:700;align-items:center;justify-content:center;line-height:16px;text-align:center;"></span>
   </button>
   <div id="bgBellPanel" class="bg-bell-panel" style="display:none;">
@@ -6571,8 +6571,13 @@
   // Check version on load
   checkVersion();
 
-  // Check every 10 minutes — non-disruptive banner only, never auto-reload
-  setInterval(checkVersion, 600000);
+  // Check every 3 minutes, and whenever the tab is brought back to the front (a tab left open for days keeps the OLD
+  // screens until it is reloaded — this is what the banner is for). Banner only, never auto-reload.
+  setInterval(checkVersion, 180000);
+  var _lastVersionCheck = Date.now();
+  function _checkVersionSoon() { if (Date.now() - _lastVersionCheck > 30000) { _lastVersionCheck = Date.now(); checkVersion(); } }
+  document.addEventListener('visibilitychange', function() { if (!document.hidden) _checkVersionSoon(); });
+  window.addEventListener('focus', _checkVersionSoon);
 </script>
 
 <!-- ── Dropdown position fix + Manager field wiring ── -->

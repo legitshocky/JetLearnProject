@@ -1638,6 +1638,38 @@ function bkcDoCancel() {
         panel.style.display = opening ? 'block' : 'none';
         if (opening) _bgRenderBellPanelBody();
     }
+
+// ── Background-tasks button: sits INSIDE the visible page's header, centred on the button row, so it lines up with the page's own
+// buttons on every page instead of floating over the corner. (Different icon from the notification bell on the dashboard:
+// the bell = alerts about learners, kits and migrations; this = "what did I start, is it done yet".) ──
+function bgPlaceBell() {
+    var wrap = document.getElementById('bgBellWrap');
+    if (!wrap) return;
+    var page = null, pages = document.querySelectorAll('.page-content');
+    for (var i = 0; i < pages.length; i++) { if (pages[i].style.display !== 'none' && pages[i].offsetParent !== null) { page = pages[i]; break; } }
+    var hdr = page ? page.querySelector('.header, .page-header') : null;
+    if (hdr) {
+        if (getComputedStyle(hdr).position === 'static') hdr.style.position = 'relative';
+        if (wrap.parentNode !== hdr) hdr.appendChild(wrap);
+        // centre it on the page's own button row: the right-most visible button / link in the header (fallback: the header's centre)
+        var top = '50%', hr = hdr.getBoundingClientRect(), best = null, items = hdr.querySelectorAll('button,a,label');
+        for (var k = 0; k < items.length; k++) {
+            var it = items[k];
+            if (wrap.contains(it)) continue;
+            var r = it.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8) continue;
+            if (!best || r.right > best.right + 2 || (Math.abs(r.right - best.right) <= 2 && r.top < best.top)) best = r;
+        }
+        if (best && hr.height > 0) top = Math.round(best.top + best.height / 2 - hr.top) + 'px';
+        wrap.style.position = 'absolute'; wrap.style.top = top; wrap.style.right = '14px'; wrap.style.left = 'auto'; wrap.style.transform = 'translateY(-50%)';
+    } else if (wrap.parentNode !== document.body) {
+        document.body.appendChild(wrap);
+        wrap.style.position = 'fixed'; wrap.style.top = '18px'; wrap.style.right = '26px'; wrap.style.left = 'auto'; wrap.style.transform = 'none';
+    }
+}
+setInterval(bgPlaceBell, 400);
+document.addEventListener('DOMContentLoaded', bgPlaceBell);
+
     document.addEventListener('click', function(e) {
         var wrap = document.getElementById('bgBellWrap');
         var panel = document.getElementById('bgBellPanel');
@@ -10951,6 +10983,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.47': [
+      "**Kit — order notice reaches every parent number**: When you mark an order placed, the kit-ordered WhatsApp and the tracking link now go to every number the address request went to (not just the primary one). If one number fails, the result says which.",
+      "**WhatsApp config check**: checkMessagingConfig() in the Apps Script editor lists all WATI templates the app uses and whether each exists and is approved.",
+    ],
+    'V10.46': [
+      "**Gift cards — Waiting list only shows who is waiting**: Cards that are already issued no longer sit in the Waiting for Amazon details list. They are in a closed Recently issued section below it (kept 7 days).",
+    ],
+    'V10.45': [
+      "**Background-tasks button lines up with the page buttons**: It now sits in the page header, centred on the same line as each page's own buttons, with a different icon from the notification bell (bell = alerts about learners, kits and migrations; checklist = tasks you started).",
+      "**Gift cards — the ask window closes**: After Email Ask / Send Ask First the window closes, a message says where the ask went, and the learner's row is highlighted under Waiting for Amazon details.",
+      "**New-version banner appears sooner**: checked every 3 minutes and whenever you return to the tab.",
+    ],
     'V10.44': [
       "**Kit Tracking — one action per tab**: The top-right button now matches the tab: Add Kit Entry (JetLearn Sends), Ask for Address (Asking Address), Add Parent Will Buy (Parent Will Buy), Add Gift Card (Gift Cards). The kit form no longer has a mode switch, so a referral reward and a kit entry cannot be mixed up.",
       "**Ask for Address**: enter the JLID, fetch, pick the kit and send the address request; the learner then shows in the Asking Address tab.",
@@ -19363,7 +19407,7 @@ function gcRenderRequests() {
   var th = 'padding:7px 10px;text-align:left;color:#64748b;font-weight:600;font-size:0.72rem;border-bottom:1px solid #e2e8f0;';
   var td = 'padding:8px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;';
   var pill = function(bg, fg, t) { return '<span style="background:' + bg + ';color:' + fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + t + '<\/span>'; };
-  var rows = _gcReqRows.map(function(r) {
+  var _rowHtml = function(r) {
     var st = r.status === 'Details received' ? pill('#dcfce7', '#15803d', '✓ Details received')
            : r.status === 'Issued' ? pill('#f1f5f9', '#475569', 'Issued')
            : pill(r.waitingDays >= 3 ? '#fee2e2' : '#fef3c7', r.waitingDays >= 3 ? '#b91c1c' : '#92400e', 'Waiting ' + r.waitingDays + 'd');
@@ -19376,12 +19420,18 @@ function gcRenderRequests() {
     if (r.status === 'Waiting') acts += '<button type="button" title="Remind by email" onclick="gcReqRemind(\'' + j + '\',\'email\',' + r.rowIndex + ',this)" style="background:#fff;border:1px solid #0d9488;border-radius:6px;color:#0d9488;font-size:0.72rem;padding:4px 8px;cursor:pointer;margin-right:4px;"><i class="fas fa-envelope"><\/i><\/button>'
       + '<button type="button" title="Remind on WhatsApp" onclick="gcReqRemind(\'' + j + '\',\'wa\',' + r.rowIndex + ',this)" style="background:#fff;border:1px solid #16a34a;border-radius:6px;color:#16a34a;font-size:0.72rem;padding:4px 8px;cursor:pointer;margin-right:4px;"><i class="fab fa-whatsapp"><\/i><\/button>';
     if (r.status !== 'Issued') acts += '<button type="button" title="Not needed any more" onclick="gcReqClose(' + r.rowIndex + ')" style="background:none;border:1px solid #e2e8f0;border-radius:6px;color:#94a3b8;font-size:0.72rem;padding:4px 8px;cursor:pointer;">✕<\/button>';
-    return '<tr><td style="' + td + '"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learner || '—') + '<\/div><div style="font-family:monospace;font-size:0.68rem;color:#94a3b8;">' + j + '<\/div><\/td>'
+    return '<tr' + (_gcFlashJlid && r.jlid === _gcFlashJlid ? ' style="background:#fef9c3;"' : '') + '><td style="' + td + '"><div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.learner || '—') + '<\/div><div style="font-family:monospace;font-size:0.68rem;color:#94a3b8;">' + j + '<\/div><\/td>'
       + '<td style="' + td + '">' + escapeHtml(r.occasion) + (r.offer ? '<div style="font-size:0.7rem;color:#94a3b8;">' + escapeHtml(r.offer) + '<\/div>' : '') + '<\/td>'
       + '<td style="' + td + 'white-space:nowrap;">' + escapeHtml(r.channels || '—') + '<div style="font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.requestedAt) + (r.reminders ? ' · ' + r.reminders + ' reminder' + (r.reminders === 1 ? '' : 's') : '') + '<\/div><\/td>'
       + '<td style="' + td + '">' + details + '<\/td><td style="' + td + '">' + st + '<\/td><td style="' + td + 'text-align:right;white-space:nowrap;">' + acts + '<\/td><\/tr>';
-  }).join('');
-  body.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="' + th + '">Learner<\/th><th style="' + th + '">For<\/th><th style="' + th + '">Asked via<\/th><th style="' + th + '">Amazon details<\/th><th style="' + th + '">Status<\/th><th style="' + th + '"><\/th><\/tr><\/thead><tbody>' + rows + '<\/tbody><\/table><\/div>';
+  };
+  var issued = _gcReqRows.filter(function(r) { return r.status === 'Issued'; });
+  var head = '<thead><tr><th style="' + th + '">Learner<\/th><th style="' + th + '">For<\/th><th style="' + th + '">Asked via<\/th><th style="' + th + '">Amazon details<\/th><th style="' + th + '">Status<\/th><th style="' + th + '"><\/th><\/tr><\/thead>';
+  var tbl = function(rowsHtml) { return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' + head + '<tbody>' + rowsHtml + '<\/tbody><\/table><\/div>'; };
+  // Only people we are still waiting on (or whose details just arrived) are listed here; cards already issued go in a closed section
+  var html = open.length ? tbl(open.map(_rowHtml).join('')) : '<div style="padding:16px;color:#94a3b8;text-align:center;">Nobody is waiting for a reply right now.<\/div>';
+  if (issued.length) html += '<details style="border-top:1px solid #f1f5f9;"><summary style="cursor:pointer;padding:9px 14px;font-size:0.74rem;color:#64748b;">Recently issued (' + issued.length + ') — kept for 7 days<\/summary>' + tbl(issued.map(_rowHtml).join('')) + '<\/details>';
+  body.innerHTML = html;
 }
 
 function gcReqRemind(jlid, channel, rowIndex, btn) {
@@ -19442,7 +19492,20 @@ function gcSendIssuedEmailRow(jlid, rowIndex, gcType, btn) {
 }
 
 // After an ask goes out: say so in the window (it stays open) and refresh the waiting list
+var _gcFlashJlid = '';
 function gcAskSent(channel, res) {
+  var jlid = ((document.getElementById('gcJlid') || {}).value || '').trim().toUpperCase();
+  if (res && res.tracked) {
+    // The ask is now on the waiting list: close the window (nothing more to do until the parent answers) and show where it went
+    gcCloseModal();
+    showToast('success', (res.reminder ? 'Reminder' : 'Ask') + ' sent by ' + channel, 'Now under "Waiting for Amazon details". The reply will show there when the parent answers.');
+    _gcFlashJlid = jlid;
+    gcLoadRequests(false);
+    var panel = document.getElementById('gcReqPanel'); if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(function() { _gcFlashJlid = ''; if (typeof gcRenderRequests === 'function') gcRenderRequests(); }, 8000);
+    return;
+  }
+  // Not added to the waiting list: keep the window open and say so
   var n = document.getElementById('gcAskNotice');
   if (n) {
     n.style.display = 'block';

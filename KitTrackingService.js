@@ -3978,27 +3978,39 @@ function markKitOrderPlaced(rowIndex, payload) {
     var waTrackStatus = 'not_attempted';
     try {
       if (hsData) {
-        var phone = _normalisePhone(hsData.parentContact || '');
-        if (phone) {
-          // Named-placeholder template — param `name` must exactly match the
-          // template's variable names (ParentName/kit_name/delivery_date/address).
-          sendWatiMessage(phone, 'kit_order_placed_notice_v2', [
-            { name: 'ParentName',    value: hsData.parentName || '' },
-            { name: 'kit_name',      value: kitName },
-            { name: 'delivery_date', value: payload.eta || '' },
-            { name: 'address',       value: deliveryAddress }
-          ]);
-          waStatus = 'sent';
-
-          try {
-            var trackRes = sendKitTrackingLinkWhatsApp(phone, hsData.parentName, kitName, jlid);
-            waTrackStatus = (trackRes && trackRes.success) ? 'sent' : ('failed: ' + (trackRes && trackRes.message));
-          } catch(te) {
-            waTrackStatus = 'failed: ' + te.message;
-          }
-        } else {
+        // EVERY number the address request went to (the sheet's "Phone Sent To"), plus the deal's primary and all its contacts.
+        // Before this, the order notice and tracking link only went to the primary number, so a parent who had answered the
+        // address request from a second number never heard that the kit was ordered.
+        var phones = [], seenPh = {};
+        var addPh = function(x) { x = _normalisePhone(String(x || '').replace(/\s*\(.*\)$/, '')); if (x && !seenPh[x]) { seenPh[x] = true; phones.push(x); } };
+        String(row[KIT_COL.PHONE_SENT_TO - 1] || '').split(/[,;\s]+/).forEach(addPh);
+        addPh(hsData.parentContact);
+        if (hsData.dealId) {
+          try { var pr = getPhoneNumbersForDeal(hsData.dealId); if (pr && pr.all) pr.all.forEach(addPh); } catch (pe) { Logger.log('[KitTracking] order notice: phones lookup failed: ' + pe.message); }
+        }
+        if (!phones.length) {
           waStatus = 'no_phone';
           waTrackStatus = 'no_phone';
+        } else {
+          var noticeOk = 0, trackOk = 0, noticeErr = [], trackErr = [];
+          phones.forEach(function(ph) {
+            // Named-placeholder template: param `name` must exactly match the template's variable names.
+            try {
+              sendWatiMessage(ph, 'kit_order_placed_notice_v2', [
+                { name: 'ParentName',    value: hsData.parentName || '' },
+                { name: 'kit_name',      value: kitName },
+                { name: 'delivery_date', value: payload.eta || '' },
+                { name: 'address',       value: deliveryAddress }
+              ]);
+              noticeOk++;
+            } catch (ne) { noticeErr.push('..' + ph.slice(-4) + ': ' + ne.message); }
+            try {
+              var trackRes = sendKitTrackingLinkWhatsApp(ph, hsData.parentName, kitName, jlid);
+              if (trackRes && trackRes.success) trackOk++; else trackErr.push('..' + ph.slice(-4) + ': ' + ((trackRes && trackRes.message) || 'not sent'));
+            } catch (te) { trackErr.push('..' + ph.slice(-4) + ': ' + te.message); }
+          });
+          waStatus = noticeOk === phones.length ? 'sent' : (noticeOk ? 'partial: sent to ' + noticeOk + ' of ' + phones.length + ' numbers (' + noticeErr.join('; ') + ')' : 'failed: ' + noticeErr.join('; '));
+          waTrackStatus = trackOk === phones.length ? 'sent' : (trackOk ? 'partial: sent to ' + trackOk + ' of ' + phones.length + ' numbers (' + trackErr.join('; ') + ')' : 'failed: ' + trackErr.join('; '));
         }
       } else {
         waStatus = 'no_hubspot_data';

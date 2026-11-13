@@ -1,6 +1,21 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-13] — Order-placed notice to all parent numbers, messaging config check (V10.47)
+- `KitTrackingService.js` `markKitOrderPlaced`: `kit_order_placed_notice_v2` and the tracking link go to the union of the row's "Phone Sent To", the deal primary and all deal phones; `waStatus` / `waTrackStatus` become `partial: sent to N of M numbers (..last4: error)` when some fail.
+- `MessagingConfigCheck.js` (new): `checkMessagingConfig()` lists WATI templates (getMessageTemplates) against the 18 the code uses; OK / MISSING / status.
+
+---
+## [2026-11-13] — Waiting list: issued cards in their own section (V10.46)
+- `JavaScript.html` `gcRenderRequests`: main table = Waiting / Details received only; Issued rows (7 days) in a `<details>` "Recently issued (n)"; empty state "Nobody is waiting for a reply right now."
+
+---
+## [2026-11-13] — Bell placement, gift card ask window, update banner (V10.45)
+- `JavaScript.html` `bgPlaceBell()`: `#bgBellWrap` is moved into the visible page's `.header` / `.page-header` and centred on the right-most button (fixed top-right fallback when a page has no header); icon `fa-list-check`. Checked on 25 pages (24 aligned, no overlap).
+- `gcAskSent`: closes the gift card window when the ask is tracked, toast + scroll + 8 s row highlight; stays open with a warning when not tracked.
+- `Index.html`: `checkVersion` every 3 min and on tab focus.
+
+---
 ## [2026-11-13] — Kit Tracking: one action per tab, bell gutter (V10.44)
 - `Index.html` / `JavaScript.html`: `#ktPrimaryBtn` driven by `ktUpdatePrimaryButton(tab)` / `ktPrimaryAction()` (jl -> `openAddKitModal('jl')`, askaddr -> `openAskAddrModal`, pwb -> `openAddKitModal('pwb')`, gc -> `gcOpenAddModal`, pivot -> hidden). `openAddKitModal(mode)` shows only that form (toggle `#ktModeToggle` hidden). New `#askAddrModal` (`aaFetch`, `aaSend`) calls `requestKitDeliveryAddress(jlid, kit, 0, useHs, force)`; a blocked country asks before forcing.
 - `Styles.html`: `.main-content .page-content .header { padding-right: 76px }` so the fixed Background Tasks bell (`#bgBellWrap`) never covers header buttons.
