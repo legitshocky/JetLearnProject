@@ -197,6 +197,11 @@ function scanLateMigrationForms() {
         Logger.log('[LateForm] send failed for ticket ' + t.id + ': ' + se.message);   // not marked: retried on the next run
       }
     });
+    // The log: one row per course-change ticket, whatever happened to it (never blocks or changes the alerts above)
+    try {
+      if (typeof logLateForms === 'function') logLateForms(tickets, _lfNotifiedSet());
+      if (typeof lateFormBackfill === 'function' && !PropertiesService.getScriptProperties().getProperty('LATE_FORM_LOG_BACKFILLED')) lateFormBackfill();   // once: tickets from before the log
+    } catch (le) { Logger.log('[LateForm] log failed: ' + le.message); }
   } catch (e) {
     Logger.log('[LateForm] scan failed: ' + e.message);
   }

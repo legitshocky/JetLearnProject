@@ -1,6 +1,50 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-13] — Kit Tracking: one action per tab, bell gutter (V10.44)
+- `Index.html` / `JavaScript.html`: `#ktPrimaryBtn` driven by `ktUpdatePrimaryButton(tab)` / `ktPrimaryAction()` (jl -> `openAddKitModal('jl')`, askaddr -> `openAskAddrModal`, pwb -> `openAddKitModal('pwb')`, gc -> `gcOpenAddModal`, pivot -> hidden). `openAddKitModal(mode)` shows only that form (toggle `#ktModeToggle` hidden). New `#askAddrModal` (`aaFetch`, `aaSend`) calls `requestKitDeliveryAddress(jlid, kit, 0, useHs, force)`; a blocked country asks before forcing.
+- `Styles.html`: `.main-content .page-content .header { padding-right: 76px }` so the fixed Background Tasks bell (`#bgBellWrap`) never covers header buttons.
+
+---
+## [2026-11-10] — Late Form Log, gift card currency check (V10.43)
+- `LateFormLog.js` (new): `_lflEvaluate` (outcome per CCTC ticket), `logLateForms(tickets, done)` upserts rows into tab "Late Form Log" of sheet 1iNrejNX3HA01UqYEch94HuKLQCffSPofB8KbD4D9sI4 (Exception / Exception Note columns are never overwritten), `lateFormRefreshSummary` builds "Late Form Summary" (live COUNTIF formulas), `lateFormBackfill` (tickets since 2026-08-01, runs once on the first hourly check, script property LATE_FORM_LOG_BACKFILLED; run again by hand any time).
+- `LateMigrationFormService.js` `scanLateMigrationForms`: calls the logger after the alerts; alert behaviour unchanged.
+- `JavaScript.html` / `Index.html`: gift card form `gcAutoCurrency` (currency from the Amazon site, only when empty) and `gcCurrencyWarning` confirmation before saving.
+
+---
+## [2026-11-10] — Gift card reply capture (V10.42)
+- `WatiService.js`: `_watiIsIncoming` — incoming = type 0, owner false, or status Received/incoming (was type 0 only). `getWatiChatData` returns `http`.
+- `GiftCardService.js` `gcGetAmazonDetails` returns `diag` (email messages, WhatsApp read / incoming / with details, errors).
+- `GiftCardRequests.js`: new column 19 "Check Note" (added automatically to an existing sheet), shown under "No reply yet"; re-check throttle 10 min -> 2 min.
+
+---
+## [2026-11-09] — Find teachers on the Teacher Intelligence engine, nearby times, AI-busy handling (V10.41)
+- `TicketTriageService.js`: `_triFromEngine` calls `searchMatchingTeachers` with CET date + "hh:mm AM - hh:mm PM" slots; the old calendar check stays as backup (`engineOk` false). `_triNearby` parses the engine `alternateSlots` ("Fri, 13 Nov · 01:00 PM - 02:00 PM") into slots within 120 min of a requested slot. New recommendation action `nearby`. `_triCourseFocus`: reason containing "course change" -> next course primary, otherwise current course primary; the other course is passed as `futureCourse1`. `_triSimpleNote` reads short plain notes with `_triFallbackParse` (no AI); `_triFallbackParse` is also the backup when the AI fails.
+- `AIService.js`: HTTP 429/500/503 retry once after 2 s, then the next ranked model (`AI_AUTO_MODELS`); discovery ranks gemini-N-flash and flash-lite.
+- `JavaScript.html`: nearby section, both courses and per-teacher readiness on both.
+
+---
+## [2026-11-09] — Gemini model auto-selection, Find teachers list fix (V10.40)
+- `AIService.js`: `_resolveGeminiModel` / `_discoverGeminiModel`. Retired names (gemini-2.5-flash, 2.0-flash, 1.5-*) are replaced by the newest plain `gemini-N-flash` that supports generateContent for the key (ListModels), stored in Script Property `AI_AUTO_MODEL`. `_callGemini` retries once with a rediscovered model on HTTP 404. A model chosen on purpose in the AI page is kept. Audit/Report services use `GOOGLE_GENERATIVE_AI_KEY` with their own hard-coded model names and are unchanged.
+- `JavaScript.html` `migShowView`: `#triCard` hidden on the form view and `triLoad(true)` on every return to the list.
+
+---
+## [2026-11-09] — Find teachers: 28 time zones (V10.39)
+- `TicketTriageService.js` `TRI_TZ` expanded: UK/Ireland, Europe, India, Australia, NZ, US/Canada, Africa, Gulf/Asia words (abbreviations and city/country names) -> IANA zones. CST = US Central, bare "Africa" = Johannesburg, bare "Canada" = Toronto. Unknown word still assumes CET with a warning.
+
+---
+## [2026-11-09] — Live migration progress + Find teachers, suggest-only (V10.38)
+
+### `Utils.js`
+- `_progBegin / _progEnd / _progWrite` + `getMigrationProgress(jlid)`: steps of a long run are stored in the script cache (`migprog_<jlid>`, 30 min) and polled by the page every 1.5 s. `_timelineStep` reports automatically while `__PROG_KEY` is set. Never breaks a run.
+### `MigrationAutomationService.js`
+- `runForJlid` wrapper records progress around `_runForJlidCore` (checks, class booking, ticket completion; email/WhatsApp steps come through `_timelineStep`).
+### `TicketTriageService.js` (new)
+- `getTriageTickets()`, `triageSuggest(jlid)`, `triagePostNote(ticketId, text)`. Reads `notes___additional_comments` (existing property, no new properties), Gemini turns the note into slots / windows / classes per week / human steps / confirm-with-parent, converts timezones, finds ready teachers (Teacher Courses >= 71%, not hidden, not the current teacher), checks real calendars (teacher personal + class calendar), ranks by audit score. Suggest only: never moves a ticket or assigns a teacher.
+### `Index.html` / `JavaScript.html`
+- "Find teachers" card (`#triCard`, `tri*` functions); live "What has run" list in the Ready to migrate detail panel (`rtmPoll`, `rtmProgressHtml`); status pill shows the current step.
+
+---
 ## [2026-11-07] — Onboarding brain, installment auto-fill, review log (V10.37)
 
 ### `JavaScript.html`

@@ -537,8 +537,10 @@ function gcGetAmazonDetails(jlid, parentEmails, parentPhone) {
     q += ')';
 
     var candidates = [];
+    var diag = { emailMessages: 0, watiHttp: '', watiMessages: 0, watiIncoming: 0, watiWithDetails: 0, watiError: '' };
     GmailApp.search(q, 0, 10).forEach(function(th) {
       th.getMessages().forEach(function(m) {
+        diag.emailMessages++;
         if (/jet-?learn/i.test(String(m.getFrom() || ''))) return;   // skip our own sends / team replies
         var p = _gcParseAmazonReply(m.getPlainBody());
         candidates.push({ when: m.getDate(), from: m.getFrom(), parsed: p, source: 'Email' });
@@ -552,18 +554,21 @@ function gcGetAmazonDetails(jlid, parentEmails, parentPhone) {
       if (phone) {
         var chat = getWatiChatData(phone, 'giftcard');
         if (chat && chat.success) {
+          diag.watiHttp = chat.http || ''; diag.watiMessages = chat.messages.length;
           chat.messages.forEach(function(wm) {
             if (wm.direction !== 'in') return;
+            diag.watiIncoming++;
             var wp = _gcParseAmazonReply(wm.text);
             var wt = new Date(wm.timestamp);
             if (!(wp.website || wp.amazonEmail) || isNaN(wt.getTime())) return;
+            diag.watiWithDetails++;
             candidates.push({ when: wt, from: 'WhatsApp +' + phone, parsed: wp, source: 'WhatsApp' });
           });
-        }
-      }
-    } catch(we) { Logger.log('[GiftCard] WATI read skipped: ' + we.message); }
+        } else { diag.watiError = (chat && (chat.error || chat.message)) || 'no answer from WhatsApp'; }
+      } else { diag.watiError = 'no parent phone number saved on this request'; }
+    } catch(we) { diag.watiError = we.message; Logger.log('[GiftCard] WATI read skipped: ' + we.message); }
 
-    if (!candidates.length) return { success: true, found: false };
+    if (!candidates.length) return { success: true, found: false, diag: diag };
 
     candidates.sort(function(a, b) { return b.when - a.when; });
     // Each field comes from the newest reply (email or WhatsApp) that actually gave it
@@ -581,7 +586,8 @@ function gcGetAmazonDetails(jlid, parentEmails, parentPhone) {
       snippet: latest.parsed.snippet,
       from: latest.from,
       source: sources.join(' + '),
-      repliedAt: _gcFormatDateTime(latest.when)
+      repliedAt: _gcFormatDateTime(latest.when),
+      diag: diag
     };
   } catch(e) {
     Logger.log('[GiftCard] gcGetAmazonDetails ERROR: ' + e.message);

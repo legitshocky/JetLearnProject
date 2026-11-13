@@ -3270,6 +3270,7 @@ function fetchHubspotData(jlidInputEl, learnerNameInputEl, courseInputEl, ageInp
         tabContentElement.classList.add('active');
     }
     if (tabId === 'migration' && typeof rtmLoad === 'function') rtmLoad(false); // "Ready to migrate" list
+    if (tabId === 'migration' && typeof triLoad === 'function') triLoad(false); // "Find teachers" list
 
     // Reset relevant forms for a clean state.
     resetHubspotFields('onboarding');
@@ -10950,6 +10951,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.44': [
+      "**Kit Tracking — one action per tab**: The top-right button now matches the tab: Add Kit Entry (JetLearn Sends), Ask for Address (Asking Address), Add Parent Will Buy (Parent Will Buy), Add Gift Card (Gift Cards). The kit form no longer has a mode switch, so a referral reward and a kit entry cannot be mixed up.",
+      "**Ask for Address**: enter the JLID, fetch, pick the kit and send the address request; the learner then shows in the Asking Address tab.",
+      "**Bell no longer covers buttons**: every page header keeps a clear gutter for the Background Tasks bell.",
+    ],
+    'V10.43': [
+      "**Late migration forms — now counted**: Every course-change ticket is logged in the review sheet (Late Form Log) with who filed it, the notice given and the outcome. Mark an Exception (e.g. CLS told teacher) and the Late Form Summary shows late forms split into exceptions and teacher-side, by month and by teacher. Past tickets since 1 Aug 2026 are filled in automatically on the first run.",
+      "**Gift cards — currency can no longer be wrong by accident**: The currency is picked from the Amazon site (amazon.co.uk = GBP) and the app asks for confirmation when the currency, the site and the EUR amount do not fit, so a parent is not told 100 EUR for a 100 GBP card.",
+    ],
+    'V10.42': [
+      "**Gift cards — parent WhatsApp replies are picked up**: Parent replies are now recognised however WATI marks them, and waiting requests are re-checked every 2 minutes. Each waiting row shows what the last check looked at, so a missed reply can be diagnosed.",
+    ],
+    'V10.41': [
+      "**Find teachers — uses Teacher Intelligence, shows nearby times**: Teachers now come from the same search as the Teacher Intelligence page (live calendars, course readiness, audits, red flags). Teachers not free at the exact time are shown with free slots within 2 hours (e.g. Fri 12:00 CET, 1 h earlier), and the suggested next step becomes: ask the parent about a nearby time.",
+      "**Find teachers — right course**: A course change searches the next course; any other reason (slot change, teacher change...) searches the current course. Both are shown.",
+      "**Find teachers — faster and steadier**: Short plain notes like Friday 5:30 PM IST are read without the AI. When Google's AI is busy the app retries, switches model, and falls back to a simple reader.",
+    ],
+    'V10.40': [
+      "**AI fixed — Google retired the Gemini model**: The AI features (migration safety check, Find teachers note reading, AI manager) stopped with a 404 because the old model is gone. The app now asks Google which model works, remembers it, and switches by itself if one is retired again.",
+      "**Find teachers**: the card only shows on the list view and refreshes every time you come back to the list.",
+    ],
+    'V10.39': [
+      "**Find teachers — more time zones**: Notes can now use UK, Europe, India, Australia, New Zealand, US and Canada (ET/CT/MT/PT, Toronto, Vancouver), Africa (South Africa, Nigeria, Kenya, Egypt), Gulf and Asia zones. Daylight saving is handled automatically.",
+    ],
+    'V10.38': [
+      "**Migration — see what is running**: When you run a migration (one or several), the list now shows each step as it happens: checks, teacher email, parent WhatsApp, class booking, ticket completed. A failed step turns red with the reason, and the list stays after it finishes.",
+      "**Migration — Find teachers (suggest only)**: New card on the Learner Migration page for tickets at Triggered, WIP and CLS Rejected. It reads the ticket notes, works out the requested slots, finds teachers ready for the course who are free on those slots, and suggests the next step. Nothing is moved or sent; one button can post the suggestion as a ticket note.",
+    ],
     'V10.37': [
       "**Onboarding — plan filled from the deal**: Fetching a learner now fills tenure, free classes, sessions per week, end date and discount from the deal's classes and amount, so the invoice total equals the deal. A Deal check box lists what was done and flags anything that does not add up.",
       "**Onboarding & Invoice — installments auto-fill**: Payment type, number of installments, frequency, first payment date and due day are taken from the deal's installment fields.",
@@ -13537,7 +13566,7 @@ function rtmCounts() {
 }
 
 function rtmBadge(r) {
-  if (r.running) return '<span style="background:#eef2ff;color:#4338ca;border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;"><i class="fas fa-spinner fa-spin"><\/i> Running…<\/span>';
+  if (r.running) { var _cur = (r.progress && r.progress.length) ? r.progress[r.progress.length - 1].label : ''; return '<span style="background:#eef2ff;color:#4338ca;border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;"><i class="fas fa-spinner fa-spin"><\/i> ' + (_cur ? escapeHtml(_cur.length > 34 ? _cur.slice(0, 33) + '…' : _cur) : 'Running…') + '<\/span>'; }
   if (r.result) {
     var ok = r.result.success, bg = ok ? '#dcfce7' : (r.result.notRun ? '#fef3c7' : '#fee2e2'), fg = ok ? '#15803d' : (r.result.notRun ? '#b45309' : '#b91c1c');
     return '<span style="background:' + bg + ';color:' + fg + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + (ok ? '✓ Done' : (r.result.notRun ? '⏸ Not run' : '✗ Failed')) + '<\/span>';
@@ -13578,7 +13607,7 @@ function rtmDetailHtml(r) {
     + kv('Class slot', r.schedule ? escapeHtml(r.schedule) + ' CET' : '<span style="color:#94a3b8;">from the deal or calendar when run<\/span>')
     + kv('Reason', escapeHtml(r.reason || '—'))
     + kv('Waiting', '<span style="color:' + (r.daysWaiting >= 7 ? '#dc2626' : '#1e293b') + ';">' + r.daysWaiting + ' day' + (r.daysWaiting === 1 ? '' : 's') + '<\/span>')
-    + '<\/div>' + note
+    + '<\/div>' + rtmProgressHtml(r) + note
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;">' + runBtn + openBtn + tk + '<\/div>';
 }
 
@@ -13657,6 +13686,8 @@ function migShowView(v) {
   if (hdr)  hdr.style.display  = isForm ? 'flex' : 'none';
   if (card) card.style.display = isForm ? 'none' : '';
   if (look) look.style.display = isForm ? 'none' : 'flex';
+  var triC = document.getElementById('triCard'); if (triC) triC.style.display = isForm ? 'none' : '';
+  if (!isForm && typeof triLoad === 'function') triLoad(true);
   var wrap = form.closest ? form.closest('.form-container-wide') : null;
   if (wrap) wrap.style.maxWidth = isForm ? '1400px' : '';
   clearInterval(_migTimer);
@@ -13845,6 +13876,188 @@ function migPlanHtml(v) {
   return html + '<\/div>';
 }
 
+// Live progress: while a run is in flight, poll the server for the steps done so far
+function rtmPoll(row, onStep) {
+  var stopped = false;
+  function tick() {
+    if (stopped) return;
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (stopped) return;
+        if (res && res.success && !res.none) { row.progress = res.steps || []; rtmRender(); if (onStep) onStep(row.progress); }
+        setTimeout(tick, 1500);
+      })
+      .withFailureHandler(function() { if (!stopped) setTimeout(tick, 3000); })
+      .getMigrationProgress(row.jlid);
+  }
+  setTimeout(tick, 700);
+  return function(finalFetch) {
+    stopped = true;
+    if (finalFetch) {
+      google.script.run.withSuccessHandler(function(res) { if (res && res.success && !res.none) { row.progress = res.steps || []; rtmRender(); } }).getMigrationProgress(row.jlid);
+    }
+  };
+}
+function rtmProgressHtml(r) {
+  var steps = r.progress || [];
+  if (!steps.length) return '';
+  var ic = function(st) {
+    if (st === 'running') return '<i class="fas fa-spinner fa-spin" style="color:#6366f1;"><\/i>';
+    if (st === 'failed') return '<i class="fas fa-times-circle" style="color:#dc2626;"><\/i>';
+    return '<i class="fas fa-check-circle" style="color:#16a34a;"><\/i>';
+  };
+  return '<div style="margin:12px 0;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:0.78rem;">'
+    + '<div style="font-weight:700;color:#334155;margin-bottom:6px;">What has run' + (r.running ? ' so far' : '') + '<\/div>'
+    + steps.map(function(s) {
+        return '<div style="display:flex;gap:8px;align-items:flex-start;padding:2px 0;color:' + (s.status === 'failed' ? '#b91c1c' : '#334155') + ';">' + ic(s.status)
+          + '<span style="flex:1;min-width:0;">' + escapeHtml(s.label) + (s.detail ? '<span style="color:#94a3b8;"> — ' + escapeHtml(s.detail) + '<\/span>' : '') + '<\/span>'
+          + (s.ms ? '<span style="color:#94a3b8;white-space:nowrap;">' + (s.ms >= 1000 ? (s.ms / 1000).toFixed(1) + 's' : s.ms + 'ms') + '<\/span>' : '') + '<\/div>';
+      }).join('')
+    + '<\/div>';
+}
+
+
+// ── Find teachers (suggest only): Triggered / WIP / CLS Rejected tickets ─────────────────────────────
+var _triRows = [], _triSelJlid = '', _triResults = {}, _triRunning = {}, _triProgress = {}, _triLoadedAt = 0;
+
+function triToggleCard() {
+  var wrap = document.getElementById('triBodyWrap'), icon = document.querySelector('#triToggleBtn i');
+  if (!wrap) return;
+  var hide = wrap.style.display !== 'none';
+  wrap.style.display = hide ? 'none' : '';
+  if (icon) icon.className = 'fas fa-chevron-' + (hide ? 'down' : 'up');
+}
+
+function triLoad(force) {
+  var body = document.getElementById('triBody');
+  if (!body) return;
+  if (!force && _triRows.length && (new Date().getTime() - _triLoadedAt) < 60000) return;
+  body.innerHTML = '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Loading…<\/td><\/tr>';
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) { body.innerHTML = '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:#dc2626;">' + escapeHtml((res && res.message) || 'Could not load.') + '<\/td><\/tr>'; return; }
+      _triRows = res.rows || []; _triLoadedAt = new Date().getTime();
+      triRender();
+    })
+    .withFailureHandler(function(err) { body.innerHTML = '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:#dc2626;">' + escapeHtml((err && err.message) || String(err)) + '<\/td><\/tr>'; })
+    .getTriageTickets();
+}
+
+function triSelect(jlid) { _triSelJlid = jlid; triRender(); }
+
+function triRender() {
+  var body = document.getElementById('triBody'), cnt = document.getElementById('triCount'), det = document.getElementById('triDetail');
+  if (!body) return;
+  if (cnt) cnt.textContent = _triRows.length;
+  if (!_triRows.length) { body.innerHTML = '<tr><td colspan="4" style="padding:1.2rem;text-align:center;color:#94a3b8;">No tickets waiting for a teacher.<\/td><\/tr>'; if (det) det.innerHTML = ''; return; }
+  if (!_triSelJlid || !_triRows.some(function(r) { return r.jlid === _triSelJlid; })) _triSelJlid = _triRows[0].jlid;
+  var stageCol = { 'Triggered': ['#eef2ff', '#4338ca'], 'WIP': ['#fef3c7', '#92400e'], 'CLS Rejected': ['#fee2e2', '#b91c1c'] };
+  body.innerHTML = _triRows.map(function(r) {
+    var c = stageCol[r.stageLabel] || ['#f1f5f9', '#475569'];
+    var done = _triResults[r.jlid], run = _triRunning[r.jlid];
+    var mark = run ? '<i class="fas fa-spinner fa-spin" style="color:#6366f1;"><\/i> ' : (done && done.success ? '<i class="fas fa-check-circle" style="color:#16a34a;"><\/i> ' : '');
+    return '<tr class="rtm-row" onclick="triSelect(\'' + escapeHtml(r.jlid) + '\')" style="cursor:pointer;border-top:1px solid #f1f5f9;' + (r.jlid === _triSelJlid ? 'background:#eef2ff;' : '') + '">'
+      + '<td style="padding:8px 10px;">' + mark + '<b>' + escapeHtml(r.learner) + '<\/b><div style="font-family:monospace;font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.jlid) + '<\/div><\/td>'
+      + '<td style="padding:8px 10px;"><span style="background:' + c[0] + ';color:' + c[1] + ';border-radius:99px;padding:2px 9px;font-size:0.7rem;font-weight:700;white-space:nowrap;">' + escapeHtml(r.stageLabel) + '<\/span><div style="font-size:0.7rem;color:#94a3b8;margin-top:3px;">' + r.daysWaiting + 'd waiting<\/div><\/td>'
+      + '<td style="padding:8px 10px;font-size:0.76rem;color:#475569;">' + escapeHtml(r.reason || '—') + (r.needsCls ? '<div style="color:#b45309;font-size:0.68rem;">needs CLS approval<\/div>' : '') + '<\/td>'
+      + '<td style="padding:8px 10px;font-size:0.74rem;color:#64748b;max-width:260px;">' + (r.notes ? escapeHtml(r.notes.length > 110 ? r.notes.slice(0, 109) + '…' : r.notes) : '<span style="color:#cbd5e1;">no notes<\/span>') + '<\/td><\/tr>';
+  }).join('');
+  if (det) det.innerHTML = triDetailHtml(_triRows.filter(function(r) { return r.jlid === _triSelJlid; })[0]);
+}
+
+function triDetailHtml(r) {
+  if (!r) return '';
+  var j = escapeHtml(r.jlid), res = _triResults[r.jlid], running = !!_triRunning[r.jlid];
+  var h = '<div style="font-size:1.02rem;font-weight:700;color:#1e293b;">' + escapeHtml(r.learner) + '<\/div>'
+    + '<div style="font-family:monospace;font-size:0.72rem;color:#94a3b8;margin-bottom:8px;">' + j + ' · ' + escapeHtml(r.stageLabel) + '<\/div>'
+    + '<div style="font-size:0.78rem;color:#64748b;margin-bottom:8px;">' + escapeHtml(r.oldTeacher || '—') + ' → <b style="color:#1e293b;">' + escapeHtml(r.nextCourse || r.course || '—') + '<\/b><\/div>'
+    + (r.notes ? '<div style="font-size:0.76rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;color:#334155;white-space:pre-wrap;max-height:150px;overflow:auto;">' + escapeHtml(r.notes) + '<\/div>' : '<div style="font-size:0.76rem;color:#94a3b8;">No notes on this ticket.<\/div>')
+    + '<div style="margin:10px 0;"><button type="button" ' + (running ? 'disabled' : 'onclick="triRun(\'' + j + '\')"') + ' style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:0.8rem;font-weight:600;cursor:pointer;' + (running ? 'opacity:0.5;' : '') + '"><i class="fas fa-magnifying-glass"><\/i> ' + (res ? 'Check again' : 'Find teachers') + '<\/button>'
+    + ' <span style="font-size:0.7rem;color:#94a3b8;">Suggest only — nothing is moved or sent.<\/span><\/div>';
+  var pr = _triProgress[r.jlid];
+  if (pr && pr.length) h += rtmProgressHtml({ progress: pr, running: running });
+  if (res && !res.success) h += '<div style="margin:10px 0;padding:9px 11px;border-radius:8px;font-size:0.78rem;background:#fee2e2;color:#b91c1c;">' + escapeHtml(res.message || 'Failed.') + '<\/div>';
+  if (res && res.success) h += triResultHtml(r, res);
+  return h;
+}
+
+function triResultHtml(r, res) {
+  var q = res.request || {}, rec = res.recommendation || {};
+  var col = (rec.action === 'needs_person' || rec.action === 'nearby') ? ['#fef3c7', '#92400e'] : rec.action === 'tp' ? ['#fee2e2', '#b91c1c'] : ['#dcfce7', '#15803d'];
+  var chip = function(t) { return '<span style="display:inline-block;background:#eef2ff;color:#3730a3;border-radius:6px;padding:1px 7px;margin:2px 3px 2px 0;font-size:0.7rem;">' + escapeHtml(t) + '<\/span>'; };
+  var h = '<div style="margin:12px 0;font-size:0.78rem;"><div style="font-weight:700;color:#334155;margin-bottom:4px;">What I understood<\/div>'
+    + '<div style="color:#475569;">' + escapeHtml(q.summary || '—') + '<\/div>'
+    + (q.slots && q.slots.length ? '<div style="margin-top:4px;color:#64748b;">Slots checked (CET): ' + q.slots.map(function(s) { return chip(s.label); }).join('') + '<\/div>' : '')
+    + '<div style="color:#64748b;margin-top:2px;">Course: <b style="color:#1e293b;">' + escapeHtml(res.course || '—') + '<\/b> <span style="color:#94a3b8;">(' + escapeHtml(res.courseSource || '') + ')<\/span>' + (res.otherCourse ? '<div style="color:#94a3b8;">Also considered: ' + escapeHtml(res.otherCourse) + '<\/div>' : '')
+    + (q.classesPerWeek ? ' · ' + q.classesPerWeek + ' class' + (q.classesPerWeek === 1 ? '' : 'es') + ' a week' : '') + '<\/div>'
+    + (q.humanSteps && q.humanSteps.length ? '<div style="margin-top:6px;color:#92400e;"><b>Needs a person:<\/b><ul style="margin:2px 0 0 16px;padding:0;">' + q.humanSteps.map(function(s) { return '<li>' + escapeHtml(s) + '<\/li>'; }).join('') + '<\/ul><\/div>' : '')
+    + (q.confirmWithParent ? '<div style="margin-top:4px;color:#92400e;">The note says to confirm with the parent first.<\/div>' : '')
+    + (q.warnings && q.warnings.length ? '<div style="margin-top:6px;color:#b45309;">' + q.warnings.map(function(w) { return '⚠ ' + escapeHtml(w); }).join('<br>') + '<\/div>' : '')
+    + '<\/div>';
+  h += '<div style="margin:10px 0;padding:9px 11px;border-radius:8px;font-size:0.78rem;background:' + col[0] + ';color:' + col[1] + ';"><b>Suggested next step: ' + escapeHtml(rec.stageLabel || '') + '<\/b><div style="margin-top:2px;">' + escapeHtml(rec.why || '') + '<\/div><\/div>';
+  var cands = res.candidates || [], fit = cands.filter(function(c) { return c.fits; }), rest = cands.filter(function(c) { return !c.fits; });
+  h += '<div style="font-weight:700;color:#334155;font-size:0.78rem;margin-bottom:4px;">Teachers ready and free (' + fit.length + ' of ' + (res.readyCount || cands.length) + ' ready)<\/div>';
+  if (fit.length) {
+    h += fit.slice(0, 8).map(function(c) {
+      return '<div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:7px 10px;margin-bottom:5px;font-size:0.78rem;"><b>' + escapeHtml(c.teacher) + '<\/b>'
+        + '<span style="color:#64748b;"> · ' + escapeHtml(res.course || 'course') + ' ' + escapeHtml(c.courseProgress || '') + (c.otherCourseProgress && c.otherCourseProgress !== 'N/A' && res.otherCourse ? ' · ' + escapeHtml(res.otherCourse) + ' ' + escapeHtml(c.otherCourseProgress) : '') + (c.auditScore != null ? ' · audit ' + c.auditScore : '') + (c.redFlags ? ' · ' + c.redFlags + ' red flag' + (c.redFlags === 1 ? '' : 's') : '') + '<\/span>'
+        + '<div style="margin-top:3px;">' + (c.freeSlots.length ? c.freeSlots.map(chip).join('') : '<span style="color:#64748b;">' + escapeHtml(c.freeNote || '') + '<\/span>') + '<\/div><\/div>';
+    }).join('');
+  } else h += '<div style="font-size:0.78rem;color:#94a3b8;margin-bottom:6px;">None found.<\/div>';
+  var near = rest.filter(function(c) { return c.nearby && c.nearby.length; });
+  if (near.length) {
+    h += '<div style="font-weight:700;color:#92400e;font-size:0.78rem;margin:10px 0 4px;">Free at a nearby time (within 2 hours — needs the parent\'s OK)<\/div>'
+      + near.slice(0, 8).map(function(c) {
+          return '<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:7px 10px;margin-bottom:5px;font-size:0.78rem;"><b>' + escapeHtml(c.teacher) + '<\/b>'
+            + '<span style="color:#64748b;"> · ' + escapeHtml(res.course || 'course') + ' ' + escapeHtml(c.courseProgress || '') + (c.auditScore != null ? ' · audit ' + c.auditScore : '') + '<\/span>'
+            + '<div style="margin-top:3px;">' + c.nearby.slice(0, 4).map(function(n) { return chip(n.text); }).join('') + '<\/div><\/div>';
+        }).join('');
+  }
+  if (rest.length) {
+    h += '<details style="margin-top:6px;font-size:0.75rem;"><summary style="cursor:pointer;color:#64748b;">Not free (' + rest.length + ')<\/summary>'
+      + rest.map(function(c) { return '<div style="padding:3px 0;color:#64748b;"><b>' + escapeHtml(c.teacher) + '<\/b>: ' + (c.unverifiable ? 'calendar could not be read' : (c.busySlots || []).slice(0, 3).map(function(b) { return escapeHtml(b.slot + ' — ' + b.why); }).join('; ') || 'not enough free slots') + '<\/div>'; }).join('') + '<\/details>';
+  }
+  h += '<div style="margin-top:12px;"><button type="button" id="triNoteBtn" onclick="triPostNote(\'' + escapeHtml(r.jlid) + '\', this)" style="background:#fff;border:1px solid #c7d2fe;border-radius:8px;color:#4338ca;font-size:0.78rem;font-weight:600;padding:7px 12px;cursor:pointer;"><i class="fas fa-note-sticky"><\/i> Post this as a note on the ticket<\/button><\/div>';
+  return h;
+}
+
+function triRun(jlid) {
+  if (_triRunning[jlid]) return;
+  _triRunning[jlid] = true; _triProgress[jlid] = []; delete _triResults[jlid]; triRender();
+  var stopped = false;
+  function tick() {
+    if (stopped) return;
+    google.script.run
+      .withSuccessHandler(function(p) { if (stopped) return; if (p && p.success && !p.none) { _triProgress[jlid] = p.steps || []; triRender(); } setTimeout(tick, 1500); })
+      .withFailureHandler(function() { if (!stopped) setTimeout(tick, 3000); })
+      .getMigrationProgress(jlid);
+  }
+  setTimeout(tick, 700);
+  var finish = function(res) {
+    stopped = true; _triRunning[jlid] = false; _triResults[jlid] = res;
+    google.script.run.withSuccessHandler(function(p) { if (p && p.success && !p.none) _triProgress[jlid] = p.steps || []; triRender(); }).getMigrationProgress(jlid);
+    triRender();
+  };
+  google.script.run
+    .withSuccessHandler(function(res) { finish(res || { success: false, message: 'No answer from the server.' }); })
+    .withFailureHandler(function(err) { finish({ success: false, message: (err && err.message) || String(err) }); })
+    .triageSuggest(jlid);
+}
+
+function triPostNote(jlid, btn) {
+  var res = _triResults[jlid], row = _triRows.filter(function(r) { return r.jlid === jlid; })[0];
+  if (!res || !res.success || !row) return;
+  if (!confirm('Post this suggestion as a note on the ticket for ' + (row.learner || jlid) + '?\n\nIt only adds a note. Nothing else on the ticket changes.')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Posting…'; }
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.success) { if (btn) btn.innerHTML = '<i class="fas fa-check"><\/i> Note posted'; showToast('success', 'Note posted', 'The suggestion is on the ticket.'); }
+      else { if (btn) { btn.disabled = false; btn.innerHTML = 'Post this as a note on the ticket'; } showToast('error', 'Not posted', (r && r.message) || 'Unknown error'); }
+    })
+    .withFailureHandler(function(err) { if (btn) { btn.disabled = false; btn.innerHTML = 'Post this as a note on the ticket'; } showToast('error', 'Not posted', (err && err.message) || String(err)); })
+    .triagePostNote(row.ticketId, res.noteText);
+}
+
 function rtmRunOne(jlid, btn) {
   var row = rtmFindByJlid(jlid);
   if (!row || _rtmBusy) return;
@@ -13862,15 +14075,18 @@ function rtmRunOne(jlid, btn) {
       if (!confirm('Run the migration for ' + (row.learner || jlid) + ' (' + jlid + ')?\n\n' + migPlanText(v) + warn)) return;
       var accept = !!(v.soft && v.soft.length);
       // 2. run it
-      row.running = true; rtmRender();
+      row.running = true; row.progress = []; _rtmDetailId = row.ticketId; rtmRender();
+      var stopPoll = rtmPoll(row);
       google.script.run
         .withSuccessHandler(function(res) {
+          stopPoll(true);
           rtmSetResult(row, res); rtmRender();
           if (res && res.success) showToast('success', 'Migration done', (row.learner || jlid) + ' — ' + (res.message || 'Executed.'));
           else showToast('error', 'Not completed', (res && res.message) || 'Unknown error');
           setTimeout(function() { rtmLoad(true); }, 2500);
         })
         .withFailureHandler(function(err) {
+          stopPoll(true);
           rtmSetResult(row, { success: false, message: ((err && err.message) || String(err)) + ' — check the ticket before running it again (it may have partly run).' }); rtmRender();
           showToast('error', 'Error', (err && err.message) || String(err));
         })
@@ -13911,14 +14127,20 @@ function rtmRunSelected() {
     if (_rtmStop || idx >= total) { finish(); return; }
     var row = queue[idx];
     showProg('Running <b>' + (idx + 1) + ' of ' + total + '<\/b> — ' + escapeHtml(row.learner || row.jlid) + '…', true);
-    row.running = true; rtmRender();
+    row.running = true; row.progress = []; _rtmDetailId = row.ticketId; rtmRender();
+    var stopPoll = rtmPoll(row, function(steps) {
+      var cur = steps.length ? steps[steps.length - 1] : null;
+      if (cur) showProg('Running <b>' + (idx + 1) + ' of ' + total + '<\/b> — ' + escapeHtml(row.learner || row.jlid) + ': ' + escapeHtml(cur.label) + (cur.status === 'running' ? '…' : ' ✓'), true);
+    });
     google.script.run
       .withSuccessHandler(function(res) {
+        stopPoll(true);
         rtmSetResult(row, res);
         if (row.result.success) done++; else if (row.result.notRun) notRun++; else failed++;
         idx++; rtmRender(); setTimeout(next, 300);
       })
       .withFailureHandler(function(err) {
+        stopPoll(true);
         rtmSetResult(row, { success: false, message: ((err && err.message) || String(err)) + ' — check the ticket before running it again (it may have partly run).' });
         failed++; idx++; rtmRender(); setTimeout(next, 300);
       })
@@ -17397,7 +17619,7 @@ function ktSendTrackingLink(rowIndex, btn) {
     .sendKitTrackingLink(rowIndex);
 }
 
-function openAddKitModal() {
+function openAddKitModal(mode) {
   const today = new Date();
   const iso = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
   const orderEl = document.getElementById('ktfOrderDate');
@@ -17421,6 +17643,11 @@ function openAddKitModal() {
   ktSetStore(null);
   const btn = document.getElementById('ktfSubmitBtn');
   if (btn) { btn.innerHTML = '<i class="fas fa-plus"><\/i> Add Entry'; btn.disabled = false; }
+  // One form per entry point: the JetLearn Sends tab opens the kit form, the Parent Will Buy tab opens the PWB form
+  var _mode = (mode === 'pwb') ? 'pwb' : 'jl';
+  ktToggleMode(_mode);
+  var _tg = document.getElementById('ktModeToggle'); if (_tg) _tg.style.display = 'none';
+  var _tt = document.getElementById('ktAddModalTitle'); if (_tt) _tt.textContent = _mode === 'pwb' ? 'Add Parent Will Buy' : 'Add Kit Entry — JetLearn sends the kit';
   document.getElementById('addKitModal').style.display = 'flex';
 }
 
@@ -17943,8 +18170,98 @@ function submitAddKitEntry() {
 // ── Kit Tracking — tab switching ──────────────────────────────────────────
 var _ktCurrentTab = 'jl';
 var _pwbAllData   = [];
+
+// ── Kit Tracking: each tab has ONE primary action, so the wrong form cannot be opened by mistake ──────────────
+// JetLearn Sends -> Add Kit Entry · Asking Address -> Ask for Address · Parent Will Buy -> Add Parent Will Buy
+// Gift Cards -> Add Gift Card · Pivot Report -> none
+function ktUpdatePrimaryButton(tab) {
+  var btn = document.getElementById('ktPrimaryBtn'), lab = document.getElementById('ktPrimaryLabel'), ic = document.getElementById('ktPrimaryIcon');
+  if (!btn) return;
+  var map = {
+    jl:      { label: 'Add Kit Entry',       icon: 'fa-plus' },
+    askaddr: { label: 'Ask for Address',     icon: 'fa-map-marker-alt' },
+    pwb:     { label: 'Add Parent Will Buy', icon: 'fa-shopping-cart' },
+    gc:      { label: 'Add Gift Card',       icon: 'fa-gift' }
+  };
+  var m = map[tab];
+  if (!m) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  if (lab) lab.textContent = m.label;
+  if (ic) ic.className = 'fas ' + m.icon;
+}
+
+function ktPrimaryAction() {
+  var tab = (typeof _ktCurrentTab !== 'undefined' && _ktCurrentTab) || 'jl';
+  if (tab === 'askaddr') return openAskAddrModal();
+  if (tab === 'pwb') return openAddKitModal('pwb');
+  if (tab === 'gc') return gcOpenAddModal();
+  if (tab === 'pivot') return;
+  return openAddKitModal('jl');
+}
+
+function openAskAddrModal() {
+  ['aaJlid'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  var kit = document.getElementById('aaKit'); if (kit) kit.value = '';
+  var f = document.getElementById('aaFields'); if (f) f.style.display = 'none';
+  var r = document.getElementById('aaFetchResult'); if (r) { r.style.display = 'none'; r.innerHTML = ''; }
+  var e = document.getElementById('aaError'); if (e) e.style.display = 'none';
+  var b = document.getElementById('aaSendBtn'); if (b) { b.disabled = true; b.innerHTML = '<i class="fab fa-whatsapp"><\/i> Send address request'; }
+  var m = document.getElementById('askAddrModal'); if (m) m.style.display = 'flex';
+  setTimeout(function() { var j = document.getElementById('aaJlid'); if (j) j.focus(); }, 50);
+}
+function closeAskAddrModal() { var m = document.getElementById('askAddrModal'); if (m) m.style.display = 'none'; }
+
+function aaFetch() {
+  var jlid = ((document.getElementById('aaJlid') || {}).value || '').trim().toUpperCase();
+  var res = document.getElementById('aaFetchResult'), err = document.getElementById('aaError');
+  if (err) err.style.display = 'none';
+  if (!jlid) { if (err) { err.style.display = 'block'; err.textContent = 'Enter a JLID first.'; } return; }
+  if (res) { res.style.display = 'block'; res.innerHTML = '<span style="color:#94a3b8;"><i class="fas fa-spinner fa-spin"><\/i> Looking up…<\/span>'; }
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success || !r.data) { if (res) res.innerHTML = '<span style="color:#ef4444;">Deal not found for ' + escapeHtml(jlid) + '<\/span>'; return; }
+      var d = r.data;
+      if (res) res.innerHTML = '<div style="padding:9px 12px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;color:#134e4a;">'
+        + '<b>' + escapeHtml(d.learnerName || jlid) + '<\/b> · parent ' + escapeHtml(d.parentName || '—')
+        + '<div style="color:#0f766e;margin-top:2px;">' + escapeHtml(d.parentContact || 'no phone') + ' · ' + escapeHtml(d.country || 'country not set') + '<\/div><\/div>';
+      var f = document.getElementById('aaFields'); if (f) f.style.display = '';
+      var b = document.getElementById('aaSendBtn'); if (b) b.disabled = false;
+    })
+    .withFailureHandler(function(e) { if (res) res.innerHTML = '<span style="color:#ef4444;">' + escapeHtml((e && e.message) || String(e)) + '<\/span>'; })
+    .fetchHubspotByJlid(jlid);
+}
+
+function aaSend(force) {
+  var jlid = ((document.getElementById('aaJlid') || {}).value || '').trim().toUpperCase();
+  var kit = ((document.getElementById('aaKit') || {}).value || '').trim();
+  var useHs = ((document.getElementById('aaLinkOption') || {}).value || '') === 'hs';
+  var err = document.getElementById('aaError'), btn = document.getElementById('aaSendBtn');
+  if (err) err.style.display = 'none';
+  if (!jlid) { if (err) { err.style.display = 'block'; err.textContent = 'Enter and fetch a JLID first.'; } return; }
+  if (!kit) { if (err) { err.style.display = 'block'; err.textContent = 'Choose the kit first.'; } return; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…'; }
+  var reset = function() { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"><\/i> Send address request'; } };
+  google.script.run
+    .withSuccessHandler(function(r) {
+      reset();
+      if (r && r.shipBlocked) {
+        // nothing went to the parent; CLS was emailed. Let the person override when they know better.
+        if (confirm(((r.message) || 'This country is not shippable.') + '\n\nThe parent has NOT been messaged. Send the address request anyway?')) aaSend(true);
+        return;
+      }
+      if (!r || !r.success) { if (err) { err.style.display = 'block'; err.textContent = (r && r.message) || 'Could not send the request.'; } return; }
+      closeAskAddrModal();
+      showToast('success', r.addressSource === 'hubspot' ? 'Address found' : 'Address requested', r.addressSource === 'hubspot' ? 'The address was already on HubSpot.' : 'The parent was asked for the delivery address.');
+      if (typeof ktSwitchTab === 'function') ktSwitchTab('askaddr');
+      if (typeof loadKitTrackingPage === 'function') loadKitTrackingPage();
+    })
+    .withFailureHandler(function(e) { reset(); if (err) { err.style.display = 'block'; err.textContent = (e && e.message) || String(e); } })
+    .requestKitDeliveryAddress(jlid, kit, 0, useHs, force === true);
+}
+
 function ktSwitchTab(tab) {
   _ktCurrentTab = tab;
+  if (typeof ktUpdatePrimaryButton === 'function') ktUpdatePrimaryButton(tab);
   const jlBtn      = document.getElementById('ktTabJL');
   const aaBtn      = document.getElementById('ktTabAskAddr');
   const pwbBtn     = document.getElementById('ktTabPWB');
@@ -19052,7 +19369,7 @@ function gcRenderRequests() {
            : pill(r.waitingDays >= 3 ? '#fee2e2' : '#fef3c7', r.waitingDays >= 3 ? '#b91c1c' : '#92400e', 'Waiting ' + r.waitingDays + 'd');
     var details = (r.website || r.amazonEmail)
       ? '<div style="font-weight:600;color:#1e293b;">' + escapeHtml(r.website || '—') + '<\/div><div style="color:#475569;">' + escapeHtml(r.amazonEmail || 'email not given yet') + '<\/div><div style="font-size:0.68rem;color:#94a3b8;">' + escapeHtml(r.replySource || '') + (r.replyAt ? ' · ' + escapeHtml(r.replyAt) : '') + '<\/div>'
-      : '<span style="color:#94a3b8;">No reply yet<\/span>';
+      : '<span style="color:#94a3b8;">No reply yet<\/span>' + (r.checkNote ? '<div style="font-size:0.66rem;color:#cbd5e1;margin-top:2px;" title="What the last check looked at">' + escapeHtml(r.checkNote) + '<\/div>' : '');
     var j = escapeHtml(r.jlid);
     var acts = '';
     if (r.status === 'Details received') acts += '<button type="button" onclick="gcReqIssue(' + r.rowIndex + ')" style="background:#f43f5e;border:none;border-radius:6px;color:#fff;font-size:0.72rem;font-weight:600;padding:4px 10px;cursor:pointer;margin-right:4px;"><i class="fas fa-gift"><\/i> Issue gift card<\/button>';
@@ -19169,7 +19486,7 @@ function gcOpenAddModal(prefill) {
     set('gcJlid', prefill.jlid);
     set('gcOccasion', prefill.occasion || 'referral'); set('gcOfferName', prefill.offer || ''); gcOccasionChanged();
     gcFetchByJlid();
-    setTimeout(function() { if (prefill.website) set('gcWebsite', prefill.website); if (prefill.amazonEmail) set('gcEmail', prefill.amazonEmail); }, 1800);
+    setTimeout(function() { if (prefill.website) { set('gcWebsite', prefill.website); gcAutoCurrency(); } if (prefill.amazonEmail) set('gcEmail', prefill.amazonEmail); }, 1800);
   } else { set2(); }
   function set2() { var o = document.getElementById('gcOccasion'); if (o) { o.value = 'referral'; gcOccasionChanged(); } var f = document.getElementById('gcOfferName'); if (f) f.value = ''; }
 }
@@ -19249,7 +19566,7 @@ function gcLoadAmazonDetails(jlid, parentEmail, parentPhone) {
 
 function gcUseAmazonDetails() {
   if (!_gcAmazonDetails) return;
-  var w = document.getElementById('gcWebsite'); if (w && _gcAmazonDetails.website) w.value = _gcAmazonDetails.website;
+  var w = document.getElementById('gcWebsite'); if (w && _gcAmazonDetails.website) { w.value = _gcAmazonDetails.website; gcAutoCurrency(); }
   var e = document.getElementById('gcEmail');   if (e && _gcAmazonDetails.amazonEmail) e.value = _gcAmazonDetails.amazonEmail;
   showToast('success', 'Filled', 'Website and Amazon email added to the form');
 }
@@ -19270,6 +19587,42 @@ function gcSendAsk() {
       showToast('error', 'Error', err.message || String(err));
     })
     .gcSendAskMessage(jlid.trim().toUpperCase(), _gcOccasionNow().occ, _gcOccasionNow().offer, _gcWho());
+}
+
+
+// The Amazon site decides the currency the parent will actually see (amazon.co.uk = GBP). Pick it for the operator, and
+// refuse to send "100 EUR" when the form says something else (e.g. EUR amount 123 for a 100 GBP card).
+function _gcCurrencyForSite(site) {
+  var s = String(site || '').toLowerCase();
+  if (/amazon\.co\.uk|\buk\b|united kingdom/.test(s)) return 'GBP';
+  if (/amazon\.com\.au|australia/.test(s)) return 'AUD';
+  if (/amazon\.ca\b|canada/.test(s)) return 'CAD';
+  if (/amazon\.ae|\buae\b|dubai/.test(s)) return 'AED';
+  if (/amazon\.in\b|\bindia\b/.test(s)) return 'INR';
+  if (/amazon\.sg|singapore/.test(s)) return 'SGD';
+  if (/amazon\.(de|fr|es|it|nl|ie|at|be)\b|amzaon\.nl/.test(s)) return 'EUR';
+  if (/amazon\.com\b/.test(s)) return 'USD';
+  return '';
+}
+
+function gcAutoCurrency() {
+  var w = document.getElementById('gcWebsite'), c = document.getElementById('gcCurrency');
+  if (!w || !c) return;
+  var cur = _gcCurrencyForSite(w.value);
+  if (!cur) return;
+  // only fill it when nobody has chosen one, or when we chose it earlier for another site
+  if (!c.value || c.dataset.auto === '1') {
+    if (Array.from(c.options).some(function(o) { return o.value === cur || o.text === cur; })) { c.value = cur; c.dataset.auto = '1'; }
+  }
+}
+
+// Returns '' when the numbers hang together, otherwise a plain sentence for the confirmation
+function gcCurrencyWarning(amount, currency, eurAmount, website) {
+  var a = parseFloat(amount), e = parseFloat(eurAmount), out = [];
+  var siteCur = _gcCurrencyForSite(website);
+  if (siteCur && currency && siteCur !== currency) out.push('The Amazon site (' + website + ') uses ' + siteCur + ', but the currency is ' + currency + '.');
+  if (currency === 'EUR' && !isNaN(a) && !isNaN(e) && Math.abs(a - e) > 1) out.push('The currency is EUR, but the EUR amount is ' + e + ', not ' + a + ' — so it looks like a different currency.');
+  return out.join('\n');
 }
 
 function gcSubmitEntry() {
@@ -19305,6 +19658,9 @@ function gcSubmitEntry() {
     if (err) { err.style.display = 'block'; err.textContent = 'Required: ' + missing.join(', '); }
     return;
   }
+
+  var _warn = gcCurrencyWarning(amount, currency, eurAmount, website);
+  if (_warn && !confirm(_warn + '\n\nThe parent will be told: ' + amount + ' ' + currency + '.\n\nPress Cancel to fix it, or OK to send it as it is.')) return;
 
   var btn = document.getElementById('gcSubmitBtn');
   var orig = btn ? btn.innerHTML : ''; if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…'; }

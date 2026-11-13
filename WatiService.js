@@ -961,6 +961,15 @@ function sendWatiTemplate(parentContact, templateId, params, manualOverridePhone
 // ═══════════════════════════════════════════════════════════
 
 // ── Fetch last N messages for a contact (by JLID or phone) ──
+// A message from the parent. WATI marks these differently depending on the API version: type 0, owner false, or status "Received".
+function _watiIsIncoming(m) {
+  if (!m) return false;
+  if (String(m.type) === '0') return true;
+  if (m.owner === false || String(m.owner).toLowerCase() === 'false') return true;
+  var st = String(m.statusString || m.status || '').toLowerCase();
+  return st === 'received' || st === 'incoming';
+}
+
 function getWatiChatData(identifier, context) {
   try {
     var props = PropertiesService.getScriptProperties();
@@ -987,8 +996,8 @@ function getWatiChatData(identifier, context) {
       method: 'get', headers: { 'Authorization': token }, muteHttpExceptions: true
     });
 
-    var messages = [], withinWindow = false;
-    if (resp.getResponseCode() === 200) {
+    var messages = [], withinWindow = false, httpCode = resp.getResponseCode();
+    if (httpCode === 200) {
       var data  = JSON.parse(resp.getContentText());
       var items = (data.messages && data.messages.items) ? data.messages.items : [];
 
@@ -996,21 +1005,21 @@ function getWatiChatData(identifier, context) {
       messages = items.slice().reverse().map(function(m) {
         return {
           text:      m.text || m.body || '',
-          direction: (String(m.type || '') === '0') ? 'in' : 'out',
+          direction: _watiIsIncoming(m) ? 'in' : 'out',
           timestamp: m.created || m.timestamp || '',
           owner:     m.owner || ''
         };
       });
 
       // 24hr window: last incoming message within 24 hours?
-      var incoming = items.filter(function(m) { return String(m.type) === '0'; });
+      var incoming = items.filter(function(m) { return _watiIsIncoming(m); });
       if (incoming.length) {
         var lastMs = new Date(incoming[0].created || incoming[0].timestamp || 0).getTime();
         withinWindow = (Date.now() - lastMs) < 86400000;
       }
     }
 
-    return { success: true, phone: phone, parentName: parentName,
+    return { success: true, phone: phone, parentName: parentName, http: httpCode,
              messages: messages, withinWindow: withinWindow, context: context || 'general' };
 
   } catch(e) {

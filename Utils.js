@@ -102,15 +102,57 @@ function getOrCreateSheet(sheetName) {
   }
 }
 
+
+// ── Live progress of a long run (migration etc.): steps are kept in the script cache so the page can poll them ──
+var __PROG_KEY = '';
+function _progWrite(key, mut) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var cur = cache.get(key);
+    var o = cur ? JSON.parse(cur) : { steps: [], done: false };
+    mut(o);
+    cache.put(key, JSON.stringify(o), 1800);
+  } catch (e) { /* progress is a nice-to-have, never break the run */ }
+}
+function _progBegin(label) {
+  if (!__PROG_KEY) return;
+  _progWrite(__PROG_KEY, function(o) { o.steps.push({ label: label, status: 'running', at: Date.now() }); });
+}
+function _progEnd(label, ok, detail) {
+  if (!__PROG_KEY) return;
+  _progWrite(__PROG_KEY, function(o) {
+    for (var i = o.steps.length - 1; i >= 0; i--) {
+      if (o.steps[i].label === label && o.steps[i].status === 'running') {
+        o.steps[i].status = ok ? 'success' : 'failed';
+        o.steps[i].ms = Date.now() - o.steps[i].at;
+        if (detail) o.steps[i].detail = String(detail).slice(0, 300);
+        return;
+      }
+    }
+    o.steps.push({ label: label, status: ok ? 'success' : 'failed', at: Date.now(), ms: 0, detail: detail ? String(detail).slice(0, 300) : '' });
+  });
+}
+function getMigrationProgress(jlid) {
+  try {
+    var cur = CacheService.getScriptCache().get('migprog_' + String(jlid || '').trim());
+    if (!cur) return { success: true, steps: [], done: false, none: true };
+    var o = JSON.parse(cur);
+    return { success: true, steps: o.steps || [], done: !!o.done, result: o.result || '' };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
 function _timelineStep(timeline, key, label, fn) {
   var started = new Date().getTime();
+  _progBegin(label);
   try {
     var value = fn();
+    _progEnd(label, true);
     var step = { key: key, label: label, status: 'success', durationMs: new Date().getTime() - started };
     timeline.push(step);
     // caller can set step.meta after we return — expose the step via timeline[timeline.length-1]
     return value;
   } catch (e) {
+    _progEnd(label, false, e && e.message ? e.message : String(e));
     timeline.push({
       key: key,
       label: label,

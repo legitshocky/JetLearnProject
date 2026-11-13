@@ -4,14 +4,19 @@
 // ═══════════════════════════════════════════════════════════════════════════
 var GC_REQ_SHEET_NAME = 'Gift Card Requests';
 var GC_REQ_HEADERS = ['Requested At', 'JLID', 'Learner', 'Parent', 'Parent Emails', 'Parent Phone', 'Occasion', 'Offer', 'Channels', 'Requested By', 'Status',
-                      'Website', 'Amazon Email', 'Reply Source', 'Reply At', 'Last Checked', 'Reminders', 'Issued At'];
+                      'Website', 'Amazon Email', 'Reply Source', 'Reply At', 'Last Checked', 'Reminders', 'Issued At', 'Check Note'];
 var GC_REQ = { AT: 1, JLID: 2, LEARNER: 3, PARENT: 4, EMAILS: 5, PHONE: 6, OCCASION: 7, OFFER: 8, CHANNELS: 9, BY: 10, STATUS: 11,
-               WEBSITE: 12, AMAZON_EMAIL: 13, REPLY_SOURCE: 14, REPLY_AT: 15, CHECKED_AT: 16, REMINDERS: 17, ISSUED_AT: 18 };
+               WEBSITE: 12, AMAZON_EMAIL: 13, REPLY_SOURCE: 14, REPLY_AT: 15, CHECKED_AT: 16, REMINDERS: 17, ISSUED_AT: 18, CHECK_NOTE: 19 };
 
 function _gcReqSheet() {
   var ss = SpreadsheetApp.openById(GC_SHEET_ID);
   var sh = ss.getSheetByName(GC_REQ_SHEET_NAME);
   if (!sh) { sh = ss.insertSheet(GC_REQ_SHEET_NAME); sh.appendRow(GC_REQ_HEADERS); sh.setFrozenRows(1); }
+  // sheets made before 'Check Note' existed: add the column
+  try {
+    if (typeof sh.getMaxColumns === 'function' && sh.getMaxColumns() < GC_REQ_HEADERS.length) sh.insertColumnsAfter(sh.getMaxColumns(), GC_REQ_HEADERS.length - sh.getMaxColumns());
+    if (typeof sh.getMaxColumns === 'function' && !String(sh.getRange(1, GC_REQ.CHECK_NOTE).getValue() || '').trim()) sh.getRange(1, GC_REQ.CHECK_NOTE).setValue('Check Note');
+  } catch (e) { Logger.log('[GiftCard] request sheet column check: ' + e.message); }
   return sh;
 }
 
@@ -52,7 +57,7 @@ function _gcReqRowToObj(v, rowIndex) {
     rowIndex: rowIndex, requestedAt: at ? _gcFormatDateTime(at) : String(v[GC_REQ.AT - 1] || ''),
     waitingDays: at ? Math.floor((new Date().getTime() - at.getTime()) / 86400000) : 0,
     jlid: String(v[GC_REQ.JLID - 1] || ''), learner: String(v[GC_REQ.LEARNER - 1] || ''), parent: String(v[GC_REQ.PARENT - 1] || ''),
-    emails: String(v[GC_REQ.EMAILS - 1] || ''), phone: String(v[GC_REQ.PHONE - 1] || ''),
+    emails: String(v[GC_REQ.EMAILS - 1] || ''), phone: String(v[GC_REQ.PHONE - 1] || ''), checkNote: String(v[GC_REQ.CHECK_NOTE - 1] || ''),
     occasionId: occ.id, occasion: occ.label, offer: occ.offer || '', channels: String(v[GC_REQ.CHANNELS - 1] || ''), by: String(v[GC_REQ.BY - 1] || ''),
     status: String(v[GC_REQ.STATUS - 1] || ''), website: String(v[GC_REQ.WEBSITE - 1] || ''), amazonEmail: String(v[GC_REQ.AMAZON_EMAIL - 1] || ''),
     replySource: String(v[GC_REQ.REPLY_SOURCE - 1] || ''), replyAt: String(v[GC_REQ.REPLY_AT - 1] || ''), reminders: parseInt(v[GC_REQ.REMINDERS - 1], 10) || 0
@@ -73,10 +78,14 @@ function gcGetRequests(recheck) {
       if (status === 'Waiting' && checked < 12) {
         var lc = v[GC_REQ.CHECKED_AT - 1];
         var lcMs = (Object.prototype.toString.call(lc) === '[object Date]') ? lc.getTime() : 0;
-        if (recheck || !lcMs || (now - lcMs) > 600000) {
+        if (recheck || !lcMs || (now - lcMs) > 120000) {
           checked++;
           var det = gcGetAmazonDetails(String(v[GC_REQ.JLID - 1]), String(v[GC_REQ.EMAILS - 1]), String(v[GC_REQ.PHONE - 1]));
           sh.getRange(row, GC_REQ.CHECKED_AT).setValue(new Date());
+          var dg = det && det.diag;
+          var note = !det || det.success === false ? 'Check failed: ' + ((det && det.message) || 'unknown') : dg
+            ? 'Email: ' + dg.emailMessages + ' message(s). WhatsApp: ' + (dg.watiError ? dg.watiError : dg.watiMessages + ' read, ' + dg.watiIncoming + ' from the parent, ' + dg.watiWithDetails + ' with a site or email') : '';
+          v[GC_REQ.CHECK_NOTE - 1] = note; sh.getRange(row, GC_REQ.CHECK_NOTE).setValue(note);
           if (det && det.success && det.found) {
             if (det.website) { v[GC_REQ.WEBSITE - 1] = det.website; sh.getRange(row, GC_REQ.WEBSITE).setValue(det.website); }
             if (det.amazonEmail) { v[GC_REQ.AMAZON_EMAIL - 1] = det.amazonEmail; sh.getRange(row, GC_REQ.AMAZON_EMAIL).setValue(det.amazonEmail); }

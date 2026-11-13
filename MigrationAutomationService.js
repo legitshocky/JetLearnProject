@@ -862,7 +862,18 @@ var MIG_AUTO = (function() {
     }
   }
 
+  // Wrapper: records live progress (read by the page through getMigrationProgress) around the real run
   function runForJlid(jlid, overrideNewTeacher, acceptWarnings) {
+    var key = 'migprog_' + String(jlid || '').trim();
+    if (jlid) { __PROG_KEY = key; _progWrite(key, function(o) { o.steps = []; o.done = false; o.result = ''; }); _progBegin('Checking the ticket, class link and schedule'); }
+    var res;
+    try { res = _runForJlidCore(jlid, overrideNewTeacher, acceptWarnings); }
+    catch (e) { _progEnd('Checking the ticket, class link and schedule', false, e.message); res = { success: false, message: e.message }; throw e; }
+    finally { if (jlid) { _progWrite(key, function(o) { o.done = true; o.result = (res && res.message) || ''; }); __PROG_KEY = ''; } }
+    return res;
+  }
+
+  function _runForJlidCore(jlid, overrideNewTeacher, acceptWarnings) {
     if (!jlid) return { success: false, message: 'JLID required.' };
 
     var token = _token();
@@ -923,6 +934,7 @@ var MIG_AUTO = (function() {
       return { success: false, needsConfirm: true, warnings: guard.soft, message: 'Not run — needs your OK first. ' + guard.soft.join(' ') };
     }
 
+    _progEnd('Checking the ticket, class link and schedule', true);
     // Allow re-run from UI even if previously attempted
     _patchTicketProps(ticketId, { mig_auto_attempted: 'true', mig_auto_error: '' });
 
@@ -941,7 +953,9 @@ var MIG_AUTO = (function() {
 
     var timeline = (result && result.timeline) ? result.timeline.slice() : [];
 
+    _progBegin('Booking the classes on the calendar');
     var booking = _bookClasses(data);
+    _progEnd('Booking the classes on the calendar', !!booking.ok, booking.ok ? booking.note : booking.error);
     if (!booking.ok) {
       _markFailed(ticketId, 'messages were sent but the classes were NOT booked: ' + booking.error + '. Book the classes manually, then move the ticket to Completed.');
       timeline.push({ key: 'class_booking', label: 'Class booking failed: ' + booking.error, status: 'failed', durationMs: 0 });
@@ -950,7 +964,9 @@ var MIG_AUTO = (function() {
 
     _updateCctcFutureCourse(data, ticket);
 
+    _progBegin('Moving the HubSpot ticket to Completed');
     var fin = _completeTicket(ticket);
+    _progEnd('Moving the HubSpot ticket to Completed', !!fin.ok, fin.ok ? '' : fin.error);
     timeline.push({ key: 'class_booking', label: booking.note, status: 'success', durationMs: 0 });
     if (!fin.ok) {
       _markFailed(ticketId, 'messages were sent and classes booked, but ' + fin.error + '.');

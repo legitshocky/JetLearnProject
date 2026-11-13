@@ -749,6 +749,10 @@
       margin-left: auto;       /* always push to right */
       flex-shrink: 0;
     }
+    /* The Background Tasks bell is fixed at the top-right of every page (40px wide, 26px from the edge).
+       Keep a clear gutter for it on every page header so it can never sit on top of a button. */
+    .main-content .page-content .header { padding-right: 76px !important; box-sizing: border-box; }
+    @media (max-width: 700px) { .main-content .page-content .header { padding-right: 56px !important; } }
 
     .btn {
       padding: 0.75rem 1.25rem;

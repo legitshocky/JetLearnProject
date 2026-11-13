@@ -9,26 +9,75 @@ const AI_CHAT_HISTORY_SHEET = 'AI_Chat_History';
 const GEMINI_API_KEY_PROP   = 'GEMINI_API_KEY';
 const GEMINI_BASE_URL       = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
+// ── Model that actually works ────────────────────────────────────────────────
+// Google retires Gemini models ("gemini-2.5-flash is no longer available to new users"). Instead of hard-coding a name, ask Google which
+// Flash models this key can use, pick the newest, remember it (AI_AUTO_MODEL) and use it for every AI feature.
+var GEMINI_RETIRED = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro'];
+
+function _discoverGeminiModel(apiKey) {
+  try {
+    var resp = monitoredFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + apiKey, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return '';
+    var models = (JSON.parse(resp.getContentText()).models || []);
+    var ranked = [];
+    models.forEach(function(m) {
+      var name = String(m.name || '').replace(/^models\//, '');
+      var methods = m.supportedGenerationMethods || [];
+      var mt = name.match(/^gemini-(\d+(?:\.\d+)?)-flash(-lite)?$/);   // plain flash or flash-lite: no image / preview / live / tts variants
+      if (!mt || methods.indexOf('generateContent') === -1) return;
+      ranked.push({ name: name, ver: parseFloat(mt[1]), lite: !!mt[2] });
+    });
+    ranked.sort(function(a, b) { return (b.ver - a.ver) || ((a.lite ? 1 : 0) - (b.lite ? 1 : 0)); });
+    var best = ranked.length ? ranked[0].name : '';
+    var props = PropertiesService.getScriptProperties();
+    if (best) { props.setProperty('AI_AUTO_MODEL', best); props.setProperty('AI_AUTO_MODELS', JSON.stringify(ranked.slice(0, 4).map(function(r) { return r.name; }))); }
+    Logger.log('[AIService] Auto-selected Gemini model: ' + (best || 'none found'));
+    return best;
+  } catch (e) { Logger.log('[AIService] model discovery failed: ' + e.message); return ''; }
+}
+
+function _resolveGeminiModel(requested, apiKey) {
+  var req = String(requested || '').trim();
+  var retired = !req || GEMINI_RETIRED.indexOf(req) > -1;
+  if (!retired) return req;                                           // a model someone chose on purpose
+  var props = PropertiesService.getScriptProperties();
+  var auto = props.getProperty('AI_AUTO_MODEL');
+  if (auto) return auto;
+  var cache = CacheService.getScriptCache();
+  if (!cache.get('AI_AUTO_TRIED')) {                                  // look at most once every 6 hours
+    cache.put('AI_AUTO_TRIED', '1', 21600);
+    var found = _discoverGeminiModel(apiKey || props.getProperty(GEMINI_API_KEY_PROP));
+    if (found) return found;
+  }
+  return req || 'gemini-2.5-flash';
+}
+
 // ── Gemini API call helper ────────────────────────────────────────────────────
 function _callGemini(contents, model, maxTokens) {
   const apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
   if (!apiKey) throw new Error('GEMINI_API_KEY not set in Script Properties.');
 
-  const selectedModel = model || PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
-  const url = GEMINI_BASE_URL + selectedModel + ':generateContent?key=' + apiKey;
-
-  const response = monitoredFetch(url, {
-    method: 'post',
-    headers: { 'Content-Type': 'application/json' },
-    payload: JSON.stringify({
-      contents: contents,
-      generationConfig: {
-        temperature:     0.4,
-        maxOutputTokens: maxTokens || 8192
-      }
-    }),
-    muteHttpExceptions: true
-  });
+  var selectedModel = _resolveGeminiModel(model || PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash', apiKey);
+  var payload = JSON.stringify({ contents: contents, generationConfig: { temperature: 0.4, maxOutputTokens: maxTokens || 8192 } });
+  var send = function(m) { return monitoredFetch(GEMINI_BASE_URL + m + ':generateContent?key=' + apiKey, { method: 'post', headers: { 'Content-Type': 'application/json' }, payload: payload, muteHttpExceptions: true }); };
+  var response = send(selectedModel);
+  // Busy / overloaded (429, 500, 503): wait and retry, then try the next-best models before giving up
+  var busy = function(r) { var c = r.getResponseCode(); return c === 429 || c === 500 || c === 503; };
+  if (busy(response)) {
+    var waits = [2000];
+    for (var wi = 0; wi < waits.length && busy(response); wi++) { Utilities.sleep(waits[wi]); response = send(selectedModel); }
+    if (busy(response)) {
+      var others = [];
+      try { others = JSON.parse(PropertiesService.getScriptProperties().getProperty('AI_AUTO_MODELS') || '[]'); } catch (e) {}
+      for (var oi = 0; oi < others.length && busy(response); oi++) { if (others[oi] !== selectedModel) response = send(others[oi]); }
+    }
+  }
+  // The model was retired / is not available to this key: find one that works, remember it, retry once
+  if (response.getResponseCode() === 404) {
+    PropertiesService.getScriptProperties().deleteProperty('AI_AUTO_MODEL');
+    var healed = _discoverGeminiModel(apiKey);
+    if (healed && healed !== selectedModel) { selectedModel = healed; response = send(healed); }
+  }
 
   const raw  = response.getContentText();
   if (response.getResponseCode() !== 200) {
@@ -628,9 +677,9 @@ function sendAIChat(history, model, settings, parts) {
     const apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
     if (!apiKey) throw new Error('GEMINI_API_KEY not set in Script Properties.');
 
-    const selectedModel = model
+    const selectedModel = _resolveGeminiModel(model
       || PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL')
-      || 'gemini-2.5-flash';
+      || 'gemini-2.5-flash', apiKey);
 
     const url = GEMINI_BASE_URL + selectedModel + ':generateContent?key=' + apiKey;
 
@@ -868,7 +917,7 @@ function getAITeacherInsights(prompt) {
     const apiKey = PropertiesService.getScriptProperties().getProperty(GEMINI_API_KEY_PROP);
     if (!apiKey) throw new Error('GEMINI_API_KEY not set in Script Properties.');
 
-    const model = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
+    const model = _resolveGeminiModel(PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash', apiKey);
     const url   = GEMINI_BASE_URL + model + ':generateContent?key=' + apiKey;
 
     const response = monitoredFetch(url, {
@@ -948,7 +997,7 @@ function rankReplacementTeachersWithAI(targetTeacherName, candidates, targetCont
       '"caveat":"<max 12 words>"}' +
       ']}';
 
-    var selectedModel = PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash';
+    var selectedModel = _resolveGeminiModel(PropertiesService.getScriptProperties().getProperty('AI_SELECTED_MODEL') || 'gemini-2.5-flash', apiKey);
     var url = GEMINI_BASE_URL + selectedModel + ':generateContent?key=' + apiKey;
 
     var payload = {
