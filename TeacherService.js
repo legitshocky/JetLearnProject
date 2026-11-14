@@ -913,6 +913,47 @@ function getTeacherListForDropdown() {
   }
 }
 
+// The Teacher Courses sheet uses one spelling of a teacher's name, HubSpot another ("Kim Jeoffrey Cuevas" vs "Kim Jeoffrey Cuevass"), and
+// resolveTeacherName() turns the sheet spelling INTO the HubSpot one. An exact lookup then misses the row and the teacher looks
+// like they have no courses at all. So: exact, then via the alias list (both directions), then a close spelling (one unique near match).
+function _tcNameDistance(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a === b) return 0;
+  var prev = [], cur = [], i, j;
+  for (j = 0; j <= b.length; j++) prev[j] = j;
+  for (i = 1; i <= a.length; i++) {
+    cur = [i];
+    for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+function _findTeacherCoursesRow(rows, name) {
+  var want = String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!want) return null;
+  var norm = function(r) { return String(r[0] || '').trim().toLowerCase().replace(/\s+/g, ' '); };
+  var byName = function(n) { for (var i = 0; i < rows.length; i++) { if (norm(rows[i]) === n) return rows[i]; } return null; };
+  var hit = byName(want);
+  if (hit) return hit;
+  try {
+    var aliases = getTeacherNameAliases();
+    var tries = [];
+    if (aliases[want]) tries.push(String(aliases[want]).trim().toLowerCase().replace(/\s+/g, ' '));
+    Object.keys(aliases).forEach(function(k) { if (String(aliases[k]).trim().toLowerCase().replace(/\s+/g, ' ') === want) tries.push(k); });
+    for (var t = 0; t < tries.length; t++) { hit = byName(tries[t]); if (hit) return hit; }
+  } catch (e) {}
+  // close spelling: same first word, distance <= 2, and exactly one such row
+  var first = want.split(' ')[0], best = null, bestD = 99, tie = false;
+  rows.forEach(function(r) {
+    var n = norm(r);
+    if (!n || n.split(' ')[0] !== first) return;
+    var d = _tcNameDistance(want, n);
+    if (d < bestD) { bestD = d; best = r; tie = false; } else if (d === bestD) tie = true;
+  });
+  return (best && bestD <= 2 && !tie) ? best : null;
+}
+
 function getTeacherSpecificLoad(teacherName) {
   try {
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
@@ -931,11 +972,13 @@ function getTeacherSpecificLoad(teacherName) {
     const headers = sheetData[headerRowIndex];
     
     // 2. Find specific teacher row in TEACHER_COURSES
-    const teacherRow = sheetData.slice(headerRowIndex + 1).find(row => 
-        String(row[0]).trim().toLowerCase() === String(teacherName).trim().toLowerCase()
-    );
+    const teacherRow = _findTeacherCoursesRow(sheetData.slice(headerRowIndex + 1), teacherName);
 
     if (!teacherRow) return { success: false, message: "Teacher not found." };
+    // Both spellings are used for the manager lookups below (the Persona / Teacher Data sheets may use either)
+    const _nameKeys = {};
+    _nameKeys[String(teacherName).trim().toLowerCase()] = true;
+    _nameKeys[String(teacherRow[0] || '').trim().toLowerCase()] = true;
 
     const courseDetails = [];
     const COURSE_START_INDEX = 4; // Teacher, Email, Manager, Health = 0,1,2,3
@@ -979,7 +1022,7 @@ function getTeacherSpecificLoad(teacherName) {
           const nameLower = String(teacherName).trim().toLowerCase();
           for (let r = 2; r < personaData.length; r++) {
             const rowName = String(personaData[r][pNameCol] || '').trim().toLowerCase();
-            if (rowName === nameLower) {
+            if (rowName === nameLower || _nameKeys[rowName]) {
               tpManager  = pManagerCol !== undefined ? String(personaData[r][pManagerCol] || '').trim() : '';
               clsManager = pClsCol     !== undefined ? String(personaData[r][pClsCol]     || '').trim() : '';
               // Emails not stored in Persona sheet \u2014 look up from Teacher Data as fallback
@@ -999,7 +1042,7 @@ function getTeacherSpecificLoad(teacherName) {
         const nameLower = String(teacherName).trim().toLowerCase();
         for (let r = 1; r < teacherDataSheet.length; r++) {
           const rowName = String(teacherDataSheet[r][1] || '').trim().toLowerCase();
-          if (rowName === nameLower) {
+          if (rowName === nameLower || _nameKeys[rowName]) {
             tpManager      = String(teacherDataSheet[r][6]  || '').trim();
             clsManager     = String(teacherDataSheet[r][7]  || '').trim();
             clsEmail       = String(teacherDataSheet[r][9]  || '').trim();

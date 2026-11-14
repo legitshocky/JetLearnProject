@@ -303,6 +303,7 @@
         <div class="menu-item" data-page="operations"><i class="fas fa-bolt"></i><span>Operations</span><span id="opsPendingBadge" class="badge" style="display:none;background:#6366f1;color:#fff;">!</span></div>
 
         <span class="sidebar-section-label">Tools</span>
+        <div class="menu-item" data-page="tpWorkspace" id="tpWorkspaceMenuItem" style="display:none;"><i class="fas fa-user-check"></i><span>TP Workspace</span></div>
         <div class="menu-item" data-page="load"><i class="fas fa-balance-scale"></i><span>Teacher Intelligence</span></div>
         <div class="menu-item" data-page="persona"><i class="fas fa-user-tie"></i><span>Teacher Persona</span><span class="badge">Tool</span></div>
         <div class="menu-item" data-page="bulkCertificates"><i class="fas fa-certificate"></i><span>Certificates</span></div>
@@ -2203,6 +2204,163 @@
               </div>
             </form>
           </div>
+        </div>
+      </div>
+
+      <!-- TP Workspace Page — upskilling requirements for TP managers (admins see all managers) -->
+      <div id="tpWorkspacePage" class="page-content" style="display: none;">
+        <style>
+          .tpw-sub { color: var(--text-light); font-size: 0.85rem; margin: 2px 0 0; }
+          .tpw-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 1.25rem; }
+          .tpw-stat { background: #fff; border: 1px solid #e5e7ef; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+          .tpw-stat:hover { box-shadow: 0 4px 14px rgba(99,102,241,.12); border-color: #c7d2fe; }
+          .tpw-stat.on { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,.18); }
+          .tpw-stat b { display: block; font-size: 1.6rem; line-height: 1.1; color: #111827; }
+          .tpw-stat span { font-size: 0.74rem; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
+          .tpw-stat.urgent b { color: #b91c1c; }
+          .tpw-tabs { display: flex; gap: 6px; margin: 0 0 1rem; border-bottom: 1px solid #e5e7ef; }
+          .tpw-tab { background: none; border: none; padding: 9px 14px; font-weight: 600; font-size: 0.88rem; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+          .tpw-tab.on { color: #4f46e5; border-bottom-color: #6366f1; }
+          .tpw-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 0 0 1rem; }
+          .tpw-toolbar input, .tpw-toolbar select { max-width: 240px; }
+          .tpw-list { display: flex; flex-direction: column; gap: 12px; }
+          .tpw-card { background: #fff; border: 1px solid #e5e7ef; border-left: 4px solid #94a3b8; border-radius: 12px; padding: 14px 16px; }
+          .tpw-card.st-Requested { border-left-color: #ef4444; }
+          .tpw-card.st-Rejected { border-left-color: #b91c1c; background: #fffafa; }
+          .tpw-card.st-Started { border-left-color: #f59e0b; }
+          .tpw-card.st-Verifying { border-left-color: #3b82f6; }
+          .tpw-card.st-Verified { border-left-color: #10b981; }
+          .tpw-top { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+          .tpw-teacher { font-weight: 700; font-size: 1rem; color: #111827; }
+          .tpw-course { font-weight: 600; color: #4338ca; }
+          .tpw-chip { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: #f1f5f9; color: #475569; white-space: nowrap; }
+          .tpw-chip.fast { background: #fffbeb; color: #b45309; }
+          .tpw-chip.up { background: #fef2f2; color: #b91c1c; }
+          .tpw-chip.ok { background: #ecfdf5; color: #047857; }
+          .tpw-chip.blue { background: #eff6ff; color: #1d4ed8; }
+          .tpw-status { margin-left: auto; }
+          .tpw-meta { color: #6b7280; font-size: 0.8rem; margin: 6px 0 0; display: flex; gap: 14px; flex-wrap: wrap; }
+          .tpw-bar { position: relative; height: 8px; background: #eef0f4; border-radius: 99px; margin: 10px 0 2px; max-width: 360px; }
+          .tpw-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: #6366f1; }
+          .tpw-bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #111827; opacity: .55; }
+          .tpw-barlabel { font-size: 0.74rem; color: #6b7280; }
+          .tpw-note { margin: 8px 0 0; font-size: 0.82rem; padding: 8px 10px; border-radius: 8px; background: #f8fafc; color: #374151; }
+          .tpw-note.warn { background: #fffbeb; color: #92400e; }
+          .tpw-note.bad { background: #fef2f2; color: #991b1b; }
+          .tpw-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+          .tpw-btn { border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 8px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+          .tpw-btn:hover { background: #f9fafb; }
+          .tpw-btn.go { background: #6366f1; border-color: #6366f1; color: #fff; }
+          .tpw-btn.go:hover { background: #4f46e5; }
+          .tpw-btn.good { background: #10b981; border-color: #10b981; color: #fff; }
+          .tpw-btn.warn { color: #b45309; border-color: #fcd34d; }
+          .tpw-btn[disabled] { opacity: .55; cursor: default; }
+          .tpw-detail { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e5e7ef; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; font-size: 0.82rem; }
+          .tpw-detail h4 { margin: 0 0 6px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .05em; color: #6b7280; }
+          .tpw-mini { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px solid #f1f5f9; }
+          .tpw-empty { text-align: center; color: #6b7280; padding: 3rem 1rem; background: #fff; border: 1px dashed #d1d5db; border-radius: 12px; }
+          .tpw-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; background: #fff; border: 1px solid #e5e7ef; border-radius: 12px; overflow: hidden; }
+          .tpw-table th { text-align: left; background: #f8fafc; padding: 9px 12px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+          .tpw-table td { padding: 9px 12px; border-top: 1px solid #f1f5f9; vertical-align: middle; }
+          .tpw-ov { position: fixed; inset: 0; background: rgba(17,24,39,.5); display: none; align-items: center; justify-content: center; z-index: 10050; padding: 16px; }
+          .tpw-ov.on { display: flex; }
+          .tpw-modal { background: #fff; color: #374151; border-radius: 14px; width: 100%; max-width: 560px; max-height: 90vh; overflow: auto; padding: 20px 22px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+          .tpw-modal h3 { margin: 0 0 4px; color: #111827; }
+          .tpw-modal label { display: block; font-weight: 600; font-size: 0.82rem; margin: 12px 0 4px; }
+          .tpw-modal select, .tpw-modal textarea, .tpw-modal input[type=text], .tpw-modal input[type=email] { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.88rem; }
+          .tpw-modal .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+          .tpw-tlist { max-height: 220px; overflow: auto; border: 1px solid #e5e7ef; border-radius: 8px; padding: 4px 8px; }
+          .tpw-tlist label { display: flex; gap: 8px; align-items: center; font-weight: 500; margin: 0; padding: 4px 0; }
+          body.dark-mode .tpw-stat, body.dark-mode .tpw-card, body.dark-mode .tpw-table, body.dark-mode .tpw-empty { background: #1a1a35; border-color: rgba(255,255,255,.1); }
+          body.dark-mode .tpw-stat b, body.dark-mode .tpw-teacher { color: #f1f5f9; }
+          body.dark-mode .tpw-note { background: rgba(255,255,255,.06); color: #e5e7eb; }
+          body.dark-mode .tpw-table th { background: rgba(255,255,255,.05); }
+          body.dark-mode .tpw-btn { background: transparent; color: #e5e7eb; border-color: rgba(255,255,255,.2); }
+          @media (max-width: 700px) { .tpw-status { margin-left: 0; } }
+        </style>
+        <div class="header">
+          <div>
+            <h1 class="page-title"><i class="fas fa-user-check" style="color:#6366f1;margin-right:8px;"></i>TP Workspace</h1>
+            <p class="tpw-sub" id="tpwSubtitle">Upskilling requirements for your teachers.</p>
+          </div>
+          <div class="header-actions">
+            <select id="tpwViewAs" class="form-control" style="display:none;max-width:240px;" onchange="tpwSetViewAs(this.value)" title="See exactly what a TP manager sees"></select>
+            <select id="tpwManagerFilter" class="form-control" style="display:none;max-width:220px;" onchange="tpwSetManager(this.value)"></select>
+            <button class="btn btn-outline" id="tpwNewBtn" style="display:none;" onclick="tpwOpenNew()"><i class="fas fa-plus"></i> New requirement</button>
+            <button class="btn btn-primary" onclick="tpwRefresh()"><i class="fas fa-sync-alt"></i> Refresh</button>
+          </div>
+        </div>
+        <div id="tpwBanner" style="display:none;" class="tpw-note warn"></div>
+        <div id="tpwCards" class="tpw-cards"></div>
+        <div class="tpw-tabs">
+          <button class="tpw-tab on" data-v="open" onclick="tpwSetView('open')">Open</button>
+          <button class="tpw-tab" data-v="closed" onclick="tpwSetView('closed')">Closed</button>
+          <button class="tpw-tab" data-v="managers" id="tpwManagersTab" style="display:none;" onclick="tpwSetView('managers')">TP managers &amp; automation</button>
+        </div>
+        <div id="tpwListView">
+          <div class="tpw-toolbar">
+            <input type="text" id="tpwSearch" class="form-control" placeholder="Search teacher or course…" oninput="tpwRender()">
+            <select id="tpwSort" class="form-control" onchange="tpwRender()">
+              <option value="age">Oldest first</option>
+              <option value="learners">Most learners waiting</option>
+              <option value="teacher">Teacher A–Z</option>
+            </select>
+            <span class="tpw-sub" id="tpwCount"></span>
+          </div>
+          <div id="tpwList" class="tpw-list"></div>
+        </div>
+        <div id="tpwManagersView" style="display:none;"></div>
+      </div>
+
+      <!-- TP Workspace modals -->
+      <div class="tpw-ov" id="tpwChooseOv">
+        <div class="tpw-modal" style="max-width:460px;">
+          <h3>How do you want to continue?</h3>
+          <div class="tpw-sub">Look at the app as one of the TP managers to see exactly what they see and try the buttons. You can switch any time from the TP Workspace page.</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+            <button class="tpw-btn go" style="padding:10px;" onclick="tpwChoose('')">Continue as admin</button>
+            <div style="text-align:center;color:#9ca3af;font-size:.8rem;">or</div>
+            <select id="tpwChooseSel"></select>
+            <button class="tpw-btn" style="padding:10px;" onclick="tpwChoose(document.getElementById('tpwChooseSel').value)">View as this TP manager</button>
+          </div>
+        </div>
+      </div>
+      <div class="tpw-ov" id="tpwReasonOv">
+        <div class="tpw-modal">
+          <h3>Why can't this teacher be upskilled?</h3>
+          <div class="tpw-sub" id="tpwReasonFor"></div>
+          <label for="tpwReasonSel">Reason</label>
+          <select id="tpwReasonSel"></select>
+          <label for="tpwReasonNote">Note <span style="font-weight:400;color:#6b7280;">(required for “Other”)</span></label>
+          <textarea id="tpwReasonNote" rows="3" placeholder="Anything the admin team should know"></textarea>
+          <div class="foot"><button class="tpw-btn" onclick="tpwCloseOv('tpwReasonOv')">Cancel</button><button class="tpw-btn go" id="tpwReasonSave" onclick="tpwSubmitReason()">Save</button></div>
+        </div>
+      </div>
+      <div class="tpw-ov" id="tpwNewOv">
+        <div class="tpw-modal">
+          <h3>New upskilling requirement</h3>
+          <div class="tpw-sub">Shows on each teacher's TP manager dashboard. Teachers already at 75%+ are skipped.</div>
+          <label for="tpwNewCourse">Course</label>
+          <select id="tpwNewCourse"></select>
+          <label>Teachers <span id="tpwNewPicked" style="font-weight:400;color:#6b7280;"></span></label>
+          <input type="text" id="tpwNewSearch" placeholder="Filter teachers or managers…" oninput="tpwFilterNewTeachers()">
+          <div class="tpw-tlist" id="tpwNewTeachers"></div>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;background:#eff6ff;border-radius:8px;padding:8px 10px;margin-top:12px;"><input type="checkbox" id="tpwNewTest" checked style="margin-top:3px;"> <span><b>Test requirement</b> — no emails and no HubSpot tasks go out, and it can be removed in one click. Untick it to raise a real one.</span></label>
+          <label for="tpwNewNote">Note for the TP manager <span style="font-weight:400;color:#6b7280;">(optional)</span></label>
+          <textarea id="tpwNewNote" rows="2"></textarea>
+          <div class="foot"><button class="tpw-btn" onclick="tpwCloseOv('tpwNewOv')">Cancel</button><button class="tpw-btn go" id="tpwNewSave" onclick="tpwSubmitNew()">Create</button></div>
+        </div>
+      </div>
+      <div class="tpw-ov" id="tpwMgrOv">
+        <div class="tpw-modal">
+          <h3 id="tpwMgrTitle">TP manager</h3>
+          <div class="tpw-sub">Name must match the Manager column in Teacher Data — that is how their teachers are found.</div>
+          <label for="tpwMgrName">Name</label>
+          <input type="text" id="tpwMgrName">
+          <label for="tpwMgrEmail">Sign-in email</label>
+          <input type="email" id="tpwMgrEmail">
+          <label style="display:flex;gap:8px;align-items:center;font-weight:500;"><input type="checkbox" id="tpwMgrActive" checked> Allowed to sign in</label>
+          <div class="foot"><button class="tpw-btn" onclick="tpwCloseOv('tpwMgrOv')">Cancel</button><button class="tpw-btn go" onclick="tpwSaveMgr()">Save</button></div>
         </div>
       </div>
 
@@ -6036,7 +6194,7 @@
   <div class="modal-overlay" id="addTeacherModal"><div class="modal"><div class="modal-header"><h3 class="modal-title">Add New Teacher</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addTeacherForm"><div class="modal-body"><div class="form-group"><label for="newTeacherName" class="form-label">Teacher Name</label><input type="text" id="newTeacherName" class="form-control" required></div><div class="form-group"><label for="newTeacherEmail" class="form-label">Email Address</label><input type="email" id="newTeacherEmail" class="form-control" required></div><div class="form-group"><label for="newTeacherClsEmail" class="form-label">CLS Email (Optional)</label><input type="email" id="newTeacherClsEmail" class="form-control"></div><div class="form-group"><label for="newTeacherStatus" class="form-label">Status</label><select id="newTeacherStatus" class="form-control form-select"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="On Leave">On Leave</option></select></div><div class="form-group"><label for="newTeacherJoinDate" class="form-label">Join Date</label><input type="date" id="newTeacherJoinDate" class="form-control" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Add Teacher</button></div></form></div></div>
   <div class="modal-overlay" id="editTeacherModal"><div class="modal"><div class="modal-header"><h3 class="modal-title">Edit Teacher Details</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="editTeacherForm"><div class="modal-body"><div class="form-group"><label for="editTeacherName" class="form-label">Teacher Name</label><input type="text" id="editTeacherName" class="form-control" readonly></div><div class="form-group"><label for="editTeacherEmail" class="form-label">Email Address</label><input type="email" id="editTeacherEmail" class="form-control" required></div><div class="form-group"><label for="editTeacherClsEmail" class="form-label">CLS Email (Optional)</label><input type="email" id="editTeacherClsEmail" class="form-control"></div><div class="form-group"><label for="editTeacherStatus" class="form-label">Status</label><select id="editTeacherStatus" class="form-control form-select"><option value="Active">Active</option><option value="Inactive">Inactive</option><option value="On Leave">On Leave</option></select></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Changes</button></div></form></div></div>
   <div class="modal-overlay" id="addCourseModal"><div class="modal" style="max-width: 400px;"><div class="modal-header"><h3 class="modal-title">Add New Course</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addCourseForm"><div class="modal-body"><div class="form-group"><label for="newCourseName" class="form-label">Course Name</label><input type="text" id="newCourseName" class="form-control" required></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Add Course</button></div></form></div></div>
-  <div class="modal-overlay" id="addUserModal"><div class="modal"><div class="modal-header"><h3 class="modal-title" id="addUserModalTitle">Add New User</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addUserForm"><div class="modal-body"><div class="form-group"><label for="newUsername" class="form-label">Username</label><input type="text" id="newUsername" class="form-control" required></div><div class="form-group"><label for="newUserEmail" class="form-label">Email Address</label><input type="email" id="newUserEmail" class="form-control" required></div><div class="form-group" id="passwordFieldGroup"><label for="newUserPassword" class="form-label">Password</label><input type="password" id="newUserPassword" class="form-control" placeholder="Leave blank to not change"><small class="form-text-muted">Leave blank to auto-generate a secure password.</small></div><div class="form-group"><label for="newUserRole" class="form-label">Role</label><select id="newUserRole" class="form-control form-select" required><option value="User">User</option><option value="Admin">Admin</option><option value="Super Admin">Super Admin</option></select></div><div class="form-group" id="userStatusGroup" style="display:none;"><label class="form-label">Status</label><div class="radio-group"><div class="radio-option"><input type="radio" id="userActive" name="userStatus" value="true" class="radio-input" checked><label for="userActive">Active</label></div><div class="radio-option"><input type="radio" id="userInactive" name="userStatus" value="false" class="radio-input"><label for="userInactive">Inactive</label></div></div></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="saveUserBtn">Save User</button></div></form></div></div>
+  <div class="modal-overlay" id="addUserModal"><div class="modal"><div class="modal-header"><h3 class="modal-title" id="addUserModalTitle">Add New User</h3><button class="modal-close" data-dismiss="modal">×</button></div><form id="addUserForm"><div class="modal-body"><div class="form-group"><label for="newUsername" class="form-label">Username</label><input type="text" id="newUsername" class="form-control" required></div><div class="form-group"><label for="newUserEmail" class="form-label">Email Address</label><input type="email" id="newUserEmail" class="form-control" required></div><div class="form-group" id="passwordFieldGroup"><label for="newUserPassword" class="form-label">Password</label><input type="password" id="newUserPassword" class="form-control" placeholder="Leave blank to not change"><small class="form-text-muted">Leave blank to auto-generate a secure password.</small></div><div class="form-group"><label for="newUserRole" class="form-label">Role</label><select id="newUserRole" class="form-control form-select" required><option value="User">User</option><option value="TP Manager">TP Manager</option><option value="Admin">Admin</option><option value="Super Admin">Super Admin</option></select></div><div class="form-group" id="userStatusGroup" style="display:none;"><label class="form-label">Status</label><div class="radio-group"><div class="radio-option"><input type="radio" id="userActive" name="userStatus" value="true" class="radio-input" checked><label for="userActive">Active</label></div><div class="radio-option"><input type="radio" id="userInactive" name="userStatus" value="false" class="radio-input"><label for="userInactive">Inactive</label></div></div></div></div><div class="modal-footer"><button type="button" class="btn btn-outline" data-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary" id="saveUserBtn">Save User</button></div></form></div></div>
   <!-- Email Preview Modal -->
   <div class="modal-overlay" id="emailPreviewModal">
       <div class="modal" style="max-width: 800px; max-height: 90vh;">

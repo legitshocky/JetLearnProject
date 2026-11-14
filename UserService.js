@@ -349,7 +349,8 @@ function authenticateByEmail(email) {
     if (!email) return { success: false, message: 'No email provided.' };
     email = email.toLowerCase().trim();
 
-    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN)) {
+    var tpMgr = _tpwFindManagerByEmail(email); // an active TP manager may sign in even with a non-jet-learn address
+    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN) && !tpMgr) {
       return { success: false, message: 'Access restricted to @jet-learn.com accounts.' };
     }
 
@@ -368,9 +369,15 @@ function authenticateByEmail(email) {
         role = existing.role || ROLES.USER;
         isActive = (existing.isActive !== false && String(existing.isActive).toLowerCase() !== 'false');
         displayName = existing.username || displayName;
+        if (tpMgr && role !== ROLES.ADMIN && role !== ROLES.SUPER_ADMIN) role = ROLES.TP_MANAGER;
+        if (role === ROLES.TP_MANAGER && !tpMgr) return { success: false, message: 'Your TP Workspace access is not active. Please contact the admin.' };
+      } else if (tpMgr) {
+        role = ROLES.TP_MANAGER; displayName = tpMgr.name;
+        _tpwEnsureProfile(email, tpMgr.name, true);
       } else {
         _createGoogleUser(email, displayName);
       }
+      if (tpMgr) _tpwTouchManagerLogin(email);
     }
 
     if (!isActive) {
@@ -417,8 +424,9 @@ function authenticateWithGoogle(idToken) {
     var email = payload.email.toLowerCase().trim();
     var displayName = payload.name || email.split('@')[0];
 
-    // Domain restriction — @jet-learn.com only
-    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN)) {
+    // Domain restriction — @jet-learn.com only (an active TP manager is allowed with any address)
+    var tpMgr = _tpwFindManagerByEmail(email);
+    if (!email.endsWith('@' + GOOGLE_AUTH_DOMAIN) && !tpMgr) {
       return { success: false, message: 'Access restricted to JetLearn team members. Use your @jet-learn.com account.' };
     }
 
@@ -435,9 +443,15 @@ function authenticateWithGoogle(idToken) {
       if (existing) {
         role = existing.role || ROLES.USER;
         isActive = (existing.isActive !== false && String(existing.isActive).toLowerCase() !== 'false');
+        if (tpMgr && role !== ROLES.ADMIN && role !== ROLES.SUPER_ADMIN) role = ROLES.TP_MANAGER;
+        if (role === ROLES.TP_MANAGER && !tpMgr) return { success: false, message: 'Your TP Workspace access is not active. Please contact the admin.' };
+      } else if (tpMgr) {
+        role = ROLES.TP_MANAGER; displayName = tpMgr.name;
+        _tpwEnsureProfile(email, tpMgr.name, true);
       } else {
         _createGoogleUser(email, displayName);
       }
+      if (tpMgr) _tpwTouchManagerLogin(email);
     }
 
     if (!isActive) {

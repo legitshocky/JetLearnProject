@@ -1935,6 +1935,8 @@ document.addEventListener('DOMContentLoaded', bgPlaceBell);
     }
 
 function switchPage(pageId, context = null) {
+    // TP managers only get the TP Workspace and Teacher Intelligence
+    if (window._isTPManager && ['tpWorkspacePage', 'loadPage'].indexOf(pageId) === -1) pageId = 'tpWorkspacePage';
     // Re-query live DOM to get all elements with the .page-content class, wherever they are.
     const livePageContents = document.querySelectorAll('.page-content');
     const liveMenuItems = document.querySelectorAll('.menu-item');
@@ -1993,7 +1995,8 @@ function switchPage(pageId, context = null) {
         kitTrackingPage:       loadKitTrackingPage,
         operations:            loadOperationsPage,
         operationsPage:        loadOperationsPage,
-        bookClassesPage:       bkcInitPage
+        bookClassesPage:       bkcInitPage,
+        tpWorkspacePage:       loadTPWorkspacePage
     };
 
     if (pageLoaders[pageId]) {
@@ -2024,6 +2027,7 @@ function switchPage(pageId, context = null) {
         var bookingCard = bookClassesBtn && bookClassesBtn.closest('.form-group.full-width');
         if (bookingCard) bookingCard.style.display = calendarBookingAllowed ? '' : 'none';
         window._calendarBookingAllowed = calendarBookingAllowed;
+        tpwApplyRoleUI();
     }
 
     function handleCommunicationTabClick(event) {
@@ -5447,11 +5451,24 @@ function mipToggleOverride(idx) {
   if (sel) sel.style.display = (sel.style.display === 'none' || sel.style.display === '') ? 'inline-block' : 'none';
 }
 
+// Upskilling badge: tier + the teacher's percentage on that course (75%+ upskilled, 50-75% fast track, below 50% upskilling required)
+function mipTierStyle(tier, pctText) {
+  var pct = pctText ? ' \u00b7 ' + pctText : '';
+  if (tier === 'full') return { text: '\u2713 Upskilled' + pct, color: '#15803d', bg: '#f0fdf4', border: '#86efac' };
+  if (tier === 'fast') return { text: '\u23e9 Fast track needed' + pct, color: '#b45309', bg: '#fffbeb', border: '#fcd34d' };
+  return { text: '\u2717 Upskilling required' + pct, color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' };
+}
+
 function mipApplyOverride(idx, newCourse) {
   if (!newCourse) return;
   // Re-check upskill for the new course
   var upskilledList = window.mipTeacherUpskilledCourses || [];
-  var isNowUpskilled = upskilledList.indexOf(newCourse.toLowerCase().trim()) > -1;
+  var _want = newCourse.toLowerCase().trim();
+  var _hit = null;
+  upskilledList.forEach(function(u) { if (!_hit && u && u.course === _want) _hit = u; });
+  var _tier = _hit ? _hit.tier : 'upskill';
+  var _pctText = _hit ? _hit.pctText : 'Not onboarded';
+  var isNowUpskilled = _tier === 'full';
 
   // Update label
   var labelEl = document.getElementById('mip_fc_label_' + idx);
@@ -5460,10 +5477,9 @@ function mipApplyOverride(idx, newCourse) {
   // Update badge
   var badgeEl = document.getElementById('mip_fc_badge_' + idx);
   if (badgeEl) {
-    badgeEl.textContent = isNowUpskilled ? '\u2713 Upskilled' : '\u2717 Not upskilled';
-    badgeEl.style.color           = isNowUpskilled ? '#15803d' : '#b91c1c';
-    badgeEl.style.background      = isNowUpskilled ? '#f0fdf4' : '#fef2f2';
-    badgeEl.style.borderColor     = isNowUpskilled ? '#86efac' : '#fca5a5';
+    var _st = mipTierStyle(_tier, _pctText);
+    badgeEl.textContent = _st.text;
+    badgeEl.style.color = _st.color; badgeEl.style.background = _st.bg; badgeEl.style.borderColor = _st.border;
   }
 
   // Update confirmed store
@@ -5474,7 +5490,7 @@ function mipApplyOverride(idx, newCourse) {
 
   var sel = document.getElementById('mip_fc_override_' + idx);
   if (sel) sel.style.display = 'none';
-  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' \u2192 ' + newCourse + (isNowUpskilled ? ' \u2713' : ' \u2717 Not upskilled'));
+  showToast('info', 'Course Updated', 'Future ' + (idx + 1) + ' \u2192 ' + newCourse + ' \u00b7 ' + mipTierStyle(_tier, _pctText).text);
 
   // Re-evaluate summary and replacement button based on all current badge states
   mipRefreshSummary();
@@ -5490,8 +5506,9 @@ function mipRefreshSummary() {
   // Update summary text
   var summaryEl = document.getElementById('mip_fc_summary');
   if (summaryEl) {
+    var name = (typeof newTeacherSelect !== 'undefined' && newTeacherSelect && newTeacherSelect.selectedIndex >= 0) ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text : '';
     if (allUpskilled) {
-      var name = (typeof newTeacherSelect !== 'undefined' && newTeacherSelect && newTeacherSelect.selectedIndex >= 0)
+      var _unused = (typeof newTeacherSelect !== 'undefined' && newTeacherSelect && newTeacherSelect.selectedIndex >= 0)
         ? newTeacherSelect.options[newTeacherSelect.selectedIndex].text : '';
       summaryEl.innerHTML = '<span style="color:#15803d;font-size:0.8rem;font-weight:600;"><i class="fas fa-check-circle" style="margin-right:4px;"><\/i>New teacher &ldquo;' + escapeHtml(name) + '&rdquo; is upskilled in current and future courses<\/span>';
     } else {
@@ -6976,7 +6993,7 @@ function loadTeacherLoadPage() {
                 renderTeacherOptions(globalTeacherDataList);
             })
             .withFailureHandler(function(err) { hideLoading(); showError(err); })
-            .getTeacherDetailsForTable();
+            .tpwTeacherDetailsScoped(tpwTok(), tpwVA());
     } else {
         globalTeacherDataList = allTeacherDetailsCache.map(function(t) { return t.name || t; });
         renderTeacherOptions(globalTeacherDataList);
@@ -7709,7 +7726,9 @@ google.script.run
     }
 
     showToast('success', 'Login Successful', 'Welcome, ' + user.username + '!');
+    if (tpwIsTP()) { switchPage('tpWorkspacePage'); return; }
     switchPage('dashboardPage');
+    setTimeout(tpwLoginChooser, 400);
 
 
     // Load impact score + notifications after login
@@ -9840,9 +9859,8 @@ function triggerMigrationIntelligence() {
             + '<div style="display:flex;flex-direction:column;gap:0.4rem;">';
 
           fcs.forEach(function(fc, i) {
-            var upBadge = fc.isUpskilled
-              ? '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#15803d;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:1px 7px;">\u2713 Upskilled<\/span>'
-              : '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:#b91c1c;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;">\u2717 Not upskilled<\/span>';
+            var _fst = mipTierStyle(fc.tier || (fc.isUpskilled ? 'full' : 'upskill'), fc.pctText || '');
+            var upBadge = '<span id="mip_fc_badge_' + i + '" style="font-size:0.75rem;font-weight:700;color:' + _fst.color + ';background:' + _fst.bg + ';border:1px solid ' + _fst.border + ';border-radius:4px;padding:1px 7px;">' + escapeHtml(_fst.text) + '<\/span>';
 
             // Build course options from globalCourses
             var opts = '<option value="">\u2014 select course \u2014<\/option>'
@@ -10983,6 +11001,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.51': [
+      "**TP Workspace (new)**: TP managers sign in and see only their own teachers — Teacher Intelligence plus every upskilling requirement raised for them. They mark each one Upskilling started, Upskilling done, or Can't upskill (with a reason). Admins see everything, can raise a requirement for many teachers at once, and manage TP manager access (add, invite, switch off).",
+      "**Done is cross-checked**: when a TP marks upskilling done, the Teacher Courses sheet is checked at once and again every few hours. 75%+ = verified. Still not on the data after 48 hours = sent back to the TP with an email (Moodle can take 24-48 hours to reach the sheet).",
+      "**See it as a TP manager (admins)**: after signing in you are asked whether to continue as admin or view the app as a chosen TP manager (also in the TP Workspace header). You see exactly their teachers, their upskilling requirements and their Teacher Intelligence, and can press every button. New requirement has a Test mode (no emails, no HubSpot tasks, removable in one click), and Email me sample reminders shows the TP emails.",
+      "**Nothing gets forgotten**: reminder emails (a different message each time) every 2 days while a requirement needs action, and a HubSpot task in the TP manager's name if upskilling has not started in 14 days. Turn the automation on from TP managers & automation.",
+      "**Ticket note gaps become requests**: every course below 75% on the Teacher Upskilling Check note now appears on the TP manager's dashboard (one request per teacher and course, learners waiting are added to it). Gaps from before today are not imported.",
+    ],
+    'V10.50': [
+      "**Upskilling bands with percentages**: 75%+ = fully upskilled, 50-75% = fast track needed, below 50% = upskilling required. The ticket note and the Migration Intelligence box now show each course's percentage and band. Override in the box now shows the real percentage too.",
+    ],
+    'V10.49': [
+      "**Upskilling note follows the ticket**: The next courses in the note now come from the ticket's Future Course 1-3 only. If they are all NA, only the current course is checked and the note says 'Next courses: none on the ticket (NA)'.",
+    ],
+    'V10.48': [
+      "**Upskilling check — name spelling no longer causes false gaps**: A teacher whose name is spelled differently in HubSpot and the Teacher Courses sheet (e.g. Cuevas / Cuevass) was shown as upskilled on nothing. The lookup now follows the name list in both directions and accepts one close spelling.",
+      "**Upskilling note**: when a teacher cannot be found at all, the note says the check could not run instead of listing every course as a gap.",
+    ],
     'V10.47': [
       "**Kit — order notice reaches every parent number**: When you mark an order placed, the kit-ordered WhatsApp and the tracking link now go to every number the address request went to (not just the primary one). If one number fails, the result says which.",
       "**WhatsApp config check**: checkMessagingConfig() in the Apps Script editor lists all WATI templates the app uses and whether each exists and is approved.",
@@ -11397,7 +11432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         hideLoading();
                         renderPersonaTable(); // render with whatever cache we have
                     })
-                    .getTeacherDetailsForTable();
+                    .tpwTeacherDetailsScoped(tpwTok(), tpwVA());
             }
         });
     });
@@ -11426,7 +11461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     hideLoading();
                     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--text-muted);">No teachers found.<\/div>';
                 })
-                .getTeacherDetailsForTable();
+                .tpwTeacherDetailsScoped(tpwTok(), tpwVA());
             return;
         }
 
@@ -11586,6 +11621,7 @@ document.addEventListener('DOMContentLoaded', () => {
         openTeacherProfileModal(this.dataset.teacherName);
     });
     card.querySelector('.find-replacement-btn').dataset.teacherName = teacher.name;
+    if (window._isTPManager || window._tpwViewAsOn) card.querySelector('.find-replacement-btn').style.display = 'none'; // replacement search spans every teacher
     card.querySelector('.find-replacement-btn').addEventListener('click', function() {
         openCloneModal(this.dataset.teacherName);
     });
@@ -11626,7 +11662,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 showToast('error', 'Error', err.message || 'Server error.');
                 btn.disabled = false;
             })
-            .setTeacherVisibility(tName, makeHidden);
+            .tpwSetVisibilityScoped(tpwTok(), tName, makeHidden, tpwVA());
     });
 
     grid.appendChild(card);
@@ -12104,13 +12140,14 @@ function handleSmartFetchAction() {
                   if (!u || !u.course) { badge.style.display = 'none'; return; }
                   badge.style.display = 'inline-flex';
                   var teacherName = d.currentTeacher || 'Current teacher';
-                  if (u.upskilled) {
+                  if (u.upskilled || u.tier === 'fast') {
                     var prog = u.progress ? ' · ' + u.progress : (u.status ? ' · ' + u.status : '');
-                    badge.textContent = '✓ Upskilled on next course' + prog;
-                    badge.style.color = '#15803d';
-                    badge.style.background = '#f0fdf4';
-                    badge.style.borderColor = '#86efac';
-                    badge.title = teacherName + ' is upskilled on ' + u.course + (u.progress ? ' (' + u.progress + ')' : '');
+                    var _isFast = u.tier === 'fast';
+                    badge.textContent = (_isFast ? '⏩ Fast track needed on next course' : '✓ Upskilled on next course') + prog;
+                    badge.style.color = _isFast ? '#b45309' : '#15803d';
+                    badge.style.background = _isFast ? '#fffbeb' : '#f0fdf4';
+                    badge.style.borderColor = _isFast ? '#fcd34d' : '#86efac';
+                    badge.title = teacherName + (_isFast ? ' needs a fast track on ' : ' is upskilled on ') + u.course + (u.progress ? ' (' + u.progress + ')' : '');
                   } else if (u.noData) {
                     badge.textContent = '— Upskill data unavailable';
                     badge.style.color = '#92400e';
@@ -12118,7 +12155,7 @@ function handleSmartFetchAction() {
                     badge.style.borderColor = '#fcd34d';
                     badge.title = 'No course data found for ' + teacherName + ' in Teacher Courses sheet';
                   } else {
-                    badge.textContent = '✗ Not upskilled on next course';
+                    badge.textContent = '✗ Upskilling required on next course' + (u.progress ? ' · ' + u.progress : '');
                     badge.style.color = '#b91c1c';
                     badge.style.background = '#fef2f2';
                     badge.style.borderColor = '#fca5a5';
@@ -23066,5 +23103,463 @@ function eqCancel(queueId, btn) {
       showToast('error', 'Cancel Failed', err.message || String(err));
     })
     .cancelQueuedEmail(queueId);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TP WORKSPACE — upskilling requirements for TP managers (server: TPWorkspaceService.js)
+// ═══════════════════════════════════════════════════════════════════════════
+var tpw = { boot: null, reqs: [], view: 'open', filter: 'needs', mgr: '', open: {}, reasonId: null, picked: {}, mgrEdit: null, viewAs: '' };
+
+function tpwTok() { return sessionStorage.getItem('sessionToken') || ''; }
+function tpwVA() { return tpw.viewAs || ''; }
+function tpwIsTP() { return !!(typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'TP Manager'); }
+function tpwE(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function tpwQ(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+function tpwEl(id) { return document.getElementById(id); }
+function tpwFmtDate(iso) { if (!iso) return ''; var d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
+function tpwOpenStatuses() { return ['Requested', 'Started', 'Verifying', 'Rejected']; }
+
+function tpwFail(msg) {
+  var l = tpwEl('tpwList');
+  if (l) l.innerHTML = '<div class="tpw-empty"><i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i><br>' + tpwE(msg || 'Could not load.') + '</div>';
+}
+
+function loadTPWorkspacePage() {
+  if (tpw.boot) { tpwRefresh(); return; }
+  var l = tpwEl('tpwList');
+  if (l) l.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading your workspace…</div>';
+  google.script.run
+    .withSuccessHandler(function(b) {
+      if (!b || !b.success) { tpwFail(b && b.message); return; }
+      tpw.boot = b; tpwInitChrome(); tpwRefresh();
+    })
+    .withFailureHandler(function(e) { tpwFail(e && e.message); })
+    .tpwBootstrap(tpwTok(), tpwVA());
+}
+
+function tpwInitChrome() {
+  var b = tpw.boot;
+  var sub = tpwEl('tpwSubtitle');
+  if (sub) sub.textContent = (b.isAdmin && !b.viewingAs) ? 'Admin view — every TP manager’s upskilling requirements, in one place.'
+    : 'Hi ' + (b.name || '').split(' ')[0] + ' — ' + (b.teacherCount || 0) + ' teachers are on your list. Every requirement below needs a status from you.';
+  var real = !!(b.isAdmin || b.realAdmin);
+  tpwEl('tpwNewBtn').style.display = real ? '' : 'none';
+  tpwEl('tpwManagersTab').style.display = real ? '' : 'none';
+  var va = tpwEl('tpwViewAs');
+  if (real) {
+    va.style.display = '';
+    va.innerHTML = '<option value="">Admin view (everyone)</option>' + (b.managers || []).map(function(m) { return '<option value="' + tpwE(m) + '">View as ' + tpwE(m) + '</option>'; }).join('');
+    va.value = tpw.viewAs || '';
+  } else va.style.display = 'none';
+  var bn = tpwEl('tpwBanner');
+  if (b.viewingAs) {
+    bn.style.display = '';
+    bn.innerHTML = '<b>Viewing as ' + tpwE(b.viewingAs) + '.</b> This is exactly what they see (' + (b.teacherCount || 0) + ' teachers). Buttons you press here are real and logged as you. '
+      + '<button class="tpw-btn" style="margin-left:8px;" onclick="tpwOpenTIC()">Open their Teacher Intelligence</button> <button class="tpw-btn" onclick="tpwSetViewAs(\'\')">Back to admin view</button>';
+  } else bn.style.display = 'none';
+  var sel = tpwEl('tpwManagerFilter');
+  if (b.isAdmin && !b.viewingAs) {
+    sel.style.display = '';
+    sel.innerHTML = '<option value="">All TP managers</option>' + (b.managers || []).map(function(m) { return '<option>' + tpwE(m) + '</option>'; }).join('');
+  } else { sel.style.display = 'none'; }
+}
+
+function tpwRefresh() {
+  if (!tpw.boot) { loadTPWorkspacePage(); return; }
+  if (tpw.view === 'managers') { tpwLoadManagers(); return; }
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) { tpwFail(r && r.message); return; }
+      tpw.reqs = r.requests || []; tpwRender();
+    })
+    .withFailureHandler(function(e) { tpwFail(e && e.message); })
+    .tpwGetRequests(tpwTok(), tpwVA());
+}
+
+function tpwSetViewAs(v) {
+  tpw.viewAs = v || '';
+  window._tpwViewAsOn = !!tpw.viewAs;
+  // the Teacher Intelligence lists are cached per view
+  try { allTeacherDetailsCache = []; globalTeacherDataList = []; } catch (e) {}
+  tpw.boot = null; tpw.reqs = []; tpw.open = {}; tpw.mgr = '';
+  tpw.filter = 'needs'; tpw.view = 'open';
+  document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === 'open'); });
+  tpwEl('tpwListView').style.display = ''; tpwEl('tpwManagersView').style.display = 'none'; tpwEl('tpwCards').style.display = '';
+  loadTPWorkspacePage();
+}
+function tpwOpenTIC() { var m = document.querySelector('.menu-item[data-page="load"]'); if (m) m.click(); else switchPage('loadPage'); }
+function tpwSetManager(v) { tpw.mgr = v || ''; tpwRender(); }
+function tpwSetView(v) {
+  tpw.view = v;
+  document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === v); });
+  tpwEl('tpwListView').style.display = v === 'managers' ? 'none' : '';
+  tpwEl('tpwManagersView').style.display = v === 'managers' ? '' : 'none';
+  tpwEl('tpwCards').style.display = v === 'managers' ? 'none' : '';
+  if (v === 'managers') { tpwLoadManagers(); return; }
+  if (v === 'closed') tpw.filter = 'closed_all'; else if (tpw.filter.indexOf('closed') === 0) tpw.filter = 'needs';
+  tpwRender();
+}
+function tpwSetFilter(f) { tpw.filter = f; if (f.indexOf('closed') === 0 && tpw.view !== 'closed') { tpw.view = 'closed'; document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === 'closed'); }); } else if (f.indexOf('closed') !== 0 && tpw.view !== 'open') { tpw.view = 'open'; document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === 'open'); }); } tpwRender(); }
+
+function tpwScoped() {
+  return tpw.reqs.filter(function(r) { return !tpw.mgr || r.manager === tpw.mgr; });
+}
+
+function tpwRender() {
+  var all = tpwScoped();
+  var open = all.filter(function(r) { return tpwOpenStatuses().indexOf(r.status) > -1; });
+  var cutoff = Date.now() - 30 * 86400000;
+  var verified = all.filter(function(r) { return r.status === 'Verified' && (!r.verifiedAt || new Date(r.verifiedAt).getTime() >= cutoff); });
+  var notPossible = all.filter(function(r) { return r.status === 'Not Possible'; });
+  var needs = open.filter(function(r) { return r.status === 'Requested' || r.status === 'Rejected'; });
+  var overdue = open.filter(function(r) { return r.status === 'Requested' && r.ageDays >= (tpw.boot ? tpw.boot.noStartDays : 14); });
+  var prog = open.filter(function(r) { return r.status === 'Started'; });
+  var wait = open.filter(function(r) { return r.status === 'Verifying'; });
+
+  var cards = [
+    { k: 'needs', n: needs.length, l: 'Needs your action', cls: needs.length ? 'urgent' : '' },
+    { k: 'overdue', n: overdue.length, l: '14+ days, not started', cls: overdue.length ? 'urgent' : '' },
+    { k: 'progress', n: prog.length, l: 'Upskilling in progress', cls: '' },
+    { k: 'waiting', n: wait.length, l: 'Waiting for data', cls: '' },
+    { k: 'closed_verified', n: verified.length, l: 'Verified (30 days)', cls: '' },
+    { k: 'closed_np', n: notPossible.length, l: 'Not possible', cls: '' }
+  ];
+  tpwEl('tpwCards').innerHTML = cards.map(function(c) {
+    return '<div class="tpw-stat ' + c.cls + (tpw.filter === c.k ? ' on' : '') + '" onclick="tpwSetFilter(\'' + c.k + '\')"><b>' + c.n + '</b><span>' + c.l + '</span></div>';
+  }).join('');
+
+  var q = (tpwEl('tpwSearch').value || '').trim().toLowerCase();
+  var list;
+  var f = tpw.filter;
+  if (tpw.view === 'closed') {
+    list = all.filter(function(r) { return tpwOpenStatuses().indexOf(r.status) === -1; });
+    if (f === 'closed_verified') list = list.filter(function(r) { return r.status === 'Verified'; });
+    else if (f === 'closed_np') list = list.filter(function(r) { return r.status === 'Not Possible'; });
+  } else {
+    list = open;
+    if (f === 'needs') list = needs; else if (f === 'overdue') list = overdue; else if (f === 'progress') list = prog; else if (f === 'waiting') list = wait;
+  }
+  if (q) list = list.filter(function(r) { return (r.teacher + ' ' + r.course + ' ' + r.manager).toLowerCase().indexOf(q) > -1; });
+  var sort = tpwEl('tpwSort').value;
+  list = list.slice().sort(function(a, b) {
+    if (sort === 'learners') return (b.learnerCount - a.learnerCount) || (b.ageDays - a.ageDays);
+    if (sort === 'teacher') return a.teacher.localeCompare(b.teacher);
+    return b.ageDays - a.ageDays;
+  });
+  tpwEl('tpwCount').textContent = list.length + ' request' + (list.length === 1 ? '' : 's') + (tpw.view === 'open' && f !== 'all' ? ' · ' + (f === 'needs' ? 'needs action' : f) : '');
+  var showAll = tpw.view === 'open' && f !== 'all' ? '<span style="margin-left:8px;"><a href="#" onclick="tpwSetFilter(\'all\');return false;">show all open</a></span>' : '';
+  tpwEl('tpwCount').innerHTML = tpwEl('tpwCount').innerHTML + showAll;
+
+  tpwEl('tpwList').innerHTML = list.length ? list.map(tpwCard).join('')
+    : '<div class="tpw-empty">' + (tpw.view === 'open' ? (f === 'needs' ? '🎉 Nothing needs your action right now.' : 'Nothing here.') : 'Nothing here yet.') + '</div>';
+}
+
+function tpwTierChip(r) {
+  if (r.tier === 'fast') return '<span class="tpw-chip fast">Fast track needed</span>';
+  if (r.tier === 'upskill') return '<span class="tpw-chip up">Upskilling required</span>';
+  return '';
+}
+function tpwStatusChip(r) {
+  var map = { Requested: ['up', 'Needs action'], Started: ['fast', 'Upskilling started'], Verifying: ['blue', 'Waiting for data'], Rejected: ['up', 'Sent back'], Verified: ['ok', 'Verified'], 'Not Possible': ['', 'Not possible'], Cancelled: ['', 'Cancelled'] };
+  var m = map[r.status] || ['', r.status];
+  return '<span class="tpw-chip ' + m[0] + ' tpw-status">' + m[1] + '</span>';
+}
+
+function tpwCard(r) {
+  var noStart = tpw.boot ? tpw.boot.noStartDays : 14;
+  var passPct = tpw.boot ? tpw.boot.passPct : 75;
+  var h = '<div class="tpw-card st-' + tpwE(r.status) + '" id="tpwc_' + tpwE(r.id) + '">';
+  h += '<div class="tpw-top"><span class="tpw-teacher">' + tpwE(r.teacher) + '</span><span class="tpw-course">' + tpwE(r.course) + '</span>'
+    + (r.courseTag ? '<span class="tpw-chip">' + tpwE(r.courseTag) + '</span>' : '') + tpwTierChip(r)
+    + (r.pod ? '<span class="tpw-chip">Pod: ' + tpwE(r.pod) + '</span>' : '') + (r.isTest ? '<span class="tpw-chip blue">TEST \u2014 no emails</span>' : '') + tpwStatusChip(r) + '</div>';
+  h += '<div class="tpw-meta">'
+    + (tpw.boot && tpw.boot.isAdmin && r.manager ? '<span><i class="fas fa-user-tie"></i> ' + tpwE(r.manager) + '</span>' : '')
+    + '<span><i class="fas fa-child"></i> ' + (r.learnerCount ? r.learnerCount + ' learner' + (r.learnerCount === 1 ? '' : 's') + ' waiting' : 'No learner waiting') + '</span>'
+    + '<span><i class="far fa-clock"></i> Requested ' + r.ageDays + ' day' + (r.ageDays === 1 ? '' : 's') + ' ago</span>'
+    + '<span>' + tpwE(r.source) + (r.requestedBy && r.requestedBy !== 'system' ? ' · ' + tpwE(r.requestedBy) : '') + '</span>'
+    + (r.rejectedCount ? '<span style="color:#b91c1c;">Sent back ' + r.rejectedCount + '×</span>' : '') + '</div>';
+
+  // progress bar (live from the Teacher Courses sheet)
+  var pct = Math.max(0, Math.min(100, Number(r.livePct) || 0));
+  h += '<div class="tpw-bar"><i style="width:' + pct + '%;' + (pct >= passPct ? 'background:#10b981;' : (pct >= 50 ? 'background:#f59e0b;' : 'background:#ef4444;')) + '"></i><u style="left:' + passPct + '%;"></u></div>'
+    + '<div class="tpw-barlabel">' + (r.liveTeacherFound ? 'On the data now: <b>' + tpwE(r.liveText || '0%') + '</b>' : 'No row for this teacher in the Teacher Courses sheet') + ' · fully upskilled at ' + passPct + '%</div>';
+
+  if (r.hint && tpwOpenStatuses().indexOf(r.status) > -1) h += '<div class="tpw-note warn"><i class="fas fa-lightbulb"></i> ' + tpwE(r.hint) + ' If that applies, use “Not possible”.</div>';
+  if (r.notes) h += '<div class="tpw-note">' + tpwE(r.notes) + '</div>';
+
+  if (r.status === 'Requested') {
+    if (r.ageDays >= noStart) h += '<div class="tpw-note bad"><b>No start in ' + r.ageDays + ' days.</b> ' + (r.hsTask ? 'A HubSpot task has been created in your name (#' + tpwE(r.hsTask) + ').' : 'A HubSpot task will be created in your name.') + ' Please start upskilling, or tell us why it is not possible.</div>';
+    else if (r.ageDays >= 7) h += '<div class="tpw-note warn">Waiting ' + r.ageDays + ' days. A HubSpot task is created at ' + noStart + ' days without a start.</div>';
+  } else if (r.status === 'Started') {
+    h += '<div class="tpw-note">Upskilling started' + (r.startedAt ? ' ' + tpwFmtDate(r.startedAt) : '') + '. Mark it done once the teacher has finished — we will cross-check the data.</div>';
+  } else if (r.status === 'Verifying') {
+    var left = Math.max(0, (tpw.boot ? tpw.boot.rejectAfterHours : 48) - (r.hoursSinceDone || 0));
+    h += '<div class="tpw-note" style="background:#eff6ff;color:#1e40af;">Marked done ' + (r.hoursSinceDone || 0) + ' h ago. We check the data every few hours — it is verified at ' + passPct + '%+ and sent back if it still is not there in ' + left + ' h (Moodle can take 24–48 h to reach the sheet).</div>';
+  } else if (r.status === 'Rejected') {
+    h += '<div class="tpw-note bad"><b>Sent back.</b> You marked this done, but ' + (tpw.boot ? tpw.boot.rejectAfterHours : 48) + ' hours later the data showed ' + tpwE(r.lastCheckPct === '' || r.lastCheckPct == null ? '0' : r.lastCheckPct) + '%. Check Moodle, and mark it done again once it shows ' + passPct + '%+.</div>';
+  } else if (r.status === 'Not Possible') {
+    h += '<div class="tpw-note"><b>Not possible:</b> ' + tpwE(r.reasonLabel) + (r.reasonNote ? ' — ' + tpwE(r.reasonNote) : '') + '</div>';
+  } else if (r.status === 'Verified') {
+    h += '<div class="tpw-note" style="background:#ecfdf5;color:#065f46;">✅ Verified on the data' + (r.verifiedAt ? ' · ' + tpwFmtDate(r.verifiedAt) : '') + '.</div>';
+  }
+
+  var id = tpwQ(r.id), isAdmin = tpw.boot && tpw.boot.isAdmin;
+  var a = '';
+  if (r.status === 'Requested') a += '<button class="tpw-btn go" onclick="tpwAct(\'' + id + '\',\'start\')">▶ Upskilling started</button><button class="tpw-btn good" onclick="tpwDone(\'' + id + '\')">✓ Upskilling done</button><button class="tpw-btn warn" onclick="tpwNotPossible(\'' + id + '\')">Can’t upskill…</button>';
+  else if (r.status === 'Started') a += '<button class="tpw-btn good" onclick="tpwDone(\'' + id + '\')">✓ Upskilling done</button><button class="tpw-btn warn" onclick="tpwNotPossible(\'' + id + '\')">Can’t upskill…</button>';
+  else if (r.status === 'Rejected') a += '<button class="tpw-btn good" onclick="tpwDone(\'' + id + '\')">✓ Mark done again</button><button class="tpw-btn warn" onclick="tpwNotPossible(\'' + id + '\')">Can’t upskill…</button>';
+  else if (r.status === 'Not Possible') a += '<button class="tpw-btn" onclick="tpwAct(\'' + id + '\',\'reopen\')">Reopen</button>';
+  else if (r.status === 'Verified' && isAdmin) a += '<button class="tpw-btn" onclick="tpwAct(\'' + id + '\',\'reopen\')">Reopen</button>';
+  if (isAdmin && tpwOpenStatuses().indexOf(r.status) > -1) a += '<button class="tpw-btn" onclick="tpwAdminVerify(\'' + id + '\')">Verify manually</button><button class="tpw-btn" onclick="tpwAdminCancel(\'' + id + '\')">Cancel request</button>';
+  a += '<button class="tpw-btn" onclick="tpwToggle(\'' + id + '\')">' + (tpw.open[r.id] ? 'Hide details' : 'Details & history') + '</button>';
+  h += '<div class="tpw-actions">' + a + '</div>';
+  h += '<div id="tpwd_' + tpwE(r.id) + '" style="' + (tpw.open[r.id] ? '' : 'display:none;') + '"></div>';
+  h += '</div>';
+  return h;
+}
+
+function tpwToggle(id) {
+  tpw.open[id] = !tpw.open[id];
+  var box = tpwEl('tpwd_' + id);
+  if (!box) return;
+  if (!tpw.open[id]) { box.style.display = 'none'; tpwRender(); return; }
+  box.style.display = '';
+  box.innerHTML = '<div class="tpw-detail"><div><i class="fas fa-spinner fa-spin"></i> Loading…</div></div>';
+  var r = tpw.reqs.filter(function(x) { return x.id === id; })[0];
+  var snap = null, hist = null;
+  var paint = function() {
+    if (!snap || !hist) return;
+    var h = '<div class="tpw-detail">';
+    h += '<div><h4>The teacher</h4>';
+    if (snap.success) {
+      h += '<div class="tpw-mini"><span>Pod</span><b>' + tpwE(snap.pod || 'not on file') + '</b></div>'
+        + '<div class="tpw-mini"><span>Status</span><b>' + tpwE(snap.status || '—') + (snap.hidden ? ' · hidden in search' : '') + '</b></div>'
+        + (snap.activeLearners !== undefined ? '<div class="tpw-mini"><span>Active learners</span><b>' + tpwE(snap.activeLearners) + '</b></div>' : '')
+        + (snap.lastActivity ? '<div class="tpw-mini"><span>Last activity</span><b>' + tpwE(snap.lastActivity) + '</b></div>' : '');
+      h += '<h4 style="margin-top:12px;">Courses upskilled (' + (snap.courses || []).length + ')</h4>';
+      h += (snap.courses || []).slice(0, 14).map(function(c) {
+        var col = c.tier === 'full' ? '#047857' : (c.tier === 'fast' ? '#b45309' : '#b91c1c');
+        return '<div class="tpw-mini"><span>' + tpwE(c.course) + '</span><b style="color:' + col + ';">' + tpwE(c.text) + '</b></div>';
+      }).join('') || '<div class="tpw-sub">No course data on the sheet.</div>';
+    } else h += '<div class="tpw-sub">' + tpwE(snap.message || 'Could not load.') + '</div>';
+    h += '</div><div><h4>History</h4>';
+    h += (hist.success && hist.items.length) ? hist.items.map(function(i) {
+      return '<div class="tpw-mini" style="display:block;"><b>' + tpwE(i.action) + '</b> <span class="tpw-sub">· ' + tpwE(i.by) + ' · ' + tpwFmtDate(i.at) + '</span>' + (i.detail ? '<div class="tpw-sub">' + tpwE(i.detail) + '</div>' : '') + '</div>';
+    }).join('') : '<div class="tpw-sub">No history yet.</div>';
+    h += '</div></div>';
+    box.innerHTML = h;
+  };
+  google.script.run.withSuccessHandler(function(s) { snap = s || { success: false, message: 'No data' }; paint(); }).withFailureHandler(function(e) { snap = { success: false, message: e.message }; paint(); }).tpwTeacherSnapshot(tpwTok(), r.teacher, tpwVA());
+  google.script.run.withSuccessHandler(function(s) { hist = s || { success: false, items: [] }; paint(); }).withFailureHandler(function() { hist = { success: false, items: [] }; paint(); }).tpwGetHistory(tpwTok(), id, tpwVA());
+}
+
+function tpwAct(id, action, payload, doneMsgType) {
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.success) { showToast(doneMsgType || 'success', 'TP Workspace', r.message || 'Done.', 7000); tpwRefresh(); }
+      else showToast('error', 'TP Workspace', (r && r.message) || 'Could not update.');
+    })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', (e && e.message) || 'Server error.'); })
+    .tpwAction(tpwTok(), id, action, payload || {}, tpwVA());
+}
+
+function tpwDone(id) {
+  var r = tpw.reqs.filter(function(x) { return x.id === id; })[0];
+  if (!r) return;
+  var ok = confirm('Mark ' + r.teacher + ' as upskilled on\n"' + r.course + '"?\n\nWe check the data right now and again after 24–48 hours (Moodle can be slow to update the sheet). If it does not show ' + (tpw.boot ? tpw.boot.passPct : 75) + '%+ after ' + (tpw.boot ? tpw.boot.rejectAfterHours : 48) + ' hours, this request is sent back to you.');
+  if (!ok) return;
+  tpwAct(id, 'done', {}, 'info');
+}
+function tpwAdminVerify(id) { if (confirm('Mark this as verified without checking the data?')) tpwAct(id, 'verify', {}); }
+function tpwAdminCancel(id) { var n = prompt('Cancel this request? Add a short reason (optional):'); if (n === null) return; tpwAct(id, 'cancel', { note: n }); }
+
+function tpwNotPossible(id) {
+  var r = tpw.reqs.filter(function(x) { return x.id === id; })[0];
+  if (!r) return;
+  tpw.reasonId = id;
+  tpwEl('tpwReasonFor').textContent = r.teacher + ' — ' + r.course;
+  var sel = tpwEl('tpwReasonSel');
+  sel.innerHTML = '<option value="">Select a reason…</option>' + (tpw.boot.reasons || []).map(function(x) { return '<option value="' + tpwE(x.code) + '">' + tpwE(x.label) + '</option>'; }).join('');
+  sel.value = (r.hint && /foundation/i.test(r.hint)) ? 'FOUNDATION_POD' : '';
+  tpwEl('tpwReasonNote').value = '';
+  tpwEl('tpwReasonOv').classList.add('on');
+}
+function tpwCloseOv(id) { tpwEl(id).classList.remove('on'); }
+function tpwSubmitReason() {
+  var code = tpwEl('tpwReasonSel').value, note = tpwEl('tpwReasonNote').value.trim();
+  if (!code) { showToast('error', 'TP Workspace', 'Pick a reason.'); return; }
+  if (code === 'OTHER' && !note) { showToast('error', 'TP Workspace', 'Add a note for “Other”.'); return; }
+  tpwCloseOv('tpwReasonOv');
+  tpwAct(tpw.reasonId, 'notpossible', { reasonCode: code, note: note });
+}
+
+// ── Admin: new requirement ──
+function tpwOpenNew() {
+  var b = tpw.boot;
+  tpw.picked = {};
+  tpwEl('tpwNewCourse').innerHTML = '<option value="">Select a course…</option>' + (b.courses || []).map(function(c) { return '<option>' + tpwE(c) + '</option>'; }).join('');
+  tpwEl('tpwNewSearch').value = ''; tpwEl('tpwNewNote').value = ''; tpwEl('tpwNewTest').checked = true;
+  tpwFilterNewTeachers();
+  tpwEl('tpwNewOv').classList.add('on');
+}
+function tpwFilterNewTeachers() {
+  var q = (tpwEl('tpwNewSearch').value || '').toLowerCase();
+  var list = (tpw.boot.teachers || []).filter(function(t) { return !q || (t.name + ' ' + (t.manager || '')).toLowerCase().indexOf(q) > -1; }).slice(0, 400);
+  tpwEl('tpwNewTeachers').innerHTML = list.map(function(t) {
+    return '<label><input type="checkbox" ' + (tpw.picked[t.name] ? 'checked' : '') + ' onchange="tpwPick(\'' + tpwQ(t.name) + '\',this.checked)"> ' + tpwE(t.name) + ' <span class="tpw-sub">' + tpwE(t.manager || '') + '</span></label>';
+  }).join('') || '<div class="tpw-sub" style="padding:8px;">No match.</div>';
+  tpwPickedLabel();
+}
+function tpwPick(name, on) { if (on) tpw.picked[name] = true; else delete tpw.picked[name]; tpwPickedLabel(); }
+function tpwPickedLabel() { var n = Object.keys(tpw.picked).length; tpwEl('tpwNewPicked').textContent = n ? '(' + n + ' selected)' : ''; }
+function tpwSubmitNew() {
+  var course = tpwEl('tpwNewCourse').value, teachers = Object.keys(tpw.picked);
+  if (!course || !teachers.length) { showToast('error', 'TP Workspace', 'Pick a course and at least one teacher.'); return; }
+  var btn = tpwEl('tpwNewSave'); btn.disabled = true;
+  google.script.run
+    .withSuccessHandler(function(r) {
+      btn.disabled = false;
+      if (r && r.success) { tpwCloseOv('tpwNewOv'); showToast('success', 'TP Workspace', r.message, 8000); tpwRefresh(); }
+      else showToast('error', 'TP Workspace', (r && r.message) || 'Could not create.');
+    })
+    .withFailureHandler(function(e) { btn.disabled = false; showToast('error', 'TP Workspace', e.message); })
+    .tpwAdminCreate(tpwTok(), { course: course, teachers: teachers, note: tpwEl('tpwNewNote').value, test: tpwEl('tpwNewTest').checked });
+}
+
+// ── Admin: TP managers + automation ──
+function tpwLoadManagers() {
+  var box = tpwEl('tpwManagersView');
+  box.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) { box.innerHTML = '<div class="tpw-empty">' + tpwE((r && r.message) || 'Could not load.') + '</div>'; return; }
+      var a = r.automation || {};
+      var h = '<div class="tpw-card" style="border-left-color:' + (a.on ? '#10b981' : '#ef4444') + ';margin-bottom:14px;">'
+        + '<div class="tpw-top"><span class="tpw-teacher">Automation</span><span class="tpw-chip ' + (a.on ? 'ok' : 'up') + '">' + (a.on ? 'Running' : 'Not running') + '</span></div>'
+        + '<div class="tpw-meta"><span>Verification of “done” every 4 hours</span><span>Reminder emails + 14-day HubSpot task daily at 9 am (not Sundays)</span></div>'
+        + '<div class="tpw-actions">' + (a.on ? '' : '<button class="tpw-btn go" onclick="tpwEnableAuto()">Turn automation on</button>')
+        + '<button class="tpw-btn" onclick="tpwRunNow(\'verify\')">Run verification now</button><button class="tpw-btn" onclick="tpwRunNow(\'daily\')">Send reminders now</button>'
+        + '<button class="tpw-btn" onclick="tpwSendSamples()">Email me sample reminders</button><button class="tpw-btn warn" onclick="tpwDeleteTests()">Remove all test requirements</button></div></div>';
+      h += '<table class="tpw-table"><tr><th>TP manager</th><th>Sign-in email</th><th>Teachers</th><th>Open</th><th>Needs action</th><th>Access</th><th>Last login</th><th></th></tr>';
+      (r.managers || []).forEach(function(m) {
+        h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email) + '</td><td>' + m.teacherCount + '</td><td>' + m.open + '</td><td>' + (m.needsAction ? '<b style="color:#b91c1c;">' + m.needsAction + '</b>' : '0') + '</td>'
+          + '<td><span class="tpw-chip ' + (m.active ? 'ok' : '') + '">' + (m.active ? 'On' : 'Off') + '</span>' + (m.invitedAt ? ' <span class="tpw-sub">invited ' + tpwFmtDate(m.invitedAt) + '</span>' : '') + '</td>'
+          + '<td>' + (m.lastLogin ? tpwFmtDate(m.lastLogin) : '<span class="tpw-sub">never</span>') + '</td>'
+          + '<td style="white-space:nowrap;"><button class="tpw-btn" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',' + (m.active ? 'true' : 'false') + ')">Edit</button> '
+          + '<button class="tpw-btn go" onclick="tpwInvite(\'' + tpwQ(m.email) + '\')">' + (m.invitedAt ? 'Resend invite' : 'Send invite') + '</button></td></tr>';
+      });
+      if (!(r.managers || []).length) h += '<tr><td colspan="8" class="tpw-sub" style="padding:18px;">No TP managers yet — add them below.</td></tr>';
+      h += '</table>';
+      if ((r.unlisted || []).length) {
+        h += '<h4 style="margin:18px 0 8px;">Managers found in Teacher Data but not added yet</h4><table class="tpw-table"><tr><th>Name</th><th>Email on file</th><th>Teachers</th><th></th></tr>';
+        r.unlisted.forEach(function(m) {
+          h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email || '—') + '</td><td>' + m.teacherCount + '</td><td><button class="tpw-btn" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',false)">Add</button></td></tr>';
+        });
+        h += '</table>';
+      }
+      h += '<div style="margin-top:14px;"><button class="tpw-btn go" onclick="tpwEditMgr(\'\',\'\',true)">+ Add TP manager</button></div>';
+      box.innerHTML = h;
+    })
+    .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-empty">' + tpwE(e.message) + '</div>'; })
+    .tpwListManagers(tpwTok());
+}
+function tpwEditMgr(name, email, active) {
+  tpwEl('tpwMgrTitle').textContent = name ? 'Edit ' + name : 'Add TP manager';
+  tpwEl('tpwMgrName').value = name; tpwEl('tpwMgrEmail').value = email; tpwEl('tpwMgrActive').checked = !!active;
+  tpwEl('tpwMgrOv').classList.add('on');
+}
+function tpwSaveMgr() {
+  var m = { name: tpwEl('tpwMgrName').value.trim(), email: tpwEl('tpwMgrEmail').value.trim(), active: tpwEl('tpwMgrActive').checked };
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.success) { tpwCloseOv('tpwMgrOv'); showToast('success', 'TP Workspace', r.message); tpwLoadManagers(); }
+      else showToast('error', 'TP Workspace', (r && r.message) || 'Could not save.');
+    })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwSaveManager(tpwTok(), m);
+}
+function tpwInvite(email) {
+  if (!confirm('Email the TP Workspace invite to ' + email + '?')) return;
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', (r && r.message) || 'Failed.'); if (r && r.success) tpwLoadManagers(); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwInviteManager(tpwTok(), email);
+}
+function tpwSendSamples() {
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', (r && r.message) || 'Failed.', 8000); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwSendSamples(tpwTok());
+}
+function tpwDeleteTests() {
+  if (!confirm('Remove every test requirement? Real requirements are not touched.')) return;
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', (r && r.message) || 'Failed.'); tpwRefresh(); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwDeleteTests(tpwTok());
+}
+function tpwEnableAuto() {
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', r && r.success ? 'Automation is on.' : ((r && r.message) || 'Failed.')); tpwLoadManagers(); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwEnableAutomation(tpwTok());
+}
+function tpwRunNow(which) {
+  showToast('info', 'TP Workspace', 'Running…');
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', r && r.success ? JSON.stringify(r.result) : ((r && r.message) || 'Failed.'), 8000); tpwRefresh(); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwRunNow(tpwTok(), which);
+}
+
+// TP managers see only: TP Workspace + Teacher Intelligence (their teachers). Everything else is hidden.
+function tpwApplyRoleUI() {
+  var isTP = tpwIsTP();
+  window._isTPManager = isTP;
+  var allowed = { tpWorkspace: 1, load: 1 };
+  document.querySelectorAll('.sidebar-menu .menu-item').forEach(function(m) {
+    if (isTP) { if (!allowed[m.dataset.page]) { m.style.display = 'none'; m.setAttribute('data-tpw-hidden', '1'); } else m.style.display = 'flex'; }
+    else if (m.getAttribute('data-tpw-hidden')) { m.style.display = ''; m.removeAttribute('data-tpw-hidden'); }
+  });
+  document.querySelectorAll('.sidebar-menu .sidebar-section-label').forEach(function(l) {
+    if (isTP) { if (l.textContent.trim() !== 'Tools') { l.style.display = 'none'; l.setAttribute('data-tpw-hidden', '1'); } }
+    else if (l.getAttribute('data-tpw-hidden')) { l.style.display = ''; l.removeAttribute('data-tpw-hidden'); }
+  });
+  ['aiDashboardTabBtn', 'tpDashboardTabBtn'].forEach(function(id) {
+    var el = tpwEl(id); if (!el) return;
+    if (isTP) { el.style.display = 'none'; el.setAttribute('data-tpw-hidden', '1'); } else if (el.getAttribute('data-tpw-hidden')) { el.style.display = ''; el.removeAttribute('data-tpw-hidden'); }
+  });
+  var perms = (currentUser && currentUser.permissions) || [];
+  var wsItem = tpwEl('tpWorkspaceMenuItem');
+  if (wsItem) wsItem.style.display = (perms.indexOf('tp_workspace') > -1 || perms.indexOf('tp_workspace_admin') > -1) ? 'flex' : 'none';
+  tpw.boot = null; tpw.reqs = [];
+  ['bgBellWrap', 'bgDock'].forEach(function(id) { var el = tpwEl(id); if (el && isTP) el.style.display = 'none'; });
+}
+
+// After an admin signs in: continue as admin, or look at the app as a chosen TP manager.
+function tpwLoginChooser() {
+  var perms = (currentUser && currentUser.permissions) || [];
+  if (perms.indexOf('tp_workspace_admin') === -1) return;
+  var tok = tpwTok();
+  if (!tok || sessionStorage.getItem('tpwAsked') === tok) return;
+  google.script.run
+    .withSuccessHandler(function(b) {
+      if (!b || !b.success || !(b.managers || []).length) return;
+      var sel = tpwEl('tpwChooseSel');
+      sel.innerHTML = '<option value="">Select a TP manager\u2026</option>' + b.managers.map(function(m) { return '<option value="' + tpwE(m) + '">' + tpwE(m) + '</option>'; }).join('');
+      tpwEl('tpwChooseOv').classList.add('on');
+    })
+    .withFailureHandler(function() {})
+    .tpwBootstrap(tok, '');
+}
+function tpwChoose(v) {
+  sessionStorage.setItem('tpwAsked', tpwTok());
+  tpwEl('tpwChooseOv').classList.remove('on');
+  if (!v) return;
+  tpw.viewAs = v; window._tpwViewAsOn = true;
+  try { allTeacherDetailsCache = []; globalTeacherDataList = []; } catch (e) {}
+  tpw.boot = null;
+  var m = document.querySelector('.menu-item[data-page="tpWorkspace"]');
+  if (m) m.click(); else switchPage('tpWorkspacePage');
 }
 </script>

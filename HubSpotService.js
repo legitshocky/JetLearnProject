@@ -2199,7 +2199,15 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
             if (normalizeCourseNameForMatch(tc.course) === hsNorm) { matchedTc2 = tc; return true; }
           });
           var displayLabel = matchedTc2 ? matchedTc2.course : canonicalCourseName(hsLabel);
-          futureCourses.push({ index: idx + 1, courseLabel: displayLabel, rawValue: raw, isUpskilled: !!matchedTc2 });
+          var fcPct = matchedTc2 ? _upskillPct(matchedTc2.proficiency) : 0;
+          var fcTier = _upskillTier(fcPct);
+          futureCourses.push({ index: idx + 1, courseLabel: displayLabel, rawValue: raw, isUpskilled: fcTier === 'full', tier: fcTier,
+            pctText: matchedTc2 ? (String(matchedTc2.proficiency || '').trim() || '0%') : 'Not onboarded' });
+        });
+        // every course the teacher has, with its progress, so an Override in the popup can show the percentage too
+        teacherCourseList.forEach(function(tc) {
+          var p = _upskillPct(tc.proficiency);
+          teacherUpskilledNames.push({ course: String(tc.course || '').trim().toLowerCase(), tier: _upskillTier(p), pctText: String(tc.proficiency || '').trim() || '0%' });
         });
       }
     } catch(fcErr) {
@@ -3182,6 +3190,39 @@ function updateMigrationDealProperties(jlid, oldTeacher, newTeacher, noteBody, c
  * @param {string} newTeacherName
  * @param {Array}  confirmedCourses  [{courseLabel, isUpskilled}] from client-side popup confirms
  */
+// The ticket's own Future Courses 1-3 (labels, "NA" / blank dropped). null when the ticket cannot be read, so the caller can fall back.
+function _upskillTicketCourses(ticketId) {
+  var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+  if (!token || !ticketId) return null;
+  var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/tickets/' + encodeURIComponent(ticketId) + '?properties=future_course_1,future_course_2,future_course_3', {
+    method: 'get', headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) return null;
+  var j = JSON.parse(resp.getContentText());
+  if (!j || !j.properties) return null;
+  var out = [];
+  ['future_course_1', 'future_course_2', 'future_course_3'].forEach(function(k) {
+    var raw = j.properties[k];
+    var s = String(raw || '').trim().toLowerCase();
+    if (!s || s === 'na' || s === 'n/a' || s === 'not applicable' || s === '-') return;
+    var lbl = raw; try { lbl = getCourseLabel(raw) || raw; } catch (e) {}
+    out.push(lbl);
+  });
+  return { future: out };
+}
+
+// Teacher progress text ("100%", "61-70%", "Not onboarded") -> number. A range counts as its midpoint: "71-80%" = 75.5, "61-70%" = 65.5.
+function _upskillPct(text) {
+  var t = String(text || '').trim();
+  if (!t || /not\s*onboarded/i.test(t)) return 0;
+  var m = t.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/);
+  if (m) return (parseFloat(m[1]) + parseFloat(m[2])) / 2;
+  var n = t.match(/\d+(?:\.\d+)?/);
+  return n ? parseFloat(n[0]) : 0;
+}
+// 75%+ fully upskilled, 50-75% fast track needed, below 50% upskilling required
+function _upskillTier(pct) { return pct >= 75 ? 'full' : (pct >= 50 ? 'fast' : 'upskill'); }
+
 function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, currentCourse, reasonOfMigration, forcedTicketId) {
   try {
     // forcedTicketId: the automation already knows which ticket it is migrating, so the note goes on THAT ticket
@@ -3201,6 +3242,19 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
 
     // Build list of course labels to check — skip NA/blank values
     var courseLabels = [];
+    // The TICKET decides which next courses are checked: whatever the migration form held (an override, an old roadmap row) must
+    // never put courses in the note that the ticket does not list. If the ticket cannot be read, fall back to what the caller sent.
+    var ticketCourses = null;
+    try { ticketCourses = _upskillTicketCourses(ticketId); } catch (tce) { Logger.log('[upskillNote] ticket courses unreadable: ' + tce.message); }
+    var noNextCourses = false;
+    if (ticketCourses) {
+      if (!isCCTC && currentCourse && !_isNaVal(currentCourse)) courseLabels.push(currentCourse);
+      ticketCourses.future.forEach(function(l) { courseLabels.push(l); });
+      noNextCourses = ticketCourses.future.length === 0;
+      var sent = (confirmedCourses || []).filter(function(c) { return c && c.courseLabel && !_isNaVal(c.courseLabel); }).length;
+      if (sent && sent !== ticketCourses.future.length) Logger.log('[upskillNote] form sent ' + sent + ' next course(s), ticket lists ' + ticketCourses.future.length + ' — using the ticket');
+    } else {
+      // (ticket not readable) the courses the caller sent
     // Non-CCTC: include current course (4 total); CCTC: current is being replaced, skip it
     if (!isCCTC && currentCourse && !_isNaVal(currentCourse)) courseLabels.push(currentCourse);
     if (confirmedCourses && confirmedCourses.length > 0) {
@@ -3215,6 +3269,7 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
         try { courseLabels.push(getCourseLabel(raw) || raw); } catch(e) { courseLabels.push(raw); }
       });
     }
+    }
     if (courseLabels.length === 0) {
       Logger.log('[upskillNote] No future courses (all NA/blank) for ' + jlid + ' — skipping note');
       return;
@@ -3226,6 +3281,14 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
     var teacherLoadResult2 = {};
     try { teacherLoadResult2 = getTeacherSpecificLoad(resolvedNew); } catch(e) {}
     var teacherCourseList = (teacherLoadResult2 && teacherLoadResult2.success) ? (teacherLoadResult2.courses || []) : [];
+    if (!teacherLoadResult2 || !teacherLoadResult2.success) {
+      addNoteToHubSpotTicket(ticketId, '⚠️ Teacher Upskilling Check — could not run\n'
+        + (currentCourse ? 'Current Course: ' + currentCourse + '\n' : '')
+        + resolvedNew + ' was not found in the Teacher Courses sheet (the name may be spelled differently there), so nobody was told they need upskilling.\n'
+        + 'Courses to check: ' + courseLabels.join(', '));
+      Logger.log('[upskillNote] teacher not found in Teacher Courses: ' + resolvedNew + ' — wrote a could-not-check note instead of listing gaps');
+      return;
+    }
 
     var results = courseLabels.map(function(label) {
       var labelNorm = normalizeCourseNameForMatch(label);
@@ -3235,7 +3298,10 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
       });
       // display: sheet name from match, else alias map, else HubSpot label
       var displayLabel = matchedTc ? matchedTc.course : canonicalCourseName(label);
-      return { label: displayLabel, upskilled: !!matchedTc };
+      var pct = matchedTc ? _upskillPct(matchedTc.proficiency) : 0;
+      var tier = _upskillTier(pct);
+      var pctText = matchedTc ? (String(matchedTc.proficiency || '').trim() || '0%') : 'Not onboarded';
+      return { label: displayLabel, upskilled: tier === 'full', tier: tier, pct: pct, pctText: pctText };
     });
 
     // Resolve TP manager name for this teacher
@@ -3259,35 +3325,36 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
     if (gapped.length === 0) {
       note = '✅ Teacher Upskilling Check\n'
         + currentCourseLine
-        + resolvedNew + ' is fully upskilled in all future courses:\n'
-        + results.map(function(r) { return '• ' + r.label; }).join('\n')
+        + resolvedNew + (noNextCourses ? ' is upskilled in the current course:\n' : ' is fully upskilled in all future courses:\n')
+        + results.map(function(r) { return '• ' + r.label + ' — ' + r.pctText; }).join('\n')
+        + (noNextCourses ? '\nNext courses: none on the ticket (NA).' : '')
         + '\n\nNo upskilling action required.';
     } else {
-      var allList = results.map(function(r) { return (r.upskilled ? '✓ ' : '✗ ') + r.label; }).join('\n');
+      var allList = results.map(function(r) { return (r.tier === 'full' ? '✓ ' : (r.tier === 'fast' ? '⏩ ' : '✗ ')) + r.label + ' — ' + r.pctText + (r.tier === 'full' ? ' (fully upskilled)' : (r.tier === 'fast' ? ' (fast track needed)' : ' (upskilling required)')); }).join('\n');
       note = '⚠️ Teacher Upskilling Gap — Action Required\n'
         + currentCourseLine
         + resolvedNew + ' needs upskilling:\n' + allList
-        + '\n\nGap courses: ' + gapped.map(function(r) { return r.label; }).join(', ')
-        + '\n\n@' + tpManagerTag + ' — please arrange upskilling before new sessions begin.';
+        + (noNextCourses ? '\nNext courses: none on the ticket (NA).' : '')
+        + '\n\nBands: 75%+ fully upskilled · 50-75% fast track needed · below 50% upskilling required.'
+        + '\n\nFast track: ' + (gapped.filter(function(r) { return r.tier === 'fast'; }).map(function(r) { return r.label; }).join(', ') || 'none')
+        + '\nUpskilling required: ' + (gapped.filter(function(r) { return r.tier === 'upskill'; }).map(function(r) { return r.label; }).join(', ') || 'none')
+        + '\n\n@' + tpManagerTag + ' — please arrange upskilling before new sessions begin. Update the status in the TP Workspace (Upskilling started / done / not possible): ' + _tpwAppUrl();
     }
 
     addNoteToHubSpotTicket(ticketId, note);
     Logger.log('[upskillNote] Note written to ticket ' + ticketId + ' for ' + jlid);
 
-    // Log to Upskill Tracker if there are gaps
+    // Every course that is not fully upskilled becomes a request on the TP manager's dashboard (TPWorkspaceService.js).
+    // Old behaviour logged one row per ticket with all courses in one cell; requests are now one row per teacher + course.
     if (gapped.length > 0) {
       try {
         var learnerNameForLog = (ticketResult.rawProperties && ticketResult.rawProperties.subject) || jlid;
-        logUpskillTask(
-          resolvedNew,
-          tpManagerTag,
-          jlid,
-          learnerNameForLog,
-          gapped.map(function(r) { return r.label; }).join(', '),
-          '' // HubSpot task ID not available here; updated separately if needed
-        );
+        tpwCreateRequestsFromGaps({
+          teacher: resolvedNew, manager: (tpManagerTag !== 'Teacher Partner' ? tpManagerTag : ''), jlid: jlid, learner: learnerNameForLog,
+          gaps: gapped.map(function(r) { return { label: r.label, tier: r.tier, pct: r.pct }; })
+        });
       } catch(logErr) {
-        Logger.log('[upskillNote] Tracker log failed: ' + logErr.message);
+        Logger.log('[upskillNote] TP request create failed: ' + logErr.message);
       }
     }
   } catch(e) {
@@ -4007,8 +4074,12 @@ function fetchPersonaSmartData(jlid) {
           });
         }
         contextData.currentTeacherNextCourseUpskill = _match
-          ? { upskilled: true,  course: _nextCourse, status: _match.status || '', progress: _match.progress || '' }
-          : { upskilled: false, course: _nextCourse };
+          ? (function() {
+              var shown = _match.progress || _match.status || '';
+              var pc = _upskillPct(shown);
+              return { upskilled: _upskillTier(pc) === 'full', tier: _upskillTier(pc), course: _nextCourse, status: _match.status || '', progress: _match.progress || '' };
+            })()
+          : { upskilled: false, tier: 'upskill', course: _nextCourse };
       } else {
         contextData.currentTeacherNextCourseUpskill = { upskilled: false, course: _nextCourse, noData: true };
       }

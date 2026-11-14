@@ -73,6 +73,7 @@ const ROLES = {
   SUPER_ADMIN: 'Super Admin',
   ADMIN: 'Admin',
   USER: 'User',
+  TP_MANAGER: 'TP Manager',
   GUEST: 'Guest'
 };
 
@@ -86,17 +87,21 @@ const PERMISSIONS = {
     'send_welcome_email',  // NEW
     'send_reset_email', // NEW
     'book_classes_calendar', // Calendar booking (Reserve Slot / Book Classes with New Teacher)
+    'tp_workspace', 'tp_workspace_admin',
   ],
   [ROLES.ADMIN]: [
     'view_dashboard', 'send_emails', 'view_audit',
     'use_persona_tool', 'view_reports', 'send_generic_emails',
-    'manage_invoices', 'run_audit_center', 'manage_settings', 'use_ai_pm'
+    'manage_invoices', 'run_audit_center', 'manage_settings', 'use_ai_pm',
+    'tp_workspace', 'tp_workspace_admin'
   ],
   [ROLES.USER]: [
     'view_dashboard', 'send_emails', 'view_audit',
     'use_persona_tool', 'view_reports', 'send_generic_emails',
     'manage_invoices', 'run_audit_center', 'use_ai_pm'
   ],
+  // TP managers: only their own teachers' Teacher Intelligence / Persona / upskilling requests (enforced in TPWorkspaceService.js)
+  [ROLES.TP_MANAGER]: ['tp_workspace', 'use_persona_tool'],
   [ROLES.GUEST]: ['view_dashboard']
 };
 
@@ -906,7 +911,7 @@ function updateJetGuideByIndex(rowIndex, updates) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "10.47";
+const APP_VERSION = "10.51";
 
 function getAppVersion() {
   return APP_VERSION;

@@ -1,6 +1,28 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-14] — TP Workspace: TP managers see and act on upskilling (V10.51)
+- `TPWorkspaceService.js` (new): requests live in the existing `Upskill Tracker` sheet (A-K kept; L-AB new; only rows with Version = v2 count, so old gaps are ignored). One row per teacher + course; statuses Requested / Started / Verifying / Verified / Rejected / Not Possible / Cancelled. Activity log sheet `Upskill Activity`; TP list sheet `TP Managers` (Name, Email, Active, Invited At, ...).
+- Access: new role `TP Manager` (`Code.js` ROLES / PERMISSIONS: `tp_workspace`; admins get `tp_workspace_admin`). Every TP call takes the session token and is scoped server-side to the manager's teachers (Persona sheet Manager column, else Teacher Data; or Teacher Data TP email). `UserService.js` sign-in: an active TP manager may sign in with any address; profile role set to TP Manager.
+- Verification: `tpwVerifyJob` (every 4 h) - 75%+ on Teacher Courses = Verified; marked done 48 h ago and still below = Rejected + email. `tpwDailyJob` (9 am, not Sundays) - HubSpot task after 14 days without a start, reminder email every 2 days (6 rotating messages). `setupTPWorkspaceTriggers()` / the Turn automation on button installs both.
+- Admin "view as": `_tpwCtx(token, viewAs)`; every `tpw*` call takes an optional viewAs; login chooser `tpwLoginChooser`. Test requests (Source = Test) never email, never create HubSpot tasks, never merge into real requests; `tpwDeleteTests`, `tpwSendSamples`.
+- `HubSpotService.js`: `checkAndWriteUpskillNote` creates requests (`tpwCreateRequestsFromGaps`) instead of the old one-row-per-ticket log.
+- UI: `Index.html` TP Workspace page + menu item, `JavaScript.html` `tpw*` functions; TP managers' menu is limited to TP Workspace + Teacher Intelligence (teacher lists via `tpwTeacherDetailsScoped`, hide/unhide via `tpwSetVisibilityScoped`, Find Replacement hidden).
+
+---
+## [2026-11-14] — Upskilling bands + percentages (V10.50)
+- `HubSpotService.js` `_upskillPct` (range = midpoint) / `_upskillTier` (75+ full, 50-75 fast, <50 upskill); note lists % + band, Fast track / Upskilling required lines; `checkNewTeacherForLearner` futureCourses carry tier/pctText, teacherUpskilledCourses now filled (override fix). `JavaScript.html` `mipTierStyle` badges, current-teacher badge bands.
+
+---
+## [2026-11-14] — Upskilling note follows the ticket (V10.49)
+- `HubSpotService.js` `_upskillTicketCourses` reads future_course_1..3 from the ticket; `checkAndWriteUpskillNote` uses them (form-sent courses only as fallback when the ticket is unreadable). All NA -> current course only + "Next courses: none on the ticket (NA)."
+
+---
+## [2026-11-14] — Upskilling check: tolerant teacher lookup (V10.48)
+- `TeacherService.js` `_findTeacherCoursesRow` (exact -> alias list both directions -> one unique name within edit distance 2 and the same first word); `getTeacherSpecificLoad` uses it and matches the Persona / Teacher Data manager rows by either spelling. Cause: `resolveTeacherName` turns the sheet spelling "Kim Jeoffrey Cuevas" into the HubSpot one "Kim Jeoffrey Cuevass", and the exact lookup then missed the Teacher Courses row.
+- `HubSpotService.js` `checkAndWriteUpskillNote`: teacher not found -> a "could not run" ticket note instead of marking every course as a gap.
+
+---
 ## [2026-11-13] — Order-placed notice to all parent numbers, messaging config check (V10.47)
 - `KitTrackingService.js` `markKitOrderPlaced`: `kit_order_placed_notice_v2` and the tracking link go to the union of the row's "Phone Sent To", the deal primary and all deal phones; `waStatus` / `waTrackStatus` become `partial: sent to N of M numbers (..last4: error)` when some fail.
 - `MessagingConfigCheck.js` (new): `checkMessagingConfig()` lists WATI templates (getMessageTemplates) against the 18 the code uses; OK / MISSING / status.
