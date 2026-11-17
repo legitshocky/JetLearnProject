@@ -1280,6 +1280,7 @@ function verifySubscriptionWithCalendar(jlid, expectedStartDate, expectedEndDate
                 singleEvents: true,
                 orderBy: 'startTime'
             }).items;
+            events = (events || []).filter(function(e) { return !_isReservedCalendarEvent(e.summary, e.description); }); // reserved slots are not classes
              Logger.log(`Calendar API call successful. Found ${events.length} potential events.`);
         } catch(apiError) {
             Logger.log(`CRITICAL CALENDAR API ERROR: ${apiError.message}. This might be a permissions issue. Ensure Calendar API is enabled.`);

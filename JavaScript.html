@@ -8720,6 +8720,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Reload settings if needed
             loadSettingsPage();
             if (tabId === 'jetGuideSettings') loadJetGuideTable();
+            if (tabId === 'tpManagersSettings') tpwLoadManagers('tpManagersSettingsBox');
+            if (tabId === 'usageSettings') loadUsageReport();
         });
     });
 
@@ -11001,6 +11003,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.52': [
+      "**TP Managers — teacher coverage (read-only)**: View teachers on each manager shows exactly which teachers they would see and which sheet (Persona sheet / Teacher Data) put each one there. A coverage check lists active teachers with no manager, teachers under a manager who is not in the system, and teachers where the Persona sheet and Teacher Data disagree. Nothing here edits teacher data — it is imported; fix it in the sheets.",
+      "**Settings → Usage (new)**: who uses the tool — people in the system, active this week / month, never logged in, and per person first login, last login, number of logins and last 30 days.",
+      "**Settings → TP Managers (new, like JetGuides)**: every TP manager in the system with email, HubSpot ID, teacher count, access, first / last login and logins; add, edit, activate / deactivate, send invite. It also lists names the app knows (Teacher Data, Persona sheet, old built-in list) that are not in the system yet, so you can add them in one click.",
+      "**Reserved slots are not classes**: A slot held with Reserve Slot (its note says 'Reserved via Teacher Intelligence Center') is no longer picked up when the app fetches a learner's classes, class notes or class link, or counts classes for subscription checks. It still blocks the teacher's availability.",
+      "**Certificates are never sent twice**: If a learner has already been sent a course's certificate (e.g. migrated twice), the second one is skipped — no email, no log row, no HubSpot note — and the migration result says it was already sent. Bulk send skips already-sent courses too. The parent's certificate page shows one certificate per course.",
+    ],
     'V10.51': [
       "**TP Workspace (new)**: TP managers sign in and see only their own teachers — Teacher Intelligence plus every upskilling requirement raised for them. They mark each one Upskilling started, Upskilling done, or Can't upskill (with a reason). Admins see everything, can raise a requirement for many teachers at once, and manage TP manager access (add, invite, switch off).",
       "**Done is cross-checked**: when a TP marks upskilling done, the Teacher Courses sheet is checked at once and again every few hours. 75%+ = verified. Still not on the data after 48 hours = sent back to the TP with an email (Moodle can take 24-48 hours to reach the sheet).",
@@ -23195,7 +23204,7 @@ function tpwSetView(v) {
   tpwEl('tpwListView').style.display = v === 'managers' ? 'none' : '';
   tpwEl('tpwManagersView').style.display = v === 'managers' ? '' : 'none';
   tpwEl('tpwCards').style.display = v === 'managers' ? 'none' : '';
-  if (v === 'managers') { tpwLoadManagers(); return; }
+  if (v === 'managers') { tpwLoadManagers('tpwManagersView'); return; }
   if (v === 'closed') tpw.filter = 'closed_all'; else if (tpw.filter.indexOf('closed') === 0) tpw.filter = 'needs';
   tpwRender();
 }
@@ -23427,49 +23436,69 @@ function tpwSubmitNew() {
 }
 
 // ── Admin: TP managers + automation ──
-function tpwLoadManagers() {
-  var box = tpwEl('tpwManagersView');
-  box.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading…</div>';
+function tpwLoadManagers(boxId) {
+  tpw.mgrBox = boxId || tpw.mgrBox || 'tpwManagersView';
+  var box = tpwEl(tpw.mgrBox);
+  if (!box) return;
+  box.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading\u2026</div>';
   google.script.run
     .withSuccessHandler(function(r) {
       if (!r || !r.success) { box.innerHTML = '<div class="tpw-empty">' + tpwE((r && r.message) || 'Could not load.') + '</div>'; return; }
       var a = r.automation || {};
-      var h = '<div class="tpw-card" style="border-left-color:' + (a.on ? '#10b981' : '#ef4444') + ';margin-bottom:14px;">'
+      var mgrs = r.managers || [];
+      var live = mgrs.filter(function(m) { return m.active; }).length;
+      var signed = mgrs.filter(function(m) { return m.lastLogin; }).length;
+      var h = '<div class="tpw-cards" style="margin-bottom:14px;">'
+        + '<div class="tpw-stat"><b>' + mgrs.length + '</b><span>TP managers in the system</span></div>'
+        + '<div class="tpw-stat"><b>' + live + '</b><span>Allowed to sign in</span></div>'
+        + '<div class="tpw-stat ' + (mgrs.length - signed ? 'urgent' : '') + '"><b>' + signed + '</b><span>Have signed in</span></div>'
+        + '<div class="tpw-stat ' + ((r.unlisted || []).length ? 'urgent' : '') + '"><b>' + (r.unlisted || []).length + '</b><span>Names not in the system</span></div></div>';
+      h += '<div class="tpw-card" style="border-left-color:' + (a.on ? '#10b981' : '#ef4444') + ';margin-bottom:14px;">'
         + '<div class="tpw-top"><span class="tpw-teacher">Automation</span><span class="tpw-chip ' + (a.on ? 'ok' : 'up') + '">' + (a.on ? 'Running' : 'Not running') + '</span></div>'
-        + '<div class="tpw-meta"><span>Verification of “done” every 4 hours</span><span>Reminder emails + 14-day HubSpot task daily at 9 am (not Sundays)</span></div>'
+        + '<div class="tpw-meta"><span>Verification of \u201cdone\u201d every 4 hours</span><span>Reminder emails + 14-day HubSpot task daily at 9 am (not Sundays)</span></div>'
         + '<div class="tpw-actions">' + (a.on ? '' : '<button class="tpw-btn go" onclick="tpwEnableAuto()">Turn automation on</button>')
         + '<button class="tpw-btn" onclick="tpwRunNow(\'verify\')">Run verification now</button><button class="tpw-btn" onclick="tpwRunNow(\'daily\')">Send reminders now</button>'
         + '<button class="tpw-btn" onclick="tpwSendSamples()">Email me sample reminders</button><button class="tpw-btn warn" onclick="tpwDeleteTests()">Remove all test requirements</button></div></div>';
-      h += '<table class="tpw-table"><tr><th>TP manager</th><th>Sign-in email</th><th>Teachers</th><th>Open</th><th>Needs action</th><th>Access</th><th>Last login</th><th></th></tr>';
-      (r.managers || []).forEach(function(m) {
-        h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email) + '</td><td>' + m.teacherCount + '</td><td>' + m.open + '</td><td>' + (m.needsAction ? '<b style="color:#b91c1c;">' + m.needsAction + '</b>' : '0') + '</td>'
-          + '<td><span class="tpw-chip ' + (m.active ? 'ok' : '') + '">' + (m.active ? 'On' : 'Off') + '</span>' + (m.invitedAt ? ' <span class="tpw-sub">invited ' + tpwFmtDate(m.invitedAt) + '</span>' : '') + '</td>'
-          + '<td>' + (m.lastLogin ? tpwFmtDate(m.lastLogin) : '<span class="tpw-sub">never</span>') + '</td>'
-          + '<td style="white-space:nowrap;"><button class="tpw-btn" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',' + (m.active ? 'true' : 'false') + ')">Edit</button> '
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 8px;"><h4 style="margin:0;">TP managers in the system</h4><button class="tpw-btn go" onclick="tpwEditMgr(\'\',\'\',true,\'\')">+ Add TP manager</button></div>';
+      h += '<div style="overflow-x:auto;"><table class="tpw-table"><tr><th>TP manager</th><th>Sign-in email</th><th>HubSpot ID</th><th>Teachers</th><th>Needs action</th><th>Access</th><th>First login</th><th>Last login</th><th>Logins</th><th></th></tr>';
+      mgrs.forEach(function(m) {
+        var hs = m.hubspotId || m.hubspotDetected;
+        h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email) + '</td>'
+          + '<td>' + (hs ? '<code>' + tpwE(hs) + '</code>' + (m.hubspotId ? '' : ' <span class="tpw-sub">auto</span>') : '<span class="tpw-chip up">missing</span>') + '</td>'
+          + '<td>' + (m.teacherCount ? m.teacherCount : '<span class="tpw-chip up">0</span>') + '</td><td>' + (m.needsAction ? '<b style="color:#b91c1c;">' + m.needsAction + '</b>' : '0') + '</td>'
+          + '<td><span class="tpw-chip ' + (m.active ? 'ok' : '') + '">' + (m.active ? 'Active' : 'Off') + '</span>' + (m.invitedAt ? '<div class="tpw-sub">invited ' + tpwFmtDate(m.invitedAt) + '</div>' : '') + '</td>'
+          + '<td>' + (m.firstLogin ? tpwFmtDate(m.firstLogin) : '<span class="tpw-sub">\u2014</span>') + '</td>'
+          + '<td>' + (m.lastLogin ? tpwFmtDate(m.lastLogin) : '<span class="tpw-sub">never</span>') + '</td><td>' + (m.logins || 0) + '</td>'
+          + '<td style="white-space:nowrap;"><button class="tpw-btn" onclick="tpwViewTeachers(\'' + tpwQ(m.name) + '\')">View teachers</button> <button class="tpw-btn" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',' + (m.active ? 'true' : 'false') + ',\'' + tpwQ(m.hubspotId) + '\')">Edit</button> '
+          + '<button class="tpw-btn" onclick="tpwToggleMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',' + (m.active ? 'false' : 'true') + ',\'' + tpwQ(m.hubspotId) + '\')">' + (m.active ? 'Deactivate' : 'Activate') + '</button> '
           + '<button class="tpw-btn go" onclick="tpwInvite(\'' + tpwQ(m.email) + '\')">' + (m.invitedAt ? 'Resend invite' : 'Send invite') + '</button></td></tr>';
       });
-      if (!(r.managers || []).length) h += '<tr><td colspan="8" class="tpw-sub" style="padding:18px;">No TP managers yet — add them below.</td></tr>';
-      h += '</table>';
+      if (!mgrs.length) h += '<tr><td colspan="10" class="tpw-sub" style="padding:18px;">No TP managers in the system yet \u2014 add them from the list below.</td></tr>';
+      h += '</table></div>';
       if ((r.unlisted || []).length) {
-        h += '<h4 style="margin:18px 0 8px;">Managers found in Teacher Data but not added yet</h4><table class="tpw-table"><tr><th>Name</th><th>Email on file</th><th>Teachers</th><th></th></tr>';
+        h += '<h4 style="margin:20px 0 4px;">Names the app knows, but who are not in the system</h4><div class="tpw-sub" style="margin-bottom:8px;">These come from Teacher Data, the Persona sheet and the old built-in list. Add the ones who are real TP managers; a name with 0 teachers is probably out of date.</div>'
+          + '<div style="overflow-x:auto;"><table class="tpw-table"><tr><th>Name</th><th>Email on file</th><th>HubSpot ID</th><th>Teachers</th><th></th></tr>';
         r.unlisted.forEach(function(m) {
-          h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email || '—') + '</td><td>' + m.teacherCount + '</td><td><button class="tpw-btn" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',false)">Add</button></td></tr>';
+          h += '<tr><td><b>' + tpwE(m.name) + '</b></td><td>' + tpwE(m.email || '\u2014') + '</td><td>' + (m.hubspotDetected ? '<code>' + tpwE(m.hubspotDetected) + '</code>' : '<span class="tpw-sub">\u2014</span>') + '</td>'
+            + '<td>' + (m.teacherCount ? m.teacherCount : '<span class="tpw-chip up">0 \u2014 no teachers</span>') + '</td>'
+            + '<td style="white-space:nowrap;"><button class="tpw-btn" onclick="tpwViewTeachers(\'' + tpwQ(m.name) + '\')">View teachers</button> <button class="tpw-btn go" onclick="tpwEditMgr(\'' + tpwQ(m.name) + '\',\'' + tpwQ(m.email) + '\',true,\'\')">Add to system</button></td></tr>';
         });
-        h += '</table>';
+        h += '</table></div>';
       }
-      h += '<div style="margin-top:14px;"><button class="tpw-btn go" onclick="tpwEditMgr(\'\',\'\',true)">+ Add TP manager</button></div>';
+      h += '<div id="' + tpw.mgrBox + '_cov"></div>';
       box.innerHTML = h;
+      tpwLoadCoverage(tpw.mgrBox + '_cov');
     })
     .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-empty">' + tpwE(e.message) + '</div>'; })
     .tpwListManagers(tpwTok());
 }
-function tpwEditMgr(name, email, active) {
+function tpwEditMgr(name, email, active, hs) {
   tpwEl('tpwMgrTitle').textContent = name ? 'Edit ' + name : 'Add TP manager';
-  tpwEl('tpwMgrName').value = name; tpwEl('tpwMgrEmail').value = email; tpwEl('tpwMgrActive').checked = !!active;
+  tpwEl('tpwMgrName').value = name; tpwEl('tpwMgrEmail').value = email; tpwEl('tpwMgrActive').checked = !!active; tpwEl('tpwMgrHs').value = hs || '';
   tpwEl('tpwMgrOv').classList.add('on');
 }
 function tpwSaveMgr() {
-  var m = { name: tpwEl('tpwMgrName').value.trim(), email: tpwEl('tpwMgrEmail').value.trim(), active: tpwEl('tpwMgrActive').checked };
+  var m = { name: tpwEl('tpwMgrName').value.trim(), email: tpwEl('tpwMgrEmail').value.trim(), active: tpwEl('tpwMgrActive').checked, hubspotId: tpwEl('tpwMgrHs').value.trim() };
   google.script.run
     .withSuccessHandler(function(r) {
       if (r && r.success) { tpwCloseOv('tpwMgrOv'); showToast('success', 'TP Workspace', r.message); tpwLoadManagers(); }
@@ -23477,6 +23506,12 @@ function tpwSaveMgr() {
     })
     .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
     .tpwSaveManager(tpwTok(), m);
+}
+function tpwToggleMgr(name, email, active, hs) {
+  google.script.run
+    .withSuccessHandler(function(r) { showToast(r && r.success ? 'success' : 'error', 'TP Workspace', (r && r.message) || 'Failed.'); tpwLoadManagers(); })
+    .withFailureHandler(function(e) { showToast('error', 'TP Workspace', e.message); })
+    .tpwSaveManager(tpwTok(), { name: name, email: email, active: active, hubspotId: hs });
 }
 function tpwInvite(email) {
   if (!confirm('Email the TP Workspace invite to ' + email + '?')) return;
@@ -23561,5 +23596,82 @@ function tpwChoose(v) {
   tpw.boot = null;
   var m = document.querySelector('.menu-item[data-page="tpWorkspace"]');
   if (m) m.click(); else switchPage('tpWorkspacePage');
+}
+
+// ── Settings → Usage: who uses the tool, first / last login ──
+function loadUsageReport() {
+  var box = document.getElementById('usageReportBox');
+  if (!box) return;
+  box.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading\u2026</div>';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) { box.innerHTML = '<div class="tpw-empty">' + tpwE((r && r.message) || 'Could not load.') + '</div>'; return; }
+      var s = r.summary;
+      var fmt = function(iso) { return iso ? tpwFmtDate(iso) : '<span class="tpw-sub">\u2014</span>'; };
+      var since = s.since ? new Date(s.since).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+      var h = '<div class="tpw-cards">'
+        + '<div class="tpw-stat"><b>' + s.total + '</b><span>People in the system</span></div>'
+        + '<div class="tpw-stat"><b>' + s.week + '</b><span>Used it this week</span></div>'
+        + '<div class="tpw-stat"><b>' + s.month + '</b><span>Used it in 30 days</span></div>'
+        + '<div class="tpw-stat ' + (s.never ? 'urgent' : '') + '"><b>' + s.never + '</b><span>Never logged in</span></div>'
+        + '<div class="tpw-stat"><b>' + s.idle + '</b><span>Idle 30+ days</span></div>'
+        + '<div class="tpw-stat"><b>' + s.totalLogins + '</b><span>Logins on record' + (since ? ' since ' + since : '') + '</span></div></div>';
+      h += '<div style="overflow-x:auto;"><table class="tpw-table"><tr><th>Person</th><th>Email</th><th>Role</th><th>First login</th><th>Last login</th><th>Logins</th><th>Last 30 days</th><th>State</th></tr>';
+      r.users.forEach(function(u) {
+        var cls = u.state === 'Active this week' ? 'ok' : (u.state === 'Never logged in' ? 'up' : (u.state === 'Deactivated' ? '' : 'fast'));
+        h += '<tr><td><b>' + tpwE(u.name) + '</b></td><td>' + tpwE(u.email) + '</td><td>' + tpwE(u.role) + '</td><td>' + fmt(u.firstLogin) + '</td><td>' + fmt(u.lastLogin) + '</td>'
+          + '<td>' + u.logins + '</td><td>' + u.logins30 + '</td><td><span class="tpw-chip ' + cls + '">' + tpwE(u.state) + '</span></td></tr>';
+      });
+      h += '</table></div><div class="tpw-sub" style="margin-top:8px;">First login is the earliest login on record' + (since ? ' (the login log starts ' + since + ')' : '') + '. Last login also counts the date stored on the user profile.</div>';
+      box.innerHTML = h;
+    })
+    .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-empty">' + tpwE(e.message) + '</div>'; })
+    .getUsageReport(tpwTok());
+}
+
+// ── Read-only: which teachers a manager sees, and where the data has gaps ──
+function tpwViewTeachers(name) {
+  tpwEl('tpwTeachersTitle').textContent = name + ' \u2014 teachers';
+  tpwEl('tpwTeachersBody').innerHTML = '<div class="tpw-sub"><i class="fas fa-spinner fa-spin"></i> Loading\u2026</div>';
+  tpwEl('tpwTeachersOv').classList.add('on');
+  google.script.run
+    .withSuccessHandler(function(r) {
+      var b = tpwEl('tpwTeachersBody');
+      if (!r || !r.success) { b.innerHTML = '<div class="tpw-sub">' + tpwE((r && r.message) || 'Could not load.') + '</div>'; return; }
+      if (!r.total) { b.innerHTML = '<div class="tpw-note bad">No teachers found for \u201c' + tpwE(r.manager) + '\u201d. The name in the Manager column of Teacher Data / Persona sheet must match it exactly.</div>'; return; }
+      var h = '<div class="tpw-meta" style="margin-bottom:8px;"><span><b>' + r.total + '</b> teachers</span><span><b>' + r.live + '</b> Active / EWS / Friendly</span></div>'
+        + '<div style="max-height:380px;overflow:auto;"><table class="tpw-table"><tr><th>Teacher</th><th>Status</th><th>Comes from</th><th>In search</th></tr>';
+      r.teachers.forEach(function(t) {
+        h += '<tr><td>' + tpwE(t.name) + '</td><td>' + tpwE(t.status) + '</td><td>' + tpwE(t.source || '\u2014') + '</td><td>' + (t.hidden ? '<span class="tpw-chip up">Hidden</span>' : 'Visible') + '</td></tr>';
+      });
+      b.innerHTML = h + '</table></div>';
+    })
+    .withFailureHandler(function(e) { tpwEl('tpwTeachersBody').innerHTML = '<div class="tpw-sub">' + tpwE(e.message) + '</div>'; })
+    .tpwManagerTeachers(tpwTok(), name);
+}
+
+function tpwLoadCoverage(boxId) {
+  var box = tpwEl(boxId);
+  if (!box) return;
+  box.innerHTML = '<div class="tpw-sub"><i class="fas fa-spinner fa-spin"></i> Checking teacher coverage\u2026</div>';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) { box.innerHTML = '<div class="tpw-sub">' + tpwE((r && r.message) || 'Could not check.') + '</div>'; return; }
+      var bad = r.noManager.length + r.notInSystem.length + r.conflicts.length;
+      var h = '<h4 style="margin:22px 0 4px;">Coverage check ' + (bad ? '<span class="tpw-chip up">needs a look</span>' : '<span class="tpw-chip ok">all good</span>') + '</h4>'
+        + '<div class="tpw-sub" style="margin-bottom:8px;">' + r.activeTeachers + ' active teachers checked. Read-only \u2014 this data is imported; fix it in the Persona sheet / Teacher Data.</div>';
+      var group = function(title, count, body) {
+        return '<details class="tpw-card" style="margin-bottom:8px;border-left-color:' + (count ? '#ef4444' : '#10b981') + ';"><summary style="cursor:pointer;font-weight:700;">' + title + ' <span class="tpw-chip ' + (count ? 'up' : 'ok') + '">' + count + '</span></summary><div style="margin-top:8px;font-size:.85rem;">' + body + '</div></details>';
+      };
+      h += group('Teachers with no manager \u2014 nobody can see them', r.noManager.length,
+        r.noManager.length ? r.noManager.map(function(t) { return tpwE(t.name) + ' <span class="tpw-sub">' + tpwE(t.status) + '</span>'; }).join(' \u00b7 ') : 'None.');
+      h += group('Teachers under a manager who is not in the system', r.notInSystem.reduce(function(n, g) { return n + g.teachers.length; }, 0),
+        r.notInSystem.length ? r.notInSystem.map(function(g) { return '<div style="margin-bottom:6px;"><b>' + tpwE(g.manager) + '</b> <span class="tpw-sub">(' + g.teachers.length + ')</span><div class="tpw-sub">' + g.teachers.map(tpwE).join(', ') + '</div></div>'; }).join('') : 'None.');
+      h += group('Persona sheet and Teacher Data disagree on the manager (Persona sheet wins)', r.conflicts.length,
+        r.conflicts.length ? '<table class="tpw-table"><tr><th>Teacher</th><th>Persona sheet</th><th>Teacher Data</th></tr>' + r.conflicts.map(function(c) { return '<tr><td>' + tpwE(c.name) + '</td><td>' + tpwE(c.persona) + '</td><td>' + tpwE(c.data) + '</td></tr>'; }).join('') + '</table>' : 'None.');
+      box.innerHTML = h;
+    })
+    .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-sub">' + tpwE(e.message) + '</div>'; })
+    .tpwCoverage(tpwTok());
 }
 </script>

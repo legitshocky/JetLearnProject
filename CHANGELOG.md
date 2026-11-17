@@ -1,6 +1,14 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-14] — Reserved slots ignored when fetching classes; no duplicate certificates (V10.52)
+- `ReserveSlot.js` `_isReservedCalendarEvent` (title starts "Reserved :" or note has "Reserved via Teacher Intelligence Center"); applied in `getExistingEventDescription`, `CredentialsService.js` (2 class fetches), `HubSpotService.js` calendar verification, `LearnerProgressionService.js` `getLearnerCalendarSchedule`. Teacher availability checks still see them.
+- `tpwManagerTeachers` / `tpwCoverage` (read-only): per-manager teacher list with source sheet; teachers with no manager, under a manager not in the system, and Persona vs Teacher Data conflicts. Directory entries now carry `personaMgr` / `dataMgr` / `source`.
+- Usage report: `UserService.js` `getUsageReport` / `_usageIndex` (User Activity Log "Successful Login" rows + User Profiles; first / last login, total and 30-day logins, state). Settings tabs Usage and TP Managers (`Index.html`, `JavaScript.html` `loadUsageReport`, `tpwLoadManagers(boxId)`).
+- TP Managers sheet gets `HubSpot Owner ID` and `First Login` columns; `tpwListManagers` adds logins, HubSpot id (sheet value, else looked up by name) and lists every known manager name not yet in the sheet (`getTPManagers()` + Teacher Data + Persona); the 14-day HubSpot task uses the sheet's HubSpot id first.
+- `CertificateService.js` `_certAlreadySent` (Certificate Log, Status Sent, JLID + course, spelling-tolerant): `sendCourseCertificateEmail` returns `skipped` instead of sending; `sendBulkCertificates` drops already-sent courses (`force` overrides); `getCertificatesForJlid` shows one certificate per course. `EmailService.js` records "Certificate Skipped" and writes no second HubSpot note.
+
+---
 ## [2026-11-14] — TP Workspace: TP managers see and act on upskilling (V10.51)
 - `TPWorkspaceService.js` (new): requests live in the existing `Upskill Tracker` sheet (A-K kept; L-AB new; only rows with Version = v2 count, so old gaps are ignored). One row per teacher + course; statuses Requested / Started / Verifying / Verified / Rejected / Not Possible / Cancelled. Activity log sheet `Upskill Activity`; TP list sheet `TP Managers` (Name, Email, Active, Invited At, ...).
 - Access: new role `TP Manager` (`Code.js` ROLES / PERMISSIONS: `tp_workspace`; admins get `tp_workspace_admin`). Every TP call takes the session token and is scoped server-side to the manager's teachers (Persona sheet Manager column, else Teacher Data; or Teacher Data TP email). `UserService.js` sign-in: an active TP manager may sign in with any address; profile role set to TP Manager.

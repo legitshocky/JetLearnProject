@@ -812,7 +812,10 @@ function sendMigrationEmail(data, attachments = []) {
             data.performedBy || ''
           );
 
-          if (certResult.success) {
+          if (certResult.success && certResult.skipped) {
+            notes.push('Certificate Skipped — ' + certResult.message);
+            _timelineAdd(timeline, 'certificate', 'Certificate Already Sent — Skipped', 'success', certificateStarted, certResult.message);
+          } else if (certResult.success) {
             notes.push('Certificate Sent to ' + certParentEmail);
             _timelineAdd(timeline, 'certificate', 'Certificate Sent', 'success', certificateStarted, certParentEmail);
 

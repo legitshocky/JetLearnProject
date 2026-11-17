@@ -1728,3 +1728,82 @@ function _clearFailedAttempts(username) {
     Logger.log('[Lockout] _clearFailedAttempts error: ' + e.message);
   }
 }
+
+// =============================================
+// USAGE REPORT — who uses the tool, first / last login, how often
+// Source: the "User Activity Log" sheet (every "Successful Login" is logged there, since April 2026) + the User Profiles sheet.
+// =============================================
+function _usageIndex() {
+  var byEmail = {}, byName = {}, earliest = null;
+  try {
+    var sh = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.USER_ACTIVITY_LOG);
+    var last = sh.getLastRow();
+    if (last >= 2) {
+      var rows = sh.getRange(2, 1, last - 1, 5).getValues();
+      var now = Date.now(), d30 = 30 * 86400000;
+      rows.forEach(function(r) {
+        if (String(r[2] || '').trim().toLowerCase() !== 'successful login') return;
+        var ts = r[0] instanceof Date ? r[0] : new Date(r[0]);
+        if (isNaN(ts.getTime())) return;
+        if (!earliest || ts < earliest) earliest = ts;
+        var name = String(r[1] || '').trim().toLowerCase();
+        var m = String(r[3] || '').match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/);
+        var email = (m ? m[0] : String(r[4] || '')).trim().toLowerCase();
+        [[byEmail, email], [byName, name]].forEach(function(p) {
+          var key = p[1]; if (!key) return;
+          var o = p[0][key] = p[0][key] || { first: ts, last: ts, total: 0, d30: 0 };
+          if (ts < o.first) o.first = ts;
+          if (ts > o.last) o.last = ts;
+          o.total++;
+          if (now - ts.getTime() <= d30) o.d30++;
+        });
+      });
+    }
+  } catch (e) { Logger.log('[usage] _usageIndex: ' + e.message); }
+  return { byEmail: byEmail, byName: byName, earliest: earliest };
+}
+
+function _usageFor(idx, email, name) {
+  var e = String(email || '').trim().toLowerCase(), n = String(name || '').trim().toLowerCase();
+  return (e && idx.byEmail[e]) || (n && idx.byName[n]) || null;
+}
+
+function getUsageReport(token) {
+  try {
+    var s = _getSession(token);
+    if (!s || (s.role !== ROLES.SUPER_ADMIN && s.role !== ROLES.ADMIN)) return { success: false, message: 'Only admins can see usage.' };
+    var idx = _usageIndex();
+    var profiles = getUserProfiles();
+    var tz = Session.getScriptTimeZone();
+    var iso = function(d) { return d ? d.toISOString() : ''; };
+    var now = Date.now();
+    var users = profiles.map(function(p) {
+      var u = _usageFor(idx, p.email, p.username);
+      var lastProfile = p.lastLogin ? new Date(p.lastLogin) : null;
+      if (lastProfile && isNaN(lastProfile.getTime())) lastProfile = null;
+      var last = u ? u.last : null;
+      if (lastProfile && (!last || lastProfile > last)) last = lastProfile;
+      var days = last ? Math.floor((now - last.getTime()) / 86400000) : null;
+      return {
+        name: p.username || '', email: p.email || '', role: p.role || '', active: !!p.isActive,
+        firstLogin: iso(u ? u.first : null), lastLogin: iso(last), logins: u ? u.total : 0, logins30: u ? u.d30 : 0, daysSince: days,
+        state: !p.isActive ? 'Deactivated' : (!last ? 'Never logged in' : (days <= 7 ? 'Active this week' : (days <= 30 ? 'Active this month' : 'Idle 30+ days')))
+      };
+    });
+    users.sort(function(a, b) { return (b.lastLogin || '').localeCompare(a.lastLogin || ''); });
+    var summary = {
+      total: users.length,
+      activeUsers: users.filter(function(u) { return u.active; }).length,
+      week: users.filter(function(u) { return u.state === 'Active this week'; }).length,
+      month: users.filter(function(u) { return u.state === 'Active this week' || u.state === 'Active this month'; }).length,
+      never: users.filter(function(u) { return u.state === 'Never logged in'; }).length,
+      idle: users.filter(function(u) { return u.state === 'Idle 30+ days'; }).length,
+      totalLogins: users.reduce(function(a, u) { return a + u.logins; }, 0),
+      since: iso(idx.earliest)
+    };
+    return { success: true, summary: summary, users: users };
+  } catch (e) {
+    Logger.log('[getUsageReport] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}

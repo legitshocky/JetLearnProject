@@ -2313,6 +2313,14 @@
       </div>
 
       <!-- TP Workspace modals -->
+      <div class="tpw-ov" id="tpwTeachersOv">
+        <div class="tpw-modal" style="max-width:640px;">
+          <h3 id="tpwTeachersTitle">Teachers</h3>
+          <div class="tpw-sub">Read-only. This comes from the imported Persona sheet / Teacher Data \u2014 fix a name or manager there, not here.</div>
+          <div id="tpwTeachersBody" style="margin-top:12px;"></div>
+          <div class="foot"><button class="tpw-btn" onclick="tpwCloseOv('tpwTeachersOv')">Close</button></div>
+        </div>
+      </div>
       <div class="tpw-ov" id="tpwChooseOv">
         <div class="tpw-modal" style="max-width:460px;">
           <h3>How do you want to continue?</h3>
@@ -2359,6 +2367,8 @@
           <input type="text" id="tpwMgrName">
           <label for="tpwMgrEmail">Sign-in email</label>
           <input type="email" id="tpwMgrEmail">
+          <label for="tpwMgrHs">HubSpot owner ID <span style="font-weight:400;color:#6b7280;">(leave blank to look it up by name)</span></label>
+          <input type="text" id="tpwMgrHs">
           <label style="display:flex;gap:8px;align-items:center;font-weight:500;"><input type="checkbox" id="tpwMgrActive" checked> Allowed to sign in</label>
           <div class="foot"><button class="tpw-btn" onclick="tpwCloseOv('tpwMgrOv')">Cancel</button><button class="tpw-btn go" onclick="tpwSaveMgr()">Save</button></div>
         </div>
@@ -3316,6 +3326,8 @@
             <button class="tab-button active" data-tab="generalSettings">General</button>
             <button class="tab-button" data-tab="userManagement" id="userManagementTabBtn" style="display: none;">User Management</button>
             <button class="tab-button" data-tab="jetGuideSettings">JetGuides</button>
+            <button class="tab-button" data-tab="tpManagersSettings">TP Managers</button>
+            <button class="tab-button" data-tab="usageSettings">Usage</button>
             <button class="tab-button" data-tab="systemMaintenance">Maintenance</button>
         </div>
 
@@ -3352,6 +3364,17 @@
                     </table>
                 </div>
             </div>
+        </div>
+
+        <!-- TP Managers Tab (same idea as JetGuides: who is in the system, their email / HubSpot ID, access, logins) -->
+        <div id="tpManagersSettingsTab" class="tab-content">
+          <div id="tpManagersSettingsBox" style="padding:4px 0;"></div>
+        </div>
+
+        <!-- Usage Tab: who uses the tool -->
+        <div id="usageSettingsTab" class="tab-content">
+          <div class="audit-header" style="margin-bottom:10px;"><h2 class="chart-title">Who uses JetLearn Ops</h2><div class="header-actions"><button class="btn btn-outline" onclick="loadUsageReport()"><i class="fas fa-sync-alt"></i> Refresh</button></div></div>
+          <div id="usageReportBox" style="padding:4px 0;"></div>
         </div>
 
         <!-- JetGuide Management Tab -->

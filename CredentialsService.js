@@ -118,6 +118,7 @@ function getScratchCalendarPreview(jlid) {
       orderBy:      'startTime',
       maxResults:   500
     }).items || [];
+    items = items.filter(function(e) { return !_isReservedCalendarEvent(e.summary, e.description); }); // reserved slots are not classes
 
     if (items.length === 0) {
       return { success: true, count: 0, sessions: [], description: '', attendees: [] };
@@ -185,6 +186,7 @@ function _updateCalendarWithCredentials(jlid, credText) {
       orderBy: 'startTime',
       maxResults: 500
     }).items || [];
+    items = items.filter(function(e) { return !_isReservedCalendarEvent(e.summary, e.description); }); // reserved slots are not classes
 
     if (items.length === 0) {
       Logger.log('[Credentials] No upcoming calendar events found for JLID: ' + jlid);

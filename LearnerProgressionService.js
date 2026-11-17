@@ -312,6 +312,7 @@ function getLearnerCalendarSchedule(jlid, learnerName) {
     var slotMap = {};  // "Friday|02:00 AM" → {day, timeCET, count}
     events.forEach(function(ev) {
       var title = (ev.getTitle() || '').toLowerCase();
+      if (_isReservedCalendarEvent(ev.getTitle(), ev.getDescription())) return; // a reserved slot is not a class
       if (!nameLow && !jlidLow) return;
       if (nameLow && title.indexOf(nameLow) === -1 && title.indexOf(jlidLow) === -1) return;
       if (!nameLow && jlidLow && title.indexOf(jlidLow) === -1) return;

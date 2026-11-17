@@ -112,8 +112,10 @@ function _tpwLog(req, by, role, action, from, to, detail) {
 function _tpwManagersSheet() {
   var sh = getOrCreateAppDataSheet(TPW.SHEET_MANAGERS);
   if (sh.getLastRow() === 0) {
-    sh.appendRow(['Name', 'Email', 'Active', 'Invited At', 'Added By', 'Added At', 'Last Login']);
-    try { sh.getRange(1, 1, 1, 7).setFontWeight('bold'); sh.setFrozenRows(1); } catch (e) {}
+    sh.appendRow(['Name', 'Email', 'Active', 'Invited At', 'Added By', 'Added At', 'Last Login', 'HubSpot Owner ID', 'First Login']);
+    try { sh.getRange(1, 1, 1, 9).setFontWeight('bold'); sh.setFrozenRows(1); } catch (e) {}
+  } else if (!String(sh.getRange(1, 8).getValue() || '').trim()) {
+    sh.getRange(1, 8, 1, 2).setValues([['HubSpot Owner ID', 'First Login']]);
   }
   return sh;
 }
@@ -126,7 +128,8 @@ function _tpwReadManagers() {
     var name = String(vals[i][0] || '').trim(), email = String(vals[i][1] || '').trim().toLowerCase();
     if (!name && !email) continue;
     out.push({ row: i + 1, name: name, email: email, active: /^(yes|true|y|1)$/i.test(String(vals[i][2] || '').trim()),
-      invitedAt: _tpwIso(vals[i][3]), addedBy: String(vals[i][4] || ''), addedAt: _tpwIso(vals[i][5]), lastLogin: _tpwIso(vals[i][6]) });
+      invitedAt: _tpwIso(vals[i][3]), addedBy: String(vals[i][4] || ''), addedAt: _tpwIso(vals[i][5]), lastLogin: _tpwIso(vals[i][6]),
+      hubspotId: String(vals[i][7] || '').trim(), firstLogin: _tpwIso(vals[i][8]) });
   }
   return out;
 }
@@ -146,7 +149,14 @@ function _tpwTouchManagerLogin(email) {
   try {
     var e = String(email || '').trim().toLowerCase();
     var list = _tpwReadManagers();
-    for (var i = 0; i < list.length; i++) { if (list[i].email === e) { _tpwManagersSheet().getRange(list[i].row, 7).setValue(new Date()); return; } }
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].email === e) {
+        var sh = _tpwManagersSheet();
+        sh.getRange(list[i].row, 7).setValue(new Date());
+        if (!list[i].firstLogin) sh.getRange(list[i].row, 9).setValue(new Date());
+        return;
+      }
+    }
   } catch (err) {}
 }
 
@@ -173,9 +183,12 @@ function _tpwTeacherDirectory() {
     var key = _tpwNorm(t.name);
     var resolved = '';
     try { resolved = _tpwNorm(resolveTeacherName(t.name)); } catch (e) {}
+    var pm = persona[key] || persona[resolved] || '';
     return {
       name: t.name, status: t.status || 'Active', hidden: t.hiddenInSearch === 'Yes',
-      manager: persona[key] || persona[resolved] || t.manager || '',
+      manager: pm || t.manager || '',
+      personaMgr: pm, dataMgr: String(t.manager || '').trim(),
+      source: pm ? 'Persona sheet' : (t.manager ? 'Teacher Data' : ''),
       tpEmail: String(t.tpManagerEmail || '').trim().toLowerCase()
     };
   });
@@ -186,6 +199,7 @@ function _tpwAllManagerNames(dir) {
   var add = function(n) { var k = _tpwNorm(n); if (k && !seen[k]) { seen[k] = true; out.push(String(n).trim()); } };
   _tpwReadManagers().forEach(function(m) { add(m.name); });
   (dir || _tpwTeacherDirectory()).forEach(function(t) { add(t.manager); });
+  try { getTPManagers().forEach(add); } catch (e) {}
   return out.sort();
 }
 
@@ -626,22 +640,33 @@ function tpwListManagers(token) {
     if (!ctx.ok || !ctx.isAdmin) return { success: false, message: 'Admin only.' };
     var mgrs = _tpwReadManagers();
     var dir = _tpwTeacherDirectory();
-    var reqs = _tpwReadRequests();
+    var reqs = _tpwReadRequests().filter(function(r) { return r.source !== 'Test'; });
+    var usage = _usageIndex();
+    var iso = function(d) { return d ? d.toISOString() : ''; };
+    var hsFor = function(name) { try { return getHubSpotOwnerIdByName(name) || ''; } catch (e) { return ''; } };
     mgrs.forEach(function(m) {
       m.teacherCount = Object.keys(_tpwScopeFor(m, dir)).length;
       var mine = reqs.filter(function(r) { return _tpwNorm(r.manager) === _tpwNorm(m.name); });
       m.open = mine.filter(function(r) { return TPW.OPEN.indexOf(r.status) > -1; }).length;
       m.needsAction = mine.filter(function(r) { return r.status === 'Requested' || r.status === 'Rejected'; }).length;
+      var u = _usageFor(usage, m.email, m.name);
+      if (u) { m.firstLogin = m.firstLogin || iso(u.first); m.lastLogin = iso(u.last) || m.lastLogin; m.logins = u.total; } else m.logins = 0;
+      m.hubspotDetected = hsFor(m.name);
     });
-    // managers that appear in Teacher Data but are not listed yet
+    // every manager name the app knows about that is not in the TP Managers sheet yet (Teacher Data, Persona sheet, the old hard-coded list)
     var listed = {};
     mgrs.forEach(function(m) { listed[_tpwNorm(m.name)] = true; });
     var unlisted = {};
-    dir.forEach(function(t) {
-      var n = _tpwNorm(t.manager);
-      if (n && !listed[n]) { if (!unlisted[n]) unlisted[n] = { name: t.manager, email: t.tpEmail || '', teacherCount: 0 }; unlisted[n].teacherCount++; if (!unlisted[n].email && t.tpEmail) unlisted[n].email = t.tpEmail; }
+    _tpwAllManagerNames(dir).forEach(function(n) {
+      var k = _tpwNorm(n);
+      if (!listed[k]) unlisted[k] = { name: n, email: '', teacherCount: 0, hubspotDetected: hsFor(n) };
     });
-    return { success: true, managers: mgrs, unlisted: Object.keys(unlisted).map(function(k) { return unlisted[k]; }), automation: tpwAutomationStatus() };
+    dir.forEach(function(t) {
+      var k = _tpwNorm(t.manager);
+      if (k && unlisted[k]) { unlisted[k].teacherCount++; if (!unlisted[k].email && t.tpEmail) unlisted[k].email = t.tpEmail; }
+    });
+    var ul = Object.keys(unlisted).map(function(k) { return unlisted[k]; }).sort(function(a, b) { return b.teacherCount - a.teacherCount; });
+    return { success: true, managers: mgrs, unlisted: ul, automation: tpwAutomationStatus() };
   } catch (e) { return { success: false, message: e.message }; }
 }
 
@@ -682,10 +707,12 @@ function tpwSaveManager(token, m) {
       var sh = _tpwManagersSheet();
       var list = _tpwReadManagers();
       var hit = list.filter(function(x) { return x.email === email || _tpwNorm(x.name) === _tpwNorm(name); })[0];
+      var hsId = String(m.hubspotId || '').trim();
       if (hit) {
         sh.getRange(hit.row, 1, 1, 3).setValues([[name, email, active ? 'Yes' : 'No']]);
+        if (m.hubspotId !== undefined) sh.getRange(hit.row, 8).setValue(hsId);
       } else {
-        sh.appendRow([name, email, active ? 'Yes' : 'No', '', ctx.name || ctx.email, new Date(), '']);
+        sh.appendRow([name, email, active ? 'Yes' : 'No', '', ctx.name || ctx.email, new Date(), '', hsId, '']);
       }
       _tpwEnsureProfile(email, name, active);
       return { success: true, message: name + (active ? ' can now sign in to the TP Workspace.' : ' is switched off.') };
@@ -876,7 +903,10 @@ function tpwDailyJob() {
       var age = _tpwDaysSince(r.createdAt);
       if (age === null || age < TPW.NO_START_TASK_DAYS) return;
       var ownerId = '';
-      try { ownerId = getHubSpotOwnerIdByName(r.manager) || ''; } catch (e) {}
+      try {
+        var mrow = _tpwReadManagers().filter(function(x) { return _tpwNorm(x.name) === _tpwNorm(r.manager); })[0];
+        ownerId = (mrow && mrow.hubspotId) || getHubSpotOwnerIdByName(r.manager) || '';
+      } catch (e) {}
       var id = _tpwCreateHsTask(ownerId,
         'Upskilling not started (' + age + ' days): ' + r.teacher + ' → ' + r.course,
         r.teacher + ' needs upskilling on ' + r.course + (r.learnerCount ? ' (' + r.learnerCount + ' learner' + (r.learnerCount === 1 ? '' : 's') + ' waiting)' : '') + '.\n\nThis requirement has been open for ' + age + ' days with no start. '
@@ -995,5 +1025,46 @@ function tpwSendSamples(token) {
       'Open TP Workspace', _tpwAppUrl());
     sendTrackedEmail({ to: to, subject: '[SAMPLE] ↩️ Upskilling not on the data yet — 1 sent back to you', htmlBody: rej, jlid: 'TP-SAMPLE' });
     return { success: true, message: 'Two sample emails sent to ' + to + '. Press again to see a different reminder message.' };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
+// ───────────────────────────── read-only checks on where each teacher comes from (data is imported — nothing here edits it) ─────────────────────────────
+var TPW_LIVE_STATUSES = ['Active', 'EWS', 'Friendly'];
+
+// The exact teachers a manager sees, and which sheet put each one on their list.
+function tpwManagerTeachers(token, managerName) {
+  try {
+    var ctx = _tpwCtx(token);
+    if (!ctx.ok || !ctx.isAdmin) return { success: false, message: 'Admin only.' };
+    var mgr = _tpwReadManagers().filter(function(m) { return _tpwNorm(m.name) === _tpwNorm(managerName); })[0] || { name: String(managerName || '').trim(), email: '' };
+    var scope = _tpwScopeFor(mgr);
+    var list = Object.keys(scope).map(function(k) {
+      var t = scope[k];
+      var viaName = _tpwNorm(t.manager) === _tpwNorm(mgr.name);
+      return { name: t.name, status: t.status, hidden: t.hidden, source: viaName ? t.source : 'TP Manager Email column', manager: t.manager };
+    }).sort(function(a, b) { return a.name.localeCompare(b.name); });
+    var live = list.filter(function(t) { return TPW_LIVE_STATUSES.indexOf(t.status) > -1; }).length;
+    return { success: true, manager: mgr.name, total: list.length, live: live, teachers: list };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
+// Teachers nobody can see, teachers under a manager who is not in the system, and teachers whose two sheets disagree.
+function tpwCoverage(token) {
+  try {
+    var ctx = _tpwCtx(token);
+    if (!ctx.ok || !ctx.isAdmin) return { success: false, message: 'Admin only.' };
+    var dir = _tpwTeacherDirectory().filter(function(t) { return TPW_LIVE_STATUSES.indexOf(t.status) > -1; });
+    var inSystem = {};
+    _tpwReadManagers().forEach(function(m) { inSystem[_tpwNorm(m.name)] = true; });
+    var noMgr = [], notIn = {}, conflicts = [];
+    dir.forEach(function(t) {
+      var m = _tpwNorm(t.manager);
+      if (!m && !t.tpEmail) noMgr.push({ name: t.name, status: t.status });
+      else if (m && !inSystem[m]) { (notIn[m] = notIn[m] || { manager: t.manager, teachers: [] }).teachers.push(t.name); }
+      if (t.personaMgr && t.dataMgr && _tpwNorm(t.personaMgr) !== _tpwNorm(t.dataMgr)) conflicts.push({ name: t.name, persona: t.personaMgr, data: t.dataMgr });
+    });
+    return { success: true, activeTeachers: dir.length, noManager: noMgr,
+      notInSystem: Object.keys(notIn).map(function(k) { return notIn[k]; }).sort(function(a, b) { return b.teachers.length - a.teachers.length; }),
+      conflicts: conflicts };
   } catch (e) { return { success: false, message: e.message }; }
 }

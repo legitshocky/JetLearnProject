@@ -600,8 +600,15 @@ function getCertificatesForJlid(jlid) {
     var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
     var learnerName = '';
     var certs = [];
-    data.forEach(function(r) {
+    var seenCourse = {};
+    // newest first, so when the same course appears twice (an older duplicate) only the latest is shown
+    data.slice().reverse().forEach(function(r) {
       if (String(r[1] || '').trim().toUpperCase() !== jlid) return;
+      var st = String(r[7] || '').trim().toLowerCase();
+      if (st && st !== 'sent') return;
+      var ck = normalizeCourseNameForMatch(r[3]);
+      if (seenCourse[ck]) return;
+      seenCourse[ck] = true;
       learnerName = String(r[2] || '').trim() || learnerName;
       var ts = r[0] ? new Date(r[0]) : null;
       certs.push({
@@ -787,9 +794,48 @@ function generateCertificatePDF(learnerName, courseName, yearOverride) {
  * @param {string} performedBy      - CLS user email for audit log
  * @returns {{ success: boolean, message: string }}
  */
+// Has this learner already been sent this course's certificate? Looks in the Certificate Log (Status = Sent). Returns { on, driveUrl } or null.
+// Matches by JLID (or, when the row has none, by learner name) and by course name (spelling differences ignored).
+function _certAlreadySent(jlid, learnerName, courseName) {
+  try {
+    var sheet = getOrCreateAppDataSheet(CONFIG.APP_DATA_SHEETS.CERTIFICATE_LOG);
+    var last = sheet.getLastRow();
+    if (last < 2) return null;
+    var want = normalizeCourseNameForMatch(courseName);
+    var wantAlt = want;
+    try { wantAlt = normalizeCourseNameForMatch(canonicalCourseName(courseName)); } catch (e) {}
+    var id = String(jlid || '').trim().toUpperCase();
+    var nm = String(learnerName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    var rows = sheet.getRange(2, 1, last - 1, 10).getValues();
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      var st = String(r[7] || '').trim().toLowerCase();
+      if (st && st !== 'sent') continue;
+      var rid = String(r[1] || '').trim().toUpperCase();
+      var same = id ? rid === id : (nm && String(r[2] || '').trim().toLowerCase().replace(/\s+/g, ' ') === nm);
+      if (!same) continue;
+      var rc = normalizeCourseNameForMatch(r[3]);
+      var rcAlt = rc;
+      try { rcAlt = normalizeCourseNameForMatch(canonicalCourseName(String(r[3]))); } catch (e2) {}
+      if (rc === want || rc === wantAlt || rcAlt === want || rcAlt === wantAlt) {
+        var d = r[0] instanceof Date ? r[0] : new Date(r[0]);
+        return { on: isNaN(d.getTime()) ? '' : Utilities.formatDate(d, Session.getScriptTimeZone(), 'd MMM yyyy'), driveUrl: String(r[8] || '') };
+      }
+    }
+  } catch (e) { Logger.log('[Cert] _certAlreadySent: ' + e.message); }
+  return null;
+}
+
 function sendCourseCertificateEmail(jlid, learnerName, courseName, parentEmail, parentName, performedBy) {
   try {
     if (!parentEmail) return { success: false, message: 'No parent email.' };
+
+    // Already sent (e.g. the learner was migrated twice)? Do not send, log or note it a second time.
+    var prev = _certAlreadySent(jlid, learnerName, courseName);
+    if (prev) {
+      Logger.log('[Cert] Skipped — ' + courseName + ' certificate for ' + jlid + ' was already sent on ' + prev.on);
+      return { success: true, skipped: true, message: 'Certificate for ' + courseName + ' was already sent' + (prev.on ? ' on ' + prev.on : '') + ' — not sent again.', driveUrl: prev.driveUrl || null };
+    }
 
     Logger.log('[Cert] sendCourseCertificateEmail: ' + jlid + ' | ' + courseName + ' → ' + parentEmail);
 
@@ -1397,6 +1443,19 @@ function sendBulkCertificates(data) {
 
     if (!parentEmail) return { success: false, message: 'No parent email.' };
     if (!courses.length) return { success: false, message: 'No courses selected.' };
+
+    // Skip certificates this learner has already been sent (unless the caller explicitly forces a re-send)
+    var alreadySent = [];
+    if (!data.force) {
+      courses = courses.filter(function(c) {
+        var prev = _certAlreadySent(jlid, learnerName, c.name);
+        if (prev) { alreadySent.push(c.name + (prev.on ? ' (sent ' + prev.on + ')' : '')); return false; }
+        return true;
+      });
+      if (!courses.length) {
+        return { success: true, skipped: true, alreadySent: alreadySent, message: 'Nothing sent — these certificates were already sent: ' + alreadySent.join(', ') + '.' };
+      }
+    }
 
     // ── Generate all PDFs via pool approach (3 makeCopy calls max) ─────
     var results  = _generateBulkCertPDFs(learnerName, courses);

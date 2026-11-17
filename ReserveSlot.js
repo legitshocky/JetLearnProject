@@ -769,6 +769,12 @@ function _tzOffsetHours(dateStr, timeZone) {
 
 // Fetches the description/notes from the most recent upcoming (or recent past) calendar event
 // for a given JLID on the class schedule calendar. Returns { success, description, eventTitle }.
+// A slot held with "Reserve Slot" is not a class: its title starts with "Reserved :" and its note says "Reserved via Teacher Intelligence Center".
+// Anything that reads a learner's classes / class notes from the calendar must skip these (they still block the teacher's availability).
+function _isReservedCalendarEvent(summary, description) {
+  return /^\s*reserved\s*:/i.test(String(summary || '')) || /Reserved via Teacher Intelligence Center/i.test(String(description || ''));
+}
+
 function getExistingEventDescription(jlid) {
   try {
     if (!jlid) return { success: false, message: 'JLID required.' };
@@ -780,9 +786,9 @@ function getExistingEventDescription(jlid) {
     function _searchEvents(timeMin, timeMax) {
       var r = Calendar.Events.list(CONFIG.CLASS_SCHEDULE_CALENDAR_ID, {
         q: jlidUpper, timeMin: timeMin, timeMax: timeMax,
-        singleEvents: true, orderBy: 'startTime', maxResults: 5
+        singleEvents: true, orderBy: 'startTime', maxResults: 25
       });
-      return (r && r.items) || [];
+      return ((r && r.items) || []).filter(function(e) { return !_isReservedCalendarEvent(e.summary, e.description); });
     }
 
     // Prefer upcoming events (now → +60 days) — reflects the active class type (Zoom vs GMeet)
