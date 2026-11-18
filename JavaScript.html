@@ -11003,6 +11003,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.55': [
+      "**Faster Track My Kit page**: the tracking link now carries the learner's first name (like the address link), so the page opens at once with 'Aria's kit' and fills in the status as it arrives. The backend also reads only that learner's rows instead of the whole sheet and keeps the answer for 2 minutes.",
+    ],
+    'V10.54': [
+      "**Address badge**: once the parent replies, the address status now shows what happened — 'Confirmed same address' (they tapped Yes), 'Same address resubmitted', or 'Updated address' (hover to see the previous address). No badge for a learner's first address.",
+      "**Ask for Address — address already on file**: after Fetch, if we already hold an address for the learner you now choose: Confirm address (parent taps yes), Request address (fresh link), or Place order (skip asking and go straight to Mark Order Placed with the address on file).",
+      "**One row per learner**: a JLID that already has a row in Kit Tracking is updated instead of getting a new entry. If the last kit was already ordered / delivered, the same row starts the new kit and the old values are copied to the 'Kit Row History' sheet first.",
+    ],
+    'V10.53': [
+      "**TP Workspace — My teachers**: a TP manager now sees every teacher they manage right on the TP Workspace page — status, audit grade, active learners, last activity, open upskilling requests — with Profile and Hide / Unhide buttons, search, filters and sorting. Admins see all teachers (filter by manager) or view as a manager.",
+    ],
     'V10.52': [
       "**TP Managers — teacher coverage (read-only)**: View teachers on each manager shows exactly which teachers they would see and which sheet (Persona sheet / Teacher Data) put each one there. A coverage check lists active teachers with no manager, teachers under a manager who is not in the system, and teachers where the Persona sheet and Teacher Data disagree. Nothing here edits teacher data — it is imported; fix it in the sheets.",
       "**Settings → Usage (new)**: who uses the tool — people in the system, active this week / month, never logged in, and per person first login, last login, number of logins and last 30 days.",
@@ -16563,6 +16574,7 @@ function renderKitTrackingTable(filterArg) {
     let addrCell = ac
       ? '<span style="font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>'
       : '<span style="color:#94a3b8;font-size:0.75rem;">Not asked<\/span>';
+    if (ktAddrChangeBadge(row)) addrCell += '<div>' + ktAddrChangeBadge(row) + '<\/div>';
     if (row.addrStatus === 'Received' && row.orderPlaced) {
       addrCell += '<span style="display:block;font-size:0.66rem;color:#94a3b8;margin-top:2px;">Order placed<\/span>';
     }
@@ -16693,7 +16705,7 @@ function renderKitAskingAddressTable() {
     const ac = addrConfig[row.addrStatus] || (isClosedAddr
       ? { label: '🚫 ' + row.addrStatus, color: '#dc2626', bg: '#fef2f2' }
       : { label: row.addrStatus, color: '#64748b', bg: '#f1f5f9' });
-    const addrBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>';
+    const addrBadge = '<span style="display:inline-flex;align-items:center;gap:4px;font-size:0.72rem;font-weight:600;color:' + ac.color + ';background:' + ac.bg + ';border:1px solid ' + ac.color + '30;border-radius:20px;padding:2px 8px;white-space:nowrap;">' + ac.label + '<\/span>' + (ktAddrChangeBadge(row) ? '<div>' + ktAddrChangeBadge(row) + '<\/div>' : '');
 
     const stageLabel = stageLabels[row.nudgeStage || ''] || row.nudgeStage;
     const stageBadge = row.needsCall
@@ -18296,6 +18308,8 @@ function openAskAddrModal() {
   var r = document.getElementById('aaFetchResult'); if (r) { r.style.display = 'none'; r.innerHTML = ''; }
   var e = document.getElementById('aaError'); if (e) e.style.display = 'none';
   var b = document.getElementById('aaSendBtn'); if (b) { b.disabled = true; b.innerHTML = '<i class="fab fa-whatsapp"><\/i> Send address request'; }
+  var ch = document.getElementById('aaChoice'); if (ch) { ch.style.display = 'none'; ch.innerHTML = ''; }
+  _aaOnFile = null; _aaMode = 'request'; aaSetMode('request');
   var m = document.getElementById('askAddrModal'); if (m) m.style.display = 'flex';
   setTimeout(function() { var j = document.getElementById('aaJlid'); if (j) j.focus(); }, 50);
 }
@@ -18316,6 +18330,10 @@ function aaFetch() {
         + '<div style="color:#0f766e;margin-top:2px;">' + escapeHtml(d.parentContact || 'no phone') + ' · ' + escapeHtml(d.country || 'country not set') + '<\/div><\/div>';
       var f = document.getElementById('aaFields'); if (f) f.style.display = '';
       var b = document.getElementById('aaSendBtn'); if (b) b.disabled = false;
+      google.script.run
+        .withSuccessHandler(function(of) { aaRenderChoice(of); })
+        .withFailureHandler(function() { aaRenderChoice(null); })
+        .getKitAddressOnFile(jlid);
     })
     .withFailureHandler(function(e) { if (res) res.innerHTML = '<span style="color:#ef4444;">' + escapeHtml((e && e.message) || String(e)) + '<\/span>'; })
     .fetchHubspotByJlid(jlid);
@@ -18329,8 +18347,22 @@ function aaSend(force) {
   if (err) err.style.display = 'none';
   if (!jlid) { if (err) { err.style.display = 'block'; err.textContent = 'Enter and fetch a JLID first.'; } return; }
   if (!kit) { if (err) { err.style.display = 'block'; err.textContent = 'Choose the kit first.'; } return; }
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> Sending…'; }
-  var reset = function() { if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fab fa-whatsapp"><\/i> Send address request'; } };
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"><\/i> ' + (_aaMode === 'order' ? 'Preparing…' : 'Sending…'); }
+  var reset = function() { if (btn) { btn.disabled = false; aaUpdateButton(); } };
+  if (_aaMode === 'order') {
+    google.script.run
+      .withSuccessHandler(function(r) {
+        reset();
+        if (!r || !r.success) { if (err) { err.style.display = 'block'; err.textContent = (r && r.message) || 'Could not prepare the order.'; } return; }
+        closeAskAddrModal();
+        if (typeof ktSwitchTab === 'function') ktSwitchTab('askaddr');
+        if (typeof loadKitTrackingPage === 'function') loadKitTrackingPage();
+        setTimeout(function() { ktOpenMarkOrderPlaced(r.rowIndex, r.jlid, r.learnerName, r.kit); }, 900);
+      })
+      .withFailureHandler(function(e) { reset(); if (err) { err.style.display = 'block'; err.textContent = (e && e.message) || String(e); } })
+      .prepareKitRowForNewOrder(jlid, kit);
+    return;
+  }
   google.script.run
     .withSuccessHandler(function(r) {
       reset();
@@ -18341,12 +18373,12 @@ function aaSend(force) {
       }
       if (!r || !r.success) { if (err) { err.style.display = 'block'; err.textContent = (r && r.message) || 'Could not send the request.'; } return; }
       closeAskAddrModal();
-      showToast('success', r.addressSource === 'hubspot' ? 'Address found' : 'Address requested', r.addressSource === 'hubspot' ? 'The address was already on HubSpot.' : 'The parent was asked for the delivery address.');
+      showToast('success', r.addressSource === 'hubspot' ? 'Address found' : (r.mode === 'confirm' ? 'Confirmation sent' : 'Address requested'), r.addressSource === 'hubspot' ? 'The address was already on HubSpot.' : (r.mode === 'confirm' ? 'The parent was asked to confirm the address on file.' : 'The parent was asked for the delivery address.') + (r.startedNewCycle ? ' The learner\'s existing row was reused for the new kit.' : ''));
       if (typeof ktSwitchTab === 'function') ktSwitchTab('askaddr');
       if (typeof loadKitTrackingPage === 'function') loadKitTrackingPage();
     })
     .withFailureHandler(function(e) { reset(); if (err) { err.style.display = 'block'; err.textContent = (e && e.message) || String(e); } })
-    .requestKitDeliveryAddress(jlid, kit, 0, useHs, force === true);
+    .requestKitDeliveryAddress(jlid, kit, 0, useHs, force === true, _aaMode === 'confirm' ? 'confirm' : 'request');
 }
 
 function ktSwitchTab(tab) {
@@ -23176,10 +23208,12 @@ function tpwInitChrome() {
 function tpwRefresh() {
   if (!tpw.boot) { loadTPWorkspacePage(); return; }
   if (tpw.view === 'managers') { tpwLoadManagers(); return; }
+  if (tpw.view === 'teachers') { tpwLoadTeachers(false); }
   google.script.run
     .withSuccessHandler(function(r) {
       if (!r || !r.success) { tpwFail(r && r.message); return; }
       tpw.reqs = r.requests || []; tpwRender();
+      if (tpw.view === 'teachers' && tpw.teachers) tpwRenderTeachers();
     })
     .withFailureHandler(function(e) { tpwFail(e && e.message); })
     .tpwGetRequests(tpwTok(), tpwVA());
@@ -23190,21 +23224,24 @@ function tpwSetViewAs(v) {
   window._tpwViewAsOn = !!tpw.viewAs;
   // the Teacher Intelligence lists are cached per view
   try { allTeacherDetailsCache = []; globalTeacherDataList = []; } catch (e) {}
-  tpw.boot = null; tpw.reqs = []; tpw.open = {}; tpw.mgr = '';
+  tpw.boot = null; tpw.reqs = []; tpw.open = {}; tpw.mgr = ''; tpw.teachers = null;
   tpw.filter = 'needs'; tpw.view = 'open';
   document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === 'open'); });
-  tpwEl('tpwListView').style.display = ''; tpwEl('tpwManagersView').style.display = 'none'; tpwEl('tpwCards').style.display = '';
+  tpwEl('tpwListView').style.display = ''; tpwEl('tpwManagersView').style.display = 'none'; tpwEl('tpwTeachersView').style.display = 'none'; tpwEl('tpwCards').style.display = '';
   loadTPWorkspacePage();
 }
 function tpwOpenTIC() { var m = document.querySelector('.menu-item[data-page="load"]'); if (m) m.click(); else switchPage('loadPage'); }
-function tpwSetManager(v) { tpw.mgr = v || ''; tpwRender(); }
+function tpwSetManager(v) { tpw.mgr = v || ''; tpwRender(); if (tpw.view === 'teachers') tpwRenderTeachers(); }
 function tpwSetView(v) {
   tpw.view = v;
   document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === v); });
-  tpwEl('tpwListView').style.display = v === 'managers' ? 'none' : '';
+  var isList = (v === 'open' || v === 'closed');
+  tpwEl('tpwListView').style.display = isList ? '' : 'none';
+  tpwEl('tpwCards').style.display = isList ? '' : 'none';
   tpwEl('tpwManagersView').style.display = v === 'managers' ? '' : 'none';
-  tpwEl('tpwCards').style.display = v === 'managers' ? 'none' : '';
+  tpwEl('tpwTeachersView').style.display = v === 'teachers' ? '' : 'none';
   if (v === 'managers') { tpwLoadManagers('tpwManagersView'); return; }
+  if (v === 'teachers') { tpwLoadTeachers(false); return; }
   if (v === 'closed') tpw.filter = 'closed_all'; else if (tpw.filter.indexOf('closed') === 0) tpw.filter = 'needs';
   tpwRender();
 }
@@ -23673,5 +23710,148 @@ function tpwLoadCoverage(boxId) {
     })
     .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-sub">' + tpwE(e.message) + '</div>'; })
     .tpwCoverage(tpwTok());
+}
+
+// ── My teachers: every teacher the manager has, with profile + hide/unhide, without leaving the workspace ──
+function tpwLoadTeachers(force) {
+  var box = tpwEl('tpwTList');
+  if (!box) return;
+  if (tpw.teachers && !force) { tpwRenderTeachers(); return; }
+  box.innerHTML = '<div class="tpw-empty"><i class="fas fa-spinner fa-spin"></i> Loading your teachers\u2026 (this can take a few seconds)</div>';
+  google.script.run
+    .withSuccessHandler(function(list) {
+      tpw.teachers = list || [];
+      try { allTeacherDetailsCache = tpw.teachers.slice(); globalTeacherDataList = tpw.teachers.map(function(t) { return t.name; }); } catch (e) {}
+      var sts = {};
+      tpw.teachers.forEach(function(t) { sts[t.status || 'Active'] = true; });
+      tpwEl('tpwTStatus').innerHTML = '<option value="">Any status</option>' + Object.keys(sts).sort().map(function(s) { return '<option>' + tpwE(s) + '</option>'; }).join('');
+      tpwRenderTeachers();
+    })
+    .withFailureHandler(function(e) { box.innerHTML = '<div class="tpw-empty">' + tpwE((e && e.message) || 'Could not load teachers.') + '</div>'; })
+    .tpwTeacherDetailsScoped(tpwTok(), tpwVA());
+}
+
+function tpwOpenCounts() {
+  var m = {};
+  (tpw.reqs || []).forEach(function(r) {
+    if (r.isTest || tpwOpenStatuses().indexOf(r.status) === -1) return;
+    var k = String(r.teacher || '').trim().toLowerCase();
+    m[k] = (m[k] || 0) + 1;
+  });
+  return m;
+}
+
+function tpwRenderTeachers() {
+  var box = tpwEl('tpwTList');
+  if (!box || !tpw.teachers) return;
+  var counts = tpwOpenCounts();
+  var isAdminView = !!(tpw.boot && tpw.boot.isAdmin);
+  var q = (tpwEl('tpwTSearch').value || '').trim().toLowerCase();
+  var st = tpwEl('tpwTStatus').value, fl = tpwEl('tpwTFilter').value, sort = tpwEl('tpwTSort').value;
+  var gradeRank = { A: 4, B: 3, C: 2, D: 1 };
+  var list = tpw.teachers.filter(function(t) {
+    if (isAdminView && tpw.mgr && t.manager !== tpw.mgr) return false;
+    if (q && String(t.name).toLowerCase().indexOf(q) === -1) return false;
+    if (st && (t.status || 'Active') !== st) return false;
+    var oc = counts[String(t.name).trim().toLowerCase()] || 0;
+    if (fl === 'upskill' && !oc) return false;
+    if (fl === 'hidden' && t.hiddenInSearch !== 'Yes') return false;
+    return true;
+  });
+  list.sort(function(a, b) {
+    var ka = String(a.name).trim().toLowerCase(), kb = String(b.name).trim().toLowerCase();
+    if (sort === 'grade') return (gradeRank[b.auditGrade] || 0) - (gradeRank[a.auditGrade] || 0) || a.name.localeCompare(b.name);
+    if (sort === 'learners') return (b.activeCourses || 0) - (a.activeCourses || 0) || a.name.localeCompare(b.name);
+    if (sort === 'upskill') return (counts[kb] || 0) - (counts[ka] || 0) || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  });
+  var live = list.filter(function(t) { return ['Active', 'EWS', 'Friendly'].indexOf(t.status) > -1; }).length;
+  var withUp = list.filter(function(t) { return counts[String(t.name).trim().toLowerCase()]; }).length;
+  tpwEl('tpwTCount').textContent = list.length + ' teacher' + (list.length === 1 ? '' : 's') + ' \u00b7 ' + live + ' active \u00b7 ' + withUp + ' with open upskilling';
+  if (!list.length) { box.innerHTML = '<div class="tpw-empty">No teachers match.</div>'; return; }
+  var gradeCol = { A: '#047857', B: '#1d4ed8', C: '#b45309', D: '#b91c1c' };
+  var h = '<table class="tpw-table"><tr><th>Teacher</th>' + (isAdminView ? '<th>Manager</th>' : '') + '<th>Status</th><th>Audit</th><th>Active learners</th><th>Last activity</th><th>Open upskilling</th><th>In search</th><th></th></tr>';
+  list.forEach(function(t) {
+    var oc = counts[String(t.name).trim().toLowerCase()] || 0;
+    var hid = t.hiddenInSearch === 'Yes';
+    h += '<tr' + (hid ? ' style="opacity:.6;"' : '') + '><td><b>' + tpwE(t.name) + '</b>' + ((t.traits || []).length ? '<div class="tpw-sub">' + tpwE((t.traits || []).slice(0, 3).join(' \u00b7 ')) + '</div>' : '') + '</td>'
+      + (isAdminView ? '<td>' + tpwE(t.manager || '') + '</td>' : '')
+      + '<td>' + tpwE(t.status || 'Active') + '</td>'
+      + '<td><b style="color:' + (gradeCol[t.auditGrade] || '#6b7280') + ';">' + tpwE(t.auditGrade || '\u2014') + '</b></td>'
+      + '<td>' + (t.activeCourses || 0) + '</td><td class="tpw-sub">' + tpwE(t.lastActivity || '\u2014') + '</td>'
+      + '<td>' + (oc ? '<span class="tpw-chip up">' + oc + ' open</span>' : '<span class="tpw-sub">\u2014</span>') + '</td>'
+      + '<td>' + (hid ? '<span class="tpw-chip up">Hidden</span>' : 'Visible') + '</td>'
+      + '<td style="white-space:nowrap;"><button class="tpw-btn go" onclick="openTeacherProfileModal(\'' + tpwQ(t.name) + '\')">Profile</button> '
+      + '<button class="tpw-btn" onclick="tpwToggleHide(\'' + tpwQ(t.name) + '\',' + (hid ? 'false' : 'true') + ')">' + (hid ? 'Unhide' : 'Hide') + '</button></td></tr>';
+  });
+  box.innerHTML = h + '</table>';
+}
+
+function tpwToggleHide(name, hide) {
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (r && r.success) {
+        (tpw.teachers || []).forEach(function(t) { if (t.name === name) t.hiddenInSearch = hide ? 'Yes' : ''; });
+        showToast('success', 'Visibility updated', name + (hide ? ' is hidden in search.' : ' is visible in search.'));
+        tpwRenderTeachers();
+      } else showToast('error', 'Could not update', (r && r.message) || 'Failed.');
+    })
+    .withFailureHandler(function(e) { showToast('error', 'Could not update', (e && e.message) || 'Server error.'); })
+    .tpwSetVisibilityScoped(tpwTok(), name, hide, tpwVA());
+}
+
+// ── Ask for Address: when an address is already on file, offer Confirm / Request / Place order ──
+var _aaMode = 'request', _aaOnFile = null;
+
+function aaSetMode(m) {
+  _aaMode = m;
+  document.querySelectorAll('#aaChoice .aa-opt').forEach(function(el) {
+    var on = el.getAttribute('data-m') === m;
+    el.style.borderColor = on ? '#0d9488' : '#e2e8f0'; el.style.background = on ? '#f0fdfa' : '#fff';
+  });
+  var link = document.getElementById('aaLinkOption'), lab = document.getElementById('aaLinkLabel');
+  var showLink = (m === 'request');
+  if (link) link.style.display = showLink ? '' : 'none';
+  if (lab) lab.style.display = showLink ? '' : 'none';
+  aaUpdateButton();
+}
+
+function aaUpdateButton() {
+  var b = document.getElementById('aaSendBtn'); if (!b) return;
+  var map = { confirm: '<i class="fab fa-whatsapp"><\/i> Send confirmation', request: '<i class="fab fa-whatsapp"><\/i> Send address request', order: '<i class="fas fa-shopping-cart"><\/i> Continue to place order' };
+  b.innerHTML = map[_aaMode] || map.request;
+}
+
+function aaRenderChoice(f) {
+  var box = document.getElementById('aaChoice'); if (!box) return;
+  _aaOnFile = (f && f.success && f.onFile) ? f : null;
+  if (!_aaOnFile) { box.style.display = 'none'; box.innerHTML = ''; _aaMode = 'request'; aaSetMode('request'); return; }
+  var note = f.ordered || f.delivered || f.refunded ? '<div style="color:#92400e;font-size:0.74rem;margin-top:4px;">The last kit on this row (' + escapeHtml(f.kit || '') + ') was already ' + (f.refunded ? 'refunded' : (f.delivered ? 'delivered' : 'ordered')) + '. A new kit starts on the same row \u2014 the old values are kept in the Kit Row History sheet.<\/div>' : '';
+  var opt = function(m, icon, title, sub) {
+    return '<div class="aa-opt" data-m="' + m + '" onclick="aaSetMode(\'' + m + '\')" style="cursor:pointer;border:1.5px solid #e2e8f0;border-radius:10px;padding:9px 12px;display:flex;gap:10px;align-items:flex-start;">'
+      + '<i class="fas ' + icon + '" style="color:#0d9488;margin-top:3px;"><\/i><div><div style="font-weight:700;font-size:0.84rem;color:#1e293b;">' + title + '<\/div><div style="font-size:0.75rem;color:#64748b;">' + sub + '<\/div><\/div><\/div>';
+  };
+  box.innerHTML = '<div style="padding:9px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:0.78rem;color:#78350f;margin-bottom:8px;"><b>We already have an address for this learner:<\/b><div style="margin-top:2px;">' + escapeHtml(f.address) + '<\/div>' + note + '<\/div>'
+    + '<div style="display:flex;flex-direction:column;gap:8px;">'
+    + opt('confirm', 'fa-check-double', 'Confirm address', 'Ask the parent to confirm this address (one tap: yes, same address).')
+    + opt('request', 'fa-map-marker-alt', 'Request address', 'Ask for a fresh address with the link. The old one is kept in the history sheet.')
+    + opt('order', 'fa-shopping-cart', 'Place order', 'Skip asking \u2014 use this address and go straight to Mark Order Placed.')
+    + '<\/div>';
+  box.style.display = 'block';
+  if (f.kit) { var kit = document.getElementById('aaKit'); if (kit && !kit.value) { for (var i = 0; i < kit.options.length; i++) if (kit.options[i].value === f.kit || kit.options[i].text === f.kit) { kit.value = kit.options[i].value; break; } } }
+  aaSetMode('confirm');
+}
+
+// Small badge under the address status: did the parent just confirm, resend the same address, or change it?
+function ktAddrChangeBadge(row) {
+  var c = row && row.addrChange;
+  if (!c) return '';
+  var cfg = {
+    confirmed:        { t: '\u2713 Confirmed same address', col: '#047857', bg: '#ecfdf5', tip: 'The parent tapped \u201cYes, Same Address\u201d.' },
+    resubmitted_same: { t: '\u21ba Same address resubmitted', col: '#0f766e', bg: '#f0fdfa', tip: 'The parent filled the form again with the same address.' },
+    updated:          { t: '\u270e Updated address', col: '#b45309', bg: '#fffbeb', tip: 'Previous address: ' + (row.prevAddress || '') }
+  }[c];
+  if (!cfg) return '';
+  return '<span title="' + escapeHtml(cfg.tip) + '" style="display:inline-block;margin-top:3px;font-size:0.66rem;font-weight:700;color:' + cfg.col + ';background:' + cfg.bg + ';border:1px solid ' + cfg.col + '30;border-radius:20px;padding:1px 7px;white-space:nowrap;">' + cfg.t + '<\/span>';
 }
 </script>

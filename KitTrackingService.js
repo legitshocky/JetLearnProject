@@ -111,7 +111,10 @@ var KIT_COL = {
   TEACHER_NOTIFIED_AT:     60,
   TEACHER_TOLD_ETA:        61,  // the delivery date the teacher was last told
   TEACHER_STAGE:           62,  // ordered / delayed / reminder / check_cls / delivered / reorder / cancelled
-  TEACHER_REMINDED_AT:     63
+  TEACHER_REMINDED_AT:     63,
+  // Address change tracking (BL, BM): the address we held when the parent was last asked, and whether they simply confirmed it
+  ADDR_PREV:               64,  // the address on file at the time of the latest request / confirmation
+  ADDR_OUTCOME:            65   // 'confirmed' when the parent tapped "Yes, Same Address"
 };
 
 // Last column currently used by the Kit Tracking sheet — use this (not
@@ -538,7 +541,12 @@ function getKitTrackContext(jlid) {
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return { success: false, message: 'No kit found for this link.' };
 
-    var raw = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    // Read only this learner's rows: scan the JLID column (one narrow read) instead of pulling every row and column of the sheet.
+    var jlidCol = sheet.getRange(2, KIT_COL.JLID, lastRow - 1, 1).getValues();
+    var raw = [];
+    for (var ji = 0; ji < jlidCol.length; ji++) {
+      if (String(jlidCol[ji][0] || '').trim().toUpperCase() === jlid) raw.push(sheet.getRange(ji + 2, 1, 1, KIT_LAST_COL).getValues()[0]);
+    }
     var _fmt = function(v) { return v ? Utilities.formatDate(new Date(v), Session.getScriptTimeZone(), 'MMM d, yyyy') : ''; };
     var learnerName = '';
     var kits = [];
@@ -595,11 +603,27 @@ function getKitTrackContext(jlid) {
   }
 }
 
+// Cached wrapper for the public Track My Kit API (2 minutes: a parent reopening the link or a chat-app link preview does not re-read the sheet).
+function getKitTrackContextCached(jlid) {
+  var id = String(jlid || '').replace(/^"+|"+$/g, '').trim().toUpperCase();
+  var cache = CacheService.getScriptCache();
+  var key = 'trackCtx_' + id;
+  try { var hit = id ? cache.get(key) : null; if (hit) return JSON.parse(hit); } catch (e) {}
+  var ctx = getKitTrackContext(id);
+  if (ctx && ctx.success) { try { cache.put(key, JSON.stringify(ctx), 120); } catch (e2) {} }
+  return ctx;
+}
+
 // Short public URL for the Track My Kit page — sent to parents once the
 // order is placed so they actually have a way to reach it (see
 // markKitOrderPlaced below).
-function getKitTrackLink(jlid) {
-  return 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(jlid);
+function getKitTrackLink(jlid, learnerName) {
+  var url = 'https://jetlearn-kit-links.web.app/track/' + encodeURIComponent(jlid);
+  // First name only, so the page can greet the learner instantly instead of waiting for the backend (same trick as the address link;
+  // WATI rejects URLs with percent-encoded spaces, hence a single word).
+  var first = String(learnerName || '').trim().split(/\s+/)[0];
+  if (first) url += '?name=' + encodeURIComponent(first);
+  return url;
 }
 
 // ── Country → Amazon storefront domain ────────────────────────────────
@@ -771,12 +795,12 @@ function getKitOrderDetails(rowIndex) {
 // the same URL as a proper button, so having both ready covers whichever
 // one clears approval — only one needs to actually exist in WATI for this
 // to work; the other attempt just fails and falls through harmlessly.
-function sendKitTrackingLinkWhatsApp(phone, parentName, kitName, jlid) {
+function sendKitTrackingLinkWhatsApp(phone, parentName, kitName, jlid, learnerName) {
   try {
     var bodyRes = sendWatiMessage(phone, 'kit_tracking_link_v1', [
       { name: 'ParentName',  value: parentName || '' },
       { name: 'kit_name',    value: kitName || '' },
-      { name: 'track_link',  value: getKitTrackLink(jlid) }
+      { name: 'track_link',  value: getKitTrackLink(jlid, learnerName) }
     ]);
     if (bodyRes && bodyRes.success) return bodyRes;
     Logger.log('[KitTracking] kit_tracking_link_v1 send failed, trying button variant: ' + (bodyRes && bodyRes.message));
@@ -817,7 +841,7 @@ function sendKitTrackingLink(rowIndex) {
     var whatsappSent = false, emailSent = false;
     var phone = _normalisePhone(d.parentContact || '');
     if (phone) {
-      var waRes = sendKitTrackingLinkWhatsApp(phone, d.parentName, kitName, jlid);
+      var waRes = sendKitTrackingLinkWhatsApp(phone, d.parentName, kitName, jlid, d.learnerName);
       whatsappSent = !!(waRes && waRes.success);
     }
 
@@ -827,7 +851,7 @@ function sendKitTrackingLink(rowIndex) {
       learnerName: d.learnerName,
       kitName: kitName,
       jlid: jlid,
-      trackLink: getKitTrackLink(jlid)
+      trackLink: getKitTrackLink(jlid, d.learnerName)
     });
     emailSent = !!(emailRes && emailRes.success);
 
@@ -1025,6 +1049,7 @@ function handleKitAddressReconfirmReply(waId, buttonText) {
         sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
         sheet.getRange(rowIndex, KIT_COL.NUDGE_STAGE_AT).setValue(new Date());
         sheet.getRange(rowIndex, KIT_COL.ADDR_SUBMITTED_AT).setValue(new Date());
+        try { _kitEnsureAddrCols(sheet); sheet.getRange(rowIndex, KIT_COL.ADDR_OUTCOME).setValue('confirmed'); } catch (oc) {}
         try {
           sendWatiMessage(normPhone, 'kit_address_received_confirmation', [
             { name: '1', value: parentName }, { name: '2', value: kitName }
@@ -1083,6 +1108,146 @@ function _createBareKitRow(jlid, learnerName, kitName) {
   return writeRow;
 }
 
+
+var _kitAddrColsEnsured = false;
+function _kitEnsureAddrCols(sheet) {
+  if (_kitAddrColsEnsured) return;
+  try {
+    var have = sheet.getMaxColumns();
+    if (have < KIT_COL.ADDR_OUTCOME) sheet.insertColumnsAfter(have, KIT_COL.ADDR_OUTCOME - have);
+    [[KIT_COL.ADDR_PREV, 'Previous Address'], [KIT_COL.ADDR_OUTCOME, 'Address Outcome']].forEach(function(h) {
+      var c = sheet.getRange(1, h[0]);
+      if (!String(c.getValue() || '').trim()) c.setValue(h[1]);
+    });
+    _kitAddrColsEnsured = true;
+  } catch (e) { Logger.log('[KitTracking] _kitEnsureAddrCols: ' + e.message); }
+}
+
+function _kitAddrNorm(a) { return String(a || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+// "confirmed" (parent tapped Yes, same address), "resubmitted_same", "updated" or "" (first address / nothing to compare).
+function _kitAddrChange(status, address, prev, outcome) {
+  if (String(status || '').trim() !== 'Received') return '';
+  if (String(outcome || '') === 'confirmed') return 'confirmed';
+  if (!String(prev || '').trim() || !String(address || '').trim()) return '';
+  return _kitAddrNorm(prev) === _kitAddrNorm(address) ? 'resubmitted_same' : 'updated';
+}
+
+// ── One row per learner: a JLID that already has a row in Kit Tracking is always updated, never duplicated ──
+// Newest row for the JLID, preferring one for the same kit. 0 = this JLID has no row yet.
+function _findKitRowForReuse(jlid, kitName) {
+  var sheet = _getKitSheet();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var id = String(jlid || '').trim().toUpperCase();
+  var kit = String(kitName || '').trim().toLowerCase();
+  var jl = sheet.getRange(2, KIT_COL.JLID, lastRow - 1, 1).getValues();
+  var kits = sheet.getRange(2, KIT_COL.KIT, lastRow - 1, 1).getValues();
+  var any = 0, same = 0;
+  for (var i = 0; i < jl.length; i++) {
+    if (String(jl[i][0] || '').trim().toUpperCase() !== id) continue;
+    any = i + 2;
+    if (kit && String(kits[i][0] || '').trim().toLowerCase() === kit) same = i + 2;
+  }
+  return same || any;
+}
+
+// Is the row's previous order cycle finished (ordered / delivered / refunded)? Then a new request starts a fresh cycle on the same row.
+function _kitRowCycleClosed(rowVals) {
+  return String(rowVals[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE'
+    || !!rowVals[KIT_COL.DELIVERY_DATE - 1]
+    || String(rowVals[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE';
+}
+
+// Full copy of a row before its values are overwritten, so earlier kits / orders are never lost.
+function _kitArchiveRow(rowIndex, rowVals, why) {
+  try {
+    var ssId = PropertiesService.getScriptProperties().getProperty('SHEET_ID_KIT_TRACKING') || '17Jsa2Kl2AkI5SgtlITYGqb-Q-PxfzkNFzzG5HwBJp_Q';
+    var ss = SpreadsheetApp.openById(ssId);
+    var h = ss.getSheetByName('Kit Row History');
+    if (!h) { h = ss.insertSheet('Kit Row History'); h.appendRow(['Archived At', 'Why', 'Row', 'JLID', 'Learner', 'Kit', 'Address', 'Order Placed At', 'Delivery Date', 'Whole row (JSON)']); }
+    h.appendRow([new Date(), why, rowIndex, rowVals[KIT_COL.JLID - 1], rowVals[KIT_COL.LEARNER_NAME - 1], rowVals[KIT_COL.KIT - 1],
+      rowVals[KIT_COL.DELIVERY_ADDRESS - 1], rowVals[KIT_COL.ORDER_PLACED_AT - 1] || '', rowVals[KIT_COL.DELIVERY_DATE - 1] || '',
+      JSON.stringify(rowVals.map(function(v) { return v instanceof Date ? v.toISOString() : v; }))]);
+  } catch (e) { Logger.log('[KitTracking] _kitArchiveRow: ' + e.message); }
+}
+
+var KIT_CYCLE_RESET = ['PRICE', 'SITE', 'DATE_OF_ORDER', 'ETA', 'DELIVERY_DATE', 'TIME_TAKEN', 'REASON', 'SUBSCRIPTION', 'ROADMAP', 'SENT_BY',
+  'FOLLOWUP_SENT', 'FOLLOWUP_SENT_AT', 'PARENT_RESPONSE', 'FOLLOWUP2_SENT', 'FOLLOWUP2_SENT_AT', 'ESCALATED', 'ESCALATED_AT', 'REFUNDED',
+  'ADDR_REQUESTED_AT', 'MODULE_START_DATE', 'NUDGE_TIER', 'NUDGE_STAGE', 'NUDGE_STAGE_AT', 'ORDER_PLACED', 'ORDER_PLACED_AT', 'ORDER_STORE',
+  'ORDER_TRACKING_NO', 'ORDER_TRACKING_URL', 'REIMBURSEMENT', 'REIMBURSEMENT_AMOUNT', 'REIMBURSEMENT_INVOICE_LINK', 'REIMBURSEMENT_REASON',
+  'REIMBURSEMENT_STATUS', 'REIMBURSEMENT_REQUESTED_AT', 'REIMBURSEMENT_PAID_AT', 'MANUAL_REMINDER_COUNT', 'MANUAL_REMINDER_LAST_AT'];
+
+// Same row, new cycle: archive what was there, clear the order / follow-up state, keep the learner, address and parent contact.
+function _kitResetRowForNewCycle(rowIndex, kitName, why) {
+  var sheet = _getKitSheet();
+  var vals = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+  if (!_kitRowCycleClosed(vals)) {
+    if (kitName && String(vals[KIT_COL.KIT - 1] || '').trim().toLowerCase() !== String(kitName).trim().toLowerCase()) sheet.getRange(rowIndex, KIT_COL.KIT).setValue(kitName);
+    return false;
+  }
+  _kitArchiveRow(rowIndex, vals, why);
+  KIT_CYCLE_RESET.forEach(function(k) { if (KIT_COL[k]) sheet.getRange(rowIndex, KIT_COL[k]).setValue(''); });
+  if (kitName) sheet.getRange(rowIndex, KIT_COL.KIT).setValue(kitName);
+  return true;
+}
+
+// What the Ask for Address box needs: is there an address on file for this JLID (and which row holds it)?
+function getKitAddressOnFile(jlid) {
+  try {
+    var id = String(jlid || '').trim().toUpperCase();
+    if (!id) return { success: false, message: 'JLID required.' };
+    var sheet = _getKitSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return { success: true, onFile: false, rowIndex: 0 };
+    var vals = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var hit = 0, latest = 0;
+    for (var i = vals.length - 1; i >= 0; i--) {
+      if (String(vals[i][KIT_COL.JLID - 1] || '').trim().toUpperCase() !== id) continue;
+      if (!latest) latest = i + 2;
+      if (!hit && String(vals[i][KIT_COL.DELIVERY_ADDRESS - 1] || '').trim()) hit = i + 2;
+    }
+    if (!hit) return { success: true, onFile: false, rowIndex: latest };
+    var r = vals[hit - 2];
+    return {
+      success: true, onFile: true, rowIndex: hit, address: String(r[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim(),
+      kit: String(r[KIT_COL.KIT - 1] || '').trim(), addrStatus: String(r[KIT_COL.ADDR_STATUS - 1] || '').trim(),
+      ordered: String(r[KIT_COL.ORDER_PLACED - 1] || '').trim().toUpperCase() === 'TRUE', delivered: !!r[KIT_COL.DELIVERY_DATE - 1],
+      refunded: String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE'
+    };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
+// "Place order" straight from the Ask for Address box: the address on file is used as it is. Puts the learner's row in
+// "Address received - pending order" (starting a fresh cycle on the same row if the last kit was already ordered / delivered).
+function prepareKitRowForNewOrder(jlid, kitName) {
+  try {
+    var id = String(jlid || '').trim().toUpperCase();
+    if (!id || !kitName) return { success: false, message: 'JLID and kit are required.' };
+    var f = getKitAddressOnFile(id);
+    if (!f.success || !f.onFile) return { success: false, message: 'No address on file for ' + id + ' — request it first.' };
+    var sheet = _getKitSheet();
+    // The learner's row for THIS kit if there is one (a JLID can have older rows for other kits); otherwise the row that holds the address.
+    var rowIndex = _findKitRowForReuse(id, kitName) || f.rowIndex;
+    if (rowIndex !== f.rowIndex) {
+      var src = sheet.getRange(f.rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+      var dst = sheet.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue();
+      if (!String(dst || '').trim()) {
+        ['DELIVERY_ADDRESS', 'ADDR_LINE', 'ADDR_CITY', 'ADDR_STATE', 'ADDR_POSTAL', 'PARENT_NAME', 'PARENT_PHONE', 'PARENT_EMAIL'].forEach(function(k) {
+          if (KIT_COL[k] && KIT_COL[k] <= KIT_LAST_COL) sheet.getRange(rowIndex, KIT_COL[k]).setValue(src[KIT_COL[k] - 1]);
+        });
+      }
+    }
+    var reset = _kitResetRowForNewCycle(rowIndex, kitName, 'New order placed from the same row');
+    sheet.getRange(rowIndex, KIT_COL.ADDR_STATUS).setValue('Received');
+    var row = sheet.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+    return { success: true, rowIndex: rowIndex, jlid: id, learnerName: String(row[KIT_COL.LEARNER_NAME - 1] || ''), kit: String(row[KIT_COL.KIT - 1] || kitName), startedNewCycle: reset };
+  } catch (e) {
+    Logger.log('[prepareKitRowForNewOrder] ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── Request delivery address from parent via WATI ────────────────────────────
 // Call before placing a kit order when HubSpot address is blank. If no
 // rowIndex is given, reuses an existing open row for this JLID if one exists,
@@ -1094,12 +1259,12 @@ function _createBareKitRow(jlid, learnerName, kitName) {
 // of our own page, and skips the yes/no reconfirm (that's specific to our
 // own page's flow) — just a straight link ask either way.
 // Returns { success, addressSource, address, phone, needsWati, watiSent, rowIndex }
-function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
+function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force, mode) {
   try {
     if (!jlid || !kitName) return { success: false, message: 'JLID and kit name required' };
 
     if (!rowIndex || rowIndex <= 0) {
-      rowIndex = _findOpenKitRowByJlid(String(jlid).trim().toUpperCase()) || 0;
+      rowIndex = _findKitRowForReuse(String(jlid).trim().toUpperCase(), kitName) || 0;
     }
 
     var hs = fetchHubspotByJlid(jlid);
@@ -1151,6 +1316,12 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
 
     if (phonesToMessage.length === 0) return { success: false, message: 'No phone number for ' + jlid };
 
+    // Same learner, same row: if the last kit's cycle is finished, archive it and start the new one on this row.
+    var startedNewCycle = false;
+    if (rowIndex > 0) {
+      try { startedNewCycle = _kitResetRowForNewCycle(rowIndex, kitName, 'New address request on the same row'); } catch (re) { Logger.log('[KitTracking] row reset failed: ' + re.message); }
+    }
+
     // Check whether an address is already on file — from OUR OWN sheet, not
     // HubSpot (the HubSpot contact address fields are permanently blank here
     // due to a portal scope restriction we can't get lifted — see CHANGELOG
@@ -1160,7 +1331,7 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
     // IS an address, ask a quick yes/no reconfirm instead of making them
     // retype everything; "No" falls through to the full address-link flow.
     var existingAddrStr = '';
-    if (!useHsForm && rowIndex > 0) {
+    if (!useHsForm && rowIndex > 0 && mode !== 'request') {
       try {
         existingAddrStr = String(_getKitSheet().getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
       } catch(fae) { Logger.log('[KitTracking] existing-address lookup failed: ' + fae.message); }
@@ -1225,7 +1396,20 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
         // Only blank the address when actually asking for a fresh one — the
         // reconfirm path (existingAddrStr set) keeps it, since "Yes, Same
         // Address" needs it still there to confirm against.
-        if (!existingAddrStr) sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+        var prevAddrNow = String(sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).getValue() || '').trim();
+        try {
+          _kitEnsureAddrCols(sheet2);
+          if (prevAddrNow) sheet2.getRange(rowIndex, KIT_COL.ADDR_PREV).setValue(prevAddrNow);
+          sheet2.getRange(rowIndex, KIT_COL.ADDR_OUTCOME).setValue('');
+        } catch (pe0) { Logger.log('[KitTracking] prev-address note failed: ' + pe0.message); }
+        if (!existingAddrStr) {
+          // asking for a fresh address: keep a copy of the old one in the history sheet before clearing it
+          try {
+            var prevRow = sheet2.getRange(rowIndex, 1, 1, KIT_LAST_COL).getValues()[0];
+            if (String(prevRow[KIT_COL.DELIVERY_ADDRESS - 1] || '').trim()) _kitArchiveRow(rowIndex, prevRow, 'Address re-requested (old address kept here)');
+          } catch (pa) {}
+          sheet2.getRange(rowIndex, KIT_COL.DELIVERY_ADDRESS).setValue('');
+        }
         // Store EVERY phone the reconfirm/link went to, comma-joined — not
         // just the primary — so a reply from any guardian on the deal
         // (not just the first) still matches back to this row.
@@ -1266,7 +1450,8 @@ function requestKitDeliveryAddress(jlid, kitName, rowIndex, useHsForm, force) {
     } catch(_ce) { Logger.log('[KitTracking] Cache pre-warm failed: ' + _ce.message); }
 
     return { success: true, addressSource: 'wati_requested',
-             phone: phone, needsWati: true, watiSent: true, rowIndex: rowIndex };
+             phone: phone, needsWati: true, watiSent: true, rowIndex: rowIndex,
+             mode: existingAddrStr ? 'confirm' : 'request', startedNewCycle: startedNewCycle };
 
   } catch(e) {
     Logger.log('[KitTracking] requestKitDeliveryAddress ERROR: ' + e.message);
@@ -2541,6 +2726,8 @@ function getKitTrackingData() {
     today.setHours(0, 0, 0, 0);
 
     var raw  = sheet.getRange(2, 1, lastRow - 1, KIT_LAST_COL).getValues();
+    var addrExtra = [];
+    try { if (sheet.getMaxColumns() >= KIT_COL.ADDR_OUTCOME) addrExtra = sheet.getRange(2, KIT_COL.ADDR_PREV, lastRow - 1, 2).getValues(); } catch (ae) {}
     var rows = [];
 
     var cutoff = new Date(2026, 0, 1); // Jan 1 2026 — ignore older rows
@@ -2692,6 +2879,8 @@ function getKitTrackingData() {
         linkFirstOpenedAt: _kitFormatDateTime(r[KIT_COL.LINK_FIRST_OPENED_AT - 1]),
         linkLastOpenedAt:  _kitFormatDateTime(r[KIT_COL.LINK_LAST_OPENED_AT - 1]),
         addrSubmittedAt:   _kitFormatDateTime(r[KIT_COL.ADDR_SUBMITTED_AT - 1]),
+        addrChange:        _kitAddrChange(r[KIT_COL.ADDR_STATUS - 1], r[KIT_COL.DELIVERY_ADDRESS - 1], (addrExtra[idx] || [])[0], (addrExtra[idx] || [])[1]),
+        prevAddress:       String((addrExtra[idx] || [])[0] || ''),
         // Extra detail fields
         country:      String(r[3]  || '').trim(),   // D: Country
         price:        String(r[4]  || '').trim(),   // E: Price EUR
@@ -4005,7 +4194,7 @@ function markKitOrderPlaced(rowIndex, payload) {
               noticeOk++;
             } catch (ne) { noticeErr.push('..' + ph.slice(-4) + ': ' + ne.message); }
             try {
-              var trackRes = sendKitTrackingLinkWhatsApp(ph, hsData.parentName, kitName, jlid);
+              var trackRes = sendKitTrackingLinkWhatsApp(ph, hsData.parentName, kitName, jlid, hsData.learnerName);
               if (trackRes && trackRes.success) trackOk++; else trackErr.push('..' + ph.slice(-4) + ': ' + ((trackRes && trackRes.message) || 'not sent'));
             } catch (te) { trackErr.push('..' + ph.slice(-4) + ': ' + te.message); }
           });

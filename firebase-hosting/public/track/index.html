@@ -157,6 +157,8 @@
 
     var pathParts = location.pathname.split('/track/');
     var JLID = decodeURIComponent((pathParts[1] || '').replace(/\/$/, '')).trim().toUpperCase();
+    // First name carried in the link (?name=Aria): lets us greet the learner at once while the status loads from the backend.
+    var NAME_HINT = decodeURIComponent((new URLSearchParams(location.search)).get('name') || '').trim().split(/\s+/)[0];
 
     function showState(id) {
       ['loadingState', 'trackState', 'errorState'].forEach(function(s) {
@@ -226,6 +228,16 @@
         document.getElementById('errorMsg').textContent = 'This link is missing learner information. Please contact JetLearn support.';
         showState('errorState');
         return;
+      }
+      if (NAME_HINT) {
+        // Show the page straight away with the name; the kit details fill in when the backend answers.
+        document.getElementById('chipAv').textContent = NAME_HINT.charAt(0).toUpperCase();
+        document.getElementById('dispLearnerName').textContent = NAME_HINT;
+        document.getElementById('dispJlid').textContent = JLID;
+        document.getElementById('heroTitle').textContent = NAME_HINT + '’s kit';
+        document.getElementById('heroSub').textContent = 'Getting the latest status…';
+        document.getElementById('kitsContainer').innerHTML = '<div style="text-align:center;padding:28px 0;color:#9ca3af;font-size:0.85rem;">Fetching your kit status…</div>';
+        showState('trackState');
       }
       fetch(GAS_URL + '?api=trackContext&jlid=' + encodeURIComponent(JLID))
         .then(function(r) { return r.json(); })

@@ -144,7 +144,7 @@ function doGet(e) {
   // --- Public JSON API for the statically-hosted Kit Tracking page (Firebase) ---
   if (e && e.parameter && e.parameter.api === 'trackContext') {
     var trackJlid = String(e.parameter.jlid || '').replace(/^"+|"+$/g, '').trim();
-    var trackCtx = getKitTrackContext(trackJlid);
+    var trackCtx = getKitTrackContextCached(trackJlid);
     return ContentService.createTextOutput(JSON.stringify(trackCtx)).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -911,7 +911,7 @@ function updateJetGuideByIndex(rowIndex, updates) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-const APP_VERSION = "10.52";
+const APP_VERSION = "10.55";
 
 function getAppVersion() {
   return APP_VERSION;

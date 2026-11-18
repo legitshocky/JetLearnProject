@@ -2295,6 +2295,7 @@
         <div class="tpw-tabs">
           <button class="tpw-tab on" data-v="open" onclick="tpwSetView('open')">Open</button>
           <button class="tpw-tab" data-v="closed" onclick="tpwSetView('closed')">Closed</button>
+          <button class="tpw-tab" data-v="teachers" onclick="tpwSetView('teachers')">My teachers</button>
           <button class="tpw-tab" data-v="managers" id="tpwManagersTab" style="display:none;" onclick="tpwSetView('managers')">TP managers &amp; automation</button>
         </div>
         <div id="tpwListView">
@@ -2310,6 +2311,26 @@
           <div id="tpwList" class="tpw-list"></div>
         </div>
         <div id="tpwManagersView" style="display:none;"></div>
+        <div id="tpwTeachersView" style="display:none;">
+          <div class="tpw-toolbar">
+            <input type="text" id="tpwTSearch" class="form-control" placeholder="Search teacher…" oninput="tpwRenderTeachers()">
+            <select id="tpwTStatus" class="form-control" onchange="tpwRenderTeachers()"></select>
+            <select id="tpwTFilter" class="form-control" onchange="tpwRenderTeachers()">
+              <option value="">All teachers</option>
+              <option value="upskill">With open upskilling</option>
+              <option value="hidden">Hidden in search</option>
+            </select>
+            <select id="tpwTSort" class="form-control" onchange="tpwRenderTeachers()">
+              <option value="name">Name A–Z</option>
+              <option value="grade">Audit grade (best first)</option>
+              <option value="learners">Most active learners</option>
+              <option value="upskill">Most open upskilling</option>
+            </select>
+            <button class="tpw-btn" onclick="tpwLoadTeachers(true)"><i class="fas fa-sync-alt"></i> Reload</button>
+          </div>
+          <div class="tpw-sub" id="tpwTCount" style="margin-bottom:8px;"></div>
+          <div id="tpwTList" style="overflow-x:auto;"></div>
+        </div>
       </div>
 
       <!-- TP Workspace modals -->
@@ -4792,6 +4813,7 @@
           <button type="button" id="aaFetchBtn" onclick="aaFetch()" class="btn btn-primary btn-sm" style="white-space:nowrap;"><i class="fas fa-search"></i> Fetch</button>
         </div>
         <div id="aaFetchResult" style="display:none;margin-top:10px;font-size:0.8rem;"></div>
+        <div id="aaChoice" style="display:none;margin-top:12px;"></div>
         <div id="aaFields" style="display:none;margin-top:14px;">
           <label class="form-label">Kit *</label>
           <select id="aaKit" class="form-control form-select">
@@ -4801,7 +4823,7 @@
             <option>VR Headset</option>
             <option>Arduino</option>
           </select>
-          <label class="form-label" style="margin-top:12px;">Send link via</label>
+          <label class="form-label" id="aaLinkLabel" style="margin-top:12px;">Send link via</label>
           <select id="aaLinkOption" class="form-control form-select">
             <option value="page">My Page (jetlearn-kit-links.web.app)</option>
             <option value="hs">HubSpot Form</option>

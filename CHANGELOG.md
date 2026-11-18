@@ -1,6 +1,21 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-19] — Track My Kit page loads faster (V10.55)
+- `KitTrackingService.js`: `getKitTrackLink(jlid, learnerName)` appends `?name=<first name>` (all 3 callers pass the name; `sendKitTrackingLinkWhatsApp` takes `learnerName`; the `kit_tracking_link_btn_v1` button variant has a fixed base URL and is unchanged). `getKitTrackContext` scans only the JLID column and reads just that learner's rows; `getKitTrackContextCached` (2 min CacheService) used by the `trackContext` API in `Code.js`.
+- `firebase-hosting/public/track/index.html`: reads `?name=`, shows the learner chip + "<Name>'s kit" + "Fetching your kit status…" immediately, fills in when the backend answers. Needs `firebase deploy --only hosting:kitlinks`.
+
+---
+## [2026-11-18] — Ask for Address: confirm / request / place order, one row per JLID (V10.54)
+- `KitTrackingService.js`: `_findKitRowForReuse` (newest row for the JLID, preferring the same kit) replaces "open row or create"; `requestKitDeliveryAddress(..., mode)` - `confirm` re-confirms the address on file, `request` asks fresh (old address archived); a finished cycle (ordered / delivered / refunded) is archived to the `Kit Row History` sheet (whole row JSON) and reset on the same row (`_kitResetRowForNewCycle`, `KIT_CYCLE_RESET`). `getKitAddressOnFile(jlid)`, `prepareKitRowForNewOrder(jlid, kit)` (Place order: row to "Received", copies the address if the kit's row has none).
+- Address change badge: new Kit Tracking columns `Previous Address` (BL) / `Address Outcome` (BM) written when the parent is asked (`_kitEnsureAddrCols`); "Yes, Same Address" sets outcome `confirmed`; `_kitAddrChange` compares the received address with the previous one (case / punctuation ignored) -> `addrChange` on each row; `ktAddrChangeBadge` in both tables.
+- `Index.html` / `JavaScript.html`: `#aaChoice` three-option chooser (`aaRenderChoice`, `aaSetMode`), `aaSend` handles `order` (opens `ktOpenMarkOrderPlaced`) and passes the mode.
+
+---
+## [2026-11-17] — TP Workspace: My teachers tab (V10.53)
+- `Index.html` tab + `#tpwTeachersView`; `JavaScript.html` `tpwLoadTeachers` / `tpwRenderTeachers` / `tpwToggleHide`. Uses `tpwTeacherDetailsScoped` (server-scoped to the manager, or all for admin / "view as") and `tpwSetVisibilityScoped`; profile via the existing `openTeacherProfileModal`. Open-upskilling counts come from the loaded requests (test requests excluded). Also fills `allTeacherDetailsCache` so Teacher Intelligence opens instantly.
+
+---
 ## [2026-11-14] — Reserved slots ignored when fetching classes; no duplicate certificates (V10.52)
 - `ReserveSlot.js` `_isReservedCalendarEvent` (title starts "Reserved :" or note has "Reserved via Teacher Intelligence Center"); applied in `getExistingEventDescription`, `CredentialsService.js` (2 class fetches), `HubSpotService.js` calendar verification, `LearnerProgressionService.js` `getLearnerCalendarSchedule`. Teacher availability checks still see them.
 - `tpwManagerTeachers` / `tpwCoverage` (read-only): per-manager teacher list with source sheet; teachers with no manager, under a manager not in the system, and Persona vs Teacher Data conflicts. Directory entries now carry `personaMgr` / `dataMgr` / `source`.
