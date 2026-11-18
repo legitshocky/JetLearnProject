@@ -254,6 +254,8 @@ function _ktSend(threadId, f, people, spec) {
  * Tell the teacher (CLS + TP copied) about a kit event. Safe to call repeatedly: nothing is sent twice for the same state.
  * opts: { reason, newEta, prevEta }  (dates as YYYY-MM-DD or DD/MM/YYYY)
  */
+function _ktIsSalesPitch(reason) { return /sales\s*pitch/i.test(String(reason || '')); }
+
 function kitTeacherNotify(rowIndex, event, opts) {
   opts = opts || {};
   try {
@@ -263,6 +265,8 @@ function kitTeacherNotify(rowIndex, event, opts) {
     var row = sheet.getRange(rowIndex, 1, 1, KIT_COL.TEACHER_REMINDED_AT).getValues()[0];
     var jlid = String(row[KIT_COL.JLID - 1] || '').trim();
     if (!jlid) return { success: false, skipped: true, message: 'No learner ID on the row.' };
+    // A kit sent as a sales pitch is not for a learner the teacher is teaching, so the teacher is never told about it.
+    if (_ktIsSalesPitch(row[KIT_COL.REASON - 1])) return { success: true, skipped: true, salesPitch: true, message: 'Teacher not informed: this kit is a sales pitch.' };
 
     var thread = String(row[KIT_COL.TEACHER_THREAD - 1] || '').trim();
     var stage = String(row[KIT_COL.TEACHER_STAGE - 1] || '').trim();
@@ -330,6 +334,7 @@ function kitTeacherFollowups() {
     for (var i = 0; i < raw.length && sent < cfg.maxPerRun; i++) {
       var r = raw[i];
       if (!String(r[KIT_COL.TEACHER_THREAD - 1] || '').trim()) continue;
+      if (_ktIsSalesPitch(r[KIT_COL.REASON - 1])) continue;   // sales-pitch kits: teacher is never nudged
       if (String(r[KIT_COL.DELIVERY_DATE - 1] || '').trim()) continue;
       if (String(r[KIT_COL.REFUNDED - 1] || '').trim().toUpperCase() === 'TRUE') continue;
       var stg = String(r[KIT_COL.TEACHER_STAGE - 1] || '').trim();

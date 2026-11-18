@@ -497,7 +497,7 @@ function sendMigrationEmail(data, attachments = []) {
               try { futureCourseLabels.push(getCourseLabel(raw) || raw); } catch(e) { futureCourseLabels.push(raw); }
             });
             // Check upskill gaps for TP Manager email
-            const loadResult = getTeacherSpecificLoad(data.newTeacher);
+            const loadResult = getTeacherSpecificLoad(data.newTeacher, true);
             const teacherCourses = (loadResult && loadResult.success) ? (loadResult.courses || []) : [];
             const upskilledNames = teacherCourses.map(c => normalizeCourseNameForMatch(c.course || ''));
             futureCourseLabels.forEach(function(label) {

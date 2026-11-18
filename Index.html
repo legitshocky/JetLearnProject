@@ -2588,55 +2588,22 @@
                   <div class="table-container"><table class="data-table"><thead><tr><th>Course Name</th><th style="width: 200px;">Proficiency</th></tr></thead><tbody id="loadDisplayTableBody"></tbody></table></div>
                 </div>
 
-                <!-- Teaching Hours Distribution Chart -->
-                <div class="audit-log-container" style="margin-top:1.5rem;" id="teachingHoursSection">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px;">
-                    <h3 class="dashboard-section-title" style="margin:0;"><i class="fas fa-clock" style="color:#6366f1;margin-right:8px;"></i>Teaching Hours Distribution</h3>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                      <select id="calHoursWeeksSelect" class="form-control form-select" style="width:130px;font-size:0.82rem;" onchange="reloadCalendarHours()">
-                        <option value="4" selected>Last 4 weeks</option>
-                        <option value="8">Last 8 weeks</option>
-                        <option value="12">Last 12 weeks</option>
-                      </select>
-                      <button class="btn btn-outline btn-sm" id="calHoursRefreshBtn" onclick="reloadCalendarHours()"><i class="fas fa-sync-alt"></i></button>
-                    </div>
-                  </div>
-                  <div id="calHoursKpiRow" style="display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">
-                    <div style="flex:1;min-width:110px;background:var(--bg-secondary);border-radius:10px;padding:12px 16px;">
-                      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Total Hours</div>
-                      <div id="calHoursTotalHours" style="font-size:1.6rem;font-weight:700;color:var(--primary);">—</div>
-                      <div style="font-size:0.7rem;color:var(--text-muted);" id="calHoursWeekLabel">last 4 wks</div>
-                    </div>
-                    <div style="flex:1;min-width:110px;background:var(--bg-secondary);border-radius:10px;padding:12px 16px;">
-                      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Avg / Week</div>
-                      <div id="calHoursAvgWeek" style="font-size:1.6rem;font-weight:700;color:#10b981;">—</div>
-                    </div>
-                    <div style="flex:1;min-width:110px;background:var(--bg-secondary);border-radius:10px;padding:12px 16px;">
-                      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Peak Day</div>
-                      <div id="calHoursPeakDay" style="font-size:1.6rem;font-weight:700;color:#f59e0b;">—</div>
-                    </div>
-                    <div style="flex:1;min-width:110px;background:var(--bg-secondary);border-radius:10px;padding:12px 16px;">
-                      <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;">Sessions Found</div>
-                      <div id="calHoursMatched" style="font-size:1.6rem;font-weight:700;color:#6366f1;">—</div>
-                    </div>
-                  </div>
-                  <div id="calHoursChartWrap" style="position:relative;height:240px;display:none;">
-                    <canvas id="calHoursChart"></canvas>
-                  </div>
-                  <div id="calHoursEmpty" style="text-align:center;padding:2rem;color:var(--text-muted);display:none;">
-                    <i class="fas fa-calendar-times" style="font-size:2rem;opacity:.3;display:block;margin-bottom:.5rem;"></i>
-                    No class events found for this teacher in the calendar.
-                  </div>
-                  <div id="calHoursLoading" style="text-align:center;padding:2rem;color:var(--text-muted);">
-                    <i class="fas fa-spinner fa-spin"></i> Loading calendar data...
-                  </div>
-                </div>
-
                 <!-- Teacher Replacement History -->
                 <div class="audit-log-container" style="margin-top:1.5rem;" id="replacementHistorySection">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
                     <h3 class="dashboard-section-title" style="margin:0;"><i class="fas fa-exchange-alt" style="color:#d32f2f;margin-right:8px;"></i>Replacement History</h3>
                     <div id="replacementHistoryBadges" style="display:flex;gap:8px;"></div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:1rem;font-size:0.82rem;">
+                    <label for="repHistFrom" style="font-weight:600;color:var(--text-light);">From</label>
+                    <input type="date" id="repHistFrom" class="form-control" style="width:150px;font-size:0.82rem;" onchange="reloadReplacementHistory()">
+                    <label for="repHistTo" style="font-weight:600;color:var(--text-light);">To</label>
+                    <input type="date" id="repHistTo" class="form-control" style="width:150px;font-size:0.82rem;" onchange="reloadReplacementHistory()">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="repHistPreset(30)">Last 30 days</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="repHistPreset(90)">Last 90 days</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="repHistPreset(365)">Last year</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="repHistPreset(0)">All time</button>
+                    <span id="repHistNote" style="color:var(--text-muted);"></span>
                   </div>
                   <div id="replacementHistoryLoading" style="text-align:center;padding:2rem;color:var(--text-muted);">
                     <i class="fas fa-spinner fa-spin"></i> Loading history...
@@ -2662,7 +2629,7 @@
                   </div>
                   <div id="replacementHistoryEmpty" style="text-align:center;padding:2rem;color:var(--text-muted);display:none;">
                     <i class="fas fa-check-circle" style="font-size:2rem;opacity:.3;display:block;margin-bottom:.5rem;color:#10b981;"></i>
-                    No replacement history found for this teacher.
+                    No replacements in this date range. Widen the dates, or choose All time.
                   </div>
                 </div>
 
@@ -6940,10 +6907,8 @@
         teacher.clsManagerResponsible || '',   // CLS Manager name (from Persona sheet)
         teacher.clsEmail              || ''    // CLS email (for mailto link)
       );
-    } else {
-      // Cache not ready — show loading, it will update when backend responds
-      window._setManagerCards('Loading…', '', 'Loading…', '');
     }
+    // else: not in the details cache — the manager cards are filled from the teacher's own load response, so leave them as they are
   }
 
   // Also exposed globally so if JavaScript.html ever calls it directly

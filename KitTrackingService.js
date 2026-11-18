@@ -2958,6 +2958,51 @@ function getKitBadgeStats() {
 }
 
 // Persist a HubSpot deal ID for a kit row so future UI renders can direct-link
+
+// Fills the "HS Deal" id on Kit Tracking rows that do not have one yet, in a few bulk HubSpot searches (100 JLIDs each) instead of
+// one slow lookup per click. Returns { success, filled: { JLID: dealId } }. Capped per call so it always finishes quickly.
+function ktBackfillDealIds() {
+  try {
+    var sheet = _getKitSheet();
+    var last = sheet.getLastRow();
+    if (last < 2) return { success: true, filled: {} };
+    var jl = sheet.getRange(2, KIT_COL.JLID, last - 1, 1).getValues();
+    var hd = sheet.getRange(2, KIT_COL.HS_DEAL_ID, last - 1, 1).getValues();
+    var need = {}, order = [];
+    for (var i = 0; i < jl.length; i++) {
+      var id = String(jl[i][0] || '').trim().toUpperCase();
+      if (!id || String(hd[i][0] || '').trim()) continue;
+      if (!need[id]) { need[id] = []; order.push(id); }
+      need[id].push(i + 2);
+    }
+    order = order.slice(0, 300);
+    if (!order.length) return { success: true, filled: {} };
+    var token = PropertiesService.getScriptProperties().getProperty('HUBSPOT_API_KEY');
+    var filled = {};
+    for (var b = 0; b < order.length; b += 100) {
+      var batch = order.slice(b, b + 100);
+      var resp = monitoredFetch('https://api.hubapi.com/crm/v3/objects/deals/search', {
+        method: 'post', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ filterGroups: [{ filters: [{ propertyName: 'jetlearner_id', operator: 'IN', values: batch }] }], properties: ['jetlearner_id'], limit: 100 }),
+        muteHttpExceptions: true
+      });
+      if (resp.getResponseCode() !== 200) { Logger.log('[ktBackfillDealIds] HTTP ' + resp.getResponseCode()); continue; }
+      var data = JSON.parse(resp.getContentText());
+      (data.results || []).forEach(function(d) {
+        var jid = String((d.properties || {}).jetlearner_id || '').trim().toUpperCase();
+        if (jid && !filled[jid]) filled[jid] = String(d.id);
+      });
+    }
+    Object.keys(filled).forEach(function(jid) {
+      (need[jid] || []).forEach(function(row) { sheet.getRange(row, KIT_COL.HS_DEAL_ID).setValue(filled[jid]); });
+    });
+    return { success: true, filled: filled };
+  } catch (e) {
+    Logger.log('[ktBackfillDealIds] ' + e.message);
+    return { success: false, message: e.message, filled: {} };
+  }
+}
+
 function ktSaveDealId(rowIndex, hsDealId) {
   try {
     if (!rowIndex || !hsDealId) return { success: false };

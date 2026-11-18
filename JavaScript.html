@@ -6983,40 +6983,39 @@ function loadTeacherLoadPage() {
     const filterEl = document.getElementById('personaStatusFilter');
     if (filterEl) filterEl.onchange = function() { renderPersonaTable(); };
 
-    // Fetch full teacher details if cache is empty
-    if (allTeacherDetailsCache.length === 0) {
-        showLoading('Loading teacher directory...');
-        google.script.run
-            .withSuccessHandler(function(teachers) {
-                hideLoading();
-                allTeacherDetailsCache = teachers || [];
-                globalTeacherDataList  = allTeacherDetailsCache.map(function(t) { return t.name || t; });
-                renderTeacherOptions(globalTeacherDataList);
-            })
-            .withFailureHandler(function(err) { hideLoading(); showError(err); })
-            .tpwTeacherDetailsScoped(tpwTok(), tpwVA());
-    } else {
-        globalTeacherDataList = allTeacherDetailsCache.map(function(t) { return t.name || t; });
-        renderTeacherOptions(globalTeacherDataList);
-    }
+    // The Select Teacher box only needs NAMES, so it loads the light list straight from the Teacher Data sheet — it no longer waits on the
+    // heavy teacher-details call (HubSpot counts + audit-log scans) and does not depend on any form having been opened first.
+    if (globalTeacherDataList && globalTeacherDataList.length) renderTeacherOptions(globalTeacherDataList);   // instant, from what we already have
+    else listEl.innerHTML = '<div class="hs-option" style="color:#999; cursor:default;"><i class="fas fa-spinner fa-spin"><\/i> Loading teachers\u2026<\/div>';
+    google.script.run
+        .withSuccessHandler(function(names) {
+            globalTeacherDataList = names || [];
+            renderTeacherOptions(globalTeacherDataList);
+        })
+        .withFailureHandler(function(err) {
+            listEl.innerHTML = '<div class="hs-option" style="color:#b91c1c; cursor:default;">Could not load teachers: ' + escapeHtml((err && err.message) || String(err)) + '<\/div>';
+        })
+        .tpwTeacherNames(tpwTok(), tpwVA());
 
     // Show list on focus
-    inputEl.addEventListener('focus', function() { listEl.classList.add('show'); });
+    inputEl.onfocus = function() { listEl.classList.add('show'); };
 
     // Filter as you type
-    inputEl.addEventListener('input', function() {
+    inputEl.oninput = function() {
         var searchTerm = this.value.toLowerCase();
         var filtered   = globalTeacherDataList.filter(function(t) { return t.toLowerCase().includes(searchTerm); });
         renderTeacherOptions(filtered);
         listEl.classList.add('show');
-    });
+    };
 
-    // Close when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!inputEl.contains(e.target) && !listEl.contains(e.target)) {
-            listEl.classList.remove('show');
-        }
-    });
+    // Close when clicking outside (registered once)
+    if (!window._hsTeacherListCloseWired) {
+        window._hsTeacherListCloseWired = true;
+        document.addEventListener('click', function(e) {
+            var i = document.getElementById('hsTeacherSearchInput'), l = document.getElementById('hsTeacherOptionsList');
+            if (i && l && !i.contains(e.target) && !l.contains(e.target)) l.classList.remove('show');
+        });
+    }
 }
 
 
@@ -7067,8 +7066,7 @@ function loadTeacherSpecificDetails(teacherName) {
     const existing = document.getElementById('attritionRiskSection');
     if (existing) existing.remove();
 
-    // Reset calendar hours & replacement history panels
-    _resetCalHoursPanel();
+    // Reset replacement history panel
     _resetReplacementHistoryPanel();
 
     // All 4 calls fire in parallel \u2014 none depends on another's result, only the teacher name.
@@ -7078,9 +7076,18 @@ function loadTeacherSpecificDetails(teacherName) {
     google.script.run
         .withSuccessHandler(data => {
             if (!data || !data.success) {
-                showToast('error', 'Error', data ? data.message : 'Unknown error');
+                // Not in the Teacher Courses sheet (new teacher / spelled differently there): still show the page with what we do have
+                // (calendar hours, replacement history, learners) instead of leaving it blank.
+                if (window._setManagerCards) window._setManagerCards(data && data.manager || '', data && data.tpManagerEmail || '', data && data.clsManagerResponsible || '', data && data.clsEmail || '');
+                const st0 = document.getElementById('loadDisplayStatus'); if (st0) { st0.textContent = '-'; st0.style.color = ''; }
+                const lc0 = document.getElementById('loadDisplayCount'); if (lc0) lc0.textContent = '-';
+                const la0 = document.getElementById('loadDisplayLastActive'); if (la0) la0.textContent = 'No recent activity';
+                const tb0 = document.getElementById('loadDisplayTableBody');
+                if (tb0) tb0.innerHTML = '<tr><td colspan="2" style="text-align:center; padding:2rem;">' + escapeHtml((data && data.message) || 'No course data') + ' \u2014 this teacher is not in the Teacher Courses sheet yet, so there is no course progress to show.<\/td><\/tr>';
+                if (resultsContainer) resultsContainer.style.display = 'block';
                 return;
             }
+            if (window._setManagerCards) window._setManagerCards(data.manager || '', data.tpManagerEmail || '', data.clsManagerResponsible || '', data.clsEmail || '');
             const statusEl = document.getElementById('loadDisplayStatus');
             if (statusEl) {
                 statusEl.textContent  = data.status || '-';
@@ -7107,10 +7114,7 @@ function loadTeacherSpecificDetails(teacherName) {
             if (resultsContainer) resultsContainer.style.display = 'block';
         })
         .withFailureHandler(err => { showError(err); })
-        .getTeacherSpecificLoad(teacherName);
-
-    // CALL 2: Teaching Hours Distribution (Calendar)
-    _loadCalendarHours(teacherName);
+        .getTeacherSpecificLoad(teacherName, true);   // light: no all-learners HubSpot scan
 
     // CALL 3: Replacement History (HubSpot)
     _loadReplacementHistory(teacherName);
@@ -7221,119 +7225,6 @@ function loadTeacherSpecificDetails(teacherName) {
         .getTeacherAttritionReport(teacherName);
 }
 
-// \u2500\u2500 Calendar Hours helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-var _calHoursChart = null;   // Chart.js instance \u2014 destroyed on re-render
-var _calHoursCurrentTeacher = '';
-var _calHoursCurrentWeeks   = 4;
-
-function _resetCalHoursPanel() {
-    const loading = document.getElementById('calHoursLoading');
-    const wrap    = document.getElementById('calHoursChartWrap');
-    const empty   = document.getElementById('calHoursEmpty');
-    if (loading) { loading.style.display = 'block'; }
-    if (wrap)    { wrap.style.display    = 'none';  }
-    if (empty)   { empty.style.display   = 'none';  }
-    ['calHoursTotalHours','calHoursAvgWeek','calHoursPeakDay','calHoursMatched'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = '\u2014';
-    });
-    if (_calHoursChart) { try { _calHoursChart.destroy(); } catch(e) {} _calHoursChart = null; }
-}
-
-function _loadCalendarHours(teacherName, weeksBack) {
-    var _wsEl = document.getElementById('calHoursWeeksSelect');
-    weeksBack = weeksBack || parseInt((_wsEl ? _wsEl.value : null) || '4', 10);
-    _calHoursCurrentTeacher = teacherName;
-    _calHoursCurrentWeeks   = weeksBack;
-
-    const weeksLabel = document.getElementById('calHoursWeekLabel');
-    if (weeksLabel) weeksLabel.textContent = 'last ' + weeksBack + ' wks';
-
-    google.script.run
-        .withSuccessHandler(data => _renderCalHours(data))
-        .withFailureHandler(err => {
-            const loading = document.getElementById('calHoursLoading');
-            if (loading) loading.style.display = 'none';
-            console.error('[CalHours] Error:', err);
-        })
-        .getTeacherCalendarHours(teacherName, weeksBack);
-}
-
-function reloadCalendarHours() {
-    if (!_calHoursCurrentTeacher) return;
-    _resetCalHoursPanel();
-    _loadCalendarHours(_calHoursCurrentTeacher);
-}
-
-function _renderCalHours(data) {
-    const loading = document.getElementById('calHoursLoading');
-    const wrap    = document.getElementById('calHoursChartWrap');
-    const empty   = document.getElementById('calHoursEmpty');
-    if (loading) loading.style.display = 'none';
-
-    if (!data || !data.success || !data.hours || data.matched === 0) {
-        if (empty) empty.style.display = 'block';
-        ['calHoursTotalHours','calHoursAvgWeek','calHoursPeakDay','calHoursMatched'].forEach(id => {
-            const el = document.getElementById(id); if (el) el.textContent = '0';
-        });
-        return;
-    }
-
-    document.getElementById('calHoursTotalHours').textContent = data.totalHours + 'h';
-    document.getElementById('calHoursAvgWeek').textContent    = data.avgPerWeek + 'h';
-    document.getElementById('calHoursPeakDay').textContent    = data.peakDay;
-    document.getElementById('calHoursMatched').textContent    = data.matched;
-
-    if (wrap) wrap.style.display = 'block';
-
-    const canvas = document.getElementById('calHoursChart');
-    if (!canvas) return;
-    if (_calHoursChart) { try { _calHoursChart.destroy(); } catch(e) {} }
-
-    const maxHours = Math.max(...data.hours);
-    _calHoursChart = new Chart(canvas.getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: data.days,
-            datasets: [{
-                label: 'Teaching Hours',
-                data:  data.hours,
-                backgroundColor: data.hours.map(h =>
-                    h === maxHours && h > 0 ? 'rgba(99,102,241,0.85)' : 'rgba(99,102,241,0.35)'
-                ),
-                borderColor: 'rgba(99,102,241,0.9)',
-                borderWidth: 1,
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: ctx => {
-                            const h = ctx.parsed.y;
-                            const events = data.eventCount[ctx.dataIndex];
-                            return ' ' + h + 'h  (' + events + ' session' + (events !== 1 ? 's' : '') + ')';
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { callback: v => v + 'h' },
-                    grid: { color: 'rgba(0,0,0,0.05)' }
-                },
-                x: { grid: { display: false } }
-            }
-        }
-    });
-}
-
-
 // \u2500\u2500 Replacement History helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 function _resetReplacementHistoryPanel() {
     const loading = document.getElementById('replacementHistoryLoading');
@@ -7346,7 +7237,31 @@ function _resetReplacementHistoryPanel() {
     if (badges)  badges.innerHTML      = '';
 }
 
+// Replacement History date range: defaults to the last 30 days, so a teacher with a long history loads fast and shows only recent moves.
+var _repHistTeacher = '';
+function _repHistFmt(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function repHistPreset(days) {
+    var f = document.getElementById('repHistFrom'), t = document.getElementById('repHistTo');
+    if (!f || !t) return;
+    if (!days) { f.value = ''; t.value = ''; }
+    else { var now = new Date(), from = new Date(now.getTime() - days * 86400000); f.value = _repHistFmt(from); t.value = _repHistFmt(now); }
+    reloadReplacementHistory();
+}
+function reloadReplacementHistory() {
+    if (!_repHistTeacher) return;
+    _resetReplacementHistoryPanel();
+    _loadReplacementHistory(_repHistTeacher);
+}
+
 function _loadReplacementHistory(teacherName) {
+    _repHistTeacher = teacherName;
+    var f = document.getElementById('repHistFrom'), t = document.getElementById('repHistTo');
+    // first time on this page (both empty and never touched): start with the last 30 days
+    if (f && t && !f.value && !t.value && !window._repHistTouched) {
+        var now = new Date(); f.value = _repHistFmt(new Date(now.getTime() - 30 * 86400000)); t.value = _repHistFmt(now);
+    }
+    window._repHistTouched = true;
+    var fromV = f ? f.value : '', toV = t ? t.value : '';
     google.script.run
         .withSuccessHandler(data => _renderReplacementHistory(data))
         .withFailureHandler(err => {
@@ -7354,7 +7269,7 @@ function _loadReplacementHistory(teacherName) {
             if (loading) loading.style.display = 'none';
             console.error('[RepHistory] Error:', err);
         })
-        .getTeacherReplacementHistory(teacherName);
+        .getTeacherReplacementHistory(teacherName, fromV, toV);
 }
 
 function _renderReplacementHistory(data) {
@@ -7365,6 +7280,8 @@ function _renderReplacementHistory(data) {
     const tbody   = document.getElementById('replacementHistoryBody');
     if (loading) loading.style.display = 'none';
 
+    var note = document.getElementById('repHistNote');
+    if (note) note.textContent = (data && data.truncated) ? 'Showing the latest 100 per direction \u2014 narrow the dates to see fewer.' : '';
     if (!data || !data.success || !data.history || data.history.length === 0) {
         if (empty) empty.style.display = 'block';
         return;
@@ -11004,6 +10921,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.59': [
+      "**No teacher emails for sales-pitch kits**: when a kit's reason is 'Sales Pitch' (for example 'New Learner - Sales Pitched'), the teacher is not told about it at all - not when it is ordered, delayed, late, delivered, cancelled or reordered, and not in the daily nudges. The reason you pick in Mark Order Placed decides it.",
+    ],
+    'V10.58': [
+      "**Kit Tracking: icon buttons + instant HubSpot link**: on JetLearn Sends, Asking Address, Parent Will Buy, Pivot and Gift Cards the action buttons are now compact icons (hover for the name), and the HubSpot icon opens the deal straight away — no waiting on a lookup. Deals that had no saved link open the HubSpot search for the JLID at once and switch to the exact deal a moment later, once the missing deal ids have been filled in the background.",
+      "**TP / CLS manager cards fixed**: on the Teacher Intelligence Load Dashboard they stayed on 'Loading…' (a side effect of the faster teacher box in v10.57). They now fill from the teacher's own data, with names and emails taken from the Teacher Data sheet when the Persona sheet has none, and also for teachers who are not in the Teacher Courses sheet.",
+      "**Load Dashboard data arrives together**: the course list no longer waits on a scan of every active learner in HubSpot (up to 30 requests) that only the profile page needs. Status, courses and managers now come from sheets in a moment, alongside the learner count. The upskilling checks and the TP Workspace teacher details use the same quicker lookup.",
+    ],
+    'V10.57': [
+      "**Replacement History date filter**: choose From / To dates (or Last 30 days, Last 90 days, Last year, All time). It opens on the last 30 days, and only those tickets are fetched from HubSpot, so the panel loads faster and shows less.",
+      "**Teaching Hours Distribution removed** from Teacher Intelligence for everyone. It read the teacher's calendar on every selection and slowed down the rest of the page; the other panels now load faster.",
+      "**Teacher Intelligence 'Select Teacher' always loads**: the box now gets just the teacher names straight from the Teacher Data sheet (fast), instead of waiting on the heavy teacher-details call, and no longer depends on any teacher or form having been used first. If a chosen teacher is missing from the Teacher Courses sheet the page still opens with their calendar hours, replacement history and learners, and says there is no course progress yet, instead of staying blank.",
+    ],
     'V10.56': [
       "**View as a TP manager now shows exactly what they see**: the menu is cut down to TP Workspace, Teacher Intelligence and Teacher Persona, admin-only controls on the TP Workspace page are hidden, and a 'Back to admin view' button floats at the bottom of every page until you switch back.",
       "**Teacher Persona for TP managers**: TP managers now have the full Teacher Persona tool (Smart Context Fetch, matching, results) as a third menu item next to TP Workspace and Teacher Intelligence. Nothing is cut down; everything else stays hidden from them.",
@@ -16642,10 +16572,7 @@ function renderKitTrackingTable(filterArg) {
       + '<td style="padding:10px 14px;">' + statusBadge + '<\/td>'
       + '<td style="padding:10px 14px;" onclick="event.stopPropagation()">' + actionBtn + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
-      +   (row.jlid ? (row.hsDealId
-            ? '<a href="https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId) + '" target="_blank" onclick="event.stopPropagation();" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>'
-            : '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this,' + row.rowIndex + ')" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>')
-          : '')
+      +   ktHsCell(row)
       + '<\/td>'
       + '<\/tr>' + detailHtml;
   }).join('');
@@ -16752,10 +16679,7 @@ function renderKitAskingAddressTable() {
       + '<td style="padding:10px 14px;font-size:0.76rem;color:#64748b;white-space:nowrap;">' + (escapeHtml(row.addrRequestedAt) || '—') + '<\/td>'
       + '<td style="padding:10px 14px;white-space:nowrap;" onclick="event.stopPropagation()">' + msgBtn + ktFinalAddrBtns(row, orderBtn, isClosedAddr, isClosedOnly) + '<\/td>'
       + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">'
-      +   (row.jlid ? (row.hsDealId
-            ? '<a href="https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId) + '" target="_blank" onclick="event.stopPropagation();" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>'
-            : '<button onclick="openHsDeal(\'' + escapeHtml(row.jlid) + '\',this,' + row.rowIndex + ')" style="background:#ff7a59;border:none;border-radius:6px;padding:3px 8px;color:#fff;font-size:0.72rem;cursor:pointer;white-space:nowrap;"><i class="fas fa-external-link-alt" style="margin-right:3px;"><\/i>HS Deal<\/button>')
-          : '')
+      +   ktHsCell(row)
       + '<\/td>'
       + '<\/tr>';
   }).join('');
@@ -23897,4 +23821,79 @@ function tpwRenderViewAsBar() {
   el.innerHTML = '<span>\ud83d\udc41 Viewing as <b>' + tpwE(tpw.viewAs) + '</b> \u2014 exactly what they see</span>'
     + '<button style="border:none;background:#f59e0b;color:#1e1b4b;font-weight:700;border-radius:99px;padding:6px 14px;cursor:pointer;" onclick="tpwSetViewAs(\'\')">Back to admin view</button>';
 }
+
+// ── Kit Tracking: icon-only action buttons + instant HubSpot links ──────────────────────────────────────────────
+// Every action button in the Kit Tracking tables (JetLearn Sends, Asking Address, Parent Will Buy, Pivot, Gift Cards) becomes a compact icon with the
+// old label as its tooltip. Done once per rendered row by a small observer, so every tab gets it without touching each renderer.
+function ktIconifyActions() {
+  var page = document.getElementById('kitTrackingPage');
+  if (!page) return;
+  page.querySelectorAll('tbody td button:not([data-ki]), tbody td a:not([data-ki])').forEach(function(el) {
+    el.setAttribute('data-ki', '1');
+    var label = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    var ic = el.querySelector('i');
+    if (!ic && /Refund$/.test(label)) { ic = document.createElement('i'); ic.className = 'fas fa-undo'; el.insertBefore(ic, el.firstChild); el.insertBefore(document.createTextNode(' Refund'), ic.nextSibling); label = 'Refund'; }
+    if (ic && ic.parentNode === el && !label) { el.classList.add('kt-ic'); return; }   // already icon-only (e.g. the pencil): just give it the same size
+    if (!ic || ic.parentNode !== el || !label) return;
+    var rest = Array.prototype.filter.call(el.childNodes, function(n) { return n !== ic && !(n.nodeType === 3 && !n.textContent.trim()); });
+    var span = document.createElement('span');
+    var chat = label.match(/^Chat (\d)$/);
+    span.className = chat ? 'kt-num' : 'kt-lbl';
+    if (chat) { span.textContent = chat[1]; rest.forEach(function(n) { if (n.parentNode === el) el.removeChild(n); }); }
+    else rest.forEach(function(n) { span.appendChild(n); });
+    el.appendChild(span);
+    if (label === 'HS Deal') {
+      ic.className = 'fab fa-hubspot';
+      el.style.background = '#fff'; el.style.color = '#ff7a59'; el.style.border = '1px solid #ff7a59';
+      if (!el.title) el.title = 'Open HubSpot deal';
+    } else if (!el.title) el.title = label;
+    el.classList.add('kt-ic');
+  });
+  ktBackfillHsDeals();
+}
+
+// HubSpot deal link that opens straight away. With a saved deal id it goes to the deal; without one it goes to the HubSpot search for the JLID at once
+// (no waiting on a lookup) and is upgraded in place to the exact deal as soon as the background fill below has found it.
+function ktHsCell(row) {
+  if (!row || !row.jlid) return '';
+  var j = escapeHtml(row.jlid);
+  var url = row.hsDealId ? 'https://app.hubspot.com/contacts/7729491/deal/' + escapeHtml(row.hsDealId)
+                         : 'https://app.hubspot.com/contacts/7729491/objects/0-3/views/all/list?query=' + encodeURIComponent(row.jlid);
+  return '<a href="' + url + '" target="_blank" rel="noopener" data-hs-jlid="' + j + '"' + (row.hsDealId ? '' : ' data-hs-pending="1"')
+    + ' onclick="event.stopPropagation();" style="background:#fff;border:1px solid #ff7a59;border-radius:6px;padding:3px 8px;color:#ff7a59;font-size:0.72rem;text-decoration:none;display:inline-flex;align-items:center;gap:3px;" title="Open HubSpot deal"><i class="fas fa-external-link-alt"><\/i>HS Deal<\/a>';
+}
+
+var _ktHsBackfillState = 0;   // 0 = not started, 1 = running, 2 = done for this page load
+function ktBackfillHsDeals() {
+  if (_ktHsBackfillState !== 0) return;
+  if (!document.querySelector('#kitTrackingPage a[data-hs-pending]')) return;
+  _ktHsBackfillState = 1;
+  google.script.run
+    .withSuccessHandler(function(res) {
+      _ktHsBackfillState = 2;
+      var filled = (res && res.filled) || {};
+      Object.keys(filled).forEach(function(jid) {
+        var url = 'https://app.hubspot.com/contacts/7729491/deal/' + filled[jid];
+        document.querySelectorAll('#kitTrackingPage a[data-hs-jlid="' + jid + '"]').forEach(function(a) { a.href = url; a.removeAttribute('data-hs-pending'); });
+        try { (_kitTrackingData || []).forEach(function(r) { if (String(r.jlid).toUpperCase() === jid) r.hsDealId = filled[jid]; }); } catch (e) {}
+      });
+    })
+    .withFailureHandler(function() { _ktHsBackfillState = 2; })
+    .ktBackfillDealIds();
+}
+
+(function() {
+  var queued = false;
+  var start = function() {
+    var page = document.getElementById('kitTrackingPage');
+    if (!page) return;
+    new MutationObserver(function() {
+      if (queued) return;
+      queued = true;
+      setTimeout(function() { queued = false; try { ktIconifyActions(); } catch (e) { console.warn('[kt icons]', e); } }, 0);
+    }).observe(page, { childList: true, subtree: true });
+    ktIconifyActions();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
 </script>

@@ -1,6 +1,23 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-23] — No teacher emails for sales-pitch kits (V10.59)
+- `KitTeacherNotifyService.js`: `_ktIsSalesPitch(reason)` (`/sales\s*pitch/i` on the row's Reason column). `kitTeacherNotify` returns `{ skipped: true, salesPitch: true }` before anything is composed or sent, so every event (ordered, delayed, late, check_cls, delivered, reorder, cancelled, and the manual Message Parent "tell the teacher" tick) is skipped; `kitTeacherFollowups` skips those rows up front.
+
+---
+## [2026-11-22] — Manager cards + faster Load Dashboard (V10.58)
+- Kit Tracking icon buttons: `ktIconifyActions` (MutationObserver on `#kitTrackingPage`) turns every `tbody td` button / link that has an icon into a 30px icon button with the old label as tooltip (`Styles.html` `.kt-ic`); `ktHsCell(row)` replaces the two "HS Deal" button blocks with a direct link (deal id, else HubSpot search for the JLID) upgraded in place by `ktBackfillHsDeals` -> `ktBackfillDealIds()` (`KitTrackingService.js`: bulk `jetlearner_id IN [...]` deal search, 100 per request, max 300 JLIDs per call, writes `HS_DEAL_ID`).
+- `TeacherService.js`: `getTeacherSpecificLoad(teacher, lite)` - `lite` skips `_buildAllTeacherStatsMap()` (pages every active learner deal in HubSpot, up to 30 requests, uncached across calls) and the per-course stats merge; used by the Load Dashboard, `checkNewTeacherForLearner`, `checkAndWriteUpskillNote`, migration email upskill check, TP Workspace snapshot. `_lookupTeacherManagers` (Teacher Data G/H/J/K) fills blank manager names / emails and is also returned when the teacher is not in Teacher Courses.
+- `JavaScript.html` `loadTeacherSpecificDetails` fills the manager cards from that response (`_setManagerCards`); `Index.html` `_fillManagerFromCache` no longer overwrites them with "Loading…" when the details cache is empty (it is not loaded by the light teacher box since V10.57).
+
+---
+## [2026-11-21] — Teacher Intelligence teacher box always loads (V10.57)
+- Replacement History date range: `getTeacherReplacementHistory(teacher, fromDate, toDate)` adds `createdate` GTE / LTE filters to both HubSpot ticket searches (range is part of the cache key; `truncated` when 100 are returned); `Index.html` From / To inputs + presets, `JavaScript.html` `repHistPreset` / `reloadReplacementHistory`, default last 30 days.
+- Removed the Teaching Hours Distribution panel (Index.html `#teachingHoursSection`, and `_resetCalHoursPanel` / `_loadCalendarHours` / `reloadCalendarHours` / `_renderCalHours` in JavaScript.html): it called `getTeacherCalendarHours` (CalendarApp scan) on every teacher selection. The server function is left in `TeacherService.js`, unused.
+- `TPWorkspaceService.js` `tpwTeacherNames(token, viewAs)`: names only from the Teacher Data directory (all for admin, scoped for TP / view-as) - no HubSpot, no per-teacher audit-log scan. `JavaScript.html` `loadTeacherLoadPage` uses it (instant render from cache, light refresh, load-failure message shown in the list) and assigns focus/input handlers once instead of stacking them on every visit.
+- `loadTeacherSpecificDetails`: when `getTeacherSpecificLoad` says the teacher is not in the Teacher Courses sheet, the results panel still opens (status "-", "no course progress yet") so calendar hours / replacement history / attrition pool load, instead of a blank page with only a toast.
+
+---
 ## [2026-11-20] — Teacher Persona page for TP managers (V10.56)
 - "View as" now applies the TP restrictions (`tpwApplyRoleUI` treats `tpw.viewAs` like a TP login): menu limited, admin controls / banner hidden, floating `tpwRenderViewAsBar` pill with "Back to admin view" on every page.
 - `JavaScript.html`: `switchPage` allows `personaPage` for the TP Manager role, `tpwApplyRoleUI` keeps the `persona` menu item; `tpwPrimePersonaData` loads the shared teacher / course / time zone lists (`getCommunicationPageData`) the page's pickers read. The persona tool itself is unchanged and unscoped (full matching). Calendar booking buttons still follow the per-user `book_classes_calendar` feature toggle.

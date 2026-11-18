@@ -477,7 +477,7 @@ function tpwTeacherSnapshot(token, teacher, viewAs) {
     if (!ctx.ok) return { success: false, message: ctx.message };
     if (!_tpwCanSee(ctx, teacher)) return { success: false, message: 'That teacher is not on your list.' };
     var load = {};
-    try { load = getTeacherSpecificLoad(teacher) || {}; } catch (e) {}
+    try { load = getTeacherSpecificLoad(teacher, true) || {}; } catch (e) {}
     var courses = ((load && load.success) ? (load.courses || []) : []).map(function(c) {
       var p = _upskillPct(c.proficiency);
       return { course: c.course, text: c.proficiency, pct: p, tier: _upskillTier(p) };
@@ -1067,4 +1067,17 @@ function tpwCoverage(token) {
       notInSystem: Object.keys(notIn).map(function(k) { return notIn[k]; }).sort(function(a, b) { return b.teachers.length - a.teachers.length; }),
       conflicts: conflicts };
   } catch (e) { return { success: false, message: e.message }; }
+}
+
+// Just the teacher names, fast (no HubSpot, no audit-log scan) — what the Teacher Intelligence "Select Teacher" box needs.
+// Admin: every teacher. TP manager (or admin viewing as one): only their own.
+function tpwTeacherNames(token, viewAs) {
+  var ctx = _tpwCtx(token, viewAs);
+  if (!ctx.ok) throw new Error(ctx.message);
+  var dir = _tpwTeacherDirectory();
+  var names = dir.filter(function(t) { return ctx.isAdmin || (ctx.scope && ctx.scope[_tpwNorm(t.name)]); })
+    .map(function(t) { return t.name; });
+  var seen = {};
+  return names.filter(function(n) { var k = _tpwNorm(n); if (!k || seen[k]) return false; seen[k] = true; return true; })
+    .sort(function(a, b) { return a.localeCompare(b); });
 }

@@ -2186,7 +2186,7 @@ function checkNewTeacherForLearner(jlid, newTeacherName, slotParams) {
         mipTicketId = currentTicketEntry.id;
         var rawProps = currentTicketEntry.rawProps || {};
         var teacherLoadResult = {};
-        try { teacherLoadResult = getTeacherSpecificLoad(resolvedNew); } catch(te) {
+        try { teacherLoadResult = getTeacherSpecificLoad(resolvedNew, true); } catch(te) {
           Logger.log('[checkNewTeacherForLearner] getTeacherSpecificLoad error: ' + te.message);
         }
         var teacherCourseList = (teacherLoadResult && teacherLoadResult.success) ? (teacherLoadResult.courses || []) : [];
@@ -3280,7 +3280,7 @@ function checkAndWriteUpskillNote(jlid, newTeacherName, confirmedCourses, curren
     var resolvedNew = newTeacherName;
     try { resolvedNew = resolveTeacherName(newTeacherName); } catch(e) {}
     var teacherLoadResult2 = {};
-    try { teacherLoadResult2 = getTeacherSpecificLoad(resolvedNew); } catch(e) {}
+    try { teacherLoadResult2 = getTeacherSpecificLoad(resolvedNew, true); } catch(e) {}
     var teacherCourseList = (teacherLoadResult2 && teacherLoadResult2.success) ? (teacherLoadResult2.courses || []) : [];
     if (!teacherLoadResult2 || !teacherLoadResult2.success) {
       addNoteToHubSpotTicket(ticketId, '⚠️ Teacher Upskilling Check — could not run\n'
@@ -4102,11 +4102,15 @@ function fetchPersonaSmartData(jlid) {
 // Returns all migration tickets where this teacher was involved as
 // "from" (learner left) or "to" (learner joined), newest first.
 // ─────────────────────────────────────────────────────────────────────────────
-function getTeacherReplacementHistory(teacherName) {
+// fromDate / toDate ('yyyy-MM-dd', both optional): only tickets created in that range are fetched from HubSpot, so a short range is also a faster one.
+function getTeacherReplacementHistory(teacherName, fromDate, toDate) {
   try {
     if (!teacherName) return { success: false, message: 'Teacher name required.' };
 
-    var _trhCacheKey = 'tchRepHistory_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_');
+    var _fromMs = null, _toMs = null;
+    if (fromDate && /^\d{4}-\d{2}-\d{2}$/.test(String(fromDate))) _fromMs = new Date(fromDate + 'T00:00:00').getTime();
+    if (toDate && /^\d{4}-\d{2}-\d{2}$/.test(String(toDate)))     _toMs   = new Date(toDate   + 'T23:59:59').getTime();
+    var _trhCacheKey = 'tchRepHistory_' + String(teacherName || '').trim().toLowerCase().replace(/\s+/g, '_') + '_' + (fromDate || '') + '_' + (toDate || '');
     try {
       var _trhCached = CacheService.getScriptCache().get(_trhCacheKey);
       if (_trhCached) { return JSON.parse(_trhCached); }
@@ -4142,11 +4146,14 @@ function getTeacherReplacementHistory(teacherName) {
     ];
 
     function fetchTickets(filterProp) {
+      var filters = [
+        { propertyName: filterProp,    operator: 'EQ', value: filterValue },
+        { propertyName: 'hs_pipeline', operator: 'EQ', value: PIPELINE }
+      ];
+      if (_fromMs !== null) filters.push({ propertyName: 'createdate', operator: 'GTE', value: String(_fromMs) });
+      if (_toMs   !== null) filters.push({ propertyName: 'createdate', operator: 'LTE', value: String(_toMs) });
       var body = {
-        filterGroups: [{ filters: [
-          { propertyName: filterProp,    operator: 'EQ', value: filterValue },
-          { propertyName: 'hs_pipeline', operator: 'EQ', value: PIPELINE }
-        ]}],
+        filterGroups: [{ filters: filters }],
         properties: TICKET_PROPS,
         sorts: [{ propertyName: 'createdate', direction: 'DESCENDING' }],
         limit: 100
@@ -4156,9 +4163,12 @@ function getTeacherReplacementHistory(teacherName) {
         payload: JSON.stringify(body), muteHttpExceptions: true
       });
       var data = JSON.parse(res.getContentText());
-      return (data && data.results) ? data.results : [];
+      var rs = (data && data.results) ? data.results : [];
+      if (rs.length >= 100) _trhTruncated = true;
+      return rs;
     }
 
+    var _trhTruncated = false;
     var leftTickets   = fetchTickets('current_teacher__t_'); // learner left this teacher
     var joinedTickets = fetchTickets('new_teacher');         // learner joined this teacher
 
@@ -4223,6 +4233,9 @@ function getTeacherReplacementHistory(teacherName) {
       total:       results.length,
       leftCount:   leftCount,
       joinedCount: joinedCount,
+      truncated:   _trhTruncated,
+      fromDate:    fromDate || '',
+      toDate:      toDate || '',
       history:     results
     };
     try { CacheService.getScriptCache().put(_trhCacheKey, JSON.stringify(_trhResult), 900); } catch(ce) {}

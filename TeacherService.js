@@ -954,7 +954,36 @@ function _findTeacherCoursesRow(rows, name) {
   return (best && bestD <= 2 && !tie) ? best : null;
 }
 
-function getTeacherSpecificLoad(teacherName) {
+// TP / CLS manager (names + emails) for a teacher, straight from the Teacher Data sheet. Used to fill blanks and for teachers that
+// are not in the Teacher Courses sheet. Columns: G Manager, H CLS Manager, J CLS Email, K TP Manager Email.
+function _lookupTeacherManagers(names) {
+  var out = { tpManager: '', clsManager: '', tpManagerEmail: '', clsEmail: '' };
+  try {
+    var keys = {};
+    (names || []).forEach(function(n) {
+      var k = String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!k) return;
+      keys[k] = true;
+      try { keys[String(resolveTeacherName(n)).trim().toLowerCase().replace(/\s+/g, ' ')] = true; } catch (e) {}
+    });
+    var d = _getCachedSheetData(CONFIG.SHEETS.TEACHER_DATA);
+    for (var r = 1; r < d.length; r++) {
+      var rn = String(d[r][1] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (rn && keys[rn]) {
+        out.tpManager      = String(d[r][6]  || '').trim();
+        out.clsManager     = String(d[r][7]  || '').trim();
+        out.clsEmail       = String(d[r][9]  || '').trim();
+        out.tpManagerEmail = String(d[r][10] || '').trim();
+        break;
+      }
+    }
+  } catch (e) { Logger.log('[_lookupTeacherManagers] ' + e.message); }
+  return out;
+}
+
+// lite = true: courses + proficiency + managers only. Skips the learner-stats enrichment, which pages through EVERY active learner deal in
+// HubSpot (up to 30 requests) — fine for the profile page, far too slow when the caller only needs the course list.
+function getTeacherSpecificLoad(teacherName, lite) {
   try {
     const sheetData = _getCachedSheetData(CONFIG.SHEETS.TEACHER_COURSES);
     if (!sheetData || sheetData.length < 2) return { success: false, message: "No data found." };
@@ -974,7 +1003,10 @@ function getTeacherSpecificLoad(teacherName) {
     // 2. Find specific teacher row in TEACHER_COURSES
     const teacherRow = _findTeacherCoursesRow(sheetData.slice(headerRowIndex + 1), teacherName);
 
-    if (!teacherRow) return { success: false, message: "Teacher not found." };
+    if (!teacherRow) {
+      var _nm = _lookupTeacherManagers([teacherName]);
+      return { success: false, message: "Teacher not found.", manager: _nm.tpManager, clsManagerResponsible: _nm.clsManager, clsEmail: _nm.clsEmail, tpManagerEmail: _nm.tpManagerEmail };
+    }
     // Both spellings are used for the manager lookups below (the Persona / Teacher Data sheets may use either)
     const _nameKeys = {};
     _nameKeys[String(teacherName).trim().toLowerCase()] = true;
@@ -1055,10 +1087,19 @@ function getTeacherSpecificLoad(teacherName) {
       }
     }
 
+    // Fill any manager name / email the Persona sheet did not give from the Teacher Data sheet
+    var _mm = _lookupTeacherManagers([teacherName, teacherRow[0]]);
+    if (!tpManager)      tpManager      = _mm.tpManager;
+    if (!clsManager)     clsManager     = _mm.clsManager;
+    if (!tpManagerEmail) tpManagerEmail = _mm.tpManagerEmail;
+    if (!clsEmail)       clsEmail       = _mm.clsEmail;
+
     // ── Enrich courses with learner stats + upskill history ──
-    var statsMap  = _buildAllTeacherStatsMap();
     var teacherKey = String(teacherRow[0] || '').trim().toLowerCase();
-    _mergeStatsIntoCourses(courseDetails, teacherKey, statsMap);
+    if (!lite) {
+      var statsMap = _buildAllTeacherStatsMap();
+      _mergeStatsIntoCourses(courseDetails, teacherKey, statsMap);
+    }
 
     // Upskill history (from optional sheet)
     var upskillHistory = _getTeacherUpskillHistory(teacherRow[0]);
