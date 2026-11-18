@@ -1,6 +1,11 @@
 # JetLearn Platform — Changelog
 
 ---
+## [2026-11-20] — Teacher Persona page for TP managers (V10.56)
+- "View as" now applies the TP restrictions (`tpwApplyRoleUI` treats `tpw.viewAs` like a TP login): menu limited, admin controls / banner hidden, floating `tpwRenderViewAsBar` pill with "Back to admin view" on every page.
+- `JavaScript.html`: `switchPage` allows `personaPage` for the TP Manager role, `tpwApplyRoleUI` keeps the `persona` menu item; `tpwPrimePersonaData` loads the shared teacher / course / time zone lists (`getCommunicationPageData`) the page's pickers read. The persona tool itself is unchanged and unscoped (full matching). Calendar booking buttons still follow the per-user `book_classes_calendar` feature toggle.
+
+---
 ## [2026-11-19] — Track My Kit page loads faster (V10.55)
 - `KitTrackingService.js`: `getKitTrackLink(jlid, learnerName)` appends `?name=<first name>` (all 3 callers pass the name; `sendKitTrackingLinkWhatsApp` takes `learnerName`; the `kit_tracking_link_btn_v1` button variant has a fixed base URL and is unchanged). `getKitTrackContext` scans only the JLID column and reads just that learner's rows; `getKitTrackContextCached` (2 min CacheService) used by the `trackContext` API in `Code.js`.
 - `firebase-hosting/public/track/index.html`: reads `?name=`, shows the learner chip + "<Name>'s kit" + "Fetching your kit status…" immediately, fills in when the backend answers. Needs `firebase deploy --only hosting:kitlinks`.

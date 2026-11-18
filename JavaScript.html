@@ -1936,7 +1936,8 @@ document.addEventListener('DOMContentLoaded', bgPlaceBell);
 
 function switchPage(pageId, context = null) {
     // TP managers only get the TP Workspace and Teacher Intelligence
-    if (window._isTPManager && ['tpWorkspacePage', 'loadPage'].indexOf(pageId) === -1) pageId = 'tpWorkspacePage';
+    if (window._isTPManager && ['tpWorkspacePage', 'loadPage', 'personaPage'].indexOf(pageId) === -1) pageId = 'tpWorkspacePage';
+    if (window._isTPManager && pageId === 'personaPage') tpwPrimePersonaData();
     // Re-query live DOM to get all elements with the .page-content class, wherever they are.
     const livePageContents = document.querySelectorAll('.page-content');
     const liveMenuItems = document.querySelectorAll('.menu-item');
@@ -11003,6 +11004,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- All Changelog Data from Version 1 to 25 ---
   const changelogData = {
+    'V10.56': [
+      "**View as a TP manager now shows exactly what they see**: the menu is cut down to TP Workspace, Teacher Intelligence and Teacher Persona, admin-only controls on the TP Workspace page are hidden, and a 'Back to admin view' button floats at the bottom of every page until you switch back.",
+      "**Teacher Persona for TP managers**: TP managers now have the full Teacher Persona tool (Smart Context Fetch, matching, results) as a third menu item next to TP Workspace and Teacher Intelligence. Nothing is cut down; everything else stays hidden from them.",
+    ],
     'V10.55': [
       "**Faster Track My Kit page**: the tracking link now carries the learner's first name (like the address link), so the page opens at once with 'Aria's kit' and fills in the status as it arrives. The backend also reads only that learner's rows instead of the whole sheet and keeps the answer for 2 minutes.",
     ],
@@ -23183,7 +23188,7 @@ function tpwInitChrome() {
   var sub = tpwEl('tpwSubtitle');
   if (sub) sub.textContent = (b.isAdmin && !b.viewingAs) ? 'Admin view — every TP manager’s upskilling requirements, in one place.'
     : 'Hi ' + (b.name || '').split(' ')[0] + ' — ' + (b.teacherCount || 0) + ' teachers are on your list. Every requirement below needs a status from you.';
-  var real = !!(b.isAdmin || b.realAdmin);
+  var real = !!b.isAdmin;   // admin-only controls are hidden while viewing as a TP manager
   tpwEl('tpwNewBtn').style.display = real ? '' : 'none';
   tpwEl('tpwManagersTab').style.display = real ? '' : 'none';
   var va = tpwEl('tpwViewAs');
@@ -23193,11 +23198,7 @@ function tpwInitChrome() {
     va.value = tpw.viewAs || '';
   } else va.style.display = 'none';
   var bn = tpwEl('tpwBanner');
-  if (b.viewingAs) {
-    bn.style.display = '';
-    bn.innerHTML = '<b>Viewing as ' + tpwE(b.viewingAs) + '.</b> This is exactly what they see (' + (b.teacherCount || 0) + ' teachers). Buttons you press here are real and logged as you. '
-      + '<button class="tpw-btn" style="margin-left:8px;" onclick="tpwOpenTIC()">Open their Teacher Intelligence</button> <button class="tpw-btn" onclick="tpwSetViewAs(\'\')">Back to admin view</button>';
-  } else bn.style.display = 'none';
+  bn.style.display = 'none';   // the floating "Back to admin view" pill replaces the in-page banner
   var sel = tpwEl('tpwManagerFilter');
   if (b.isAdmin && !b.viewingAs) {
     sel.style.display = '';
@@ -23228,6 +23229,8 @@ function tpwSetViewAs(v) {
   tpw.filter = 'needs'; tpw.view = 'open';
   document.querySelectorAll('.tpw-tab').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-v') === 'open'); });
   tpwEl('tpwListView').style.display = ''; tpwEl('tpwManagersView').style.display = 'none'; tpwEl('tpwTeachersView').style.display = 'none'; tpwEl('tpwCards').style.display = '';
+  tpwApplyRoleUI();
+  switchPage('tpWorkspacePage');
   loadTPWorkspacePage();
 }
 function tpwOpenTIC() { var m = document.querySelector('.menu-item[data-page="load"]'); if (m) m.click(); else switchPage('loadPage'); }
@@ -23584,11 +23587,11 @@ function tpwRunNow(which) {
     .tpwRunNow(tpwTok(), which);
 }
 
-// TP managers see only: TP Workspace + Teacher Intelligence (their teachers). Everything else is hidden.
+// TP managers see only: TP Workspace + Teacher Intelligence (their teachers) + Teacher Persona (the full tool). Everything else is hidden.
 function tpwApplyRoleUI() {
-  var isTP = tpwIsTP();
+  var isTP = tpwIsTP() || !!tpw.viewAs;   // a real TP manager, or an admin looking at the app as one
   window._isTPManager = isTP;
-  var allowed = { tpWorkspace: 1, load: 1 };
+  var allowed = { tpWorkspace: 1, load: 1, persona: 1 };
   document.querySelectorAll('.sidebar-menu .menu-item').forEach(function(m) {
     if (isTP) { if (!allowed[m.dataset.page]) { m.style.display = 'none'; m.setAttribute('data-tpw-hidden', '1'); } else m.style.display = 'flex'; }
     else if (m.getAttribute('data-tpw-hidden')) { m.style.display = ''; m.removeAttribute('data-tpw-hidden'); }
@@ -23605,7 +23608,12 @@ function tpwApplyRoleUI() {
   var wsItem = tpwEl('tpWorkspaceMenuItem');
   if (wsItem) wsItem.style.display = (perms.indexOf('tp_workspace') > -1 || perms.indexOf('tp_workspace_admin') > -1) ? 'flex' : 'none';
   tpw.boot = null; tpw.reqs = [];
-  ['bgBellWrap', 'bgDock'].forEach(function(id) { var el = tpwEl(id); if (el && isTP) el.style.display = 'none'; });
+  ['bgBellWrap', 'bgDock'].forEach(function(id) {
+    var el = tpwEl(id); if (!el) return;
+    if (isTP) { el.style.display = 'none'; el.setAttribute('data-tpw-hidden', '1'); }
+    else if (el.getAttribute('data-tpw-hidden')) { el.style.display = ''; el.removeAttribute('data-tpw-hidden'); }
+  });
+  tpwRenderViewAsBar();
 }
 
 // After an admin signs in: continue as admin, or look at the app as a chosen TP manager.
@@ -23630,6 +23638,7 @@ function tpwChoose(v) {
   if (!v) return;
   tpw.viewAs = v; window._tpwViewAsOn = true;
   try { allTeacherDetailsCache = []; globalTeacherDataList = []; } catch (e) {}
+  tpwApplyRoleUI();
   tpw.boot = null;
   var m = document.querySelector('.menu-item[data-page="tpWorkspace"]');
   if (m) m.click(); else switchPage('tpWorkspacePage');
@@ -23853,5 +23862,39 @@ function ktAddrChangeBadge(row) {
   }[c];
   if (!cfg) return '';
   return '<span title="' + escapeHtml(cfg.tip) + '" style="display:inline-block;margin-top:3px;font-size:0.66rem;font-weight:700;color:' + cfg.col + ';background:' + cfg.bg + ';border:1px solid ' + cfg.col + '30;border-radius:20px;padding:1px 7px;white-space:nowrap;">' + cfg.t + '<\/span>';
+}
+
+// The Teacher Persona page is the full tool for TP managers. Its pickers read the shared lists (teachers, courses, time zones) that other
+// pages normally load, so load them here the same way the Communication page does.
+function tpwPrimePersonaData() {
+  if (globalTeachers && globalTeachers.length && globalCourses && globalCourses.length) return;
+  google.script.run
+    .withSuccessHandler(function(data) {
+      if (!data || !data.success) return;
+      globalTeachers = data.teachers || globalTeachers;
+      globalCourses = data.courses || globalCourses;
+      globalTpManagers = data.tpManagers || globalTpManagers;
+      globalClsManagers = data.clsManagers || globalClsManagers;
+      globalTimezones = data.timezones || globalTimezones;
+      globalBookingTimezones = data.bookingTimezones || globalBookingTimezones;
+      try { populateSelect(document.getElementById('pDirectTeacherSelect'), globalTeachers, false, 'Select teacher'); } catch (e) {}
+    })
+    .withFailureHandler(function() {})
+    .getCommunicationPageData();
+}
+
+// Floating pill (bottom centre, on every page) while an admin is looking at the app as a TP manager.
+function tpwRenderViewAsBar() {
+  var el = tpwEl('tpwViewAsBar');
+  if (!tpw.viewAs) { if (el) el.style.display = 'none'; return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'tpwViewAsBar';
+    el.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:10040;background:#1e1b4b;color:#fff;border-radius:99px;padding:8px 10px 8px 18px;font-size:.85rem;display:flex;gap:12px;align-items:center;box-shadow:0 8px 28px rgba(0,0,0,.35);max-width:94vw;';
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+  el.innerHTML = '<span>\ud83d\udc41 Viewing as <b>' + tpwE(tpw.viewAs) + '</b> \u2014 exactly what they see</span>'
+    + '<button style="border:none;background:#f59e0b;color:#1e1b4b;font-weight:700;border-radius:99px;padding:6px 14px;cursor:pointer;" onclick="tpwSetViewAs(\'\')">Back to admin view</button>';
 }
 </script>
